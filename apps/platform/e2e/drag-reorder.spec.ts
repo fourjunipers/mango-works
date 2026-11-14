@@ -462,7 +462,8 @@ test("the drag library is fetched in reorder mode only, and never for staff", as
   for (const path of ["fleet?reorder=1", "products?reorder=1"]) {
     await staff.goto(`/saigon-scooters/${path}`);
     await expect(staff.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(staff.getByRole("list").first()).toBeVisible();
+    // Not in reorder mode (and the shop may have nothing to list).
+    await expect(staff.getByRole("link", { name: "Done" })).toHaveCount(0);
     await expect(staff.locator("[data-drag-handle]")).toHaveCount(0);
     await staff.waitForLoadState("networkidle");
     expect(await dragScripts(staff)).toEqual([]);
