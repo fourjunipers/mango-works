@@ -13,6 +13,37 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Dragging to reorder (branch `platform/drag-reorder`, 14 Nov 2026)
+
+Fleet and the Products list can be reordered by dragging, in Reorder mode. The design and what was decided is `docs/products-redesign.md` §5.8 ("As built"). Platform only. No migration (`move_product` already takes "before or after any product"). `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **A drag handle on each row in Reorder mode**, before Move up and Move down: small and quiet to see, 44 px to hold. Only the handle starts a drag. Mouse: press and move 8 px. Touch: hold a quarter of a second, then drag; a quick tap does nothing and a finger that moves sooner scrolls the page. Keyboard: Space, arrows, Space (Escape cancels), with announcements for screen readers in English and Thai.
+- **One order, one move:** a drop saves through the same action and database function as the arrows. Fleet and the Products list share the order and general products take part. A Fleet group drags as one block (its line is shut in Reorder mode). The arrows stay, and work without JavaScript.
+- **New dependency, approved by Mark (14 Nov 2026):** `@dnd-kit/core` 6.3.1 and `@dnd-kit/sortable` 10.0.0, exact versions. Confirmed on React 19.3.0 by building and running before it was installed here (a throwaway project, then `next build` and the browser tests).
+- **Loaded only in Reorder mode**, which only owners and managers reach: 47.8 kB minified, 15.9 kB gzipped (14.4 kB with Brotli), measured from this build, in its own file. A browser test checks that the two lists as they normally are, and staff, do not fetch it.
+- **Wording:** 7 new texts and 1 changed (`Lists.reorder.help`), English and Thai, listed in `docs/platform/thai-review-products.md` under "Dragging to reorder".
+- **Tests:** 9 unit tests in `lib/drag-order.test.ts`; `e2e/drag-reorder.spec.ts` at 375 px and 1280 px (mouse, simulated touch, keyboard, reloads, the loading rule).
+
+**Decided here without being asked**
+
+- **The handle sits before the arrows**, in the place PR 19 marked, not at the row's start as the PR 17 proposal said.
+- **On a phone in Reorder mode the Moto Mangos mango is hidden** and its column goes to the name. With the handle added, names were cut to "Yamaha …" and two Yamahas could not be told apart. Desktop keeps the mango; outside Reorder mode nothing changed.
+- **The line above the list in Reorder mode** now reads "Drag a product by its handle (on a phone, hold it first), or use the arrows. Fleet and the Products list share this order."
+- **Rows move up and down only**; the row being dragged gets a shadow. **Enter** also picks up and drops (the library's default); the brief asked for Space, which works.
+- **A refused save is silent:** the list goes back to the saved order, with no message. The arrows behave the same way today.
+- **The browser test for dragging runs once** (in the phone project) and opens 375 px and 1280 px itself, in the `big-fleet` demo shop: the order is shop-wide, so two copies side by side would reorder the same shop under each other. It adds one rental-gear product and removes it, and resets the shop to A to Z at the end.
+- **No `@dnd-kit/modifiers`:** "up and down only" is four lines of our own, to keep to the two approved packages.
+
+**Known issues and what was not tested**
+
+- **Touch was simulated**, with real touch events in desktop Chromium. It passed six runs in a row, so it is not flaky here. Not covered, and for a real phone: how the quarter-second hold feels, iOS Safari's long-press behaviour on the handle (selection, callout menu), haptics, and the page scrolling by itself when a row is dragged to the edge of the screen.
+- **Keyboard at machine speed:** keys sent with no pause at all (under 50 ms apart) can arrive before the library has measured the list, and the move is skipped. A person can't type that fast; the tests leave 150 ms between keys.
+- **The two packages' last release was December 2024** (§5.8). If they stop working with a later React, the arrows still do the job and the handle can be removed in one file.
+
+**Next:** Mark's click-through on a real phone (the list is in the PR).
+
 ## Rental gear: the stock rework (branch `platform/gear-stock-rework`, 14 Nov 2026)
 
 The owner's testing of the Rental gear Stock tab found it confusing. Reworked to his eleven points; the design is `docs/products-redesign.md` §5.9. Rental gear only: items for sale are as they were. Platform only. On staging; **not on live**. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
@@ -221,7 +252,7 @@ Tests in this round: 8 new unit tests (the labels, the three help lines, the con
 - Ports 3300 and 3310, which the browser tests and an earlier session used, were held by servers from other checkouts. The tests ran against this checkout's own server on port 3320.
 - One write of `messages/en.json` failed once with "Invalid argument" (the folder is in OneDrive) and worked on the second try. Both files were checked afterwards.
 
-**Next:** the owner's click-through of the preview; then stage C (`product_listings` and the Moto Mangos tab), and dragging (§5.8) if the library is approved.
+**Next:** the owner's click-through of the preview; then stage C (`product_listings` and the Moto Mangos tab), and dragging (§5.8) if the library is approved. (Dragging was approved and built on 14 Nov 2026: see "Dragging to reorder" above.)
 
 ## Products, stage A (branch `platform/products-stage-a`, 13 Nov 2026)
 
