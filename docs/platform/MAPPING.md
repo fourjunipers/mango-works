@@ -94,18 +94,19 @@ A legacy row is a shop's listing of one catalog entry with a quantity. On the pl
 | `shop_id` | `products.tenant_id` | 1a | |
 | `catalog_id` | `products.catalog_id` | 1a | Optional since 11 Nov 2026: a model is on a preset (an approved catalog entry) or is the shop's own. Every legacy listing has one, so every mapped model is on a preset. A shop may have several models on one entry, each with its own display name |
 | (from the catalog entry) | `products.make`, `model`, `vehicle_type`, `cc`, `transmission` | 1a | Copied from the catalog entry by the database when the model is linked |
-| `visible` (with the shop live) | `products.marketplace_listed` | 1a | The shop's per-model switch for Moto Mangos; only a model on an approved entry can have it on. Read by the marketplace from 3M |
+| `visible` (with the shop live) | `product_listings.enabled` (was `products.marketplace_listed` until stage C, 14 Nov 2026) | 1a | The shop's per-model switch for Moto Mangos; only a model on an approved entry can have it on. Read by the marketplace from 3M |
 | (none) | `products.name` | 1a | Display name, unique within the shop. At 3M: the catalog entry's make, model and years |
 | `photos` | `products.photos` | 1a | Same storage paths |
 | `visible` | `products.bookable_online` | 1a | The shop's own booking page (Phase 8). The Moto Mangos switch is the row above |
 | `qty` | Count of the model's `units` rows | 1a | No quantity column. At 3M, `qty` units are created per model at the default location, status active, with no plate and `plate_pending` set; the shop fills in plates afterwards |
-| `instant_qty`, `request_qty` | `products.instant_units`, `request_units` | 1a | Walk-in-only = active units − instant − request. Checked on save (can't exceed active units) |
-| `ready_today_count` | `products.ready_now` | 1a | |
+| `instant_qty`, `request_qty` | `product_listings.instant_units`, `request_units` | 1a | Walk-in-only = active units − instant − request. Checked on save (can't exceed active units) |
+| `ready_today_count` | `product_listings.ready_now` | 1a | |
 | `ready_today_on` | Dropped | — | `ready_now > 0` means the same |
-| `ready_today_updated_at` | `products.ready_updated_at` | 1a | |
+| `ready_today_updated_at` | `product_listings.ready_updated_at` | 1a | Set by the database when a walk-ins count above zero is saved |
 | `buffer_before_h`, `buffer_after_h` | `products.buffer_before_minutes`, `buffer_after_minutes` | 1a | ×60. Null = shop default |
 | `deposit_amount` | `products.deposit` (bigint minor units) | 1a | ×100 for THB. Null = shop default |
-| `min_days_booking`, `min_days_walkin`, `notice_h` | `products.min_days_advance`, `min_days_walkin`, `min_notice_hours` | 2 | Null = location default |
+| `min_days_booking`, `min_days_walkin` | `products.min_days_advance`, `min_days_walkin` | 2 | Null = location default |
+| `notice_h` | `product_listings.lead_time_hours` | C (column), 3M (data) | **The rule changes.** Today a model's notice replaces the shop's (`coalesce(m.notice_h, s.notice_h)`), so a model can have a shorter notice than its shop. On the platform the stricter of the two applies (owner, 13 and 14 Nov 2026; `@mango/core` `noticeHours`). A legacy model with a shorter notice than its shop takes the shop's at 3M, so it can drop out of a search it is in today. **3M's before-and-after search check must expect this**: list those models first and tell the owner |
 | `flagged_for_review` | Marketplace-owned approval record | 3M | |
 | `created_at`, `updated_at` | Same names | 1a | |
 | (none) | `products.description`, `min_age`, `licence_class` | 1a | New on the platform; `min_age` and licence also arrive from the policy override below |

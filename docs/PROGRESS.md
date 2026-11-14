@@ -13,6 +13,59 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Products, stage C: the database part (branch `platform/products-stage-c-db`, 14 Nov 2026)
+
+PR 1 of stage C, of two. Moto Mangos listings move from columns on `products` to their own table, `platform.product_listings`. The design is `docs/products-redesign.md` §5.10 and decision 23 (the owner's eight answers of 14 Nov 2026). Platform only: nothing in `apps/marketplace`. **Nothing a shop sees changes in this PR**: the Moto Mangos panel stays on the Details tab until PR 2. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **One new migration, `20261114000200_platform_product_listings`.** No earlier migration is touched. The table (RLS on; members read; the service role granted on purpose; nobody signed in writes it directly); the data copied (a row for each product that is listed, has a count above zero or has a ready-updated time); the five columns dropped from `products`; `products_vehicle_fields_check` re-created; a guard, `updated_at` and audit triggers on the new table; `listing_on` and `listing_off` events; `platform.save_listing()`; and the five functions that named the old columns re-created (`products_guard`, `products_retire_guard`, `units_clamp_product_counts`, `review_catalog_request`, `disconnect_listing`). The list of five is from the database: every function whose body names one of the columns.
+- **One new setting:** `lead_time_hours` (0 to 720; empty = none of its own). Stored and validated; no screen sets it until PR 2.
+- **Lock order everywhere: the product's row, then the listing's row.** The table of writers is in §5.10.
+- **`@mango/core` `listing`** (`packages/core/src/listing.ts`): the lead time rule (the stricter of the shop's minimum notice and the listing's lead time; either may be missing) and the cap and mode rules, pure, with 25 unit tests. Nothing calls it yet.
+- **The app, as little as possible:** `lib/fleet-data.ts` reads the listing beside the product under the names the screens already use; `saveListing` calls `save_listing`; the History tab reads the listing's audit rows as the product's own, in the same words.
+- **Types regenerated** (`packages/db/src/database.types.ts`).
+
+**Decided here, not specified by the owner** (all in §5.10; say if any should change)
+
+- **A shop changes a listing only through `save_listing()`; the table gives signed-in people no insert, update or delete.** This is how "product row, then listing row" is kept: a direct update locks the listing's row before anything can lock the product's. The function runs with its owner's rights and checks the caller itself.
+- **Who may change what is one function, `platform_private.listing_roles(action)`**, with two actions: `settings` (the switch, instant and request units, the lead time) and `walk_ins` (the walk-ins count). Both are owner and manager. Adding staff to `walk_ins` is a one-word migration; nothing else needs to change in the database.
+- **`save_listing` takes only what is to change**, as a list of named settings, so PR 2's switch can save by itself and a lead time of "none" can be told from "not mentioned".
+- **A product that was never listed gets no row for saving "off, zero, none"**, and a vehicle leaving or a retire makes no row either.
+- **Lead time is 0 to 720 hours** (the old marketplace's range for notice).
+- **Disconnect keeps the lead time**; it still switches off and zeroes the three counts.
+- **Approving a request whose product the shop retired meanwhile now goes through**, leaving that product off Moto Mangos. Before, the retire rule refused the whole review, so the Moto Mangos admin could not approve the entry at all.
+- **The ready-updated time is set by the database** whenever a walk-ins count above zero is saved (the browser sent it before), also when the same count is saved again.
+- **`listing_on` and `listing_off` are written by a trigger on the table**, so every path writes them (a save, an approval, a rejection, a retire, a disconnect), with whoever did it as the actor. The History tab leaves them unsaid for now, because the listing's own row already says "Listed on Moto Mangos: No → Yes"; PR 2 gives them their words.
+- **One small visible difference in History:** retiring or disconnecting a listed product shows two lines (the product's change, and the listing going off) where it showed one. Nothing else on any screen changed.
+- **The migration is `20261114000200`**, the next number after the gear rework's.
+- **This worktree has its own local database** (`Bike_Booking_stage_c`, ports 5732x), so resets here don't touch other sessions' databases. The change to `supabase/config.toml` is local only (`git update-index --skip-worktree`), not committed.
+
+**For the marketplace switch-over (3M), noted as asked:** the old marketplace lets a model's notice replace its shop's, so a model can have a shorter notice than its shop. On the platform the stricter of the two applies. A legacy model with a shorter notice than its shop takes the shop's at 3M and can drop out of a search it is in today, so the "search results identical before and after" check must expect it. Written into `docs/platform/MAPPING.md` on the `notice_h` row.
+
+**For Phase 3:** an order from Moto Mangos must store how it was made (instant, request or now); the booking function checks the cap under the product-and-location lock. §5.10 has the detail.
+
+**Tests**
+
+- Database: 294, all passing locally (251 before; 39 new in `product-listings.test.ts`, 4 new in `default-grants.test.ts`). The seven older files that set or read a listing were changed only in how they reach it (the new table and `save_listing`); two assertions changed in substance: a general product with `marketplace_listed` or `instant_units` is no longer a case (the columns are gone; the table's key refuses a listing on a helmet instead), and the isolation test's "can't list another shop's product" now expects `save_listing` to refuse with 42501.
+- Unit: 111 in `@mango/core` (25 new in `listing.test.ts`), 213 on the platform (3 new, on the History reader), 202 on the marketplace (untouched). All passing.
+- Browser: the whole suite at 375 px and 1280 px on a local production build against a database built from scratch with all 58 migrations and the demo seed: 97 passed, 3 skipped (the two timing measurements and one manual-order test, skipped as on `main`), none failed. No browser test was changed: the panel, Change model, Disconnect, the lists and the History behave as before.
+- The data move, on a local copy shaped like staging (16 products, 14 with a listing setting of some kind, including "counts but not listed" and "a ready-updated time only"): the settings read line for line the same from `product_listings` after the migration as from `products` before; product, unit and audit counts unchanged.
+- Typecheck and lint pass for every workspace.
+
+**Not built here**
+
+- PR 2 (screens): the Moto Mangos tab, the lead time field, the "Offering N of M" line, the switch saving at once, words for `listing_on` and `listing_off`, the Thai review list. No new text was added in this PR, so there is nothing new for the Thai review.
+- The shop's minimum notice (`locations.min_notice_hours`): Phase 2, by the owner's answer.
+- Counting real Moto Mangos bookings against the cap: Phase 3 (orders).
+
+**Known issues**
+
+- `review_catalog_request` locks the list entry, then the products; deleting a product locks the product, then updates its pending entry. The two can meet in a deadlock, which Postgres ends by refusing one of them. It was so before this PR and is not changed here.
+- Root `CLAUDE.md` does not have the lock order yet (`docs/products-redesign.md` §8 puts it there once Phase 2 builds the booking locks).
+
+**Not on staging yet, not on live.** Staging records 57 of 57 and gets this migration only when the PR is ready to merge. Live stays at 53 of 53.
+
 ## Rental gear: the stock rework (branch `platform/gear-stock-rework`, 14 Nov 2026)
 
 The owner's testing of the Rental gear Stock tab found it confusing. Reworked to his eleven points; the design is `docs/products-redesign.md` §5.9. Rental gear only: items for sale are as they were. Platform only. On staging; **not on live**. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
