@@ -20,6 +20,8 @@ import {
   sql,
   type TestTenant,
   type TestUser,
+  listingOf,
+  setListing,
 } from "./helpers";
 
 let shop: TestTenant;
@@ -215,8 +217,6 @@ describe("type and tracking", () => {
       { cc: 50 },
       { catalog_id: presetId },
       { min_age: 18 },
-      { marketplace_listed: true },
-      { instant_units: 1 },
     ])
       expect(
         (await service.from("products").insert(other("gear", "bulk", extra)))
@@ -537,10 +537,9 @@ describe("a product is a kind and a name (owner, 13 Nov 2026)", () => {
     expect(linked.error).toBeNull();
     for (const value of Object.values(linked.data!))
       expect(value).not.toBeNull();
-    const listed = await shop.members.owner.db
-      .from("products")
-      .update({ marketplace_listed: true })
-      .eq("id", data!.id);
+    const listed = await setListing(shop.members.owner.db, data!.id, {
+      marketplace_listed: true,
+    });
     expect(listed.error).toBeNull();
   });
 
@@ -613,10 +612,9 @@ describe("every re-created function runs", () => {
       .single();
     expect(data?.make).toBeTruthy();
     const own = await addVehicle();
-    const listed = await shop.members.owner.db
-      .from("products")
-      .update({ marketplace_listed: true })
-      .eq("id", own);
+    const listed = await setListing(shop.members.owner.db, own, {
+      marketplace_listed: true,
+    });
     expect(listed.error?.message).toContain("not_listable");
   });
 
@@ -624,20 +622,14 @@ describe("every re-created function runs", () => {
     const id = await addVehicle();
     const unit = await addUnit(id);
     await addUnit(id);
-    await shop.members.owner.db
-      .from("products")
-      .update({ instant_units: 2 })
-      .eq("id", id);
+    await setListing(shop.members.owner.db, id, {
+      instant_units: 2,
+    }).throwOnError();
     await shop.members.owner.db
       .from("units")
       .update({ status: "maintenance" })
       .eq("id", unit.data!.id);
-    const { data } = await service
-      .from("products")
-      .select("instant_units")
-      .eq("id", id)
-      .single();
-    expect(data?.instant_units).toBe(1);
+    expect((await listingOf(id)).instant_units).toBe(1);
     const { data: audit } = await service
       .from("audit_events")
       .select("entity")
@@ -685,10 +677,10 @@ describe("every re-created function runs", () => {
     expect(review.error).toBeNull();
     const { data } = await service
       .from("products")
-      .select("marketplace_listed, catalog_approved_at")
+      .select("catalog_approved_at")
       .eq("id", approved)
       .single();
-    expect(data?.marketplace_listed).toBe(true);
+    expect((await listingOf(approved)).marketplace_listed).toBe(true);
     expect(data?.catalog_approved_at).not.toBeNull();
 
     // Deleting a product that waits for review withdraws its request.

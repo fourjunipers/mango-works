@@ -7,6 +7,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createCatalogEntry,
+  listingOf,
+  setListing,
   createTenant,
   createUser,
   deleteTenant,
@@ -42,11 +44,12 @@ const row = async (id: string) =>
     await service
       .from("products")
       .select(
-        "catalog_id, categories, catalog_approved_at, catalog_rejected_at, catalog_reject_reason, marketplace_listed",
+        "catalog_id, categories, catalog_approved_at, catalog_rejected_at, catalog_reject_reason",
       )
       .eq("id", id)
       .single()
   ).data!;
+const listed = async (id: string) => (await listingOf(id)).marketplace_listed;
 
 async function addModel(extra: object = {}): Promise<string> {
   const { data, error } = await shop.members.owner.db
@@ -158,14 +161,12 @@ describe("the shop is told when Moto Mangos adds its model", () => {
     );
     expect(after.catalog_rejected_at).toBeNull();
     // Sending it was asking for it to be listed: approved means listed.
-    expect(after.marketplace_listed).toBe(true);
+    expect(await listed(model)).toBe(true);
     // The shop can still switch it off.
-    await shop.members.owner.db
-      .from("products")
-      .update({ marketplace_listed: false })
-      .eq("id", model)
-      .throwOnError();
-    expect((await row(model)).marketplace_listed).toBe(false);
+    await setListing(shop.members.owner.db, model, {
+      marketplace_listed: false,
+    }).throwOnError();
+    expect(await listed(model)).toBe(false);
   });
 
   it("merging into an existing entry sets it too", async () => {
@@ -175,7 +176,7 @@ describe("the shop is told when Moto Mangos adds its model", () => {
     const after = await row(model);
     expect(after.catalog_id).toBe(presetId);
     expect(after.catalog_approved_at).not.toBeNull();
-    expect(after.marketplace_listed).toBe(true);
+    expect(await listed(model)).toBe(true);
   });
 
   it("rejecting sets the rejection, not an approval", async () => {
@@ -184,7 +185,7 @@ describe("the shop is told when Moto Mangos adds its model", () => {
     const after = await row(model);
     expect(after.catalog_approved_at).toBeNull();
     expect(after.catalog_rejected_at).not.toBeNull();
-    expect(after.marketplace_listed).toBe(false);
+    expect(await listed(model)).toBe(false);
   });
 
   it("a rejected model can be sent again: it waits again, and the old reason stays on the old request", async () => {
@@ -305,7 +306,7 @@ describe("retiring a make & model", () => {
       .from("products")
       .update({ retired_at: on ? new Date().toISOString() : null })
       .eq("id", id)
-      .select("retired_at, marketplace_listed");
+      .select("retired_at");
   const setStatus = (unit: string, status: string) =>
     owner().from("units").update({ status }).eq("id", unit).select("status");
 
@@ -327,28 +328,25 @@ describe("retiring a make & model", () => {
   });
 
   it("takes the model off Moto Mangos, and it can't be listed while retired", async () => {
-    const model = await addModel({
-      catalog_id: presetId,
+    const model = await addModel({ catalog_id: presetId });
+    await setListing(owner(), model, {
       marketplace_listed: true,
-    });
-    expect((await row(model)).marketplace_listed).toBe(true);
+    }).throwOnError();
+    expect(await listed(model)).toBe(true);
     const done = await retire(model);
     expect(done.error).toBeNull();
-    expect(done.data?.[0].marketplace_listed).toBe(false);
-    const listed = await owner()
-      .from("products")
-      .update({ marketplace_listed: true })
-      .eq("id", model)
-      .select("id");
-    expect(listed.error?.message).toContain("model_retired");
+    expect(await listed(model)).toBe(false);
+    const refused = await setListing(owner(), model, {
+      marketplace_listed: true,
+    });
+    expect(refused.error?.message).toContain("model_retired");
     // Restored, it can be listed again.
     expect((await retire(model, false)).error).toBeNull();
-    const again = await owner()
-      .from("products")
-      .update({ marketplace_listed: true })
-      .eq("id", model)
-      .select("marketplace_listed");
-    expect(again.data).toEqual([{ marketplace_listed: true }]);
+    const again = await setListing(owner(), model, {
+      marketplace_listed: true,
+    });
+    expect(again.error).toBeNull();
+    expect(await listed(model)).toBe(true);
   });
 
   it("a retired model takes no vehicle that is in the fleet until it is restored", async () => {

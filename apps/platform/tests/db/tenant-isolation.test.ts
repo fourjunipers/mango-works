@@ -174,6 +174,15 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
       quantity: 10,
     }),
   );
+  // The model's Moto Mangos listing (off: the model is on no approved entry
+  // that matters here, and the row is what is being guarded).
+  ok(
+    await service.from("product_listings").insert({
+      tenant_id: tenant.id,
+      product_id: model.id,
+      lead_time_hours: 12,
+    }),
+  );
   // audit_events: written by the triggers on the rows above.
   return {
     ...tenant,
@@ -271,6 +280,11 @@ const payloads: Record<string, (t: Fixture, userId: string) => Row> = {
     kind: "received",
     quantity: 5,
   }),
+  product_listings: (t) => ({
+    tenant_id: t.id,
+    product_id: t.itemId,
+    lead_time_hours: 1,
+  }),
   audit_events: (t) => ({
     tenant_id: t.id,
     entity: "units",
@@ -295,6 +309,7 @@ const changes: Record<string, Row> = {
   unit_renewal_costs: { cost: 999 },
   notification_outbox: { status: "cancelled" },
   stock_movements: { note: "Hijacked" },
+  product_listings: { lead_time_hours: 99 },
   audit_events: { action: "hijacked" },
 };
 
@@ -349,6 +364,7 @@ describe("every tenant table", () => {
       "locations",
       "memberships",
       "notification_outbox",
+      "product_listings",
       "product_year_bands",
       "products",
       "stock_movements",
@@ -666,12 +682,11 @@ describe("functions, as tenant A's owner and as an outsider", () => {
         p_type: "city_scooter",
       });
       expect(error?.code, who).toBe("42501");
-      const listed = await db
-        .from("products")
-        .update({ marketplace_listed: true })
-        .eq("id", b.modelId)
-        .select("id");
-      expect(listed.data ?? [], who).toEqual([]);
+      const listed = await db.rpc("save_listing", {
+        p_product_id: b.modelId,
+        p_settings: { enabled: true },
+      });
+      expect(listed.error?.code, who).toBe("42501");
     }
   });
 

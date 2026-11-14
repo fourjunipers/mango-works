@@ -19,6 +19,9 @@ import {
   sqlAs,
   type TestTenant,
   type TestUser,
+  forceListing,
+  listingOf,
+  setListing,
 } from "./helpers";
 
 let shop: TestTenant;
@@ -532,11 +535,17 @@ describe("5. review_catalog_request", () => {
       kept_linked: [{ product_id: first }],
     });
     expect((await catalogRow(entry)).status).toBe("rejected");
-    const { data: models } = await service
+    const { data: rows } = await service
       .from("products")
-      .select("id, catalog_id, marketplace_listed")
+      .select("id, catalog_id")
       .in("id", [first, second, untouched])
       .order("created_at");
+    const models = await Promise.all(
+      rows!.map(async (row) => ({
+        ...row,
+        marketplace_listed: (await listingOf(row.id)).marketplace_listed,
+      })),
+    );
     expect(models).toEqual([
       { id: first, catalog_id: entry, marketplace_listed: false },
       { id: second, catalog_id: null, marketplace_listed: false },
@@ -595,14 +604,11 @@ describe("5. review_catalog_request", () => {
 });
 
 describe("6. booking-mode counts follow the active bikes", () => {
-  const counts = async (modelId: string) =>
-    (
-      await service
-        .from("products")
-        .select("instant_units, request_units, ready_now")
-        .eq("id", modelId)
-        .single()
-    ).data!;
+  const counts = async (modelId: string) => {
+    const { instant_units, request_units, ready_now } =
+      await listingOf(modelId);
+    return { instant_units, request_units, ready_now };
+  };
   const clamps = async (modelId: string) =>
     (
       await service
@@ -621,12 +627,12 @@ describe("6. booking-mode counts follow the active bikes", () => {
       await addUnit(modelId),
       await addUnit(modelId),
     ];
-    const set = await shop.members.manager.db
-      .from("products")
-      .update({ instant_units: 2, request_units: 1, ready_now: 3 })
-      .eq("id", modelId)
-      .select("id");
-    expect(set.data).toHaveLength(1);
+    const set = await setListing(shop.members.manager.db, modelId, {
+      instant_units: 2,
+      request_units: 1,
+      ready_now: 3,
+    });
+    expect(set.error).toBeNull();
 
     // A mechanic takes one off the road.
     const off = await shop.members.mechanic.db
@@ -672,10 +678,11 @@ describe("6. booking-mode counts follow the active bikes", () => {
     const [modelId, elsewhere] = [await addModel(), await addModel()];
     const units = [];
     for (let i = 0; i < 4; i++) units.push(await addUnit(modelId));
-    await service
-      .from("products")
-      .update({ instant_units: 2, request_units: 1, ready_now: 2 })
-      .eq("id", modelId);
+    await forceListing(shop.id, modelId, {
+      instant_units: 2,
+      request_units: 1,
+      ready_now: 2,
+    }).throwOnError();
 
     // 4 -> 3 active: still enough for 2 + 1.
     await service.from("units").update({ status: "sold" }).eq("id", units[0]);
@@ -713,10 +720,10 @@ describe("6. booking-mode counts follow the active bikes", () => {
         await addUnit(modelId),
         await addUnit(modelId),
       ];
-      await service
-        .from("products")
-        .update({ instant_units: 3, ready_now: 3 })
-        .eq("id", modelId);
+      await forceListing(shop.id, modelId, {
+        instant_units: 3,
+        ready_now: 3,
+      }).throwOnError();
       await Promise.all(
         units
           .slice(0, 2)

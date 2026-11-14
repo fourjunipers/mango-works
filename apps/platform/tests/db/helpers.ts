@@ -275,3 +275,75 @@ export function sqlBackground(
     child.stdin.end(statements);
   });
 }
+
+/** A product's Moto Mangos listing under the names its settings had as columns. */
+export type ListingValues = {
+  marketplace_listed: boolean;
+  instant_units: number;
+  request_units: number;
+  ready_now: number;
+};
+
+/**
+ * The listing of a product (platform.product_listings), read with the
+ * service role. A product that was never listed has no row: off and zero.
+ */
+export async function listingOf(productId: string): Promise<ListingValues> {
+  const { data, error } = await serviceClient()
+    .from("product_listings")
+    .select("enabled, instant_units, request_units, ready_now")
+    .eq("product_id", productId)
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    marketplace_listed: data?.enabled ?? false,
+    instant_units: data?.instant_units ?? 0,
+    request_units: data?.request_units ?? 0,
+    ready_now: data?.ready_now ?? 0,
+  };
+}
+
+/**
+ * Changes a product's listing as the signed-in user of `db`, through
+ * platform.save_listing(): the only way a shop can. Only what is named
+ * changes. `marketplace_listed` is the switch (`enabled` in the table).
+ */
+export function setListing(
+  db: Db,
+  productId: string,
+  values: Partial<ListingValues> & { lead_time_hours?: number | null },
+) {
+  const { marketplace_listed, ...rest } = values;
+  return db.rpc("save_listing", {
+    p_product_id: productId,
+    p_settings: {
+      ...(marketplace_listed === undefined
+        ? {}
+        : { enabled: marketplace_listed }),
+      ...rest,
+    },
+  });
+}
+
+/**
+ * Writes a product's listing with the service role, past save_listing()'s
+ * role check (the table's own guard still applies). For setting a scene.
+ */
+export function forceListing(
+  tenantId: string,
+  productId: string,
+  values: Partial<ListingValues>,
+) {
+  const { marketplace_listed, ...rest } = values;
+  return serviceClient()
+    .from("product_listings")
+    .upsert({
+      tenant_id: tenantId,
+      product_id: productId,
+      ...(marketplace_listed === undefined
+        ? {}
+        : { enabled: marketplace_listed }),
+      ...rest,
+    })
+    .select("product_id");
+}

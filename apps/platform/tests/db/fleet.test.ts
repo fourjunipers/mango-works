@@ -7,6 +7,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createCatalogEntry,
+  listingOf,
+  setListing,
+  type ListingValues,
   createTenant,
   createUser,
   deleteTenant,
@@ -541,8 +544,8 @@ describe("units and models", () => {
       .single();
     await addUnit(shop, model!.id);
     await addUnit(shop, model!.id);
-    const set = (values: object) =>
-      shop.members.owner.db.from("products").update(values).eq("id", model!.id);
+    const set = (values: Partial<ListingValues>) =>
+      setListing(shop.members.owner.db, model!.id, values);
     expect(
       (await set({ instant_units: 1, request_units: 1 })).error,
     ).toBeNull();
@@ -753,12 +756,10 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
   const model = async (id: string) => {
     const { data } = await service
       .from("products")
-      .select(
-        "catalog_id, make, model, cc, transmission, vehicle_type, marketplace_listed",
-      )
+      .select("catalog_id, make, model, cc, transmission, vehicle_type")
       .eq("id", id)
       .single();
-    return data!;
+    return { ...data!, ...(await listingOf(id)) };
   };
   const addOwn = async (extra: object = {}) => {
     const { data, error } = await shop.members.manager.db
@@ -978,12 +979,22 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
 
   it("only a model on an approved preset can be listed on Moto Mangos", async () => {
     const id = await addOwn();
-    const list = (modelId: string, on = true) =>
-      shop.members.owner.db
-        .from("products")
-        .update({ marketplace_listed: on })
-        .eq("id", modelId)
-        .select("marketplace_listed");
+    const list = async (modelId: string, on = true) => {
+      const { error } = await setListing(shop.members.owner.db, modelId, {
+        marketplace_listed: on,
+      });
+      return {
+        error,
+        data: error
+          ? null
+          : [
+              {
+                marketplace_listed: (await listingOf(modelId))
+                  .marketplace_listed,
+              },
+            ],
+      };
+    };
     expect((await list(id)).error?.message).toBe("not_listable");
 
     // Sent to the admin: linked to its own submission, still not listable.
@@ -1040,12 +1051,11 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
       })
       .select("id")
       .single();
-    const listed = await shop.members.manager.db
-      .from("products")
-      .update({ marketplace_listed: true })
-      .eq("id", onPreset!.id)
-      .select("marketplace_listed");
-    expect(listed.data).toEqual([{ marketplace_listed: true }]);
+    const listed = await setListing(shop.members.manager.db, onPreset!.id, {
+      marketplace_listed: true,
+    });
+    expect(listed.error).toBeNull();
+    expect((await listingOf(onPreset!.id)).marketplace_listed).toBe(true);
 
     // "Did you mean…": the shop links its own model to the preset.
     const id = await addOwn({ make: "Tsetmake", cc: 999 });
