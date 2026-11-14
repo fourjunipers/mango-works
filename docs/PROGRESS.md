@@ -64,7 +64,12 @@ PR 1 of stage C, of two. Moto Mangos listings move from columns on `products` to
 - `review_catalog_request` locks the list entry, then the products; deleting a product locks the product, then updates its pending entry. The two can meet in a deadlock, which Postgres ends by refusing one of them. It was so before this PR and is not changed here.
 - Root `CLAUDE.md` does not have the lock order yet (`docs/products-redesign.md` §8 puts it there once Phase 2 builds the booking locks).
 
-**Not on staging yet, not on live.** Staging records 57 of 57 and gets this migration only when the PR is ready to merge. Live stays at 53 of 53.
+**On staging, not on live (14 Nov 2026).** Staging records 58 of 58. Live stays at 53 of 53 and gets this with the four before it only from `main`, by the runbook.
+
+- **When:** pushed on 14 Nov 2026 at 15:37:55 UTC (22:37 in Bangkok), finished 15:38:03 UTC, from this branch at `b3af3e7`, once PR 21's CI was green on every check, as the owner asked ("only when this PR is ready to merge"). With `supabase db push --db-url`, after a dry run at 15:37:47 UTC that listed exactly one pending migration (`20261114000200_platform_product_listings.sql`).
+- **Staging's data came through unchanged.** The same counts and checksums before and after: 32 products, 205 units, 21 blocks, 15 year bands, 1 stock movement, 3,190 audit rows (none added: the copy is not a change anyone made). Staging had two products with listing settings, both BSR's, both with counts and neither switched on: they are the two rows of `product_listings`, with the same checksum over product, switch, the three counts and the ready-updated time as the columns had.
+- **Staging matches a fresh build:** its `platform` and `platform_private` schemas, dumped with their grants, are line for line identical to the local database built from the migration files (5,171 lines each; the only differing lines are pg_dump's own random session token).
+- **Until PR 21 merges, the platform site's main deploy runs the old code against staging:** it still asks `products` for the dropped columns, so Fleet, Products and every product page fail there. PR 21's deploy preview runs the new code against staging and works. Merge PR 21, or use its preview, to use staging.
 
 ## Rental gear: the stock rework (branch `platform/gear-stock-rework`, 14 Nov 2026)
 
