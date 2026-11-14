@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ChevronDown, FileUp, Plus, Printer, Search } from "lucide-react";
+import { SortableRows } from "@/components/fleet/drag-reorder";
 import { EditPencil } from "@/components/fleet/edit-pencil";
 import { ListReturn } from "@/components/fleet/list-return";
 import { RowIcon } from "@/components/fleet/kind-icon";
@@ -188,6 +189,51 @@ export default async function FleetPage({
   // The filters panel holds the rest: kind and category are the chips.
   const panelFilters =
     filters - Number(view.kind !== "") - Number(view.category !== "");
+
+  /** A product's line: its two lines of text, without what ends the row. */
+  const lineOf = (row: (typeof rows)[number]) => {
+    const listing = manage ? (listings.get(row.id) ?? null) : null;
+    return {
+      firstLine: (
+        <>
+          <span className={cell.icon}>
+            <RowIcon type="vehicle" kind={row.kind} className="size-4" />
+          </span>
+          {/* One line; the full name is on the product page. */}
+          <span className={cell.name} title={row.name}>
+            {row.name}
+          </span>
+        </>
+      ),
+      secondLine: (
+        <>
+          <span className={cell.summary}>
+            <span className="min-w-0 shrink-0 truncate max-sm:shrink">
+              {row.retired && <>{t("listing.retired")} · </>}
+              {t("vehicleCounts", {
+                vehicles: row.vehicles,
+                available: row.available,
+              })}
+            </span>
+            {/* Wide screens: the kind and categories, as far as they fit. */}
+            <RowTags
+              labels={[
+                t(`kind.${row.kind}` as "kind.car"),
+                ...row.categories.map(categoryLabel),
+              ]}
+            />
+          </span>
+          <span className={reordering ? cell.reorderMango : cell.mango}>
+            <MangoStatus listing={listing} />
+          </span>
+        </>
+      ),
+    };
+  };
+  // One group per product (its line and its vehicles), in two neutral
+  // shades by turns, so a group reads as one.
+  const listClass =
+    "divide-y overflow-hidden rounded-lg border bg-card [&>li:nth-child(even)]:bg-group-alt";
 
   return (
     <>
@@ -388,64 +434,26 @@ export default async function FleetPage({
             reordering={reordering}
             custom={hasCustomOrder(everyProduct)}
           />
-          <ListReturn>
-            <ul
-              aria-label={t("list")}
-              // One group per product (its line and its vehicles), in two
-              // neutral shades by turns, so a group reads as one.
-              className="divide-y overflow-hidden rounded-lg border bg-card [&>li:nth-child(even)]:bg-group-alt"
-            >
-              {rows.map((row) => {
-                const listing = manage ? (listings.get(row.id) ?? null) : null;
-                const firstLine = (
-                  <>
-                    <span className={cell.icon}>
-                      <RowIcon
-                        type="vehicle"
-                        kind={row.kind}
-                        className="size-4"
-                      />
-                    </span>
-                    {/* One line; the full name is on the product page. */}
-                    <span className={cell.name} title={row.name}>
-                      {row.name}
-                    </span>
-                  </>
-                );
-                const secondLine = (
-                  <>
-                    <span className={cell.summary}>
-                      <span className="min-w-0 shrink-0 truncate max-sm:shrink">
-                        {row.retired && <>{t("listing.retired")} · </>}
-                        {t("vehicleCounts", {
-                          vehicles: row.vehicles,
-                          available: row.available,
-                        })}
-                      </span>
-                      {/* Wide screens: the kind and categories, as far as they fit. */}
-                      <RowTags
-                        labels={[
-                          t(`kind.${row.kind}` as "kind.car"),
-                          ...row.categories.map(categoryLabel),
-                        ]}
-                      />
-                    </span>
-                    <span className={cell.mango}>
-                      <MangoStatus listing={listing} />
-                    </span>
-                  </>
-                );
-
-                // Reorder mode: the line doesn't open and has no pencil; it
-                // has the arrows instead.
-                if (reordering)
-                  return (
-                    <li key={row.id}>
+          {reordering ? (
+            // Reorder mode: a line doesn't open and has no pencil; it has a
+            // drag handle and the arrows instead, and the whole group (shut)
+            // drags as one block.
+            <SortableRows
+              slug={slug}
+              label={t("list")}
+              className={listClass}
+              rows={rows.map((row) => {
+                const { firstLine, secondLine } = lineOf(row);
+                return {
+                  id: row.id,
+                  name: row.name,
+                  content: (
+                    <>
                       <MoveForms slug={slug} id={row.id} shown={lines} />
                       <div data-list-row className={rowGrid({ reorder: true })}>
                         {firstLine}
                         {secondLine}
-                        <span className={cell.end}>
+                        <span className={cell.reorderEnd}>
                           <MoveButtons
                             id={row.id}
                             name={row.name}
@@ -453,110 +461,122 @@ export default async function FleetPage({
                           />
                         </span>
                       </div>
+                    </>
+                  ),
+                };
+              })}
+            />
+          ) : (
+            <ListReturn>
+              <ul aria-label={t("list")} className={listClass}>
+                {rows.map((row) => {
+                  const { firstLine, secondLine } = lineOf(row);
+                  return (
+                    <li key={row.id}>
+                      <details
+                        data-fleet-product
+                        data-id={row.id}
+                        // Open by default (a search, a filter, a short list): the
+                        // return address needn't list it (components/fleet/list-return).
+                        data-default-open={
+                          openAll && row.units.length > 0 ? "" : undefined
+                        }
+                        className="group"
+                        open={
+                          (openAll && row.units.length > 0) ||
+                          opened.has(row.id)
+                        }
+                      >
+                        <summary
+                          data-list-row
+                          className={cn(
+                            rowGrid({ chevron: true }),
+                            "cursor-pointer list-none outline-none hover:bg-foreground/5 focus-visible:bg-foreground/5 [&::-webkit-details-marker]:hidden",
+                          )}
+                        >
+                          {firstLine}
+                          <span className={cell.pencil}>
+                            <EditPencil
+                              href={withBack(
+                                `/${slug}/products/${row.id}`,
+                                here,
+                              )}
+                              name={row.name}
+                            />
+                          </span>
+                          {secondLine}
+                          <ChevronDown
+                            aria-hidden
+                            className={cn(
+                              cell.end,
+                              "size-5 text-muted-foreground transition-transform group-open:rotate-180",
+                            )}
+                          />
+                        </summary>
+                        {row.units.length === 0 ? (
+                          <p className="ml-5 border-t border-l-2 border-l-primary/60 px-3 py-2.5 text-sm text-muted-foreground sm:ml-7">
+                            {t("noUnits")}
+                          </p>
+                        ) : (
+                          // Inset under the product, with a thin accent line
+                          // down the left: they belong to the line above.
+                          <ul
+                            data-vehicles
+                            className="ml-5 divide-y border-t border-l-2 border-l-primary/60 sm:ml-7"
+                          >
+                            {row.units.map((unit) => (
+                              <UnitRow
+                                nested
+                                key={unit.id}
+                                unit={unit}
+                                href={`${base}/units/${unit.id}`}
+                                distanceUnit={tenant.distanceUnit}
+                                locale={locale}
+                                detail={
+                                  [
+                                    unit.model_year,
+                                    locations.length > 1
+                                      ? locationNames.get(unit.location_id)
+                                      : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ") || undefined
+                                }
+                              />
+                            ))}
+                          </ul>
+                        )}
+                        {/* "Add vehicle" is in the opened line, under its vehicles. */}
+                        {manage && !row.retired && (
+                          <div className="ml-5 border-t border-l-2 border-l-primary/60 px-3 py-2.5 sm:ml-7">
+                            {/* The one solid button here: the main thing to do. */}
+                            <Link
+                              href={withBack(
+                                `${base}/units/new?product=${row.id}`,
+                                here,
+                              )}
+                              data-return
+                              className={cn(
+                                buttonVariants({ variant: "default" }),
+                                "h-11 px-4 font-semibold",
+                              )}
+                            >
+                              <Plus aria-hidden />
+                              {t("addUnitRow")}
+                              <span className="sr-only">
+                                {": "}
+                                {row.name}
+                              </span>
+                            </Link>
+                          </div>
+                        )}
+                      </details>
                     </li>
                   );
-
-                return (
-                  <li key={row.id}>
-                    <details
-                      data-fleet-product
-                      data-id={row.id}
-                      // Open by default (a search, a filter, a short list): the
-                      // return address needn't list it (components/fleet/list-return).
-                      data-default-open={
-                        openAll && row.units.length > 0 ? "" : undefined
-                      }
-                      className="group"
-                      open={
-                        (openAll && row.units.length > 0) || opened.has(row.id)
-                      }
-                    >
-                      <summary
-                        data-list-row
-                        className={cn(
-                          rowGrid({ chevron: true }),
-                          "cursor-pointer list-none outline-none hover:bg-foreground/5 focus-visible:bg-foreground/5 [&::-webkit-details-marker]:hidden",
-                        )}
-                      >
-                        {firstLine}
-                        <span className={cell.pencil}>
-                          <EditPencil
-                            href={withBack(`/${slug}/products/${row.id}`, here)}
-                            name={row.name}
-                          />
-                        </span>
-                        {secondLine}
-                        <ChevronDown
-                          aria-hidden
-                          className={cn(
-                            cell.end,
-                            "size-5 text-muted-foreground transition-transform group-open:rotate-180",
-                          )}
-                        />
-                      </summary>
-                      {row.units.length === 0 ? (
-                        <p className="ml-5 border-t border-l-2 border-l-primary/60 px-3 py-2.5 text-sm text-muted-foreground sm:ml-7">
-                          {t("noUnits")}
-                        </p>
-                      ) : (
-                        // Inset under the product, with a thin accent line
-                        // down the left: they belong to the line above.
-                        <ul
-                          data-vehicles
-                          className="ml-5 divide-y border-t border-l-2 border-l-primary/60 sm:ml-7"
-                        >
-                          {row.units.map((unit) => (
-                            <UnitRow
-                              nested
-                              key={unit.id}
-                              unit={unit}
-                              href={`${base}/units/${unit.id}`}
-                              distanceUnit={tenant.distanceUnit}
-                              locale={locale}
-                              detail={
-                                [
-                                  unit.model_year,
-                                  locations.length > 1
-                                    ? locationNames.get(unit.location_id)
-                                    : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ") || undefined
-                              }
-                            />
-                          ))}
-                        </ul>
-                      )}
-                      {/* "Add vehicle" is in the opened line, under its vehicles. */}
-                      {manage && !row.retired && (
-                        <div className="ml-5 border-t border-l-2 border-l-primary/60 px-3 py-2.5 sm:ml-7">
-                          {/* The one solid button here: the main thing to do. */}
-                          <Link
-                            href={withBack(
-                              `${base}/units/new?product=${row.id}`,
-                              here,
-                            )}
-                            data-return
-                            className={cn(
-                              buttonVariants({ variant: "default" }),
-                              "h-11 px-4 font-semibold",
-                            )}
-                          >
-                            <Plus aria-hidden />
-                            {t("addUnitRow")}
-                            <span className="sr-only">
-                              {": "}
-                              {row.name}
-                            </span>
-                          </Link>
-                        </div>
-                      )}
-                    </details>
-                  </li>
-                );
-              })}
-            </ul>
-          </ListReturn>
+                })}
+              </ul>
+            </ListReturn>
+          )}
         </>
       )}
     </>

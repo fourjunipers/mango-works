@@ -256,3 +256,41 @@ export function moveTarget(
   if (neighbour === undefined) return null;
   return { target: neighbour, place: direction === "up" ? "before" : "after" };
 }
+
+/**
+ * A line dragged and dropped on another (design §5.8): where the product
+ * goes, for the same move function the arrows use. Dropped on a line further
+ * down, it goes just after that line; on a line further up, just before it.
+ * So on Fleet, which shows vehicles only, a drop passes over any general
+ * product that sits between the two lines, as the arrows do. Null when it is
+ * dropped where it was, or on something that isn't a line.
+ */
+export function dropTarget(
+  shown: readonly string[],
+  id: string,
+  over: string,
+): { target: string; place: "before" | "after" } | null {
+  const from = shown.indexOf(id);
+  const to = shown.indexOf(over);
+  if (from < 0 || to < 0 || from === to) return null;
+  return { target: over, place: to > from ? "after" : "before" };
+}
+
+/**
+ * The lines on screen after that drop: `id` takes the place of `over` and
+ * the lines between them close up. What the list shows while the move is
+ * being saved; the saved order then says the same.
+ */
+export function moveInList(
+  shown: readonly string[],
+  id: string,
+  over: string,
+): string[] {
+  const from = shown.indexOf(id);
+  const to = shown.indexOf(over);
+  if (from < 0 || to < 0 || from === to) return [...shown];
+  const next = [...shown];
+  next.splice(from, 1);
+  next.splice(to, 0, id);
+  return next;
+}
