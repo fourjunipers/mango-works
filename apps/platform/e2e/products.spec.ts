@@ -36,7 +36,9 @@ const productTitle = (page: Page, name: string) =>
 async function openPcx(page: Page): Promise<string> {
   await page.goto("/bsr/products");
   await productTitle(page, "Honda PCX 160").click();
-  await expect(page).toHaveURL(/\/bsr\/products\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(
+    /\/bsr\/products\/[0-9a-f-]{36}(\?back=[^&]*)?$/,
+  );
   return new URL(page.url()).pathname.split("/").pop()!;
 }
 
@@ -73,7 +75,7 @@ test("products list: one row per product, filters, and a product's three tabs", 
   const pencil = row.getByRole("link", { name: "Edit product: Honda PCX 160" });
   await expect(pencil).toHaveAttribute(
     "href",
-    /\/bsr\/products\/[0-9a-f-]{36}$/,
+    /\/bsr\/products\/[0-9a-f-]{36}(\?back=[^&]*)?$/,
   );
   const pencilBox = (await pencil.boundingBox())!;
   expect(Math.round(pencilBox.width)).toBeGreaterThanOrEqual(44);
@@ -120,8 +122,11 @@ test("products list: one row per product, filters, and a product's three tabs", 
   // Its page: Details first (for those who set the shop up), then Units and
   // History, each with its own address.
   await productTitle(page, "Honda PCX 160").click();
-  await expect(page).toHaveURL(/\/bsr\/products\/[0-9a-f-]{36}$/);
-  const productUrl = page.url();
+  await expect(page).toHaveURL(
+    /\/bsr\/products\/[0-9a-f-]{36}(\?back=[^&]*)?$/,
+  );
+  // Its address without ?back= (which says which list it was opened from).
+  const productUrl = page.url().replace(/\?.*$/, "");
   await expect(
     page.getByRole("heading", { name: "Honda PCX 160", level: 1 }),
   ).toBeVisible();
@@ -145,14 +150,14 @@ test("products list: one row per product, filters, and a product's three tabs", 
   await tabs(page)
     .getByRole("link", { name: /^Units/ })
     .click();
-  await expect(page).toHaveURL(/\?tab=units$/);
+  await expect(page).toHaveURL(/\?tab=units(&back=[^&]*)?$/);
   await expect(
     page.getByRole("heading", { name: "Vehicles of this product" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: /DEMO-/ }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Add vehicle" })).toHaveAttribute(
     "href",
-    /\/bsr\/fleet\/units\/new\?product=[0-9a-f-]{36}$/,
+    /\/bsr\/fleet\/units\/new\?product=[0-9a-f-]{36}(&back=[^&]*)?$/,
   );
   await expect(page.getByLabel("Name")).toHaveCount(0);
   // Fleet shows the same vehicles, unit by unit.
@@ -166,7 +171,7 @@ test("products list: one row per product, filters, and a product's three tabs", 
   ).toBeVisible();
   // ...and the product's title there opens the product.
   await page.getByRole("link", { name: "Edit product: Honda PCX 160" }).click();
-  await expect(page).toHaveURL(productUrl);
+  await expect(page).toHaveURL(new RegExp(`^${productUrl}(\\?back=[^&]*)?$`));
 
   // History: who changed what. A rename shows with the person and both
   // names. On a copy of its own, so other tests still find the demo product.
@@ -204,7 +209,9 @@ test("Duplicate copies a product's settings into the create form, name ready to 
   await signIn(page, demo.bsrOwner);
   await openPcx(page);
   await page.getByRole("link", { name: "Duplicate" }).click();
-  await expect(page).toHaveURL(/\/bsr\/products\/new\?from=[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(
+    /\/bsr\/products\/new\?from=[0-9a-f-]{36}(&back=[^&]*)?$/,
+  );
   await expect(
     page.getByRole("heading", { name: "Product details" }),
   ).toBeVisible();
@@ -257,7 +264,9 @@ test("old addresses still open: the product page, New product, and Add vehicle w
   const id = await openPcx(page);
 
   await page.goto(`/bsr/fleet/models/${id}`);
-  await expect(page).toHaveURL(new RegExp(`/bsr/products/${id}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/bsr/products/${id}(\\?back=[^&]*)?$`),
+  );
   await expect(
     page.getByRole("heading", { name: "Honda PCX 160", level: 1 }),
   ).toBeVisible();
@@ -303,7 +312,7 @@ test("a mechanic and a driver read products and can't change them; staff neither
     await expect(page.getByRole("link", { name: "Add vehicle" })).toHaveCount(
       0,
     );
-    const url = page.url();
+    const url = page.url().replace(/\?.*$/, "");
     await page.goto(`${url}?tab=history`);
     await expect(
       page.getByRole("heading", { name: "Vehicles of this product" }),

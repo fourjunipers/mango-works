@@ -18,10 +18,12 @@ export async function EditPencil({
   return (
     <Link
       href={href}
+      // ListReturn adds the opened lines to ?back= on a plain click.
+      data-return
       aria-label={`${t("editModel")}: ${name}`}
       title={t("editModel")}
       // The negative margin keeps the line's height.
-      className="-my-2.5 inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-card hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="-my-2.5 inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       <Pencil aria-hidden className="size-4" />
     </Link>

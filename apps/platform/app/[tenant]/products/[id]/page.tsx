@@ -25,6 +25,7 @@ import { splitMakeModel } from "@/lib/known-models";
 import { catalogChoices } from "@/lib/model-options";
 import { minutesToHours } from "@/lib/fleet";
 import { moneyInputValue } from "@/lib/money";
+import { backTarget, keptBack, withBack } from "@/lib/product-list";
 import { canManageFleet } from "@/lib/roles";
 import { humanizeKey, reviewNews } from "@/lib/vehicle-kinds";
 import { formatInstant } from "@/lib/shop-time";
@@ -74,6 +75,14 @@ export default async function ProductPage({
   const { tenant, role } = membership;
   const manage = canManageFleet(role);
   const asked = typeof query.tab === "string" ? query.tab : "";
+  // Back to the list it was opened from (Fleet or Products, as it was);
+  // opened any other way, to the Products list. Tabs and "Duplicate" keep it.
+  const back = keptBack(slug, query.back);
+  const target = backTarget(slug, back);
+  const tLists = await getTranslations(
+    target.to === "fleet" ? "Fleet" : "Products",
+  );
+  const backLink = { href: target.href, label: tLists("title") };
   // Rental gear, an item for sale or a service: its own page (Details,
   // Stock, History). A vehicle carries on below, as before.
   const product = await getProduct(tenant.id, id);
@@ -86,6 +95,8 @@ export default async function ProductPage({
         product={product}
         asked={asked}
         added={query.added === "1"}
+        back={back}
+        backLink={backLink}
       />
     );
   // Details and History are for those who set the shop up.
@@ -112,7 +123,7 @@ export default async function ProductPage({
 
   return (
     <>
-      <BackLink href={`/${slug}/products`} label={tProducts("title")} />
+      <BackLink href={backLink.href} label={backLink.label} />
       <PageHeader
         title={model.name}
         intro={[
@@ -131,7 +142,7 @@ export default async function ProductPage({
         actions={
           manage && (
             <Link
-              href={`/${slug}/products/new?from=${model.id}`}
+              href={withBack(`/${slug}/products/new?from=${model.id}`, back)}
               className={cn(
                 buttonVariants({ variant: "outline" }),
                 "h-11 px-4",
@@ -159,7 +170,10 @@ export default async function ProductPage({
           {allowed.map((name) => (
             <Link
               key={name}
-              href={name === allowed[0] ? here : `${here}?tab=${name}`}
+              href={withBack(
+                name === allowed[0] ? here : `${here}?tab=${name}`,
+                back,
+              )}
               aria-current={name === tab ? "page" : undefined}
               className={cn(
                 "-mb-px inline-flex min-h-11 shrink-0 items-center border-b-2 px-4 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",

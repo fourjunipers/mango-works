@@ -101,12 +101,28 @@ Platform UI only: no migration, nothing pushed to staging or live, nothing in `a
 - **The kind tag** shows on wide screens on both lists (Fleet showed categories only before).
 - **Unchanged:** "Showing 11 of 15" on the Vehicles tab counts the shop's products on all tabs, as before.
 
+**After the owner's click-through (14 Nov 2026, second round).** All eight checks passed; three changes:
+
+- **Back link returns to where you came from.** A product page opened from Fleet says "‹ Fleet" and returns to Fleet with the same search, chips, sort, the lines that were open, and the scroll position; from the Products list it says "‹ Products" and returns there as it was. Opened any other way: "‹ Products", to the Products list. The list's address travels in `?back=`; `backTarget` in `lib/product-list.ts` accepts only this shop's `/fleet` or `/products` (with its query), and anything else (another site, `//host`, another shop, another page, a fragment, over 4,000 characters) falls back to Products. The product page's tabs and "Duplicate" keep it, and so does the "Add vehicle" page opened from a Fleet line. `components/fleet/list-return.tsx` adds the opened lines (`open=`) on a plain click and keeps the scroll position for the browser tab (session storage; without it, the list opens at the top).
+- **"Add vehicle"** is a solid brand-colour button with its + icon, 44 px tall: the only solid button in an opened line.
+- **Fleet groups:** a product's line and its vehicles share one background; the next group has the other shade, by turns (`--group-alt`: #ececee light, #2b2b30 dark; neutral greys, not brown). Vehicles sit inset under their product, with a 2 px brand-colour line down the left and slightly smaller text. Lines stay one height; Reorder mode and the drag-handle spot are unchanged. The Products list keeps one background.
+
+**Decided here without being asked (second round):**
+
+- Only lines someone opened go in `open=`; lines open anyway (a search, a filter, 12 lines or fewer) are not listed, which keeps the address short. A line someone closed among those opens again on return.
+- The scroll position is kept per browser tab, not in the address.
+- The "Add vehicle" page's back link returns to the list too (Fleet otherwise, as before). The product page's own "Add vehicle" (Units tab) and the Stock tab's link to Product details are unchanged.
+- A link opened in a new tab (Ctrl or Cmd click) still carries the list's search, chips and sort, without the opened lines.
+- The accent line is the brand colour at 60%, also down the "No vehicles yet" note and the "Add vehicle" strip, so the whole group reads as one.
+- `BackLink` gained a `data-back` marker for tests.
+
 **Tests**
 
 - Unit: `lib/product-list.test.ts` (sort, By type, chips, the row icon including the Spacy case, the mango) and `isDarkTheme` in `lib/preferences.test.ts`.
 - Browser (375 px and 1280 px): `e2e/lists-mobile.spec.ts`: rows two lines and equal height on Fleet and Products, long names and year ranges on one line (cut short on a phone), the icon by saved kind, the mango and its name, tags hidden on a phone, no alternating shading, "Add vehicle" inside the opened line, Reorder mode, the sort, the chips with the search, the appearance on a dark and a light device and after reloads, and screenshots of Fleet and the three Products tabs in light and dark (attached to the run). Updated: `fleet.spec.ts`, `products.spec.ts` and `products-stage-b.spec.ts` (the mango instead of the chip, chips instead of the dropdowns, Reorder mode for the manual order).
 - **Run locally (14 Nov 2026):** typecheck, lint and 189 unit tests pass. The browser suite on a local production build: everything this branch touches passes at both widths. Two Stock tab tests (`stock: staff mark helmets…`, `tracked gear…`) fail locally only because the shared local database had another branch's migration applied (`20261114000100_platform_gear_stock_rework`, from `platform/gear-stock-rework`); this branch has no migration and doesn't touch that tab. `print stickers` failed once of three runs (the page is unchanged here). CI, which builds its database from this branch, is the check.
 - **After merging `main` with PR 18 (14 Nov 2026):** conflicts only in this file, the Thai review file (kept both sections) and a test's header comment. Typecheck, lint, unit tests (202 + 206 + 86) and database tests (251) pass. The full browser suite: 92 passed, 3 skipped, 1 failed: the Fleet test's "kind=car shows nothing" step, because another test adds a temporary car to the same shop meanwhile. The step now checks that the shop's motorbikes are filtered out instead; it passed 4 of 4. The two Stock tab failures noted above are gone (the local database and the branch now agree).
+- **Second round, run locally (14 Nov 2026):** typecheck, lint, unit tests and the Fleet, Products and lists browser specs pass at 375 and 1280 px (61 tests). New: `lib/product-list.test.ts` (back target, `withBack`, `open=`); `e2e/lists-mobile.spec.ts` (group shades alternate and are neutral, vehicles inset with the line, Add vehicle solid and 44 px, back link from Fleet with sort, opened line and scroll, through the tabs and Duplicate, from "Add vehicle", from the Products list, and the fallback for odd addresses); screenshots now include Fleet with its lines open. Older tests now allow `?back=` on a product's address.
 - **Working note:** this branch was built in its own worktree (`.claude/worktrees/lists-mobile-polish`) because another session was editing the main checkout at the same time.
 
 ## Products, stage B (branch `platform/products-stage-b`, 13 Nov 2026)

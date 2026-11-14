@@ -10,6 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { requireArea } from "@/lib/access";
 import { getFleet, getLocations } from "@/lib/fleet-data";
 import { inventoryModelOptions } from "@/lib/model-options";
+import { backTarget, keptBack } from "@/lib/product-list";
 import { canManageFleet } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { UnitForm } from "../../unit-forms";
@@ -47,10 +48,18 @@ export default async function NewUnitPage({
   const asked = query.product ?? query.model;
   const wanted = typeof asked === "string" ? `model:${asked}` : "";
   const addModelHref = `/${slug}/products/new?then=inventory`;
+  // From "Add vehicle" on a list: back to that list as it was. Otherwise
+  // to Fleet, as before.
+  const back = keptBack(slug, query.back);
+  const target = back ? backTarget(slug, back) : null;
+  const backLabel =
+    target?.to === "products"
+      ? (await getTranslations("Products"))("title")
+      : tFleet("title");
 
   return (
     <>
-      <BackLink href={`/${slug}/fleet`} label={tFleet("title")} />
+      <BackLink href={target?.href ?? `/${slug}/fleet`} label={backLabel} />
       <PageHeader title={t("newTitle")} intro={t("newIntro")} />
       {models.length === 0 ? (
         <Panel className="max-w-3xl">

@@ -957,7 +957,7 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
   // The first one matches nothing: it is sent to Moto Mangos.
   await page.goto(bikeUrl);
   await page.getByRole("link", { name: own }).click();
-  await expect(page).toHaveURL(/\/products\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/products\/[0-9a-f-]{36}(\?back=[^&]*)?$/);
   const modelUrl = page.url();
   await expect(
     mangos.getByText(
@@ -1309,7 +1309,7 @@ test("fleet: New product at the top, Add vehicle in each opened line with one Pr
   const pencil = pcx.getByRole("link", { name: "Edit product: Honda PCX 160" });
   await expect(pencil).toHaveAttribute(
     "href",
-    /\/bsr\/products\/[0-9a-f-]{36}$/,
+    /\/bsr\/products\/[0-9a-f-]{36}(\?back=[^&]*)?$/,
   );
   const pencilBox = (await pencil.boundingBox())!;
   expect(Math.round(pencilBox.width)).toBeGreaterThanOrEqual(44);
@@ -1338,7 +1338,7 @@ test("fleet: New product at the top, Add vehicle in each opened line with one Pr
   expect(Math.round(box!.height)).toBeGreaterThanOrEqual(44);
   await plus.click();
   await expect(page).toHaveURL(
-    /\/bsr\/fleet\/units\/new\?product=[0-9a-f-]{36}$/,
+    /\/bsr\/fleet\/units\/new\?product=[0-9a-f-]{36}(&back=[^&]*)?$/,
   );
   // One Product dropdown, A to Z by name; no make, no model.
   await expect(page.getByLabel("Make", { exact: true })).toHaveCount(0);

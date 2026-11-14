@@ -3,7 +3,10 @@
  * row, every row the same height, the Moto Mangos mango instead of the
  * listing words, no kind or category tags on a phone, "Add vehicle" inside
  * an opened Fleet line, Reorder mode, the sort (A–Z, By type, My order),
- * the filter chips, the plain dividers, and the Appearance setting.
+ * the filter chips, the plain dividers, and the Appearance setting. After
+ * the owner's click-through: Fleet's product groups in two shades by turns,
+ * vehicles inset under their product, a solid "Add vehicle", and a product
+ * page's back link that returns to the list it came from, as it was.
  *
  * Runs at 375 px (phone) and 1280 px (desktop). Screenshots of both lists in
  * light and dark are attached to each run.
@@ -154,7 +157,8 @@ test("rows: two lines, one height, long names cut short, the mango, the right ic
       if (phone) await expect(tag).toBeHidden();
       else await expect(tag).toBeVisible();
 
-      // No alternating shading: every row has the same background.
+      // Products: one background. Fleet: each product group (its line and
+      // its vehicles) in one of two neutral shades, by turns.
       const backgrounds = await list
         .locator(":scope > li")
         .evaluateAll((items) =>
@@ -162,7 +166,17 @@ test("rows: two lines, one height, long names cut short, the mango, the right ic
             .slice(0, 4)
             .map((item) => getComputedStyle(item).backgroundColor),
         );
-      expect(new Set(backgrounds).size).toBe(1);
+      if (path === "products") expect(new Set(backgrounds).size).toBe(1);
+      else {
+        expect(backgrounds[0]).not.toBe(backgrounds[1]);
+        expect(backgrounds[0]).toBe(backgrounds[2]);
+        expect(backgrounds[1]).toBe(backgrounds[3]);
+        // Neutral: red, green and blue within a few steps of each other.
+        for (const colour of backgrounds) {
+          const [r, g, b] = colour.match(/\d+/g)!.map(Number);
+          expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThanOrEqual(6);
+        }
+      }
     }
 
     // "Add vehicle" is inside the opened Fleet line, not on the line itself.
@@ -177,6 +191,31 @@ test("rows: two lines, one height, long names cut short, the mango, the right ic
     if (!(await line.evaluate((d) => (d as HTMLDetailsElement).open)))
       await line.locator("summary").click({ position: { x: 4, y: 4 } });
     await expect(add).toBeVisible();
+    // Solid, filled with the brand colour, 44 px or more, with its + icon:
+    // the one solid button in the opened line.
+    const look = await add.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return {
+        background: style.backgroundColor,
+        height: box.height,
+        width: box.width,
+      };
+    });
+    expect(look.background).toBe("rgb(194, 65, 12)");
+    expect(look.height).toBeGreaterThanOrEqual(44);
+    expect(look.width).toBeGreaterThanOrEqual(44);
+    await expect(add.locator("svg")).toHaveCount(1);
+    const solid = await line
+      .locator("a, button")
+      .evaluateAll(
+        (elements) =>
+          elements.filter(
+            (element) =>
+              getComputedStyle(element).backgroundColor === "rgb(194, 65, 12)",
+          ).length,
+      );
+    expect(solid).toBe(1);
     // The chevron still closes it.
     await line.locator("summary").click({ position: { x: 4, y: 4 } });
     await expect(add).toBeHidden();
@@ -193,15 +232,21 @@ test("screenshots: Fleet and the three Products tabs, light and dark", async ({
     await page.emulateMedia({ colorScheme: scheme });
     for (const path of [
       "fleet",
+      // Opened lines: each product group in its shade, vehicles inset.
+      "fleet?q=Honda",
       "products",
       "products?tab=vehicles",
       "products?tab=general",
     ]) {
       await page.goto(`/bsr/${path}`);
+      // The page itself, not the loading placeholder.
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await expect(page.locator("html")).toHaveClass(
         scheme === "dark" ? /\bdark\b/ : /^(?!.*\bdark\b)/,
       );
-      const list = path === "fleet" ? fleetList(page) : productsList(page);
+      const list = path.startsWith("fleet")
+        ? fleetList(page)
+        : productsList(page);
       if (await list.isVisible()) {
         await sameHeight(list).catch((error) => {
           // The General tab may hold a single product in the demo shop.
@@ -260,7 +305,8 @@ test("Reorder mode: quiet arrows, no pencil, the line doesn't open; Done leaves"
     await noSidewaysScroll(page);
 
     await page.getByRole("link", { name: "Done" }).click();
-    await expect(page).not.toHaveURL(/reorder/);
+    // The big shop's whole list is drawn again: give it time under load.
+    await expect(page).not.toHaveURL(/reorder/, { timeout: 20_000 });
     await expect(list.getByRole("button", { name: /^Move up: / })).toHaveCount(
       0,
     );
@@ -415,4 +461,120 @@ test("appearance: Light, Dark and Match device each work on a dark and a light d
   await light();
   await choose("Match device");
   await light();
+});
+
+test("vehicles sit inset under their product, with a line down the left", async ({
+  page,
+}) => {
+  await signIn(page, demo.bsrOwner);
+  await page.goto("/bsr/fleet?q=Honda");
+  const line = fleetList(page).locator("details[data-fleet-product]").first();
+  if (!(await line.evaluate((d) => (d as HTMLDetailsElement).open)))
+    await line.locator("summary").click({ position: { x: 4, y: 4 } });
+  const vehicles = line.locator("[data-vehicles]");
+  await expect(vehicles).toBeVisible();
+  const look = await vehicles.evaluate((element) => {
+    const details = element.closest("details")!;
+    const plate = element.querySelector("li p")!;
+    const name = details.querySelector(".font-semibold")!;
+    return {
+      inset:
+        element.getBoundingClientRect().left -
+        details.getBoundingClientRect().left,
+      line: parseFloat(getComputedStyle(element).borderLeftWidth),
+      plate: parseFloat(getComputedStyle(plate).fontSize),
+      name: parseFloat(getComputedStyle(name).fontSize),
+      background: getComputedStyle(element).backgroundColor,
+    };
+  });
+  expect(look.inset).toBeGreaterThanOrEqual(16);
+  expect(look.line).toBe(2);
+  expect(look.plate).toBeLessThan(look.name);
+  // The vehicles take their group's shade: no background of their own.
+  expect(look.background).toBe("rgba(0, 0, 0, 0)");
+  // The product lines keep one height.
+  await sameHeight(fleetList(page));
+});
+
+test("back link: to the list the product was opened from, as it was; Products otherwise", async ({
+  page,
+}) => {
+  test.slow();
+  await signIn(page, demo.bsrOwner);
+  const back = page.locator("a[data-back]");
+
+  // From Fleet, with a filter and a sort, one line opened and scrolled to.
+  await page.goto("/bsr/fleet?sort=az");
+  const line = page
+    .locator("details[data-fleet-product]")
+    .filter({ has: page.getByText("Honda PCX 160", { exact: true }) });
+  if (!(await line.evaluate((d) => (d as HTMLDetailsElement).open)))
+    await line.locator("summary").click({ position: { x: 4, y: 4 } });
+  const id = await line.getAttribute("data-id");
+  await line.scrollIntoViewIfNeeded();
+  const scrolled = await page.evaluate(() => window.scrollY);
+  await line.getByRole("link", { name: "Edit product: Honda PCX 160" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Honda PCX 160",
+  );
+  await expect(back).toHaveText("Fleet");
+  // The tabs keep it, and so does "Duplicate".
+  await page.getByRole("link", { name: /^Units/ }).click();
+  await expect(page).toHaveURL(/tab=units/);
+  await expect(back).toHaveText("Fleet");
+  await page.getByRole("link", { name: "Duplicate" }).click();
+  await expect(page).toHaveURL(/\/products\/new\?from=/);
+  await expect(back).toHaveText("Fleet");
+  await back.click();
+  await expect(page).toHaveURL(/\/bsr\/fleet\?/);
+  const url = new URL(page.url());
+  expect(url.searchParams.get("sort")).toBe("az");
+  expect(url.searchParams.get("open")?.split(",")).toContain(id);
+  await expect(line).toHaveAttribute("open", "");
+  await expect(page.getByRole("link", { name: "A–Z" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  // Where it was scrolled to (the Duplicate page was opened in between, so
+  // the list was left from the product page: the position is the list's).
+  if (scrolled > 0)
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThan(0);
+
+  // "Add vehicle" from Fleet: back to Fleet as it was.
+  await line
+    .getByRole("link", { name: /^Add vehicle\s*: Honda PCX 160/ })
+    .click();
+  await expect(page).toHaveURL(/\/fleet\/units\/new\?product=/);
+  await expect(back).toHaveText("Fleet");
+  expect(await back.getAttribute("href")).toMatch(/^\/bsr\/fleet\?sort=az/);
+
+  // From the Products list (a tab and a search), by the name.
+  const list = "/bsr/products?tab=vehicles&q=Honda";
+  await page.goto(list);
+  await productsList(page)
+    .getByRole("link", { name: "Honda PCX 160", exact: true })
+    .click();
+  await expect(back).toHaveText("Products");
+  await back.click();
+  await expect(page).toHaveURL(list);
+
+  // Opened any other way, or with an address outside the app: Products.
+  const product = `/bsr/products/${id}`;
+  for (const odd of [
+    "",
+    "?back=%2F%2Fevil.example%2Fbsr%2Ffleet",
+    "?back=https%3A%2F%2Fevil.example",
+    "?back=%2Fother%2Ffleet",
+    "?back=%2Fbsr%2Forders",
+  ]) {
+    await page.goto(product + odd);
+    await expect(back).toHaveText("Products");
+    await expect(back).toHaveAttribute("href", "/bsr/products");
+  }
+  // A plain address of Fleet is fine.
+  await page.goto(`${product}?back=%2Fbsr%2Ffleet`);
+  await expect(back).toHaveText("Fleet");
+  await expect(back).toHaveAttribute("href", "/bsr/fleet");
 });

@@ -168,3 +168,51 @@ export function mangoFor(listing: ListingStatus | null): Mango | null {
       return { image: "grey", dot: null, label: listing };
   }
 }
+
+/**
+ * Where a product page's back link goes (owner, 14 Nov 2026): back to the
+ * list it was opened from, with that list's search, chips, sort and opened
+ * lines, which travel in `?back=`. Only Fleet or the Products list of this
+ * shop, as a path inside the app, is accepted; anything else (another site,
+ * `//host`, another page, another shop) falls back to the Products list.
+ */
+export type BackTarget = { href: string; to: "fleet" | "products" };
+
+export function backTarget(slug: string, back: unknown): BackTarget {
+  const fallback: BackTarget = { href: `/${slug}/products`, to: "products" };
+  if (typeof back !== "string" || back.length > 4000) return fallback;
+  // Printable characters only: no backslash, no fragment, no control
+  // characters a browser might fold into another address.
+  if (!/^[\x21-\x7e]+$/.test(back) || /[\#]/.test(back)) return fallback;
+  const prefix = `/${slug}/`;
+  if (!back.startsWith(prefix)) return fallback;
+  const rest = back.slice(prefix.length);
+  const match = /^(fleet|products)(\?.*)?$/.exec(rest);
+  if (!match) return fallback;
+  return { href: back, to: match[1] as BackTarget["to"] };
+}
+
+/** `path` with `?back=` (or `&back=`) set to `back`, when there is one. */
+export function withBack(path: string, back: string | null | undefined) {
+  if (!back) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}back=${encodeURIComponent(back)}`;
+}
+
+/** The Fleet lines to show opened: `?open=` holds product ids, by commas. */
+export function parseOpen(
+  query: Record<string, string | string[] | undefined>,
+) {
+  const raw = typeof query.open === "string" ? query.open : "";
+  return new Set(
+    raw
+      .split(",")
+      .filter((id) => /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)),
+  );
+}
+
+/** `back` when it is a target backTarget accepts, to pass on; else null. */
+export function keptBack(slug: string, back: unknown): string | null {
+  return typeof back === "string" && backTarget(slug, back).href === back
+    ? back
+    : null;
+}

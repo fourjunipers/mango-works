@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  backTarget,
+  parseOpen,
+  withBack,
   filterChips,
   mangoFor,
   parseListSort,
@@ -179,5 +182,62 @@ describe("mangoFor", () => {
       label: "needsChanges",
     });
     expect(mangoFor(null)).toBeNull();
+  });
+});
+
+describe("backTarget, withBack and parseOpen", () => {
+  it("returns to Fleet or Products of this shop, with their view", () => {
+    expect(
+      backTarget("bsr", "/bsr/fleet?kind=motorbike&sort=az&open=x"),
+    ).toEqual({
+      href: "/bsr/fleet?kind=motorbike&sort=az&open=x",
+      to: "fleet",
+    });
+    expect(backTarget("bsr", "/bsr/fleet")).toEqual({
+      href: "/bsr/fleet",
+      to: "fleet",
+    });
+    expect(backTarget("bsr", "/bsr/products?tab=general&q=helmet")).toEqual({
+      href: "/bsr/products?tab=general&q=helmet",
+      to: "products",
+    });
+  });
+
+  it("falls back to Products for anything else", () => {
+    const fallback = { href: "/bsr/products", to: "products" };
+    for (const back of [
+      undefined,
+      ["/bsr/fleet"],
+      "",
+      "https://evil.example/bsr/fleet",
+      "//evil.example/bsr/fleet",
+      "/\evil.example",
+      "/bsr/fleetx",
+      "/bsr/fleet/units/new",
+      "/bsr/products/123",
+      "/other/fleet",
+      "/bsr/fleet#top",
+      "/bsr/fleet?q=a b",
+      "/bsr/fleet?" + "a".repeat(4001),
+      "javascript:alert(1)",
+    ])
+      expect(backTarget("bsr", back)).toEqual(fallback);
+  });
+
+  it("adds back to a path", () => {
+    expect(withBack("/bsr/products/1", "/bsr/fleet?kind=car")).toBe(
+      "/bsr/products/1?back=%2Fbsr%2Ffleet%3Fkind%3Dcar",
+    );
+    expect(withBack("/bsr/products/1?tab=units", "/bsr/fleet")).toBe(
+      "/bsr/products/1?tab=units&back=%2Fbsr%2Ffleet",
+    );
+    expect(withBack("/bsr/products/1", null)).toBe("/bsr/products/1");
+  });
+
+  it("reads opened lines, ids only", () => {
+    const id = "3533c6a2-2b58-4be0-9214-79c4f28a2057";
+    expect([...parseOpen({ open: `${id},nope,` })]).toEqual([id]);
+    expect(parseOpen({}).size).toBe(0);
+    expect(parseOpen({ open: [id] }).size).toBe(0);
   });
 });

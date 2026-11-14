@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ChevronDown, FileUp, Plus, Printer, Search } from "lucide-react";
 import { EditPencil } from "@/components/fleet/edit-pencil";
+import { ListReturn } from "@/components/fleet/list-return";
 import { RowIcon } from "@/components/fleet/kind-icon";
 import {
   cell,
@@ -36,7 +37,9 @@ import { shopModelOptions } from "@/lib/model-options";
 import {
   filterChips,
   parseListSort,
+  parseOpen,
   parseReorder,
+  withBack,
   sortRows,
   type ListSort,
 } from "@/lib/product-list";
@@ -115,8 +118,10 @@ export default async function FleetPage({
     fleet.map((p) => [p.id, listingStatus(p, p.entry_status)]),
   );
   const locationNames = new Map(locations.map((l) => [l.id, l.name]));
-  // Open when someone is looking for a vehicle, or there is little to scroll.
+  // Open when someone is looking for a vehicle, or there is little to scroll;
+  // and the lines that were open when someone left the list (?open=).
   const openAll = view.q !== "" || filters > 0 || shown <= 12;
+  const opened = parseOpen(query);
   const link = (variant: "default" | "outline") =>
     cn(buttonVariants({ variant }), "h-11 px-4");
   const categoryLabel = (key: string) =>
@@ -146,6 +151,8 @@ export default async function FleetPage({
     const text = search.toString();
     return text ? `${base}?${text}` : base;
   };
+  // What a product page's back link returns to: this view.
+  const here = href({});
 
   // Chips: only the kinds and categories the shop has (in the scope shown).
   const chips = [
@@ -381,152 +388,175 @@ export default async function FleetPage({
             reordering={reordering}
             custom={hasCustomOrder(everyProduct)}
           />
-          <ul
-            aria-label={t("list")}
-            className="divide-y rounded-lg border bg-card"
-          >
-            {rows.map((row) => {
-              const listing = manage ? (listings.get(row.id) ?? null) : null;
-              const firstLine = (
-                <>
-                  <span className={cell.icon}>
-                    <RowIcon
-                      type="vehicle"
-                      kind={row.kind}
-                      className="size-4"
-                    />
-                  </span>
-                  {/* One line; the full name is on the product page. */}
-                  <span className={cell.name} title={row.name}>
-                    {row.name}
-                  </span>
-                </>
-              );
-              const secondLine = (
-                <>
-                  <span className={cell.summary}>
-                    <span className="min-w-0 shrink-0 truncate max-sm:shrink">
-                      {row.retired && <>{t("listing.retired")} · </>}
-                      {t("vehicleCounts", {
-                        vehicles: row.vehicles,
-                        available: row.available,
-                      })}
+          <ListReturn>
+            <ul
+              aria-label={t("list")}
+              // One group per product (its line and its vehicles), in two
+              // neutral shades by turns, so a group reads as one.
+              className="divide-y overflow-hidden rounded-lg border bg-card [&>li:nth-child(even)]:bg-group-alt"
+            >
+              {rows.map((row) => {
+                const listing = manage ? (listings.get(row.id) ?? null) : null;
+                const firstLine = (
+                  <>
+                    <span className={cell.icon}>
+                      <RowIcon
+                        type="vehicle"
+                        kind={row.kind}
+                        className="size-4"
+                      />
                     </span>
-                    {/* Wide screens: the kind and categories, as far as they fit. */}
-                    <RowTags
-                      labels={[
-                        t(`kind.${row.kind}` as "kind.car"),
-                        ...row.categories.map(categoryLabel),
-                      ]}
-                    />
-                  </span>
-                  <span className={cell.mango}>
-                    <MangoStatus listing={listing} />
-                  </span>
-                </>
-              );
-
-              // Reorder mode: the line doesn't open and has no pencil; it
-              // has the arrows instead.
-              if (reordering)
-                return (
-                  <li key={row.id}>
-                    <MoveForms slug={slug} id={row.id} shown={lines} />
-                    <div data-list-row className={rowGrid({ reorder: true })}>
-                      {firstLine}
-                      {secondLine}
-                      <span className={cell.end}>
-                        <MoveButtons
-                          id={row.id}
-                          name={row.name}
-                          shown={lines}
-                        />
+                    {/* One line; the full name is on the product page. */}
+                    <span className={cell.name} title={row.name}>
+                      {row.name}
+                    </span>
+                  </>
+                );
+                const secondLine = (
+                  <>
+                    <span className={cell.summary}>
+                      <span className="min-w-0 shrink-0 truncate max-sm:shrink">
+                        {row.retired && <>{t("listing.retired")} · </>}
+                        {t("vehicleCounts", {
+                          vehicles: row.vehicles,
+                          available: row.available,
+                        })}
                       </span>
-                    </div>
-                  </li>
+                      {/* Wide screens: the kind and categories, as far as they fit. */}
+                      <RowTags
+                        labels={[
+                          t(`kind.${row.kind}` as "kind.car"),
+                          ...row.categories.map(categoryLabel),
+                        ]}
+                      />
+                    </span>
+                    <span className={cell.mango}>
+                      <MangoStatus listing={listing} />
+                    </span>
+                  </>
                 );
 
-              return (
-                <li key={row.id}>
-                  <details
-                    data-fleet-product
-                    className="group"
-                    open={openAll && row.units.length > 0}
-                  >
-                    <summary
-                      data-list-row
-                      className={cn(
-                        rowGrid({ chevron: true }),
-                        "cursor-pointer list-none outline-none hover:bg-muted focus-visible:bg-muted [&::-webkit-details-marker]:hidden",
-                      )}
-                    >
-                      {firstLine}
-                      <span className={cell.pencil}>
-                        <EditPencil
-                          href={`/${slug}/products/${row.id}`}
-                          name={row.name}
-                        />
-                      </span>
-                      {secondLine}
-                      <ChevronDown
-                        aria-hidden
-                        className={cn(
-                          cell.end,
-                          "size-5 text-muted-foreground transition-transform group-open:rotate-180",
-                        )}
-                      />
-                    </summary>
-                    {row.units.length === 0 ? (
-                      <p className="border-t px-4 py-3 text-sm text-muted-foreground">
-                        {t("noUnits")}
-                      </p>
-                    ) : (
-                      <ul className="divide-y border-t">
-                        {row.units.map((unit) => (
-                          <UnitRow
-                            key={unit.id}
-                            unit={unit}
-                            href={`${base}/units/${unit.id}`}
-                            distanceUnit={tenant.distanceUnit}
-                            locale={locale}
-                            detail={
-                              [
-                                unit.model_year,
-                                locations.length > 1
-                                  ? locationNames.get(unit.location_id)
-                                  : null,
-                              ]
-                                .filter(Boolean)
-                                .join(" · ") || undefined
-                            }
+                // Reorder mode: the line doesn't open and has no pencil; it
+                // has the arrows instead.
+                if (reordering)
+                  return (
+                    <li key={row.id}>
+                      <MoveForms slug={slug} id={row.id} shown={lines} />
+                      <div data-list-row className={rowGrid({ reorder: true })}>
+                        {firstLine}
+                        {secondLine}
+                        <span className={cell.end}>
+                          <MoveButtons
+                            id={row.id}
+                            name={row.name}
+                            shown={lines}
                           />
-                        ))}
-                      </ul>
-                    )}
-                    {/* "Add vehicle" is in the opened line, under its vehicles. */}
-                    {manage && !row.retired && (
-                      <div className="border-t px-3 py-2 sm:px-4">
-                        <Link
-                          href={`${base}/units/new?product=${row.id}`}
-                          className={cn(
-                            buttonVariants({ variant: "outline" }),
-                            "h-11 px-3",
-                          )}
-                        >
-                          <Plus aria-hidden />
-                          {t("addUnitRow")}
-                          <span className="sr-only">
-                            {": "}
-                            {row.name}
-                          </span>
-                        </Link>
+                        </span>
                       </div>
-                    )}
-                  </details>
-                </li>
-              );
-            })}
-          </ul>
+                    </li>
+                  );
+
+                return (
+                  <li key={row.id}>
+                    <details
+                      data-fleet-product
+                      data-id={row.id}
+                      // Open by default (a search, a filter, a short list): the
+                      // return address needn't list it (components/fleet/list-return).
+                      data-default-open={
+                        openAll && row.units.length > 0 ? "" : undefined
+                      }
+                      className="group"
+                      open={
+                        (openAll && row.units.length > 0) || opened.has(row.id)
+                      }
+                    >
+                      <summary
+                        data-list-row
+                        className={cn(
+                          rowGrid({ chevron: true }),
+                          "cursor-pointer list-none outline-none hover:bg-foreground/5 focus-visible:bg-foreground/5 [&::-webkit-details-marker]:hidden",
+                        )}
+                      >
+                        {firstLine}
+                        <span className={cell.pencil}>
+                          <EditPencil
+                            href={withBack(`/${slug}/products/${row.id}`, here)}
+                            name={row.name}
+                          />
+                        </span>
+                        {secondLine}
+                        <ChevronDown
+                          aria-hidden
+                          className={cn(
+                            cell.end,
+                            "size-5 text-muted-foreground transition-transform group-open:rotate-180",
+                          )}
+                        />
+                      </summary>
+                      {row.units.length === 0 ? (
+                        <p className="ml-5 border-t border-l-2 border-l-primary/60 px-3 py-2.5 text-sm text-muted-foreground sm:ml-7">
+                          {t("noUnits")}
+                        </p>
+                      ) : (
+                        // Inset under the product, with a thin accent line
+                        // down the left: they belong to the line above.
+                        <ul
+                          data-vehicles
+                          className="ml-5 divide-y border-t border-l-2 border-l-primary/60 sm:ml-7"
+                        >
+                          {row.units.map((unit) => (
+                            <UnitRow
+                              nested
+                              key={unit.id}
+                              unit={unit}
+                              href={`${base}/units/${unit.id}`}
+                              distanceUnit={tenant.distanceUnit}
+                              locale={locale}
+                              detail={
+                                [
+                                  unit.model_year,
+                                  locations.length > 1
+                                    ? locationNames.get(unit.location_id)
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ") || undefined
+                              }
+                            />
+                          ))}
+                        </ul>
+                      )}
+                      {/* "Add vehicle" is in the opened line, under its vehicles. */}
+                      {manage && !row.retired && (
+                        <div className="ml-5 border-t border-l-2 border-l-primary/60 px-3 py-2.5 sm:ml-7">
+                          {/* The one solid button here: the main thing to do. */}
+                          <Link
+                            href={withBack(
+                              `${base}/units/new?product=${row.id}`,
+                              here,
+                            )}
+                            data-return
+                            className={cn(
+                              buttonVariants({ variant: "default" }),
+                              "h-11 px-4 font-semibold",
+                            )}
+                          >
+                            <Plus aria-hidden />
+                            {t("addUnitRow")}
+                            <span className="sr-only">
+                              {": "}
+                              {row.name}
+                            </span>
+                          </Link>
+                        </div>
+                      )}
+                    </details>
+                  </li>
+                );
+              })}
+            </ul>
+          </ListReturn>
         </>
       )}
     </>

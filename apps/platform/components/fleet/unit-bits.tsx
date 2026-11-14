@@ -46,6 +46,7 @@ export async function UnitRow({
   distanceUnit,
   locale,
   detail,
+  nested = false,
 }: {
   unit: RowUnit;
   href: string;
@@ -53,16 +54,28 @@ export async function UnitRow({
   locale: string;
   /** Extra text under the plate: model, model year, location. */
   detail?: string;
+  /** Under its product on Fleet: a little smaller, to read as part of it. */
+  nested?: boolean;
 }) {
   const t = await getTranslations("Fleet");
   return (
     <li>
       <Link
         href={href}
-        className="flex min-h-14 items-center gap-3 px-4 py-2 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+        className={cn(
+          "flex items-center gap-3 focus-visible:outline-none",
+          nested
+            ? "min-h-12 px-3 py-1.5 hover:bg-foreground/5 focus-visible:bg-foreground/5"
+            : "min-h-14 px-4 py-2 hover:bg-muted focus-visible:bg-muted",
+        )}
       >
         <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-2 font-medium">
+          <p
+            className={cn(
+              "flex flex-wrap items-center gap-2 font-medium",
+              nested && "text-sm",
+            )}
+          >
             <span className="truncate">{unit.plate ?? t("noPlate")}</span>
             {unit.plate_pending && (
               <span className="rounded-full bg-highlight px-2 py-0.5 text-xs font-medium text-highlight-foreground">
@@ -70,7 +83,12 @@ export async function UnitRow({
               </span>
             )}
           </p>
-          <p className="truncate text-sm text-muted-foreground">
+          <p
+            className={cn(
+              "truncate text-muted-foreground",
+              nested ? "text-xs" : "text-sm",
+            )}
+          >
             {[
               formatDistance(unit.current_odometer_km, distanceUnit, locale),
               detail,

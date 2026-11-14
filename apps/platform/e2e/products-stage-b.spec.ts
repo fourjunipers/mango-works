@@ -211,7 +211,10 @@ test("new product: Vehicle or General; one of each general type; the three list 
   await expect(productRow(page, "Honda PCX 160")).toHaveCount(0);
   // The same edit pencil as every other line.
   const pencil = row.getByRole("link", { name: `Edit product: ${helmet}` });
-  await expect(pencil).toHaveAttribute("href", new URL(helmetUrl).pathname);
+  await expect(pencil).toHaveAttribute(
+    "href",
+    new RegExp(`^${new URL(helmetUrl).pathname}(\\?back=[^&]*)?$`),
+  );
   const box = (await pencil.boundingBox())!;
   expect(Math.round(box.width)).toBeGreaterThanOrEqual(44);
   expect(Math.round(box.height)).toBeGreaterThanOrEqual(44);
