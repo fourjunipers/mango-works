@@ -28,6 +28,7 @@ import {
 import { canManageFleet, type Role } from "@/lib/roles";
 import { dateInZone, formatInstant } from "@/lib/shop-time";
 import { cn } from "@/lib/utils";
+import { withBack } from "@/lib/product-list";
 import { DeleteProductButton } from "./delete-product";
 import { ProblemActions, QuantityStepper, ReportProblem } from "./gear-stock";
 import { GeneralForm, QuantityForm, UnitLabelForm } from "./general-forms";
@@ -71,6 +72,8 @@ export async function GeneralProductPage({
   product,
   asked,
   added,
+  back,
+  backLink,
 }: {
   slug: string;
   tenant: { id: string; timezone: string };
@@ -79,6 +82,10 @@ export async function GeneralProductPage({
   /** The tab in the address. */
   asked: string;
   added: boolean;
+  /** The list it was opened from, kept on the tabs (`?back=`). */
+  back: string | null;
+  /** Where the back link goes, and its words. */
+  backLink: { href: string; label: string };
 }) {
   const manage = canManageFleet(role);
   const type = product.type as GeneralType;
@@ -105,7 +112,7 @@ export async function GeneralProductPage({
 
   return (
     <>
-      <BackLink href={`/${slug}/products`} label={t("title")} />
+      <BackLink href={backLink.href} label={backLink.label} />
       <PageHeader title={product.name} intro={t(`type.${type}`)} />
       {added && (
         <p
@@ -123,7 +130,10 @@ export async function GeneralProductPage({
           {allowed.map((name) => (
             <Link
               key={name}
-              href={name === allowed[0] ? here : `${here}?tab=${name}`}
+              href={withBack(
+                name === allowed[0] ? here : `${here}?tab=${name}`,
+                back,
+              )}
               aria-current={name === tab ? "page" : undefined}
               className={cn(
                 "-mb-px inline-flex min-h-11 shrink-0 items-center border-b-2 px-4 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",

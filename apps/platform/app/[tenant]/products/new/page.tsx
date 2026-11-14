@@ -7,6 +7,7 @@ import { requireArea } from "@/lib/access";
 import { minutesToHours } from "@/lib/fleet";
 import { getLocations, getModel } from "@/lib/fleet-data";
 import { moneyInputValue } from "@/lib/money";
+import { backTarget, keptBack } from "@/lib/product-list";
 import { canManageFleet } from "@/lib/roles";
 import { GeneralForm, NewProductChoice } from "../general-forms";
 import { ProductForm } from "../product-form";
@@ -46,6 +47,8 @@ export default async function NewProductPage({
   const text = (value: number | null) => (value === null ? "" : String(value));
   // Arriving from "Add vehicle": back there once it is saved.
   const then = query.then === "inventory" ? "inventory" : undefined;
+  // "Duplicate" from a product opened from a list: back to that list.
+  const back = keptBack(slug, query.back);
   const locations = await getLocations(membership.tenant.id);
   const vehicleForm = (
     <ProductForm
@@ -80,8 +83,14 @@ export default async function NewProductPage({
   return (
     <>
       <BackLink
-        href={then ? `/${slug}/fleet/units/new` : `/${slug}/products`}
-        label={then ? tFleet("unit.newTitle") : tProducts("title")}
+        href={then ? `/${slug}/fleet/units/new` : backTarget(slug, back).href}
+        label={
+          then
+            ? tFleet("unit.newTitle")
+            : back && backTarget(slug, back).to === "fleet"
+              ? tFleet("title")
+              : tProducts("title")
+        }
       />
       <PageHeader title={t("newTitle")} intro={t("newIntro")} />
       <section
