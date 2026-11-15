@@ -251,7 +251,6 @@ describe("unit rules per type", () => {
     for (const change of [
       { buffer_before_minutes: 30 },
       { buffer_after_minutes: 30 },
-      { deposit: 1000, deposit_currency: shop.currency },
     ]) {
       const { error } = await db("owner")
         .from("products")
@@ -265,6 +264,22 @@ describe("unit rules per type", () => {
     // A vehicle still takes them.
     const bike = await vehicle(shop, { buffer_before_minutes: 30 });
     expect(bike).toBeTruthy();
+    // The deposit lives with the prices since stage D4: vehicles only.
+    const deposit = await db("owner").rpc("save_product_pricing", {
+      p_product_id: helmet,
+      p_settings: { deposit: 1000 },
+    });
+    expect(deposit.error?.message).toBe("deposit_vehicles_only");
+    const direct = await service.from("product_pricing").insert({
+      tenant_id: shop.id,
+      product_id: helmet,
+      product_type: "gear",
+      currency: shop.currency,
+      deposit: 1000,
+    });
+    expect(direct.error?.message).toContain(
+      "product_pricing_deposit_vehicle_check",
+    );
   });
 
   it("switching counted and tracked keeps the units and their blocks; going back clears labels", async () => {

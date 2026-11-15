@@ -132,7 +132,31 @@ const listingStart: Record<string, unknown> = {
   lead_time_hours: null,
 };
 
+/**
+ * A product's deposit moved to platform.product_pricing in stage D4. Its
+ * changes read as the product's own, as they did when the deposit was a
+ * column of the product. The other columns of that table (how it is priced,
+ * its price, tax) get their words with the Pricing tab; until then they are
+ * left unsaid.
+ */
+function changesDeposit(row: AuditRow): boolean {
+  if (row.action === "insert") return record(row.after).deposit != null;
+  return row.action === "update" && "deposit" in record(row.after);
+}
+
 function asProductRow(row: AuditRow): AuditRow {
+  if (row.entity === "product_pricing") {
+    const deposit = (values: unknown) => ({
+      deposit: record(values).deposit ?? null,
+    });
+    return {
+      ...row,
+      entity: "products",
+      action: "update",
+      before: row.action === "insert" ? { deposit: null } : deposit(row.before),
+      after: deposit(row.after),
+    };
+  }
   if (row.entity !== "product_listings") return row;
   const named = (values: Record<string, unknown>) =>
     Object.fromEntries(
@@ -181,6 +205,7 @@ function unsaidRows(rows: AuditRow[]): (row: AuditRow) => boolean {
       .map((row) => `${row.entity_id} ${row.at}`),
   );
   return (row) =>
+    (row.entity === "product_pricing" && !changesDeposit(row)) ||
     (row.entity === "product_listings" && row.action === "delete") ||
     ((row.entity === "product_listings" ||
       row.action === "listing_on" ||

@@ -131,8 +131,6 @@ export async function saveModel(
     buffer_before_minutes: bufferBefore,
     buffer_after_minutes: bufferAfter,
     categories: checked.categories,
-    deposit,
-    deposit_currency: deposit === null ? null : tenant.currency,
   };
   const failed = (error: Parameters<typeof dbErrorKey>[0]): FormState => {
     const key = dbErrorKey(error);
@@ -147,6 +145,17 @@ export async function saveModel(
       .select("id")
       .single();
     if (error) return failed(error);
+    // The deposit lives with the product's prices. If it can't be saved, the
+    // product just made is taken back, so the form can be sent again.
+    const depositError = await saveDeposit(supabase, tenant.id, data.id, deposit);
+    if (depositError) {
+      await supabase
+        .from("products")
+        .delete()
+        .eq("tenant_id", tenant.id)
+        .eq("id", data.id);
+      return failed(depositError);
+    }
     refresh(slug);
     redirect(
       thenInventory
@@ -167,8 +176,52 @@ export async function saveModel(
     .eq("id", id)
     .select("id");
   if (error || data.length !== 1) return failed(error);
+  const depositError = await saveDeposit(supabase, tenant.id, id, deposit);
+  if (depositError) return failed(depositError);
   refresh(slug);
   return { ok: true };
+}
+
+/**
+ * Saves a vehicle product's own deposit, when it has changed. Prices live in
+ * platform.product_pricing since stage D4 and are written only through
+ * platform.save_product_pricing(). A product that never had a deposit and
+ * still has none gets no pricing row.
+ *
+ * Until the shop's pricing settings have a screen (stage D6), a shop that
+ * enters its first product deposit is set to "per product", which is how
+ * every deposit worked before the settings existed.
+ */
+async function saveDeposit(
+  supabase: Awaited<ReturnType<typeof context>>["supabase"],
+  tenantId: string,
+  productId: string,
+  deposit: number | null,
+) {
+  const { data: current, error: readError } = await supabase
+    .from("product_pricing")
+    .select("deposit")
+    .eq("tenant_id", tenantId)
+    .eq("product_id", productId)
+    .maybeSingle();
+  if (readError) return readError;
+  if ((current?.deposit ?? null) === deposit) return null;
+  const { error } = await supabase.rpc("save_product_pricing", {
+    p_product_id: productId,
+    p_settings: { deposit },
+  });
+  if (error || deposit === null) return error;
+  const { data: settings, error: settingsError } = await supabase
+    .from("pricing_settings")
+    .select("tenant_id")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (settingsError || settings) return settingsError;
+  const { error: modeError } = await supabase.rpc("save_pricing_settings", {
+    p_tenant_id: tenantId,
+    p_settings: { deposit_mode: "per_product" },
+  });
+  return modeError;
 }
 
 /**

@@ -723,10 +723,11 @@ describe("every re-created function runs", () => {
 
   it("currency_locked and tenants_lock_currency: a deposit on a product locks the currency", async () => {
     const id = await addVehicle();
-    await shop.members.owner.db
-      .from("products")
-      .update({ deposit: 1000, deposit_currency: shop.currency })
-      .eq("id", id);
+    const saved = await shop.members.owner.db.rpc("save_product_pricing", {
+      p_product_id: id,
+      p_settings: { deposit: 1000 },
+    });
+    expect(saved.error).toBeNull();
     const locked = await shop.members.owner.db.rpc("currency_locked", {
       p_tenant_id: shop.id,
     });
