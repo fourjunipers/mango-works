@@ -2,10 +2,12 @@
  * Products, stage B (docs/products-redesign.md §5.7): general products.
  * The two-choice start of "New product" and the General form; the Products
  * list's All, Vehicles and General tabs; a general product's Details, Stock
- * and History; an item for sale's quantity and ledger; "Change model" and
- * "Disconnect" on the Moto Mangos panel; and the manual order (Reorder mode:
- * Move up, Move down, Reset to A–Z) shared by Fleet and Products. Rental
- * gear's stock (in repair, lost, written off) is in gear-stock.spec.ts.
+ * and History; an item for sale's quantity and ledger; and the manual
+ * order (Reorder mode: Move up, Move down, Reset to A–Z) shared by Fleet
+ * and Products. Rental
+ * gear's stock (in repair, lost, written off) is in gear-stock.spec.ts;
+ * "Change model" and "Disconnect", on the Moto Mangos tab, are in
+ * products-stage-c.spec.ts.
  * Phone and desktop widths.
  *
  * Runs against local Supabase or a deploy preview on staging, again and
@@ -268,88 +270,6 @@ test("new product: Vehicle or General; one of each general type; the three list 
   await expect(page.getByText("0 on hand")).toBeVisible();
   await deleteProduct(page, stickerUrl);
   await deleteProduct(page, coverUrl);
-});
-
-test("Moto Mangos: a product on a list entry can change its model or disconnect", async ({
-  page,
-}) => {
-  test.slow();
-  await signIn(page, demo.bsrOwner);
-  const name = `E2E Listed ${stamp()}`;
-  await page.goto("/bsr/products/new");
-  await page.getByLabel("Product name").fill(name);
-  await page
-    .getByRole("group", { name: "Categories" })
-    .getByText("Scooter", { exact: true })
-    .click();
-  await page.getByRole("button", { name: "Save product" }).click();
-  await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
-  const url = page.url().replace(/\?.*$/, "");
-  const mangos = page.locator("#moto-mangos");
-
-  // Not on the list yet: neither action is there.
-  for (const gone of ["Change model", "Disconnect"])
-    await expect(mangos.getByText(gone, { exact: true })).toHaveCount(0);
-
-  // Put it on a list entry.
-  await mangos.locator("#list-make").selectOption("Honda");
-  await mangos.locator("#catalog_id").selectOption({ index: 1 });
-  await mangos.getByRole("button", { name: "Select" }).click();
-  await expect(
-    mangos.getByText(/^On the Moto Mangos list as Honda /),
-  ).toBeVisible();
-
-  // Change model: the same Make, then Model dropdowns and a Select button.
-  await mangos.getByText("Change model", { exact: true }).click();
-  const change = mangos.getByRole("group", {
-    name: "Select the new make and model",
-  });
-  await expect(change).toBeVisible();
-  await expect(change.locator("#catalog_id")).toBeDisabled();
-  await change.locator("#list-make").selectOption("Yamaha");
-  await change.locator("#catalog_id").selectOption({ index: 1 });
-  await mangos.getByRole("button", { name: "Select" }).click();
-  await expect(
-    mangos.getByText(/^On the Moto Mangos list as Yamaha /),
-  ).toBeVisible();
-  await noSidewaysScroll(page);
-
-  // Disconnect asks first, and says bookings stay.
-  let question = "";
-  page.once("dialog", (dialog) => {
-    question = dialog.message();
-    void dialog.dismiss();
-  });
-  await mangos.getByRole("button", { name: "Disconnect" }).click();
-  expect(question).toBe(
-    "Disconnect this product from Moto Mangos? Its listing is switched off and its list entry is cleared. Bookings already made stay as they are.",
-  );
-  await expect(
-    mangos.getByText(/^On the Moto Mangos list as Yamaha /),
-  ).toBeVisible();
-  page.once("dialog", (dialog) => void dialog.accept());
-  await mangos.getByRole("button", { name: "Disconnect" }).click();
-  // Back to the picker, and the listing can't be switched on.
-  await expect(
-    mangos.getByRole("group", {
-      name: "Select your make and model from the list",
-    }),
-  ).toBeVisible();
-  await expect(
-    mangos.getByLabel("List this product on Moto Mangos"),
-  ).toBeDisabled();
-  await expect(mangos.getByText(/^On the Moto Mangos list as/)).toHaveCount(0);
-
-  // Both are in the product's history.
-  await productTabs(page).getByRole("link", { name: "History" }).click();
-  await expect(
-    page.getByText(/moved this product to another Moto Mangos list entry/),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/disconnected this product from Moto Mangos/),
-  ).toBeVisible();
-
-  await deleteProduct(page, url);
 });
 
 test("manual order: Reorder mode with Move up, Move down and Reset to A–Z, one order for Fleet and Products", async ({

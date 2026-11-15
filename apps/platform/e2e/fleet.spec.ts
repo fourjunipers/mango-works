@@ -578,8 +578,16 @@ test("a manager adds a product with a kind and a name, buffers in hours, a bike,
   ).toBeVisible();
   const modelUrl = page.url();
 
-  // The listing switch and settings sit in the Moto Mangos panel, and can't
-  // be used until a model is selected or approved.
+  // The listing switch and settings sit on the Moto Mangos tab, after
+  // Units, and can't be used until a model is selected or approved.
+  await expect(
+    page
+      .getByRole("navigation", { name: "Sections of this product" })
+      .getByRole("link"),
+  ).toHaveText(["Details", /^Units/, "Moto Mangos", "History"]);
+  await expect(panel(page, "Moto Mangos")).toHaveCount(0);
+  await tab(page, "Moto Mangos").click();
+  await expect(page).toHaveURL(/\?tab=moto-mangos/);
   const listing = panel(page, "Moto Mangos");
   await expect(
     listing.getByText(
@@ -591,6 +599,7 @@ test("a manager adds a product with a kind and a name, buffers in hours, a bike,
     "Instant units",
     "Request units",
     "Walk-ins",
+    "Lead time (hours)",
   ])
     await expect(listing.getByLabel(label, { exact: true })).toBeDisabled();
   // What each quantity is for.
@@ -604,9 +613,9 @@ test("a manager adds a product with a kind and a name, buffers in hours, a bike,
   await expect(
     listing.getByText(/How many of the active vehicles confirm instantly/),
   ).toHaveCount(0);
-  await expect(panel(page, "Details").getByLabel("Instant units")).toHaveCount(
-    0,
-  );
+  // The product form stays on Details, without the listing.
+  await tab(page, "Details").click();
+  await expect(page.getByLabel("Instant units")).toHaveCount(0);
 
   // Buffers are typed in hours, decimals allowed.
   const before = page.getByLabel("Buffer before pickup (hours)");
@@ -889,9 +898,10 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
     page.getByRole("heading", { name: carName, level: 1 }),
   ).toBeVisible();
   await expect(page.getByText(/Car · SUV · Pickup/)).toBeVisible();
-  // The Moto Mangos panel is for motorcycles only: a car has none.
+  // The Moto Mangos tab is for motorcycles only: a car has none.
   const mangos = panel(page, "Moto Mangos");
   await expect(mangos).toHaveCount(0);
+  await expect(tab(page, "Moto Mangos")).toHaveCount(0);
   await expect(page.getByText("List it on Moto Mangos")).toHaveCount(0);
   // As a motorbike it gets the Moto Mangos panel, and can take a model
   // from its list. A car's category doesn't carry over to a motorbike.
@@ -904,6 +914,7 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
   await page.getByRole("button", { name: "Save" }).first().click();
   // Both show, in the list's own order.
   await expect(page.getByText(/Vehicle · Touring · Adventure/)).toBeVisible();
+  await tab(page, "Moto Mangos").click();
   await expect(mangos).toBeVisible();
   await expect(mangos.getByText("Did you mean:")).toHaveCount(0);
   // The picker: Make, then Model with its years, filtered by the make.
@@ -939,7 +950,10 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
   await expect(
     mangos.getByRole("button", { name: "Use this model" }),
   ).toHaveCount(0);
-  await mangos.getByRole("button", { name: "Select", exact: true }).click();
+  await expect(
+    mangos.getByRole("button", { name: "Select", exact: true }),
+  ).toHaveCount(0);
+  await mangos.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(
     mangos.getByText(/On the Moto Mangos list as Honda Forza 350/),
   ).toBeVisible();
@@ -948,6 +962,7 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
     mangos.getByLabel("List this product on Moto Mangos"),
   ).toBeEnabled();
   // Its kind is the list's from here on; no make or model shows on the page.
+  await tab(page, "Details").click();
   await expect(page.getByText("What kind of product is it?")).toHaveCount(0);
   await expect(page.getByText(/330 cc/)).toHaveCount(0);
   page.on("dialog", (dialog) => void dialog.accept());
@@ -958,6 +973,8 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
   await page.goto(bikeUrl);
   await page.getByRole("link", { name: own }).click();
   await expect(page).toHaveURL(/\/products\/[0-9a-f-]{36}(\?back=[^&]*)?$/);
+  await tab(page, "Moto Mangos").click();
+  await expect(page).toHaveURL(/[?&]tab=moto-mangos/);
   const modelUrl = page.url();
   await expect(
     mangos.getByText(
@@ -977,7 +994,8 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
       top("h3", "List it on Moto Mangos"),
       top("select[name=catalog_id]"),
       top("summary", "Don’t see your bike above?"),
-      top("input[name=listed]"),
+      top("[role=switch]"),
+      top("input[name=lead_time_hours]"),
     ];
   });
   expect(order).toEqual([...order].sort((a, b) => a - b));
@@ -1074,6 +1092,10 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
   await expect(
     news.getByRole("link", { name: `${make} Tester 125` }),
   ).toContainText("Not added: see why");
+  // It opens the product's Moto Mangos tab.
+  await expect(
+    news.getByRole("link", { name: `${make} Tester 125` }),
+  ).toHaveAttribute("href", /\/products\/[0-9a-f-]{36}\?tab=moto-mangos$/);
   // The Moto Mangos chip is on the Products list.
   await page.goto(`/bsr/products?q=${make}`);
   await expect(
@@ -1097,7 +1119,7 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
     .click();
   await expect(page).toHaveURL(/#choose-from-list$/);
   await expect(
-    mangos.getByRole("button", { name: "Select", exact: true }),
+    mangos.getByRole("button", { name: "Connect", exact: true }),
   ).toBeVisible();
   // Edited and sent again: it is pending again and the old outcome goes.
   // The review form holds what was sent before, ready to be corrected.
@@ -1149,19 +1171,26 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
   await expect(
     mangos.getByText("On the Moto Mangos list as Honda Forza 350."),
   ).toBeVisible();
-  // Already switched on by the approval; the shop can switch it off.
+  // Already switched on by the approval; the shop can switch it off, and
+  // the switch saves by itself.
+  const toggle = mangos.getByRole("switch", {
+    name: "List this product on Moto Mangos",
+  });
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
   await expect(
-    mangos.getByLabel("List this product on Moto Mangos"),
-  ).toBeChecked();
-  await mangos.getByLabel("List this product on Moto Mangos").uncheck();
-  await mangos.getByRole("button", { name: "Save" }).click();
-  await expect(mangos.getByText("Saved")).toBeVisible();
+    mangos.getByText("Off. The switch saves as soon as you press it."),
+  ).toBeVisible();
+  await page.reload();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
 
   // Clean up: the bike, then the model.
   await page.goto(bikeUrl);
   await page.getByRole("button", { name: "Delete vehicle" }).click();
   await expect(page).toHaveURL(/\/bsr\/fleet(\?.*)?$/);
   await page.goto(modelUrl);
+  await tab(page, "Details").click();
   await page.getByRole("button", { name: "Delete product" }).click();
   await expect(page).toHaveURL(/\/bsr\/products(\?.*)?$/);
 });
