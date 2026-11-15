@@ -240,6 +240,38 @@ About `rollback.sql`:
 - It is the one sanctioned exception to "never change the database by hand",
   for an emergency during this runbook only.
 
+## Staging
+
+The platform app (`mango-works-platform` on Netlify, and every deploy preview of it) reads the staging project, `mango-works-staging`, not live. This section is what is needed to work on staging; nothing in it touches live.
+
+### Migrations on staging
+
+- **By hand, with `npx supabase db push --db-url "$STAGING_DB_URL"`**, after `--dry-run` has listed exactly the migrations expected. **Never `--linked`: that is live.** `STAGING_DB_URL` is in `apps/platform/.env.local` (git-ignored; `.env.example` names it).
+- A migration that drops or moves a column the deployed app reads goes to staging **at the same time as its PR is merged**: before the push that PR's own deploy preview fails, and after it `main`'s deployment fails until the merge is deployed.
+- Each push is recorded in `docs/PROGRESS.md` under its stage: when, from which commit, and what was checked.
+
+### Demo users and their password
+
+- The demo shops and users on staging come from `apps/platform/scripts/seed.mts`, run as `npm run seed:staging -w @mango/platform`.
+- **The seed sets every demo user's password to `DEMO_PASSWORD` from `apps/platform/.env.local`** of the checkout it is run from, each time it runs. The value is never committed and is not written in this repo: the file is git-ignored, and `.env.example` only names the variable.
+- **On 15 Nov 2026 the ten demo users on staging were reset to that value through the auth admin API, without a full re-seed.** Staging had been refusing the `DEMO_PASSWORD` that every checkout on the owner's machine holds, and the password it did have was recorded nowhere. Only the passwords were changed: no shop, membership or other row.
+- So staging's demo password is the `DEMO_PASSWORD` in the main checkout's `apps/platform/.env.local`. A worktree that makes its own `.env.local` with another value can't sign in to staging with it: pass the main checkout's value in the environment for that run.
+- Running `seed:staging` from a checkout with a different `DEMO_PASSWORD` changes staging's password to that one. Run it only from a checkout that has the right value, or the browser tests against staging stop signing in.
+
+### Demo data may have drifted from the seed
+
+**No full seed has been run on staging since 13 Nov 2026**, going by when the demo users were last written. The seed also sets each demo shop's name, settings and opening hours, and it was left out on 15 Nov on purpose, so that anything changed by hand on staging was not overwritten. Staging's demo shop names, settings and opening hours may therefore differ from what `seed.mts` would write. If a browser test fails on staging on shop data, compare it with `seed.mts` before treating it as a bug in the code.
+
+### Browser tests against staging
+
+From `apps/platform`, with staging's demo password in the environment:
+
+```bash
+PLAYWRIGHT_BASE_URL=https://mango-works-platform.netlify.app npx playwright test
+```
+
+A deploy preview's address works the same way. The tests create what they need and remove it again. One thing stays behind: the first time a product deposit is saved in a shop that has no pricing settings yet, the shop gets a settings row on "per product" (`pricing_settings`), and the deposit test does that to the demo shop BSR. After the run of 15 Nov 2026 the row was removed again by hand, on the owner's instruction, so BSR is back to no settings row ("none"). A later run against staging will make the row again.
+
 ## Netlify environment variables
 
 Site `mango-works-platform`. The app needs:
