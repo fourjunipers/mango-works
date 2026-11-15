@@ -9,9 +9,12 @@
     "./closures": "./src/closures.ts",
     "./listing": "./src/listing.ts",
     "./money": "./src/money.ts",
+    "./price-list": "./src/price-list.ts",
     "./pricing": "./src/pricing.ts",
     "./rental-days": "./src/rental-days.ts",
-    "./time": "./src/time.ts"
+    "./rental-price": "./src/rental-price.ts",
+    "./time": "./src/time.ts",
+    "./zoned": "./src/zoned.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
