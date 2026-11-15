@@ -138,6 +138,77 @@ The fifth build stage of pricing, of seven (`docs/products-redesign.md` §9.12, 
 
 **Next:** D6, Settings: pricing and tax (rounding step, tax profiles and the default, include or exclude tax, the deposit choice, the coupons switch) and Seasons; perhaps the price lists screen moved under it.
 
+## Products, stage D6: Settings (branch `platform/products-stage-d6-settings`, 15 Nov 2026)
+
+The sixth build stage of pricing, of seven (`docs/products-redesign.md` §9.12, §9.15, and "As built in stage D6" there). **One migration**, reviewed by Fable before it was written. Not on staging or live: staging stays at 59 of 59, live at 53 of 53. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **Settings has four sections**, owners and managers only (a sub-nav on every Settings page): Shop (as before), **Pricing and tax**, **Seasons**, **Price lists**.
+- **Pricing and tax** (`/settings/pricing`): the rounding step (blank uses the currency's default; saved prices never change), "Our prices include tax" or "Tax is added on top", the default tax profile, the deposit choice (No deposit, a percentage of the order, a fixed amount per order, per vehicle with an optional shop amount) and "Accept coupons" with its "later update" line. One Save, through `save_pricing_settings`. Opening the page writes nothing; the first Save makes the shop's settings row and, because any row fixes the currency, the page says so and asks first.
+- **Tax profiles** on the same page: add, change name or rate (a rate change on a profile in use names the products it reprices and asks first), remove from use, bring back. Removing a profile a product uses is refused, and the error names the products (retired ones included) so the owner can move them. One tap adds "VAT 7%" as the default in Thailand. All through `save_tax_profile` (and `save_pricing_settings` for the default).
+- **Seasons** (`/settings/seasons`): the list with dates in the viewer's format, "every year", Increase or Decrease and a percentage, all products or chosen ones (searchable), on or off, delete. Through `save_price_rule`.
+- **Price lists moved** from `/products/price-lists` to `/settings/price-lists` (Mark, 15 Nov 2026). The old addresses redirect (`next.config.ts`). Staff no longer open them; the Products list's and the Pricing tab's links show for owners and managers only.
+- **The deposit is the shop's choice.** The automatic switch to "per product" on a shop's first product deposit is gone (the second `save_pricing_settings` call, the deposit field for a shop with no settings row, `previewInputs` and its test, the "first deposit" help). A vehicle's own deposit is asked only on "per vehicle"; on another choice it is kept, not charged, and shows again on a switch back (Mark). The Pricing tab's deposit card then says what the shop charges, with "Change in Settings". Check a price reads the same choice Save does; unit tests cover all four modes.
+- **Season lines in a product's History**, on each product a season covers (`lib/season-history.ts`): added (its change and dates), percentage changed, dates changed, renamed, switched off or on, removed. One save is read as one change.
+- **One per-currency defaults table** in `@mango/core` (`currency.ts`): the rounding step and the sample base price. THB ฿10 and ฿100; any other currency one major unit and 10 (Mark). It replaces both `currency === "THB"` checks (D5 follow-up 1).
+- **D5 follow-ups 2 and 4:** `parseBase` goes through `parseMinorUnits`; the pricing actions read a posted draft field by field (`readPricingDraft`, `readListDraft`) and answer a hand-made one with a form error instead of throwing; a season's amount is shown from the pricer's direction and size (`adjustmentParts` in `@mango/core/season`), its dates in the viewer's format. Follow-up 3 (the second call) is gone with the automatic switch.
+- **The migration, `20261115000200_platform_tax_profile_in_use`**, replaces three functions of D4, each a minimal change of its body, same signatures, grants restated: `save_tax_profile` takes the profile for update, then refuses to archive it (only when it goes from not archived to archived) while any `product_pricing` row names it (`tax_profile_in_use`) or it is the shop's default; it locks no settings or pricing row. `save_product_pricing` takes the profile it names for share after the price list and before the pricing row. `save_pricing_settings` takes the default it names for share after the settings row. A rename of an archived profile and a rate change still work.
+- About 130 new Thai lines in `docs/platform/thai-review-products.md` for Korn, with one term to settle (ประเภทภาษี here, รายการภาษี in two D5 lines).
+
+**Decided here, not specified by the owner** (say if any should change)
+
+- **Settings › Pricing and tax is one form with one Save**, and tax profiles are separate small forms beside it, each saving on its own.
+- **A blank rounding step is saved as "not chosen"** (null), not as the currency's default, so a later change to the per-currency table reaches the shop.
+- **"Per vehicle"** is the screen's word for "per product" (only vehicles carry a deposit). The shop's amount for a vehicle with none of its own is optional; blank is none.
+- **A percentage deposit** goes from 0.01% to 1,000% (the database's range); a fixed amount per order must be above 0.
+- **A season names chosen products from the whole list**, retired ones shown only when already chosen. A season with chosen products must name at least one.
+- **The one-tap profile is stored as "VAT 7%" in every language**: it is the shop's data, which the owner can rename. It is made the default at once; if that second save fails, the page says the profile was added but not made the default.
+- **Season lines on History read every season of the shop** (the audit rows of `price_rules`, up to 1,000), since a season for all products names none.
+- **Pricing tab cards are named regions** (for screen readers, and so tests can find "Seasons").
+- **The rounding-step browser test of PR 29 moved** to `products-stage-d6.spec.ts`, in BSR instead of Saigon (no settings row may be made there), and changes the step on the Settings screen instead of in the database. It asserts the same: a saved list reads as stored after the step changes, Check a price charges the stored amount, a save that leaves the list alone (now the long-stay rate, since the deposit needs "per vehicle") rewrites no day, and a box changed refills only the days around it.
+- **Browser tests that change BSR's settings, or read a total that depends on them, take turns** (a lock file across workers and both widths, `e2e/shop-settings.ts`) and put every setting back through `save_pricing_settings` as the owner, pass or fail.
+
+**For later stages (Mark, 15 Nov 2026)**
+
+1. **Phase 2: every order line keeps a snapshot** of the tax rate, the tax profile's name and id, whether prices included tax, the tax amount, the list price, each season adjustment, the discounts, the deposit and the currency. An order never reads a profile again: a later change of rate, name or tax style, or a removed profile, never alters an order.
+2. **D7: the import names only tax profiles that are not archived**, and a check query after the load proves it (the load does not go through `save_product_pricing`, so nothing else stops it). The import sets BSR's deposit choice explicitly.
+3. **Open: the currency lock on any settings row.** Any `pricing_settings` row fixes a shop's currency (D4; Mark keeps it). Revisit before self-serve sign-up, when a new shop may open Settings before it has chosen its currency for good.
+
+**Read-only check before any push to staging, and later to live.** Rows that name an archived tax profile, defaults that name one, and shops with a product deposit but no settings row. Any count above zero: stop and tell Mark. No backfill is written.
+
+```sql
+select
+  (select count(*) from platform.product_pricing pp
+     join platform.tax_profiles tp on tp.id = pp.tax_profile_id
+   where tp.archived_at is not null) as pricing_rows_on_archived_profile,
+  (select count(*) from platform.pricing_settings s
+     join platform.tax_profiles tp on tp.id = s.default_tax_profile_id
+   where tp.archived_at is not null) as defaults_on_archived_profile,
+  (select count(distinct pp.tenant_id) from platform.product_pricing pp
+   where pp.deposit is not null
+     and not exists (select 1 from platform.pricing_settings s where s.tenant_id = pp.tenant_id)
+  ) as shops_with_deposit_but_no_settings;
+```
+
+| Database | When | pricing rows on archived | defaults on archived | shops with a deposit, no settings |
+| --- | --- | --- | --- | --- |
+| Local, this worktree (reset and seeded) | 15 Nov 2026, before the browser run | 0 | 0 | 0 |
+| Local, this worktree | 15 Nov 2026, after the full browser run | 0 | 0 | 0 |
+| Staging | Not run: nothing pushed in this stage | | | |
+| Live | Not run: D4 to D6 are not on live | | | |
+
+**Tests**
+
+- Unit: 332 on the platform (297 before; new `lib/pricing-settings.test.ts` 9, `lib/seasons.test.ts` 13, `lib/season-history.test.ts` 7, and in `pricing-form.test.ts` the draft readers and the per-currency step; `pricing-preview.test.ts` loses `previewInputs` and gains the four deposit modes), 290 in `@mango/core` (284 before; `currency.test.ts`, `adjustmentParts`), 202 on the marketplace. Typecheck and lint pass for every workspace; the one-pricer lint rule passes.
+- Database: 353 on the platform, all passing on a freshly reset and seeded local database (342 before; 11 new in `tax-profile-in-use.test.ts`: the refusal, retired products counted, a rename and a rate change while in use, renaming an archived profile still named, the default still refused, both orders of archive against a product save, both orders against set-default, the lock order of a waiting product save, the archive locking no settings or pricing row, and grants). In `product-pricing.test.ts` only the header comment and the lock-order block's title changed; its tests pass unchanged.
+- Browser: `e2e/products-stage-d6.spec.ts` (7 tests: Settings sections and access, old price-list address, deposit modes, tax profiles, rounding step, a season, the first-save warning, Thai), at 375 px and 1280 px. The full suite on a freshly reset and seeded local database: 136 tests, 122 passed, 7 skipped (each runs at one width only), 7 failed on page loads that timed out (in `drag-reorder`, `products-stage-b`, `products-stage-c` and `fleet`'s stickers, none of them touched by this stage); those 7, run again on their own with two workers, all passed. This machine runs about 40 other local database containers; D5 saw the same timeouts. CI runs the suite on a clean database.
+- Read-only counts after the browser run, locally: 0, 0, 0. What the run left: BSR has a settings row on the defaults and the archived "E2E VAT" profile; Saigon and big-fleet have no settings row.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_stage_d6` on ports 6032x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack.
+
+**Next:** D7, BSR's four lists, once Mark has supplied the amounts, base prices and the list for each product (with the tax-profile check and the explicit deposit choice above).
+
 ## Products, stage D3: rental-period maths (branch `platform/products-stage-d3-rental-periods`, 15 Nov 2026)
 
 The third build stage of pricing, of seven (`docs/products-redesign.md` §9.15 and §9.19). **`@mango/core` and docs only: no migration, no screen, nothing in `apps/`.** Phase 3 builds the orders, the screens and the atomic database step; the money for extending, swapping and returning early is worked out here.
