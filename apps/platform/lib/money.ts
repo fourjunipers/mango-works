@@ -49,3 +49,75 @@ export function formatMoney(
     minor / 10 ** exponent,
   );
 }
+
+// Prices (stage D5) ------------------------------------------------------------------
+// Prices are `bigint` minor units, worked out by quote() in @mango/core.
+// These helpers only turn them into text and back, digit by digit: no
+// arithmetic on an amount, so no float can creep in at any size.
+
+/**
+ * An amount typed in major units ("300", "1,400.50") as minor units. Null:
+ * left blank. "invalid": not a non-negative amount, or more decimal places
+ * than the currency has.
+ */
+export function parseMinorUnits(
+  input: string,
+  currency: string,
+): bigint | null | "invalid" {
+  const text = input.trim().replace(/[\s,_]/g, "");
+  if (!text) return null;
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) return "invalid";
+  const exponent = minorExponent(currency);
+  const fraction = match[2] ?? "";
+  if (fraction.length > exponent) return "invalid";
+  return BigInt(match[1] + fraction.padEnd(exponent, "0"));
+}
+
+/** Minor units (a bigint or a string of digits) as a decimal string: 30050 → "300.50". */
+export function minorDecimal(minor: bigint | string, currency: string): string {
+  const exponent = minorExponent(currency);
+  const digits = String(minor);
+  if (!/^\d+$/.test(digits)) throw new RangeError(`Not an amount: ${digits}`);
+  if (exponent === 0) return digits;
+  const padded = digits.padStart(exponent + 1, "0");
+  return `${padded.slice(0, -exponent)}.${padded.slice(-exponent)}`;
+}
+
+/** "฿1,400" / "฿116.66" in the viewer's locale; whole amounts without decimals. */
+export function formatMinor(
+  minor: bigint | string,
+  currency: string,
+  locale: string,
+): string {
+  const decimal = minorDecimal(minor, currency);
+  const whole = !decimal.includes(".") || /\.0+$/.test(decimal);
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    ...(whole ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}),
+    // A decimal string keeps every digit (ES2023 Intl.NumberFormat v3).
+  }).format(decimal as unknown as number);
+}
+
+/** A multiplier is stored in millionths (decision 29): "1.1666" → 1166600. */
+export const MULTIPLIER_DECIMALS = 6;
+
+/** A multiplier as typed ("1.1666") in millionths. Null: blank. */
+export function parseMultiplier(input: string): bigint | null | "invalid" {
+  const text = input.trim().replace(/^[x×]/i, "").trim();
+  if (!text) return null;
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) return "invalid";
+  const fraction = match[2] ?? "";
+  if (fraction.length > MULTIPLIER_DECIMALS) return "invalid";
+  return BigInt(match[1] + fraction.padEnd(MULTIPLIER_DECIMALS, "0"));
+}
+
+/** Millionths as a plain multiplier: 1166600 → "1.1666", 3000000 → "3". */
+export function multiplierText(millionths: bigint | string): string {
+  const digits = String(millionths).padStart(MULTIPLIER_DECIMALS + 1, "0");
+  const whole = digits.slice(0, -MULTIPLIER_DECIMALS).replace(/^0+(?=\d)/, "");
+  const fraction = digits.slice(-MULTIPLIER_DECIMALS).replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole;
+}
