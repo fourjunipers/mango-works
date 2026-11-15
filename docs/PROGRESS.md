@@ -13,6 +13,58 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Products, stage D2: the pricer (branch `platform/products-stage-d2-pricer`, 15 Nov 2026)
+
+The second build stage of pricing, of seven (`docs/products-redesign.md` §9.15). **`@mango/core` and docs only: no migration, no screen, nothing in `apps/`.** Nothing calls `quote()` yet; the Pricing tab (D5) is the first caller.
+
+**What was built** (pure functions, money as `bigint` minor units, no float, no currency named)
+
+- **`@mango/core/quote`: `quote()`, the one pricer.** One call prices the lines billed together, which is one invoice. For each line: the unit price (D1) × quantity, season rules, discounts. Then VAT once per rate group, and the deposit beside the price. It answers "can't be priced" for a product with no price, never zero.
+- **`@mango/core/season`:** date-range percentage rules, up or down, every year or one year, for all products or named ones. Only the charged periods inside the range are adjusted; each charged day belongs to the calendar day it starts on at the location; one rounding on the line, satang kept; two rules on the same day are added, not compounded. Time-priced lines only (by rental length, flat fee per hour, day, week or month).
+- **Discounts:** a list of already-decided discounts, each a percentage or an amount off all lines or named ones, applied in the order given. A percentage is taken on each line. An amount is shared out over its lines in proportion, to the satang, so each tax-rate group loses its exact share before VAT.
+- **The "Accept coupons" switch:** a discount marked as a coupon is refused (`coupons_off`) when the shop's switch is off, before anything is priced. A staff price or any other discount is not stopped by it.
+- **VAT, the accountant's rules (decision 27):** worked out once per invoice and rate group, rounded once, in both shop styles. Lines carry a rate and no tax amount. What is not taxable is in the total and in no VAT line.
+- **A swap credit reduces the VAT base** of the new invoice: one function, `creditVatBases`, and one paragraph in §9.7.
+- **Deposits:** none; a percentage of the order total after discounts, tax included; a fixed amount per order; per product (vehicles only, with the shop's amount for a vehicle with none). The order's setting wins over the customer's, which wins over the shop's. Never taxed, never in the total or the VAT base.
+- **Design:** §9.7 rewritten for the tax decisions, Q7 marked answered, decision 27 added, and the Phase 3 notes on documents for swaps and early return (a credit stays a credit; a refund creates a credit note).
+
+**Pinned by tests**
+
+| What | Figure |
+| --- | --- |
+| ฿3,000 at 7%, prices include VAT | VAT ฿196.26, net ฿2,803.74 |
+| ฿3,000 at 7%, VAT on top | VAT ฿210, total ฿3,210 |
+| Three lines of ฿350, 7% included | VAT ฿68.69 on the invoice (not 3 × ฿22.90) |
+| ฿500 staff discount on ฿3,000 | VAT on ฿2,500: ฿163.55 |
+| ฿200 off ฿1,400 and ฿300 | ฿164.71 and ฿35.29; the 7% group is then ฿1,235.29, VAT ฿80.81 |
+| Swap: ฿1,800 less a ฿1,500 credit | Pays ฿300, VAT ฿19.63; with the first invoice ฿215.89, the VAT on ฿3,300 |
+| Season: 3 of 7 days at 20% off ฿1,400 | ฿120 off, ฿1,280 |
+| Season: 2 of 7 days at 20% off ฿1,500 | ฿85.71 off, ฿1,414.29 |
+| Deposit: 30% of ฿12,600 | ฿3,780; ฿3,600 after a ฿600 discount; ฿4,044.60 with VAT on top |
+| Deposit: per product | 2 × ฿2,000 + ฿5,000 + the shop's ฿1,500 = ฿10,500; a helmet adds nothing |
+
+**Decided here, not specified by the owner** (say if any should change)
+
+- **Discounts apply in the order given, each on what the one before left.** Two 10% discounts on ฿3,000 leave ฿2,430, not ฿2,400. Phase 2 decides which discounts may be combined at all; this only fixes the arithmetic when they are.
+- **A discount can't take more than its lines come to**, and seasons can't take a line below zero.
+- **A coupon while the switch is off is an error, not ignored**, so a caller can't show a price that silently left it out.
+- **One line that can't be priced means the whole quote is not priced**; the answer names the lines.
+- **A percentage deposit is taken on what this invoice charges**, which is the order total after discounts with tax. On a swap invoice that would be after the credit; whether a swap changes a deposit at all is already a Phase 3 question (§9.13, item 12).
+- **A product's own deposit of 0 means no deposit for it**; only a product with none set uses the shop's amount.
+- **A zero-rated profile (0%) keeps its own VAT line of nothing; "not taxable" has no line.**
+- **A credit larger than the amount it is set against is refused.** A negative amount (a cheaper bike, an early return) is handled before the pricer by the shop's choice of credit, refund or no charge.
+- **The swap credit's VAT rule is built here**, ahead of the swap maths (D3), because the accountant's rule is a tax rule and belongs with the tax step.
+- A season on a flat fee per week or month goes by the day each period starts on.
+
+**Not in this stage:** included quantities (step 4 of the pricer, Phase 2); the database function that feeds `quote()` and the guard against a second pricing path (they come with the first callers, D4 and D5).
+
+**Tests**
+
+- Unit: 244 in `@mango/core` (182 before; 62 new in `quote.test.ts` and `season.test.ts`), 202 on the marketplace and 228 on the platform, all passing. Typecheck and lint pass for every workspace.
+- No database or browser tests: nothing they cover changed.
+
+**Next:** D3, the rental-period maths (a continuation, a swap, an early return).
+
 ## Products, stage D1: price lists and months (branch `platform/products-stage-d1-price-lists`, 15 Nov 2026)
 
 The first build stage of pricing, of seven (`docs/products-redesign.md` §9.15; the design itself is PR 23). **`@mango/core` only: no migration, no screen, nothing in `apps/`.** Nothing calls the new functions yet; D2 (`quote()`) is the first caller.

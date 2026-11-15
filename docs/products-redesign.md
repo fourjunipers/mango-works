@@ -36,6 +36,7 @@
 | 24 | **Stage D, pricing (15 Nov 2026), from BSR's real Booqable data.** Booqable's templates are multipliers; BSR's have a tile for every day 1 to 31 and then a set amount per extra day. Equal totals on neighbouring days are allowed; only a total that falls as days rise is refused. An import stores the exact amount Booqable charges for each day, satang included. Only four templates are loaded (300–3000, 350–3500, 400–4000, 500–5400). All in stage D: flat fee per period, fixed price and tiered pricing (a base price × multipliers, or amounts per day); quick entry of hourly, daily, weekly, two-week, three-week and monthly prices with the days between filled in and editable; seasonal date-range percentage rules on the part of the order inside the range; four deposit choices (none, a percentage of the order, fixed per order, per product) with order and customer overrides; shops' own tax profiles, a default, non-taxable products and a shop setting for prices including or excluding tax; a coupons on/off switch and the pricer's discount step, with coupon creation in Phase 2. **This supersedes decision 15 and §3.2 where they say price lists are never multipliers, decision 14 as the only deposit rule, decision 16, and §3.3's inclusive flag per tax profile** | §9 |
 | 25 | **Stage D, pricing, second round of answers (15 Nov 2026).** (1) Booqable's four pickup-day and return-day rules and weekday skipping are shop settings, off by default; BSR uses none. (2) **A month is date to date, anchored on the original pickup date** (1 Jan to 1 Feb; a month without the date uses its last day: 31 Jan renews 28 Feb, then 31 Mar). (3) The long-stay daily rate, for days after whole months, is a per-product setting until tested. (4) For Phase 3, and the pricer must fit it now: a rental has billed periods (one bike, one date range, one frozen price), each its own order line with a list price, the price charged and an automatic note; several rentals per order, each with its own dates; Extend rental, priced as a continuation (whole months at the monthly price, leftover days at the long-stay rate); Swap bike with owner-chosen pricing options (remainder of the period, prorated difference, no charge, manual amount; credit, refund or no charge for a cheaper bike), as one atomic step. (5) Decided as recommended: the rounding step is a shop setting; a deposit is never taxed, a percentage deposit is of the order total after discounts with tax, per-product deposits are for vehicles only; hourly below a day, capped at the 1-day price; no zero price, and "Free" stays for services and extras; a season-adjusted price keeps its satang. (6) Tax per line on a Thai tax invoice waits for Korn or BSR's accountant. (7) Mark supplies BSR's four lists in full before the last build stage. **This supersedes the over-30-days rule of §3.2 and §3.4, the second version's extra-day amount on a price list, and decision 24 where it has an import keep day 31** | §9.13, §9.17 to §9.19 |
 | 26 | **Stage D design approved (15 Nov 2026).** (1) The price list prices every rental of 30 days or fewer; the month rule starts at 31 days; a rental never costs more than the list's price for the same number of days. (2) A product with no long-stay rate uses its monthly price ÷ 30, and leftover days never cost more than one more month. (3) Extend uses today's price to the new end minus today's price to the old end, with "keep the last period's discount" on by default and the amount editable by staff. (4) In a season each charged day belongs to the calendar day it starts on. (5) The rental-period maths goes into stage D as pure functions with tests. (6) Charge rules stay after Phase 3 and before 3M; their worked examples are not confirmed until then. (7) Early return is a Phase 3 swap to nothing, with the same credit, refund and no-charge settings. (8) Tax per line, and credit notes for swap credits and refunds, go to Korn and do not block the maths. (9) Build in small stages, one PR each; no migration until the database stage; nothing to staging or live | §9.13, §9.15, §9.19 |
+| 27 | **Tax, from the accountant through Korn (15 Nov 2026). This replaces per-line tax** (the original brief, §3.3, §3.4 and the first three versions of §9.7). (1) VAT is worked out once per invoice, not per line: lines carry only their tax profile or rate and a taxable flag; the pricer groups the taxable amount after discounts by rate and works out one VAT amount per rate, rounded once to the satang; the invoice shows one VAT line per rate. (2) Two shop styles, the existing setting: prices include VAT (VAT = total × rate ÷ (100 + rate), net = total − VAT; ฿3,000 at 7% is ฿196.26 and ฿2,803.74) or VAT added on top (VAT = net × rate, total = net + VAT). (3) Discounts reduce the VAT base. (4) Deposits are never taxed and sit outside the VAT base. (5) Each payment gets its own tax invoice, so each billing event is its own invoice and earlier invoices never change. (6) A swap credit reduces the VAT base of the new invoice: VAT follows the money actually coming in or going out; kept in one function and one paragraph. (7) A credit note is only for a refund; a credit toward the next payment needs none. (8) Per-bike net revenue is a derived figure; reports total from invoices | §9.7, §9.19 |
 
 Decisions 9, 12 and 15 include Mark's second round of answers the same day (items for sale by stage, who may mark a unit lost, and the price-per-day mode).
 
@@ -321,7 +322,7 @@ price_template_days   tenant_id, template_id, day (1..30), total bigint, source 
 1. Every amount is `bigint` minor units of the shop's currency, by the ISO 4217 exponent. No floats anywhere; a rate is basis points.
 2. All arithmetic is integer. Division happens in three places only, each rounding half up to one minor unit: the over-30-days total, a percentage rule, and tax.
 3. The **rounding step** (review decision: a setting with a default per currency) applies to prices a shop generates, such as the filled-in days of a table, not to tax.
-4. Tax per line: exclusive `tax = round(net × rate_bp / 10000)`; inclusive `tax = gross − round(gross × 10000 / (10000 + rate_bp))`. Order tax is the sum of line taxes.
+4. Tax per line: exclusive `tax = round(net × rate_bp / 10000)`; inclusive `tax = gross − round(gross × 10000 / (10000 + rate_bp))`. Order tax is the sum of line taxes. **Superseded by decision 27:** VAT is worked out once per invoice and rate group (§9.7).
 5. The total never falls as days rise (review decision), checked when a template is saved and again in `quote()`.
 6. Display uses `Intl.NumberFormat` with the viewer's locale and the shop's currency. No currency symbol in code.
 
@@ -983,18 +984,34 @@ The shop picks one default; an order or a customer can replace it.
 - **What stage D can build of the overrides.** There are no orders (Phase 3) or customers (Phase 4) yet. Stage D builds the shop default, each product's deposit, and the pricer taking the two overrides as inputs, with tests. Their columns and screens arrive with those tables; nothing has to change in the pricer then.
 - A deposit is never taxed, never discounted and never touched by a season rule.
 
-### 9.7 Tax (requirement 6)
+### 9.7 Tax (requirement 6; the accountant's rules, 15 Nov 2026)
 
 - A shop adds its own **tax profiles** (a name and a rate) and marks one as its default. With no default the shop charges no tax and no tax line shows anywhere.
-- **"Our prices include tax" or "exclude tax"** is one shop setting.
 - Each product is one of: the shop's default; another profile; **not taxable**.
-- Tax is per line (waiting for Korn or BSR's accountant: open item 5), on the amount after season rules and discounts, half up to one minor unit:
-  - prices include tax: `net = round(gross × 10000 ÷ (10000 + rate_bp))`, `tax = gross − net`
-  - prices exclude tax: `tax = round(net × rate_bp ÷ 10000)`, `gross = net + tax`
-- The line keeps its own copy of the rate, the include-or-exclude setting and the profile's name, so a later change never alters an old order.
-- **Order tax is the sum of the lines' tax**, which can differ from tax on the order's total by a minor unit or two (three lines of ฿350 at 7% included: ฿68.70 against ฿68.69; the customer pays ฿1,050 either way).
-- **A discount on the whole order** is shared out over its lines in proportion to their amounts, the leftover minor units going to the largest remainders so the shares add up exactly (฿200 over ฿1,400 and ฿300: ฿164.71 and ฿35.29). Each line's tax is on its reduced amount.
+- **VAT is worked out once per invoice, not per line** (decision 27). A line carries only its tax profile or rate and whether it is taxable; it has no tax amount of its own. The pricer adds up the taxable amounts after discounts by rate, and works out one VAT amount per rate, rounded once, half up, to one minor unit. The invoice shows one VAT line per rate at the bottom.
+- **Two shop styles, one setting** ("Our prices include tax" or "exclude tax"):
+
+  | Style | Total charged | VAT | Net |
+  | --- | --- | --- | --- |
+  | **Prices include VAT** (BSR) | The sum of the line prices | total × rate ÷ (100 + rate) | total − VAT |
+  | **VAT added on top** | net + VAT | net × rate ÷ 100 | The sum of the line prices |
+
+  Pinned by tests: ฿3,000 at 7% included is VAT ฿196.26 and net ฿2,803.74. ฿3,000 with 7% on top is VAT ฿210 and a total of ฿3,210. Three lines of ฿350 at 7% included are VAT ฿68.69 on the invoice (line by line it would have been ฿68.70).
+- **The invoice breakdown follows the style.** Prices include VAT: lines at the prices the customer sees, their sum as the total, then "includes VAT 7%: ฿196.26" for each rate. VAT on top: lines at net prices, a subtotal, "VAT 7%: ฿210" for each rate, then the total. A part that is not taxable is in the total and in no VAT line.
+- **Discounts reduce the VAT base** before VAT is worked out. A discount on the whole order is shared out over its lines in proportion to their amounts, the leftover minor units going to the largest remainders so the shares add up exactly (฿200 over ฿1,400 and ฿300: ฿164.71 and ฿35.29). That split is what puts the right share of the discount into each rate group when the lines are at different rates.
+- **Deposits are never taxed** and sit outside the VAT base, shown separately on the order.
+- **One invoice per payment.** Each payment gets its own tax invoice, so each billing event (the first booking, each extension, each swap extra) is its own invoice. VAT is worked out over the lines billed together, and an earlier invoice is never worked out again. `quote()` is called once per invoice.
+- **What an invoice keeps:** for each rate, the rate itself, the profile's name, the taxable amount, the VAT and the style it was worked out in, so a later change to a profile or to the shop's setting never alters an old invoice. Each line keeps its rate.
+- **Reports.** Net revenue for one bike is a derived figure: its lines' share of an invoice's net. Shares can differ from the invoice by a minor unit, so reports total from invoices, never from lines (Phase 10).
 - Not covered: Thai withholding tax on business customers.
+
+**A swap credit and the VAT base** (the accountant's rule; decision 27). This rule lives in one place: the function `creditVatBases` in `@mango/core` `quote`, and this paragraph.
+
+- **VAT follows the money actually coming into or going out of the company.** When a bike is swapped, the money already paid for the unused part of the old bike was taxed on the first invoice. It is carried to the new invoice as a credit, and **the credit reduces the VAT base of the new invoice**: VAT there is on what the customer pays now.
+- The owner's example: the new bike's remainder is ฿1,800, the credit from the old bike is ฿1,500, the customer pays ฿300. VAT on the new invoice is on ฿300 (฿19.63 at 7% included). Across both invoices it is ฿196.26 + ฿19.63 = ฿215.89, which is the VAT on the ฿3,300 paid in all. Pinned by a test.
+- **A credit is not a discount.** The new period's line keeps its own price; the credit is a separate amount beside it, set against the rate group it was taxed in.
+- **A credit stays a credit and needs no credit note. Only a refund, money leaving the company, creates a credit note** (§9.19).
+- A credit larger than the amount it is set against is refused by the pricer. What happens to a negative amount (a cheaper bike, an early return) is the shop's choice of credit, refund or no charge, made before the pricer is called (Phase 3).
 
 ### 9.8 Coupons (requirement 7)
 
@@ -1017,15 +1034,16 @@ No coupon table, code, screen or column. Deciding whether a coupon applies (code
 | 4. Included quantity | An extra's free units (`product_extras`) | Phase 2 |
 | 5. Season rules | §9.5 | D |
 | 6. Discounts | §9.8; later the returning-customer discount, and a staff price on a billed period (§9.19) | D (the step), Phase 2 and 3 (what feeds it) |
-| 7. Tax | §9.7 | D |
+| 7. VAT | Once per invoice and rate group, on the amounts after discounts and credits (§9.7) | D |
 | 8. Deposit | §9.6, beside the price, never part of it | D (the number), Phase 3 (charging it) |
 
 - **Its data** comes from one database function, `pricing_inputs(product ids)`, which returns rows under RLS and does no arithmetic. `marketplace_api` gets a sibling at 3M.
 - **Its callers:** the Pricing tab's "Check a price", the Products list's price column, Phase 2's availability-and-price answer, the order editor, the shop's booking page, the marketplace's adapter.
 - **Two more pure functions beside `quote()`**, in the same module and on the same rounding rules: the price of a continuation (an extension) and a swap's amounts (§9.19). They call the same unit-price lookup; nothing else prices a rental.
 - **No price is not zero.** A product with no way of pricing answers "can't be priced" (the contract's `getQuote` → `null`).
-- **A price is a snapshot.** The pricer reads today's prices; an order stores what it was quoted, line by line.
-- **One rounding per step, on the line after quantity.** The steps that divide or take a percentage: a multiplier, a season rule, a swap's shares (§9.19), a percentage discount, sharing out an order discount, tax, a percentage deposit.
+- **A price is a snapshot.** The pricer reads today's prices; an order stores what it was quoted, line by line, and each invoice its VAT.
+- **One call is one invoice:** the lines billed together (§9.7).
+- **One rounding per step, on the line after quantity.** The steps that divide or take a percentage: a multiplier, a season rule, a swap's shares (§9.19), a percentage discount, sharing out an order discount, VAT (once per rate group), a percentage deposit.
 - **The database stores and checks; it does not calculate.** `save_price_template` receives the values the editor produced and checks shape only.
 - **Numbers in code.** The database is `bigint`. Inside `quote()` arithmetic is JavaScript `bigint`; at the edges a value that is not a safe integer is refused. No float anywhere.
 - **`fillDays` and `priceForDays`** in `@mango/core` are today whole baht with a hard-coded ฿10. They are made currency-neutral (integers and a step passed in); the marketplace keeps calling them with whole baht and 10 until 3M, and a test pins that its numbers do not move.
@@ -1130,13 +1148,13 @@ Shop-level changes (rounding step, deposit choice, tax profiles, the coupons swi
 | Open item 14 | The rental-period maths (continuation, swap, early return) goes into stage D as pure functions with tests |
 | Charge rules | After Phase 3 and before 3M. The worked examples of §9.17 are not confirmed until then |
 | Early return | Phase 3: a swap to nothing, with the same credit, refund and no-charge settings |
+| Q7, and open item 5 | **Answered by the accountant, through Korn (decision 27).** VAT is worked out once per invoice and rate group, not per line; one invoice per payment; a swap credit reduces the VAT base of the new invoice; a credit note only for a refund |
 | Q16 to Q18 | Multipliers; exact amounts, satang included; four lists only. Mark supplies every daily amount, the base prices and which product is on which list before the last build stage; the maths stages don't wait for it |
 
-**Still open.** The design is approved, so each of these goes ahead as recommended unless Mark says otherwise. Item 5 is with Korn and blocks nothing: if the answer is (b), only the tax step inside `quote()` changes (stage D2); the credit-note half touches Phase 3's documents only. Item 11 is used by stage D3; item 6 by stage D4.
+**Still open.** The design is approved, so each of these goes ahead as recommended unless Mark says otherwise. There is no open tax question (decision 27). Item 11 is used by stage D3; item 6 by stage D4.
 
 | # | Question | Options | Recommended |
 | --- | --- | --- | --- |
-| **5** | **Tax per line on a Thai tax invoice** (Q7) | (a) per line, the order shows the sum. (b) on the order total, shared out over the lines | (a). **With Korn** (decision 26), together with how a swap's credit line and a refund appear (credit note). Neither blocks the maths stages |
 | **6** | **Which type gets which way of pricing** | Vehicle: by rental length, flat fee. Rental gear: by rental length, flat fee, fixed. Service or extra: flat fee, fixed, free. Item for sale: fixed only | As listed. "Free" is for services and extras only, as Mark put it; a helmet that comes with the bike is an included quantity (Phase 2), not a free product |
 | **7** | **Replacement value for gear; `product_extras`** | The field now or with damage charges (Phase 5). `product_extras` with the order editor (Phase 2) or now | The field now; `product_extras` in Phase 2 |
 | **8** | **Does minimum notice bind staff?** | (a) online channels only. (b) staff too, with a manager's override | (a) |
@@ -1170,7 +1188,7 @@ Shop-level changes (rounding step, deposit choice, tax profiles, the coupons swi
 12. **§3.5's order line** had one price snapshot. A period needs two amounts (list and charged), the rental it belongs to, and the price list it was worked out from, so a swap can take its shares from the same numbers.
 13. **A staff discount is not a coupon.** It goes through the same discount step but is not stopped by the "Accept coupons" switch.
 14. **Profit per vehicle** (spec): a swap's credit moves money already paid from the first bike to the second. Reports must count each period's revenue net of that, or bike A is credited with a month it worked two weeks of.
-15. **Tax documents:** a swap credit or a refund is a negative line. On a Thai tax invoice that is a credit note; with open item 5 for Korn.
+15. **Tax documents.** Settled by decision 27: a credit applied toward the customer's next payment stays a credit and needs no credit note; a refund creates one. The first version's per-line tax, and the per-line tax snapshot of §3.3 and §3.4, are gone: VAT is per invoice and rate group.
 
 **Carried over from the second version, unchanged:** multipliers reverse decision 15; satang in customer prices while the marketplace is in whole baht until 3M; hourly prices beside the contract's day rule (Moto Mangos keeps days only); four deposit choices in place of decision 14 alone, with order and customer overrides that have no screen until orders and customers exist; four lists loaded in stage D ahead of the Phase 10 importer; the coupons switch visible before it does anything.
 
@@ -1325,9 +1343,10 @@ extra to pay      = B's remainder − paid remainder
 - **When the old period was discounted** (฿2,500 paid against ฿3,000): paid remainder = 2,500 × (1,500 ÷ 3,000) = ฿1,250. **"Keep the customer's discount"**, on by default, scales B's remainder by paid ÷ list: 1,800 × 2,500 ÷ 3,000 = ฿1,500, so the extra is **฿250**. Off, it is 1,800 − 1,250 = **฿550**. The screen shows both amounts before staff confirm.
 - **A cheaper bike** gives a negative amount. The owner switches on any of: **credit** (kept on the rental and taken off its next extension), **refund** (recorded as a refund; no payment gateway is called) and **no charge**.
 - **How it is recorded.** The new period's list price is B's remainder and its charged price is the same, or the scaled amount when the discount is kept. The paid remainder is a separate credit line beside it ("Credit from Honda Click 125i, 14 unused days: −฿1,500"). The closed period keeps the amounts it was billed; only its end date changes. Each bike's revenue is then its own.
+- **Documents and VAT** (decision 27). The swap extra is a new payment, so it is a new tax invoice: the new period's line, the credit beside it, and VAT on what is paid now (§9.7). The first invoice is not touched. **A swap credit stays a credit: no credit note.** When the shop's choice for a cheaper bike is a **refund**, money leaves the company, and **the refund creates a credit note**; the VAT on it is worked out the same way, once, on the amount refunded.
 - Every division rounds once, half up to one minor unit, as elsewhere.
 
-**Early return** (decision 26) is a swap to nothing. The period closes at the return time and the bike is released then; no new period opens. The unused part is the paid remainder of the swap formula (the amount paid × the unused share of the bike's list price for the period), and what happens to it follows the same shop settings as a swap to a cheaper bike: credit, refund or no charge. It runs through the same atomic step, with no new bike to block.
+**Early return** (decision 26) is a swap to nothing. The period closes at the return time and the bike is released then; no new period opens. The unused part is the paid remainder of the swap formula (the amount paid × the unused share of the bike's list price for the period), and what happens to it follows the same shop settings as a swap to a cheaper bike: credit, refund or no charge. It runs through the same atomic step, with no new bike to block. For documents it follows the same rule as a swap: an unused part kept as a credit needs no credit note; one paid back as a refund creates a credit note; "no charge" creates neither.
 
 **Shop settings for swaps and early returns** (Phase 3, on `pricing_settings`): which of the four options are offered and which is the default; "Keep the customer's discount" on or off by default; which of credit, refund and no charge are allowed for a cheaper bike. Owners and managers.
 
