@@ -61,6 +61,7 @@ export function ActionForm({
   destructive,
   quiet,
   showSubmit = true,
+  submitDisabled = false,
   onOk,
   className,
   offers,
@@ -81,6 +82,8 @@ export function ActionForm({
   quiet?: boolean;
   /** False hides the button, e.g. until a value has changed. */
   showSubmit?: boolean;
+  /** True keeps the button from being pressed, e.g. while a value is wrong. */
+  submitDisabled?: boolean;
   /** Called once each time the action answers ok, e.g. to close a dialog. */
   onOk?: () => void;
   className?: string;
@@ -151,7 +154,7 @@ export function ActionForm({
                 destructive === "solid" &&
                   "bg-destructive text-white hover:bg-destructive/85 dark:text-zinc-950",
               )}
-              disabled={pending}
+              disabled={pending || submitDisabled}
             >
               {pending
                 ? (pendingLabel ?? tCommon("saving"))

@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import en from "../messages/en.json";
 import th from "../messages/th.json";
 import { parseCsv } from "./csv";
-import { hoursToMinutes, listingSchema, minutesToHours } from "./fleet";
+import { hoursToMinutes, minutesToHours } from "./fleet";
 import {
   importColumns,
   importTemplate,
@@ -452,30 +452,6 @@ describe("no make or model on the platform's screens", () => {
     expect(stray).toEqual([]);
   });
 
-  it("the listing settings take whole counts", () => {
-    expect(
-      listingSchema.safeParse({
-        listed: "on",
-        instant_units: "2",
-        request_units: "",
-        ready_now: "1",
-      }).data,
-    ).toEqual({
-      listed: true,
-      instant_units: 2,
-      request_units: 0,
-      ready_now: 1,
-    });
-    expect(
-      listingSchema.safeParse({
-        listed: undefined,
-        instant_units: "-1",
-        request_units: "0",
-        ready_now: "0",
-      }).success,
-    ).toBe(false);
-  });
-
   it("the Moto Mangos panel's texts are the owner's", () => {
     const mm = en.Fleet.motoMangos;
     expect(mm.submitTitle).toBe("List it on Moto Mangos");
@@ -484,7 +460,7 @@ describe("no make or model on the platform's screens", () => {
       "Don’t see your bike above? Send us the details and we’ll get it added",
     );
     expect(mm.bikeYear).toBe("Year of your bike");
-    expect(mm.useChosen).toBe("Select");
+    expect(mm.useChosen).toBe("Connect");
     expect(mm.quantitiesTitle).toBe("Set bike quantities per booking type");
     expect(mm.instantHelp).toBe(
       "Future bookings that receive instant approval",

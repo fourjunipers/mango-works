@@ -68,15 +68,6 @@ const optionalInt = (min: number, max: number, message = "invalidNumber") =>
       .nullable(),
   );
 
-const count = z.preprocess(
-  (v) => (blankToNull(v) === null ? 0 : v),
-  z.coerce
-    .number("invalidNumber")
-    .int("invalidNumber")
-    .min(0, "invalidNumber")
-    .max(9999, "invalidNumber"),
-);
-
 const checkbox = z.preprocess((v) => v === "on" || v === "true", z.boolean());
 
 const uuid = z.uuid("required");
@@ -128,16 +119,6 @@ export function minutesToHours(minutes: number | null): string {
   if (minutes === null) return "";
   return String(Math.round((minutes / 60) * 100) / 100);
 }
-
-/** The Moto Mangos listing settings on a product's panel. */
-export const listingSchema = z
-  .object({
-    listed: checkbox,
-    instant_units: count,
-    request_units: count,
-    ready_now: count,
-  })
-  .strict();
 
 /** A bike's details. Its status and odometer have their own controls. */
 export const unitSchema = z

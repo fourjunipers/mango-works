@@ -252,7 +252,7 @@
     "blockOverlap": "This vehicle is already blocked for part of that time. Pick other times, or end the other block first.",
     "unit_has_future_blocks": "This vehicle still has a block that ends in the future. End or remove it first.",
     "unit_not_in_fleet": "This vehicle has been sold or retired, so it can't be blocked.",
-    "more_units_than_active": "Instant plus Request units, and Ready now, can't be more than the model's active vehicles.",
+    "more_units_than_active": "Total units listed on Moto Mangos can not exceed the number of units in your inventory",
     "catalog_entry_not_usable": "Choose a catalog entry from the list.",
     "only_owner_or_manager": "Only an owner or manager can change that.",
     "currency_locked": "The currency can't change once prices have been saved in it.",
@@ -300,7 +300,9 @@
     "labelExists": "Another unit of this product already has that label.",
     "not_on_list": "This product isn’t on the Moto Mangos list.",
     "same_model": "It is already on that one. Choose a different one.",
-    "request_pending": "Its request is still waiting for review."
+    "request_pending": "Its request is still waiting for review.",
+    "more_walk_ins_than_active": "Walk-ins can not exceed the number of units in your inventory",
+    "leadTimeRange": "Enter whole hours from 0 to 720, or leave it empty."
   },
   "Fleet": {
     "title": "Fleet",
@@ -571,7 +573,7 @@
       "nextHelp": "Fix the details and send it for review again, or switch to a model that is already on the list.",
       "editAgain": "Edit and send again",
       "chooseInstead": "Choose a model from the list instead",
-      "useChosen": "Select",
+      "useChosen": "Connect",
       "submitHelp": "Give its make, model, engine size, transmission and year: all five are needed. We review it first because it is new to our list.",
       "selectFromList": "Select your make and model from the list",
       "notInList": "Don’t see your bike above? Send us the details and we’ll get it added",
@@ -589,7 +591,12 @@
       "disconnect": "Disconnect",
       "disconnectHelp": "Takes this product off Moto Mangos: the listing is switched off and its place on the list is cleared.",
       "disconnectConfirm": "Disconnect this product from Moto Mangos? Its listing is switched off and its list entry is cleared. Bookings already made stay as they are.",
-      "upcomingBookings": "{count, plural, one {# upcoming booking on this product’s vehicles stays} other {# upcoming bookings on this product’s vehicles stay}} exactly as booked if you change the model or disconnect."
+      "upcomingBookings": "{count, plural, one {# upcoming booking on this product’s vehicles stays} other {# upcoming bookings on this product’s vehicles stay}} exactly as booked if you change the model or disconnect.",
+      "switchOn": "On. The switch saves as soon as you press it.",
+      "switchOff": "Off. The switch saves as soon as you press it.",
+      "offering": "Offering {count} of {total, plural, one {# bike} other {# bikes}} for advance booking",
+      "leadTime": "Lead time (hours)",
+      "leadTimeHelp": "How many hours ahead a booking must be made, from 0 to 720. Leave it empty for none."
     },
     "editModel": "Edit product",
     "addUnitRow": "Add vehicle",
@@ -674,7 +681,8 @@
       "details": "Details",
       "units": "Units",
       "history": "History",
-      "stock": "Stock"
+      "stock": "Stock",
+      "motoMangos": "Moto Mangos"
     },
     "added": "Product saved. Add its vehicles on the Units tab.",
     "readOnly": "You can view this product but not change it.",
@@ -715,7 +723,12 @@
         "unit_repaired": "{who} marked {what} back in use",
         "unit_lost": "{who} marked {what} lost",
         "unit_found": "{who} marked {what} found, back in use",
-        "unit_written_off": "{who} removed {what} from stock as lost"
+        "unit_written_off": "{who} removed {what} from stock as lost",
+        "listing_on": "{who} switched Moto Mangos on",
+        "listing_off": "{who} switched Moto Mangos off",
+        "lead_time_change": "{who} changed lead time from {from} to {to, plural, one {# hour} other {# hours}}",
+        "lead_time_set": "{who} set lead time to {to, plural, one {# hour} other {# hours}}",
+        "lead_time_clear": "{who} removed the lead time (it was {from, plural, one {# hour} other {# hours}})"
       },
       "change": "{field}: {from} → {to}",
       "detail": {
@@ -747,7 +760,8 @@
         "quantity": "Quantity",
         "label": "Label",
         "happened_on": "Date it happened",
-        "expected_back": "Expected back"
+        "expected_back": "Expected back",
+        "lead_time_hours": "Lead time (hours)"
       },
       "introGeneral": "Who changed what on this product, newest first.",
       "unlabelled": "without a label"

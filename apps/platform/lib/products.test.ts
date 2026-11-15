@@ -219,7 +219,7 @@ describe("a product's history", () => {
     ).toEqual([]);
   });
 
-  it("reads a Moto Mangos listing's rows as the product's own, in the words used before stage C", () => {
+  it("reads a Moto Mangos listing's rows as the product's own, leaving the switch to its own event", () => {
     const listing = (extra: Partial<AuditRow>) =>
       row({ entity: "product_listings", ...extra });
     const entries = buildHistory([
@@ -255,34 +255,123 @@ describe("a product's history", () => {
       {
         entity: "products",
         action: "update",
-        changes: [
-          { field: "marketplace_listed", from: false, to: true },
-          { field: "instant_units", from: 0, to: 2 },
-        ],
+        changes: [{ field: "instant_units", from: 0, to: 2 }],
       },
       {
         entity: "products",
         action: "update",
+        changes: [{ field: "ready_now", from: 0, to: 1 }],
+      },
+    ]);
+  });
+
+  it("says the switch once, in its own words: listing_on and listing_off", () => {
+    const entries = buildHistory([
+      row({ id: 1, action: "listing_on", after: { enabled: true } }),
+      row({
+        id: 2,
+        entity: "product_listings",
+        before: { enabled: false },
+        after: { enabled: true },
+      }),
+      row({
+        id: 3,
+        action: "listing_off",
+        after: { enabled: false },
+        at: "2026-11-13T03:00:00Z",
+      }),
+      row({
+        id: 4,
+        entity: "product_listings",
+        before: { enabled: true },
+        after: { enabled: false },
+        at: "2026-11-13T03:00:00Z",
+      }),
+    ]);
+    expect(entries.map((e) => [e.id, e.action])).toEqual([
+      [1, "listing_on"],
+      [3, "listing_off"],
+    ]);
+  });
+
+  it("gives a lead time change on its own one line, and lists it with other settings", () => {
+    const listing = (extra: Partial<AuditRow>) =>
+      row({ entity: "product_listings", ...extra });
+    const entries = buildHistory([
+      listing({
+        id: 1,
+        before: { lead_time_hours: 12 },
+        after: { lead_time_hours: 24 },
+      }),
+      listing({
+        id: 2,
+        before: { lead_time_hours: null },
+        after: { lead_time_hours: 6 },
+      }),
+      listing({
+        id: 3,
+        before: { lead_time_hours: 6 },
+        after: { lead_time_hours: null },
+      }),
+      listing({
+        id: 4,
+        before: { instant_units: 1, lead_time_hours: null },
+        after: { instant_units: 2, lead_time_hours: 0 },
+      }),
+    ]);
+    expect(entries).toMatchObject([
+      { id: 1, action: "lead_time_change", leadTime: { from: 12, to: 24 } },
+      { id: 2, action: "lead_time_set", leadTime: { from: null, to: 6 } },
+      { id: 3, action: "lead_time_clear", leadTime: { from: 6, to: null } },
+      {
+        id: 4,
+        action: "update",
         changes: [
-          { field: "marketplace_listed", from: true, to: false },
-          { field: "ready_now", from: 0, to: 1 },
+          { field: "instant_units", from: 1, to: 2 },
+          { field: "lead_time_hours", from: null, to: 0 },
         ],
       },
     ]);
   });
 
-  it("says the switch once: the listing_on and listing_off events are left to the row's own line", () => {
+  it("one action, one line: a retire or a disconnect says the listing went off", () => {
+    const retired = "2026-11-13T04:00:00Z";
+    const cut = "2026-11-13T05:00:00Z";
     const entries = buildHistory([
-      row({ id: 1, action: "listing_on", after: { enabled: true } }),
-      row({ id: 2, action: "listing_off", after: { enabled: false } }),
+      // Retire: the product's change, the listing's row and listing_off,
+      // all in one moment.
       row({
-        id: 3,
-        entity: "product_listings",
-        before: { enabled: false },
-        after: { enabled: true },
+        id: 1,
+        before: { retired_at: null },
+        after: { retired_at: retired },
+        at: retired,
       }),
+      row({
+        id: 2,
+        entity: "product_listings",
+        before: { enabled: true, instant_units: 2 },
+        after: { enabled: false, instant_units: 0 },
+        at: retired,
+      }),
+      row({ id: 3, action: "listing_off", at: retired }),
+      // Disconnect: its own event, the listing's row and listing_off.
+      row({ id: 4, action: "listing_disconnect", at: cut }),
+      row({
+        id: 5,
+        entity: "product_listings",
+        before: { enabled: true, request_units: 1 },
+        after: { enabled: false, request_units: 0 },
+        at: cut,
+      }),
+      row({ id: 6, action: "listing_off", at: cut }),
+      // Another product's switch at the same moment is its own story.
+      row({ id: 7, entity_id: "q", action: "listing_off", at: cut }),
     ]);
-    expect(entries.map((e) => e.id)).toEqual([3]);
+    expect(entries.map((e) => [e.id, e.action])).toEqual([
+      [1, "update"],
+      [4, "listing_disconnect"],
+      [7, "listing_off"],
+    ]);
   });
 
   it("leaves out a listing's row that says nothing: made with nothing set, or gone with its product", () => {
@@ -362,10 +451,18 @@ describe("menu and wording", () => {
   });
 
   it("no screen text says make & model, inventory or Manually enter any more", () => {
+    // The owner's own sentences for the Moto Mangos counts (15 Nov 2026)
+    // say "your inventory": the only two that may.
+    const ownersWords = new Set([
+      "more_units_than_active",
+      "more_walk_ins_than_active",
+    ]);
     const texts = [
       ...flat(en.Fleet),
       ...flat(en.Products),
-      ...flat(en.FormErrors),
+      ...flat(en.FormErrors).filter(
+        (line) => !ownersWords.has(line.split(": ")[0]),
+      ),
     ]
       .map((line) => line.slice(line.indexOf(": ") + 2))
       .join("\n");

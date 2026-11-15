@@ -13,7 +13,6 @@ import {
   fieldErrors,
   hoursToMinutes,
   isIsoDate,
-  listingSchema,
   modelSchema,
   parseModelChoice,
   renewalSchema,
@@ -800,46 +799,6 @@ export async function submitModelToCatalog(
     p_model: parsed.data.model,
     p_cc: parsed.data.cc,
     p_transmission: parsed.data.transmission,
-  });
-  if (error) return { errors: { form: dbErrorKey(error) } };
-  refresh(slug);
-  return { ok: true };
-}
-
-/**
- * The Moto Mangos listing switch and settings: listed or not, and how many
- * units confirm instantly, need the shop's OK, or stand ready for walk-ins.
- * The database lets a product be listed only on an approved list entry, and
- * keeps the counts within its active vehicles.
- */
-export async function saveListing(
-  _prev: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const { slug, tenant, role, supabase } = await context(formData);
-  if (!canManageFleet(role)) return notAllowed;
-  const raw = Object.fromEntries(formData);
-  const parsed = listingSchema.safeParse({
-    listed: raw.listed,
-    instant_units: raw.instant_units,
-    request_units: raw.request_units,
-    ready_now: raw.ready_now,
-  });
-  if (!parsed.success) return { errors: fieldErrors(parsed.error) };
-  const { listed, ...counts } = parsed.data;
-  // Only an owner or manager of this shop gets this far; the function
-  // checks the same again, and that the product is theirs.
-  const { data: product } = await supabase
-    .from("products")
-    .select("id")
-    .eq("tenant_id", tenant.id)
-    .eq("id", field(formData, "id"))
-    .maybeSingle();
-  if (!product) return { errors: { form: dbErrorKey(null) } };
-  // The database sets the ready-updated time itself.
-  const { error } = await supabase.rpc("save_listing", {
-    p_product_id: product.id,
-    p_settings: { enabled: listed, ...counts },
   });
   if (error) return { errors: { form: dbErrorKey(error) } };
   refresh(slug);
