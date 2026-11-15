@@ -17,7 +17,14 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 The fourth build stage of pricing, of seven (`docs/products-redesign.md` §9.2, "As built in stage D4"; decision 29). **The first with a migration.** Nothing on any screen changes in this stage. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
 
-**Applied locally only.** The migration is not on staging and not on live. By the owner's instruction it goes to staging at the same time as the merge, and to live only from `main`, by the runbook. Staging stays at 58 of 58 and live at 53 of 53 until then; this makes 59.
+**On staging since 15 Nov 2026; not on live.** Staging records 59 of 59. Live stays at 53 of 53 and gets this with the five before it only from `main`, by the runbook.
+
+- **Pushed** on the owner's instruction on 15 Nov 2026 at 09:34:08 UTC (16:34 in Bangkok), finished 09:34:14 UTC, from the PR's branch at `a4ba484` with `supabase db push --db-url`, once CI was green on every check. The dry run before it listed exactly one pending migration (`20261115000100`). The PR was merged straight after (`0046249`), as the owner had arranged, because `main`'s deployment reads the dropped deposit column until then.
+- **Before and after, read-only:** 3 shops, 32 products, 205 vehicles and 3,243 audit rows, the same on both sides. Staging had no deposit on any product, so the move carried nothing and no shop got a settings row. After: the seven tables with RLS on and one policy each, read-only for a signed-in person and nothing for a signed-out one, the seven functions, and no deposit column on products.
+- **The pages' own reads, run on staging as the demo owner and the demo mechanic** (read-only, rolled back): the shop, its 23 products, the product page's read for all 17 vehicles, the deposit, units and History for the owner; products and no pricing row for the mechanic.
+- **Browser tests against staging.** They could not sign in at first: staging refused the demo password, which turned out to be recorded nowhere. The ten demo users were reset to `DEMO_PASSWORD` through the auth admin API, with no full re-seed (`docs/RUNBOOK-GO-LIVE-PLATFORM.md` › Staging has where the password comes from and what that means for the demo data). Then, on the PR's deploy preview, at 375 px and 1280 px: `foundations.spec.ts` (22), `products.spec.ts` (10) and `products-stage-d4.spec.ts` (2), 34 of 34 passed. On `mango-works-platform.netlify.app` after the merge, desktop width: `products-stage-d4.spec.ts` and `products.spec.ts`, 6 of 6 passed. The deposit round trip (typed, saved, reloaded, changed, in the History, cleared) is in those. None failed, so nothing had to be read as drift from the seed.
+- **Left on staging by the tests:** the demo shop BSR's deposit setting is now "per product" (its first product deposit was saved by the test, which then removed the product). No pricing row, no product and no deposit is left.
+- **Not run against staging:** the rest of the browser suite (fleet, gear stock, lists, drag, scan, settings). CI ran all of it on a clean local database.
 
 **What changed**
 
