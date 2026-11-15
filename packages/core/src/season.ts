@@ -139,7 +139,39 @@ export function chargedPeriodStarts(
     case "fixed":
     case "free":
       return null;
+    case "continuation": {
+      // A later period of a rental has only its own charged periods: the
+      // whole rental's, less the ones already billed.
+      const whole = chargedPeriodStarts(basis.whole, {
+        ...span,
+        start: basis.rentalStart,
+      });
+      if (whole === null) return null;
+      return whole.slice(periodsBilled(basis.whole, basis.soFar));
+    }
   }
+}
+
+/** How many of the whole rental's charged periods were in the part already billed. */
+function periodsBilled(whole: UnitPrice, soFar: UnitPrice): number {
+  const count = (unit: UnitPrice): number => {
+    const basis = unit.basis;
+    switch (basis.kind) {
+      case "hours":
+        return basis.hours;
+      case "list":
+      case "months":
+        return basis.days;
+      case "periods":
+        return basis.count;
+      default:
+        return 0;
+    }
+  };
+  // Under a day at an hourly price is one started day once the rental is
+  // counted in days.
+  if (soFar.basis.kind === "hours" && whole.basis.kind !== "hours") return 1;
+  return count(soFar);
 }
 
 /**

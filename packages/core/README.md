@@ -12,7 +12,8 @@ import { formatBaht } from "@mango/core/money";
 Pricing for the platform (docs/products-redesign.md §9) is currency-neutral and
 in `bigint` minor units: `price-list` (quick entry, the two kinds of list),
 `rental-price` (the list price of one unit for one rental), `season`, `quote`
-(**the one pricer**: seasons, discounts, VAT per invoice, deposits) and `zoned`
+(**the one pricer**: seasons, discounts, VAT per invoice, deposits),
+`rental-period` (extending, swapping and returning early) and `zoned`
 (wall-clock time in any time zone). `pricing` and `money` are the
 marketplace's whole-baht versions and stay until 3M.
 

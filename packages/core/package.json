@@ -13,6 +13,7 @@
     "./pricing": "./src/pricing.ts",
     "./quote": "./src/quote.ts",
     "./rental-days": "./src/rental-days.ts",
+    "./rental-period": "./src/rental-period.ts",
     "./rental-price": "./src/rental-price.ts",
     "./season": "./src/season.ts",
     "./time": "./src/time.ts",
