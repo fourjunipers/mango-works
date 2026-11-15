@@ -450,7 +450,7 @@ test("no Moto Mangos tab for a car, a helmet, or staff", async ({
 
 test("old #moto-mangos links, the lists' mango and the back link land on the tab", async ({
   page,
-}) => {
+}, info) => {
   await signIn(page, demo.bsrOwner);
   await page.goto("/bsr/products?q=Honda%20PCX%20160");
   const row = page
@@ -494,6 +494,18 @@ test("old #moto-mangos links, the lists' mango and the back link land on the tab
   await expect(page).toHaveURL(
     /\/bsr\/products\?q=Honda(%20|\+)PCX(%20|\+)160$/,
   );
+
+  // Reorder mode: the mango is no link on either list, and on a phone it
+  // isn't shown at all (the drag handle and arrows take its place).
+  for (const list of ["products", "fleet"]) {
+    await page.goto(`/bsr/${list}?reorder=1`);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.locator("[data-mango-link]")).toHaveCount(0);
+    const mangos = page.locator("[data-mango]");
+    if (info.project.name === "phone")
+      for (const one of await mangos.all()) await expect(one).toBeHidden();
+    else await expect(mangos.first()).toBeVisible();
+  }
 
   // From Fleet: back to Fleet.
   await page.goto("/bsr/fleet?q=Honda%20PCX%20160");
