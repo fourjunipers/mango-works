@@ -206,3 +206,16 @@ export function seasonAdjustments(
   }
   return adjustments;
 }
+
+/**
+ * An adjustment as a direction and a size, for showing it ("− ฿120"): a
+ * screen never negates an amount itself.
+ */
+export function adjustmentParts(amount: bigint): {
+  direction: "decrease" | "increase";
+  size: bigint;
+} {
+  return amount < BigInt(0)
+    ? { direction: "decrease", size: -amount }
+    : { direction: "increase", size: amount };
+}

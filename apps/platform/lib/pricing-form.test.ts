@@ -14,8 +14,11 @@ import {
   listNameError,
   methodsFor,
   pricingPayload,
+  readListDraft,
+  readPricingDraft,
   sameAsSaved,
   sameEveryDayDraft,
+  suggestedSampleBase,
   suggestedStep,
   taxChoice,
   withBox,
@@ -589,5 +592,47 @@ describe("a saved list reads as it is stored (filled days are not filled again)"
     // With no saved list to compare with, the days always go.
     const first = pricingPayload(draft, { ...ctx, savedOwn: null });
     expect(first.ok && "own_list" in first.payload).toBe(true);
+  });
+});
+
+describe("reading a posted draft", () => {
+  const list = { boxes: emptyBoxes(), manual: { 3: "350" } };
+  const draft = {
+    method: "tiered",
+    flatAmount: "",
+    flatPeriod: "day",
+    fixedAmount: "",
+    source: "own",
+    sharedId: "",
+    baseAmount: "",
+    list,
+    longStay: "",
+    deposit: "",
+    tax: "default",
+    replacement: "",
+  };
+  it("accepts what the form sends", () => {
+    expect(readListDraft(list)).toEqual(list);
+    expect(readPricingDraft(draft)).toEqual(draft);
+  });
+  it("refuses a hand-made draft instead of throwing", () => {
+    expect(readListDraft({ ...list, manual: { 31: "1" } })).toBeNull();
+    expect(readListDraft({ ...list, stored: { 2: 100 } })).toBeNull();
+    expect(readListDraft({ manual: {} })).toBeNull();
+    expect(readPricingDraft({ ...draft, list: undefined })).toBeNull();
+    expect(readPricingDraft({ ...draft, method: "cheap" })).toBeNull();
+    expect(readPricingDraft({ ...draft, deposit: 5 })).toBeNull();
+    expect(readPricingDraft(null)).toBeNull();
+    expect(readPricingDraft([])).toBeNull();
+  });
+});
+
+describe("suggestedStep", () => {
+  it("comes from the per-currency table", () => {
+    expect(suggestedStep("THB")).toBe(BigInt(1000));
+    expect(suggestedStep("VND")).toBe(BigInt(1));
+    expect(suggestedStep("USD")).toBe(BigInt(100));
+    expect(suggestedSampleBase("THB")).toBe("100");
+    expect(suggestedSampleBase("VND")).toBe("10");
   });
 });

@@ -7,6 +7,7 @@
   "exports": {
     "./availability": "./src/availability.ts",
     "./closures": "./src/closures.ts",
+    "./currency": "./src/currency.ts",
     "./listing": "./src/listing.ts",
     "./money": "./src/money.ts",
     "./price-list": "./src/price-list.ts",

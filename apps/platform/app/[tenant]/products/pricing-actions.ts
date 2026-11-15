@@ -9,11 +9,11 @@ import {
   daysPayload,
   listNameError,
   pricingPayload,
+  readListDraft,
+  readPricingDraft,
   sameAsSaved,
   suggestedStep,
-  type ListDraft,
   type ListKind,
-  type PricingDraft,
   type ProductType,
 } from "@/lib/pricing-form";
 import { getProductPricingExtras, getSharedList } from "@/lib/pricing-data";
@@ -91,9 +91,9 @@ async function stepOf(
     : suggestedStep(currency);
 }
 
-function parseJson<T>(text: string): T | null {
+function parseJson(text: string): unknown {
   try {
-    return JSON.parse(text) as T;
+    return JSON.parse(text);
   } catch {
     return null;
   }
@@ -117,7 +117,7 @@ export async function saveProductPricing(
   const { slug, tenant, role, supabase } = await context(formData);
   if (!canPricing(role, "write")) return notAllowed;
   const productId = field(formData, "productId");
-  const draft = parseJson<PricingDraft>(field(formData, "draft"));
+  const draft = readPricingDraft(parseJson(field(formData, "draft")));
   if (!productId || !draft) return { errors: { form: "saveFailed" } };
 
   const [product, settings, lists, profiles, extras] = await Promise.all([
@@ -200,7 +200,7 @@ export async function savePriceList(
   const kind = field(formData, "kind") as ListKind;
   if (kind !== "amounts" && kind !== "multipliers")
     return { errors: { kind: "required" } };
-  const draft = parseJson<ListDraft>(field(formData, "list"));
+  const draft = readListDraft(parseJson(field(formData, "list")));
   if (!draft) return { errors: { form: "saveFailed" } };
   const step =
     kind === "multipliers"

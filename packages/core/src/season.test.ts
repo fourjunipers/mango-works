@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fillPriceList, type ResolvedList } from "./price-list";
 import { unitPrice, type Pricing, type RentalSpan } from "./rental-price";
 import {
+  adjustmentParts,
   chargedPeriodStarts,
   seasonAdjustments,
   type SeasonRule,
@@ -328,5 +329,20 @@ describe("what a rule must be", () => {
         endsOn: "2027-04-01",
       }),
     ).toThrow(/before it starts/);
+  });
+});
+
+describe("adjustmentParts", () => {
+  it("gives a decrease and its size", () => {
+    expect(adjustmentParts(BigInt(-12000))).toEqual({
+      direction: "decrease",
+      size: BigInt(12000),
+    });
+  });
+  it("gives an increase and its size", () => {
+    expect(adjustmentParts(BigInt(500))).toEqual({
+      direction: "increase",
+      size: BigInt(500),
+    });
   });
 });

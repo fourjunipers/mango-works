@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { ActionForm, useFieldError } from "@/components/action-form";
 import { Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
-import { formatMinor, multiplierText } from "@/lib/money";
+import { formatMinor, multiplierText, parseMinorUnits } from "@/lib/money";
 import {
   boxDay,
   boxes,
@@ -26,6 +26,8 @@ import {
   type ProductType,
 } from "@/lib/pricing-form";
 import type { PricingInputs } from "@/lib/pricing-inputs";
+import { percentLabel, seasonDates } from "@/lib/seasons";
+import { adjustmentParts } from "@mango/core/season";
 import {
   draftRow,
   previewInputs,
@@ -346,20 +348,18 @@ export function PricingForm({
                   <li key={season.id}>
                     <span className="font-medium">{season.name}</span>
                     {" · "}
-                    {season.adjust_bp < 0
-                      ? t("seasons.off", {
-                          percent: percentText(-season.adjust_bp, locale),
-                        })
-                      : t("seasons.more", {
-                          percent: percentText(season.adjust_bp, locale),
-                        })}
+                    {t(season.adjust_bp < 0 ? "seasons.off" : "seasons.more", {
+                      percent: percentLabel(season.adjust_bp, locale),
+                    })}
                     {" · "}
                     {t(
                       season.repeats_yearly ? "seasons.yearly" : "seasons.once",
-                      {
-                        from: season.starts_on,
-                        to: season.ends_on,
-                      },
+                      seasonDates(
+                        season.starts_on,
+                        season.ends_on,
+                        season.repeats_yearly,
+                        locale,
+                      ),
                     )}
                   </li>
                 ))}
@@ -814,20 +814,10 @@ function SharedChoice({
   );
 }
 
+/** A base price as typed, through the one money parser. Null: not usable. */
 function parseBase(text: string, currency: string): bigint | null {
-  const match = /^\s*(\d[\d,]*)(?:\.(\d+))?\s*$/.exec(text);
-  if (!match) return null;
-  const exponent =
-    new Intl.NumberFormat("en", {
-      style: "currency",
-      currency,
-    }).resolvedOptions().maximumFractionDigits ?? 2;
-  const fraction = match[2] ?? "";
-  if (fraction.length > exponent) return null;
-  const value = BigInt(
-    match[1].replace(/,/g, "") + fraction.padEnd(exponent, "0"),
-  );
-  return value > BigInt(0) ? value : null;
+  const value = parseMinorUnits(text, currency);
+  return typeof value === "bigint" && value > BigInt(0) ? value : null;
 }
 
 // ------------------------------------------------------------ check a price
@@ -989,15 +979,18 @@ function CheckPrice({
                 detail={basisText(line.unit.basis, t, money)}
                 value={money(line.listPrice)}
               />
-              {line.seasons.map((s) => (
-                <Row
-                  key={s.ruleId}
-                  label={t("check.season", { name: seasonName(s.ruleId) })}
-                  detail={t("check.seasonDays", { count: s.periodsInside })}
-                  value={money(s.amount < BigInt(0) ? -s.amount : s.amount)}
-                  sign={s.amount < BigInt(0) ? "−" : "+"}
-                />
-              ))}
+              {line.seasons.map((s) => {
+                const parts = adjustmentParts(s.amount);
+                return (
+                  <Row
+                    key={s.ruleId}
+                    label={t("check.season", { name: seasonName(s.ruleId) })}
+                    detail={t("check.seasonDays", { count: s.periodsInside })}
+                    value={money(parts.size)}
+                    sign={parts.direction === "decrease" ? "−" : "+"}
+                  />
+                );
+              })}
               {result.taxGroups.map((g) => (
                 <Row
                   key={g.rateBp}

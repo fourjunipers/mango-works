@@ -19,6 +19,7 @@ import {
   type ListProblem,
   type QuickEntry,
 } from "@mango/core/price-list";
+import { currencyDefaults, majorToMinor } from "@mango/core/currency";
 import {
   minorDecimal,
   minorExponent,
@@ -72,13 +73,19 @@ export const emptyBoxes = (): BoxValues => ({
 
 /**
  * The rounding step quick entry fills days to, when the shop has not chosen
- * one (Settings come in stage D6). Thai baht: ฿10, as the design says; any
- * other currency: one major unit. Never a value assumed for every shop.
+ * one in Settings › Pricing and tax: the currency's default from the one
+ * per-currency table in @mango/core (THB ฿10; any other one major unit).
  */
 export function suggestedStep(currency: string): bigint {
-  const exponent = minorExponent(currency);
-  const majorUnits = currency === "THB" ? "10" : "1";
-  return BigInt(majorUnits + "0".repeat(exponent));
+  return majorToMinor(
+    currencyDefaults(currency).roundingStep,
+    minorExponent(currency),
+  );
+}
+
+/** The sample base price a multipliers list shows its amounts at, as typed. */
+export function suggestedSampleBase(currency: string): string {
+  return currencyDefaults(currency).sampleBase;
 }
 
 /** Multipliers are filled to four decimal places, as Booqable shows them. */
@@ -511,4 +518,85 @@ export function listNameError(name: string): string | null {
   if (!trimmed) return "required";
   if (trimmed.length > 120) return "tooLong";
   return null;
+}
+
+// ------------------------------------------------- reading a posted draft
+
+const isText = (v: unknown): v is string => typeof v === "string";
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** A map of day (1 to 30) → text, or null when any key or value is wrong. */
+function readDays(value: unknown): Record<number, string> | null {
+  if (value === undefined) return {};
+  if (!isRecord(value)) return null;
+  const out: Record<number, string> = {};
+  for (const [key, text] of Object.entries(value)) {
+    if (!/^\d{1,2}$/.test(key)) return null;
+    const day = Number(key);
+    if (day < 1 || day > LIST_DAYS || !isText(text)) return null;
+    out[day] = text;
+  }
+  return out;
+}
+
+/**
+ * A list draft as posted by a form, checked field by field. Null when it is
+ * not one: a server action then answers with a form error instead of
+ * throwing on a hand-made request (a day 31, a missing box).
+ */
+export function readListDraft(value: unknown): ListDraft | null {
+  if (!isRecord(value) || !isRecord(value.boxes)) return null;
+  const read: Partial<BoxValues> = {};
+  for (const box of boxes) {
+    const text = value.boxes[box];
+    if (!isText(text)) return null;
+    read[box] = text;
+  }
+  const manual = readDays(value.manual);
+  const stored = readDays(value.stored);
+  if (!manual || !stored) return null;
+  return {
+    boxes: read as BoxValues,
+    manual,
+    ...(value.stored === undefined ? {} : { stored }),
+  };
+}
+
+const methods: readonly Method[] = ["tiered", "per_period", "fixed", "free"];
+
+/** A Pricing tab draft as posted, checked field by field; null when it is not one. */
+export function readPricingDraft(value: unknown): PricingDraft | null {
+  if (!isRecord(value)) return null;
+  const text = [
+    "flatAmount",
+    "fixedAmount",
+    "sharedId",
+    "baseAmount",
+    "longStay",
+    "deposit",
+    "tax",
+    "replacement",
+  ] as const;
+  if (!text.every((key) => isText(value[key]))) return null;
+  if (value.method !== null && !methods.includes(value.method as Method))
+    return null;
+  if (!periods.includes(value.flatPeriod as Period)) return null;
+  if (value.source !== "own" && value.source !== "shared") return null;
+  const list = readListDraft(value.list);
+  if (!list) return null;
+  return {
+    method: value.method as Method | null,
+    flatAmount: value.flatAmount as string,
+    flatPeriod: value.flatPeriod as Period,
+    fixedAmount: value.fixedAmount as string,
+    source: value.source,
+    sharedId: value.sharedId as string,
+    baseAmount: value.baseAmount as string,
+    list,
+    longStay: value.longStay as string,
+    deposit: value.deposit as string,
+    tax: value.tax as string,
+    replacement: value.replacement as string,
+  };
 }
