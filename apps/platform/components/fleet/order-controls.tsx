@@ -2,14 +2,17 @@ import { getTranslations } from "next-intl/server";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { moveProduct } from "@/app/[tenant]/products/actions";
 import { moveTarget } from "@/lib/general-products";
+import { DragHandle } from "./drag-handle";
 
 /**
  * The manual order (owner, 13 and 14 Nov 2026): one order per shop, shared by
  * Fleet and the Products list; owners and managers change it, everyone else
  * sees it. "Reorder" above a list (components/fleet/list-bits ListToolbar)
  * turns on reorder mode, where each line shows quiet "Move up" and "Move
- * down" arrows. Plain forms and buttons, so they work with a finger, a mouse,
- * a keyboard, and without JavaScript.
+ * down" arrows and, at the row's outside edge, a drag handle
+ * (components/fleet/drag-handle).
+ * The arrows are plain forms and buttons, so they work with a finger, a
+ * mouse, a keyboard, and without JavaScript.
  */
 
 /** Small to see, 44 px to tap. */
@@ -55,10 +58,12 @@ export function MoveForms({
 }
 
 /**
- * "Move up" and "Move down" for one line, in reorder mode. The top line can't
- * go up; the bottom one can't go down. Dragging comes later (design §5.8):
- * the handle goes first in this group, before the arrows, in the row's last
- * column (rowGrid({ reorder: true })).
+ * "Move up" and "Move down", then a line's drag handle at the row's outside
+ * edge (owner's phone test, 15 Nov 2026), in reorder mode, in the row's last
+ * column (rowGrid({ reorder: true })). The top line can't go up; the bottom
+ * one can't go down. Dragging (design §5.8) starts from the
+ * handle only; the arrows stay for anyone who prefers them and for a browser
+ * without JavaScript.
  */
 export async function MoveButtons({
   id,
@@ -72,7 +77,6 @@ export async function MoveButtons({
   const t = await getTranslations("Products.order");
   return (
     <span data-reorder className="-my-2.5 inline-flex shrink-0">
-      {/* A drag handle goes here. */}
       {(["up", "down"] as const).map((direction) => {
         const Icon = direction === "up" ? ArrowUp : ArrowDown;
         return (
@@ -89,6 +93,7 @@ export async function MoveButtons({
           </button>
         );
       })}
+      <DragHandle name={name} />
     </span>
   );
 }

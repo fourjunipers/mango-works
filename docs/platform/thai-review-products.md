@@ -443,6 +443,21 @@ New texts on the branch `platform/lists-mobile-polish`: the sort, the filter chi
 | `Lists.mango.needsChanges` | Moto Mangos needs changes | Moto Mangos ขอให้แก้ไข |
 | `Lists.mango.notListed` | Not on Moto Mangos | ไม่อยู่บน Moto Mangos |
 
+## Dragging to reorder (14 Nov 2026)
+
+New texts on the branch `platform/drag-reorder`: the drag handle on each row in Reorder mode and what a screen reader is told while a row is dragged. Seven are new; `Lists.reorder.help` (the line above the list in Reorder mode) changed again on 15 Nov 2026 to the owner's own sentence after his phone test (no full stop at the end, as he wrote it). “Handle” is ที่จับ. `{name}` is the product's name, `{position}` and `{total}` are numbers (“position 2 of 6”). Space and Escape are the keys' names and stay in English. Most of these are heard, not seen: only `Lists.reorder.help` and `Lists.drag.handle` (a tooltip on desktop) appear on screen.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Lists.reorder.help` | Select and drag to move anywhere on the list, or use the arrows to move one row at a time | เลือกแล้วลากเพื่อย้ายไปที่ใดก็ได้ในรายการ หรือใช้ลูกศรเพื่อย้ายทีละแถว |
+| `Lists.drag.handle` | Drag to move | ลากเพื่อย้าย |
+| `Lists.drag.role` | sortable item | รายการที่จัดลำดับได้ |
+| `Lists.drag.instructions` | Press Space to pick up. Then use the arrow keys to move it, Space to drop it, or Escape to cancel. | กด Space เพื่อหยิบ จากนั้นใช้ปุ่มลูกศรเพื่อย้าย กด Space เพื่อวาง หรือกด Escape เพื่อยกเลิก |
+| `Lists.drag.pickedUp` | Picked up {name}. Position {position} of {total}. | หยิบ {name} แล้ว ตำแหน่งที่ {position} จาก {total} |
+| `Lists.drag.movedTo` | {name}: position {position} of {total}. | {name}: ตำแหน่งที่ {position} จาก {total} |
+| `Lists.drag.dropped` | {name} dropped at position {position} of {total}. | วาง {name} ที่ตำแหน่งที่ {position} จาก {total} |
+| `Lists.drag.cancelled` | Move cancelled. {name} is back at position {position} of {total}. | ยกเลิกการย้าย {name} กลับไปที่ตำแหน่งที่ {position} จาก {total} |
+
 ## Products, stage C: the Moto Mangos tab (15 Nov 2026)
 
 New or changed texts on the branch `platform/products-stage-c-tab`. The Moto Mangos panel moved from a motorbike's Details tab to its own tab, “Moto Mangos” (the brand name, the same in Thai). The two messages about counts are the owner's sentences; “units in your inventory” is คันในคลังของคุณ (“bikes in your stock”). The switch and “Connect” (เชื่อมต่อ, as in the existing ยกเลิกการเชื่อมต่อ for Disconnect) need a check first. “Lead time” is เวลาจองล่วงหน้า (“time to book ahead”). Thai has no plural, so the plural forms only carry the number.

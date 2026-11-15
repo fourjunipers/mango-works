@@ -19,7 +19,10 @@ import { cn } from "@/lib/utils";
  * pencil. Line 2: the summary under the name, the mango under the pencil.
  * Both lines have a fixed height, so every row on a list is the same height
  * whatever its name or tags. Fleet adds a column for its chevron; reorder mode
- * adds one for the arrows (and, later, a drag handle).
+ * adds one for the drag handle and the arrows. On a phone that column is 132
+ * px wide, so there the pencil-and-mango column makes way for the name
+ * (cell.reorderMango, cell.reorderEnd): "Yamaha NMAX" and "Yamaha Aerox" must
+ * be told apart to be put in order.
  */
 export function rowGrid({
   chevron = false,
@@ -31,7 +34,7 @@ export function rowGrid({
   return cn(
     "grid h-18 grid-rows-[1.5rem_1.5rem] items-center gap-x-2 gap-y-1 px-3 py-2.5 sm:px-4",
     reorder
-      ? "grid-cols-[2rem_minmax(0,1fr)_2.75rem_auto]"
+      ? "grid-cols-[2rem_minmax(0,1fr)_auto] sm:grid-cols-[2rem_minmax(0,1fr)_2.75rem_auto]"
       : chevron
         ? "grid-cols-[2rem_minmax(0,1fr)_2.75rem_1.25rem]"
         : "grid-cols-[2rem_minmax(0,1fr)_2.75rem]",
@@ -47,6 +50,10 @@ export const cell = {
     "col-start-2 row-start-2 flex min-w-0 items-center gap-2 overflow-hidden text-sm whitespace-nowrap text-muted-foreground",
   mango: "col-start-3 row-start-2 justify-self-center",
   end: "col-start-4 row-span-2 row-start-1 justify-self-end",
+  /** In reorder mode: no mango on a phone, and the controls end the row. */
+  reorderMango: "col-start-3 row-start-2 justify-self-center max-sm:hidden",
+  reorderEnd:
+    "col-start-3 row-span-2 row-start-1 justify-self-end sm:col-start-4",
 };
 
 /** The summary's tags, on wide screens only, cut off where the line ends. */

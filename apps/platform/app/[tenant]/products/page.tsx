@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { ChevronDown, Plus, Search } from "lucide-react";
+import { SortableRows } from "@/components/fleet/drag-reorder";
 import { EditPencil } from "@/components/fleet/edit-pencil";
 import { ListReturn } from "@/components/fleet/list-return";
 import { RowIcon } from "@/components/fleet/kind-icon";
@@ -362,139 +363,155 @@ export default async function ProductsPage({
             reordering={reordering}
             custom={custom}
           />
-          <ListReturn>
-            <ul
-              aria-label={t("list")}
-              className="divide-y rounded-lg border bg-card"
-            >
-              {rows.map((row) => {
-                // Only a web address can be shown as it is; photos are uploaded
-                // with the online booking page (Phase 3).
-                const photo = row.photos.find((url) =>
-                  /^https?:\/\//.test(url),
-                );
-                const wording = row.stock
-                  ? stockWording(row.type, row.stock)
-                  : null;
-                const retired = row.retired_at !== null;
-                const summary =
-                  row.type === "vehicle" ? (
-                    <>
-                      {t("stock", { count: row.inFleet })}
-                      {row.past > 0 && (
-                        <> · {t("stockPast", { count: row.past })}</>
-                      )}
-                    </>
-                  ) : wording ? (
-                    t(wording.key, {
-                      inStock: wording.inStock,
-                      lost: wording.lost,
-                    })
-                  ) : (
-                    // A service has no stock: a dash, with words for a screen reader.
-                    <>
-                      <span aria-hidden>—</span>
-                      <span className="sr-only">{t("noStock")}</span>
-                    </>
-                  );
-                return (
-                  <li
-                    key={row.id}
-                    data-list-row
-                    className={rowGrid({ reorder: reordering })}
-                  >
-                    {reordering && (
-                      <MoveForms slug={slug} id={row.id} shown={shown} />
+          {(() => {
+            const listClass = "divide-y rounded-lg border bg-card";
+            /** A row's cells, the same in and out of reorder mode. */
+            const cellsOf = (row: (typeof rows)[number]) => {
+              // Only a web address can be shown as it is; photos are uploaded
+              // with the online booking page (Phase 3).
+              const photo = row.photos.find((url) => /^https?:\/\//.test(url));
+              const wording = row.stock
+                ? stockWording(row.type, row.stock)
+                : null;
+              const retired = row.retired_at !== null;
+              const summary =
+                row.type === "vehicle" ? (
+                  <>
+                    {t("stock", { count: row.inFleet })}
+                    {row.past > 0 && (
+                      <> · {t("stockPast", { count: row.past })}</>
                     )}
-                    {/* A fixed box, so the row doesn't move when a photo loads. */}
-                    <span className={cell.icon}>
-                      {photo ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- a shop's own photo address, not ours to optimise
-                        <img
-                          src={photo}
-                          alt=""
-                          width={32}
-                          height={32}
-                          loading="lazy"
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <RowIcon
-                          type={row.type}
-                          kind={row.vehicle_type}
-                          className="size-4"
-                        />
-                      )}
-                    </span>
-                    {/* One line; the full name is on the product page. In
-                      reorder mode the name doesn't open it. */}
-                    {reordering ? (
-                      <span className={cell.name} title={row.name}>
-                        {row.name}
-                      </span>
+                  </>
+                ) : wording ? (
+                  t(wording.key, {
+                    inStock: wording.inStock,
+                    lost: wording.lost,
+                  })
+                ) : (
+                  // A service has no stock: a dash, with words for a screen reader.
+                  <>
+                    <span aria-hidden>—</span>
+                    <span className="sr-only">{t("noStock")}</span>
+                  </>
+                );
+              return (
+                <>
+                  {/* A fixed box, so the row doesn't move when a photo loads. */}
+                  <span className={cell.icon}>
+                    {photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- a shop's own photo address, not ours to optimise
+                      <img
+                        src={photo}
+                        alt=""
+                        width={32}
+                        height={32}
+                        loading="lazy"
+                        className="size-full object-cover"
+                      />
                     ) : (
-                      <Link
+                      <RowIcon
+                        type={row.type}
+                        kind={row.vehicle_type}
+                        className="size-4"
+                      />
+                    )}
+                  </span>
+                  {/* One line; the full name is on the product page. In
+                      reorder mode the name doesn't open it. */}
+                  {reordering ? (
+                    <span className={cell.name} title={row.name}>
+                      {row.name}
+                    </span>
+                  ) : (
+                    <Link
+                      href={withBack(`${base}/${row.id}`, here)}
+                      data-return
+                      title={row.name}
+                      className={cn(
+                        cell.name,
+                        "rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      )}
+                    >
+                      {row.name}
+                    </Link>
+                  )}
+                  {!reordering && (
+                    <span className={cell.pencil}>
+                      <EditPencil
                         href={withBack(`${base}/${row.id}`, here)}
-                        data-return
-                        title={row.name}
-                        className={cn(
-                          cell.name,
-                          "rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                        )}
-                      >
-                        {row.name}
-                      </Link>
-                    )}
-                    {!reordering && (
-                      <span className={cell.pencil}>
-                        <EditPencil
-                          href={withBack(`${base}/${row.id}`, here)}
-                          name={row.name}
-                        />
-                      </span>
-                    )}
-                    <span className={cell.summary}>
-                      <span className="min-w-0 shrink-0 truncate tabular-nums max-sm:shrink">
-                        {retired && <>{tFleet("listing.retired")} · </>}
-                        {summary}
-                      </span>
-                      {/* Wide screens: what it is, as far as it fits. */}
-                      <RowTags
-                        labels={[
-                          row.vehicle_type
-                            ? tFleet(`kind.${row.vehicle_type}` as "kind.car")
-                            : t(`type.${row.type}` as "type.vehicle"),
-                          ...row.categories.map(categoryLabel),
-                        ]}
+                        name={row.name}
                       />
                     </span>
-                    <span className={cell.mango}>
-                      <MangoStatus
-                        listing={manage ? row.listing : null}
-                        href={
-                          reordering
-                            ? undefined
-                            : withBack(
-                                `${base}/${row.id}?tab=moto-mangos`,
-                                here,
-                              )
-                        }
-                      />
+                  )}
+                  <span className={cell.summary}>
+                    <span className="min-w-0 shrink-0 truncate tabular-nums max-sm:shrink">
+                      {retired && <>{tFleet("listing.retired")} · </>}
+                      {summary}
                     </span>
-                    {reordering && (
-                      <span className={cell.end}>
-                        <MoveButtons
-                          id={row.id}
-                          name={row.name}
-                          shown={shown}
-                        />
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </ListReturn>
+                    {/* Wide screens: what it is, as far as it fits. */}
+                    <RowTags
+                      labels={[
+                        row.vehicle_type
+                          ? tFleet(`kind.${row.vehicle_type}` as "kind.car")
+                          : t(`type.${row.type}` as "type.vehicle"),
+                        ...row.categories.map(categoryLabel),
+                      ]}
+                    />
+                  </span>
+                  <span className={reordering ? cell.reorderMango : cell.mango}>
+                    <MangoStatus
+                      listing={manage ? row.listing : null}
+                      href={
+                        reordering
+                          ? undefined
+                          : withBack(`${base}/${row.id}?tab=moto-mangos`, here)
+                      }
+                    />
+                  </span>
+                  {reordering && (
+                    <span className={cell.reorderEnd}>
+                      <MoveButtons id={row.id} name={row.name} shown={shown} />
+                    </span>
+                  )}
+                </>
+              );
+            };
+            // Reorder mode: each row has a drag handle and the arrows.
+            if (reordering)
+              return (
+                <SortableRows
+                  slug={slug}
+                  label={t("list")}
+                  className={listClass}
+                  rows={rows.map((row) => ({
+                    id: row.id,
+                    name: row.name,
+                    content: (
+                      <>
+                        <MoveForms slug={slug} id={row.id} shown={shown} />
+                        <div
+                          data-list-row
+                          className={rowGrid({ reorder: true })}
+                        >
+                          {cellsOf(row)}
+                        </div>
+                      </>
+                    ),
+                  }))}
+                />
+              );
+            return (
+              <ListReturn>
+                <ul aria-label={t("list")} className={listClass}>
+                  {rows.map((row) => (
+                    <li key={row.id} data-list-row className={rowGrid({})}>
+                      {cellsOf(row)}
+                    </li>
+                  ))}
+                </ul>
+              </ListReturn>
+            );
+          })()}
         </>
       )}
     </>

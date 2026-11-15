@@ -52,6 +52,41 @@ PR 2 of stage C, of two. The Moto Mangos panel moves from a motorbike's Details 
 - Counting real Moto Mangos bookings against the cap: Phase 3.
 - Staff changing the walk-ins count: a one-word migration in `listing_roles('walk_ins')` when wanted; the tab would then need a staff view.
 
+## Dragging to reorder (branch `platform/drag-reorder`, 14 Nov 2026)
+
+Fleet and the Products list can be reordered by dragging, in Reorder mode. The design and what was decided is `docs/products-redesign.md` §5.8 ("As built"). Platform only. No migration (`move_product` already takes "before or after any product"). `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **A drag handle on each row in Reorder mode**, at the row's outside (right) edge, after Move up and Move down: small and quiet to see, 44 px to hold. Only the handle starts a drag. Mouse: press and move 8 px. Touch: hold a quarter of a second, then drag; a quick tap does nothing and a finger that moves sooner scrolls the page. Keyboard: Space, arrows, Space (Escape cancels), with announcements for screen readers in English and Thai.
+- **One order, one move:** a drop saves through the same action and database function as the arrows. Fleet and the Products list share the order and general products take part. A Fleet group drags as one block (its line is shut in Reorder mode). The arrows stay, and work without JavaScript.
+- **New dependency, approved by Mark (14 Nov 2026):** `@dnd-kit/core` 6.3.1 and `@dnd-kit/sortable` 10.0.0, exact versions. Confirmed on React 19.3.0 by building and running before it was installed here (a throwaway project, then `next build` and the browser tests).
+- **Loaded only in Reorder mode**, which only owners and managers reach: 47.8 kB minified, 15.9 kB gzipped (14.4 kB with Brotli), measured from this build, in its own file. A browser test checks that the two lists as they normally are, and staff, do not fetch it.
+- **Wording:** 7 new texts and 1 changed (`Lists.reorder.help`), English and Thai, listed in `docs/platform/thai-review-products.md` under "Dragging to reorder".
+- **Tests:** 9 unit tests in `lib/drag-order.test.ts`; `e2e/drag-reorder.spec.ts` at 375 px and 1280 px (mouse, simulated touch, keyboard, reloads, the loading rule).
+
+**Decided here without being asked**
+
+- **On a phone in Reorder mode the Moto Mangos mango is hidden** and its column goes to the name. With the handle added, names were cut to "Yamaha …" and two Yamahas could not be told apart. Desktop keeps the mango; outside Reorder mode nothing changed.
+- **Rows move up and down only**; the row being dragged gets a shadow. **Enter** also picks up and drops (the library's default); the brief asked for Space, which works.
+- **A refused save is silent:** the list goes back to the saved order, with no message. The arrows behave the same way today.
+- **The browser test for dragging runs once** (in the phone project) and opens 375 px and 1280 px itself, in the `big-fleet` demo shop: the order is shop-wide, so two copies side by side would reorder the same shop under each other. It adds one rental-gear product and removes it, and resets the shop to A to Z at the end.
+- **No `@dnd-kit/modifiers`:** "up and down only" is four lines of our own, to keep to the two approved packages.
+
+**After Mark's phone test (15 Nov 2026): passed, with two changes**
+
+- **The handle moved to the row's outside (right) edge**, after the arrows, on both lists.
+- **The line above the list in Reorder mode** is his sentence: "Select and drag to move anywhere on the list, or use the arrows to move one row at a time".
+- **The mango is still hidden on a phone in Reorder mode.** Moving the handle changes the order of the three controls, not their width: two arrows and the handle are 132 px either way. With the mango's 44 px column back, a name gets about 85 px at 375 px wide ("Yamaha …"); without it, about 137 px. Desktop shows the mango.
+
+**Known issues and what was not tested**
+
+- **Touch was simulated**, with real touch events in desktop Chromium. It passed six runs in a row, so it is not flaky here. Not covered, and for a real phone: how the quarter-second hold feels, iOS Safari's long-press behaviour on the handle (selection, callout menu), haptics, and the page scrolling by itself when a row is dragged to the edge of the screen.
+- **Keyboard at machine speed:** keys sent with no pause at all (under 50 ms apart) can arrive before the library has measured the list, and the move is skipped. A person can't type that fast; the tests leave 150 ms between keys.
+- **The two packages' last release was December 2024** (§5.8). If they stop working with a later React, the arrows still do the job and the handle can be removed in one file.
+
+**Next:** Mark's click-through on a real phone (the list is in the PR).
+
 ## Products, stage C: the database part (branch `platform/products-stage-c-db`, 14 Nov 2026)
 
 PR 1 of stage C, of two. Moto Mangos listings move from columns on `products` to their own table, `platform.product_listings`. The design is `docs/products-redesign.md` §5.10 and decision 23 (the owner's eight answers of 14 Nov 2026). Platform only: nothing in `apps/marketplace`. **Nothing a shop sees changes in this PR**: the Moto Mangos panel stays on the Details tab until PR 2. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
@@ -318,7 +353,7 @@ Tests in this round: 8 new unit tests (the labels, the three help lines, the con
 - Ports 3300 and 3310, which the browser tests and an earlier session used, were held by servers from other checkouts. The tests ran against this checkout's own server on port 3320.
 - One write of `messages/en.json` failed once with "Invalid argument" (the folder is in OneDrive) and worked on the second try. Both files were checked afterwards.
 
-**Next:** the owner's click-through of the preview; then stage C (`product_listings` and the Moto Mangos tab), and dragging (§5.8) if the library is approved.
+**Next:** the owner's click-through of the preview; then stage C (`product_listings` and the Moto Mangos tab), and dragging (§5.8) if the library is approved. (Dragging was approved and built on 14 Nov 2026: see "Dragging to reorder" above.)
 
 ## Products, stage A (branch `platform/products-stage-a`, 13 Nov 2026)
 

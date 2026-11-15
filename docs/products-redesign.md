@@ -594,9 +594,29 @@ Mark's direction (decision 18), confirmed point by point on 13 Nov 2026 (decisio
 
 **Superseded in part (14 Nov 2026):** the Stock tab's damaged and lost forms described above were replaced by the stock rework, §5.9. Items for sale, the manual order and the Moto Mangos functions are as built here.
 
-### 5.8 Dragging to reorder: proposal for a follow-up PR (not built)
+### 5.8 Dragging to reorder (built 14 Nov 2026)
 
-Not built in PR 17, by instruction. This is the proposal; the library needs Mark's approval first (root `CLAUDE.md`: ask before adding a dependency).
+Built on `platform/drag-reorder` after Mark approved the library (14 Nov 2026). The proposal from PR 17 follows "As built"; where the two differ, "As built" is right.
+
+**As built**
+
+- **Library:** `@dnd-kit/core` 6.3.1 and `@dnd-kit/sortable` 10.0.0, pinned to those exact versions in `apps/platform/package.json`. They bring `@dnd-kit/utilities` 3.2.2, `@dnd-kit/accessibility` 3.1.1 and `tslib`; nothing else was added (the "up and down only" rule is four lines of our own, not `@dnd-kit/modifiers`).
+- **React 19.3:** confirmed by building and running, not by the declared range. Before it went into the repo: a throwaway project on React and React DOM 19.3.0, drawn on a server and hydrated in strict mode, then driven in Chrome with a mouse, touch events and the keyboard: every drag worked, with no error, warning or hydration mismatch in the console. Then the real thing: `next build` and the browser tests below. One thing needed care: `DndContext` gets a fixed `id` (React's `useId`), because the library's own counter differs between server and browser.
+- **Where the handle is:** in reorder mode only, last in the row's last column, after Move up and Move down, at the row's outside (right) edge (`DragHandle` in `components/fleet/drag-handle.tsx`, placed by `MoveButtons`). It was before the arrows at first; Mark's phone test (15 Nov 2026) moved it to the edge, where a thumb reaches it. A grip icon 16 px to see, 44 px to hold, in the arrows' quiet grey. The proposal said "at its start".
+- **Only the handle drags.** Mouse: press the handle and move 8 px; a plain click does nothing. Touch: hold a quarter of a second (250 ms, 5 px tolerance), then drag; a quick tap does nothing; a finger that moves sooner scrolls the page, because the handle keeps `touch-action: manipulation` and never blocks scrolling before a drag starts. Keyboard: Space to pick up, arrows to move, Space to drop, Escape to cancel (Enter also picks up and drops: the library's default, left on).
+- **Screen readers:** the handle is named "Drag to move: <product>" and described by one sentence of instructions; picking up, each move, the drop and a cancel are announced with the product's name and "position N of M", in English and Thai (`Lists.drag.*`). "Picked up" is not talked over by the first "position" line.
+- **Rows move up and down only**, and the row being dragged lifts on its own background with a shadow.
+- **Fleet groups** drag as one block: in reorder mode a product's line is shut (PR 19), so the line is the group.
+- **Saving:** a drop calls the same server action as the arrows (`moveProduct`, then `move_product` in the database), with "after" the row it was dropped on when dragged down and "before" it when dragged up (`dropTarget` in `lib/general-products.ts`). So Fleet and the Products list keep their one order, general products take part, and on Fleet a drop passes over a general product that sits between two vehicles, as the arrows do. No migration. The list shows the new order at once (React's `useOptimistic`) and goes back to the saved order if the save is refused.
+- **Move up and Move down stay**, for anyone who prefers them and for a browser without JavaScript. The rows are drawn on the server, so the arrows work before the library has arrived.
+- **Loading:** the library is in its own file (`components/fleet/drag-rows.tsx`, loaded with `next/dynamic` from `drag-reorder.tsx`): 47.8 kB minified, 15.9 kB gzipped (14.4 kB with Brotli), measured from this build. It is fetched only when a list is in reorder mode, which only owners and managers can reach; Fleet and the Products list as they normally are, every other page, and staff do not fetch it. A browser test reads every script each page fetched to check this.
+- **A phone's row in reorder mode:** the handle and two arrows take 132 px, which cut names to "Yamaha …". So at phone width, in reorder mode only, the Moto Mangos mango is hidden and its column goes to the name. Desktop keeps the mango.
+- **Tests:** `lib/drag-order.test.ts` (where a drop goes; that the saved order is the order shown, for every possible drop, with and without hidden general products; that one row up or down is what the arrows do; the wording in both languages). `e2e/drag-reorder.spec.ts` at 375 px and 1280 px, on both lists: mouse, simulated touch and keyboard drags, a click and a tap that do nothing, a swipe from the handle that scrolls, Escape, the announcements, the arrows after a drag, a reload after each kind of drag, Done, and the loading rule above.
+- **Touch in the tests is simulated:** real touch events through Chromium's input pipeline (`Input.dispatchTouchEvent`), desktop Chromium, not a phone. It passed six runs in a row. What it cannot show: how the hold feels under a real finger, iOS Safari's long-press behaviour (text selection, the callout menu, the magnifier), Android's haptics, and the page scrolling by itself when a row is dragged to the screen's edge. Those need a real phone.
+
+**The proposal (PR 17)**
+
+Not built in PR 17, by instruction. The library needed Mark's approval first (root `CLAUDE.md`: ask before adding a dependency).
 
 **Library: dnd-kit.** Checked on 13 Nov 2026 against the npm registry, GitHub and Bundlephobia.
 
@@ -606,7 +626,7 @@ Not built in PR 17, by instruction. This is the proposal; the library needs Mark
 | Licence | MIT, all of them |
 | Size | `core` 14.2 kB and `sortable` 3.7 kB, minified and gzipped (Bundlephobia): about 18 kB. Loaded only on Fleet and the Products list, only for owners and managers, and it can be fetched when a drag is first started |
 | Maintenance | The repository (`clauderic/dnd-kit`) is active: last push 31 Oct 2026, not archived, about 17,800 stars, 152 open issues. **But the two packages above were last released on 4 and 5 Dec 2024.** The author's work since then goes into a rewrite, `@dnd-kit/react` (0.5.3, 31 Oct 2026), which is still 0.x |
-| React 19 | The classic packages ask for `react >= 16.8`, which our 19.3 satisfies on paper. Not installed or run here: to confirm in the PR's first hour |
+| React 19 | The classic packages ask for `react >= 16.8`, which our 19.3 satisfies on paper. Since confirmed by building and running: see "As built" |
 
 **Recommended:** the classic packages (`core` + `sortable`). Their API has been stable for two years and they include a keyboard sensor and screen-reader announcements. The risk is that they get no more fixes; it is small here because the use is one sortable list and the Move up and Move down buttons stay as the fallback. The rewrite is the better choice once it reaches 1.0; choosing it today means building on an API that may still change.
 
