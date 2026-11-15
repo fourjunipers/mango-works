@@ -94,11 +94,16 @@ async function ownPrices(page: Page, address: string) {
 /** Check a price for two, 45 days from 1 Jan 2027: what the deposit row says. */
 async function depositFor45DaysForTwo(page: Page, address: string) {
   await page.goto(`${address}?tab=pricing`);
-  await pickup(page);
-  await checkPrice(page).getByLabel("Days", { exact: true }).fill("45");
-  await checkPrice(page).getByLabel("How many").fill("2");
-  // 2 × (฿3,000 + 14 × ฿100), whatever the deposit.
-  await expect(checkRow(page, "Total")).toHaveText(/^\D*8,800$/);
+  // Typed again if the page was still starting and put its own pickup back.
+  await expect(async () => {
+    await pickup(page);
+    await checkPrice(page).getByLabel("Days", { exact: true }).fill("45");
+    await checkPrice(page).getByLabel("How many").fill("2");
+    // 2 × (฿3,000 + 14 × ฿100), whatever the deposit.
+    await expect(checkRow(page, "Total")).toHaveText(/^\D*8,800$/, {
+      timeout: 2_000,
+    });
+  }).toPass({ timeout: 15_000 });
   return checkRow(page, "Deposit");
 }
 
@@ -131,9 +136,19 @@ test("Settings has four sections for owners; staff, mechanics and drivers can't 
 
   for (const who of [demo.bsrStaff, demo.bsrMechanic, demo.bsrDriver]) {
     const other = await as(browser, who);
-    for (const path of ["pricing", "seasons", "price-lists"]) {
-      const response = await other.page.goto(`/bsr/settings/${path}`);
-      expect(response?.status(), `${who} on ${path}`).toBe(404);
+    // Not found for them: the page streams, so the answer is in what shows.
+    for (const [path, title] of [
+      ["pricing", "Pricing and tax"],
+      ["seasons", "Seasons"],
+      ["price-lists", "Price lists"],
+    ] as const) {
+      await other.page.goto(`/bsr/settings/${path}`);
+      await expect(other.page.getByText("Page not found")).toBeVisible();
+      await expect(
+        other.page.getByRole("heading", { name: title, level: 1 }),
+        `${who} on ${path}`,
+      ).toHaveCount(0);
+      await expect(settingsNav(other.page)).toHaveCount(0);
     }
     if (who === demo.bsrStaff) {
       // Staff still see prices on the Products list, with no way to the lists.

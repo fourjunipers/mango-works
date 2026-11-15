@@ -1,7 +1,7 @@
 import { closeSync, openSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Dialog, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 type Db = ReturnType<typeof platformClient>;
@@ -169,7 +169,14 @@ export async function chooseDeposit(
   await page.getByRole("radio", { name: choice }).check();
   if (number) await page.getByLabel(number.label).fill(number.value);
   // The first save of a shop whose currency isn't fixed yet asks first.
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("button", { name: "Save pricing settings" }).click();
-  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  // Accepted only while saving: a handler left waiting would take a later
+  // dialog meant for something else.
+  const accept = (dialog: Dialog) => void dialog.accept();
+  page.on("dialog", accept);
+  try {
+    await page.getByRole("button", { name: "Save pricing settings" }).click();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  } finally {
+    page.off("dialog", accept);
+  }
 }
