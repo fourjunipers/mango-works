@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { ChevronDown, Plus, Search } from "lucide-react";
 import { SortableRows } from "@/components/fleet/drag-reorder";
 import { EditPencil } from "@/components/fleet/edit-pencil";
@@ -19,6 +19,10 @@ import { Field, inputClass } from "@/components/form";
 import { PageHeader } from "@/components/page";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { requireArea } from "@/lib/access";
+import { formatMinor } from "@/lib/money";
+import { getPricingInputs } from "@/lib/pricing-data";
+import { canPricing } from "@/lib/pricing-permissions";
+import { priceSummary } from "@/lib/pricing-preview";
 import {
   getFleet,
   getGeneralProducts,
@@ -75,17 +79,17 @@ export default async function ProductsPage({
   const { membership } = await requireArea(slug, "products");
   const { tenant, role } = membership;
   const manage = canManageFleet(role);
-  const [t, tFleet, tCommon, tLists, fleet, general, stock] = await Promise.all(
-    [
+  const [t, tFleet, tCommon, tLists, locale, fleet, general, stock] =
+    await Promise.all([
       getTranslations("Products"),
       getTranslations("Fleet"),
       getTranslations("Common"),
       getTranslations("Lists"),
+      getLocale(),
       getFleet(tenant.id),
       getGeneralProducts(tenant.id),
       getProductStock(tenant.id),
-    ],
-  );
+    ]);
   const base = `/${slug}/products`;
   const tab = parseProductsTab(query);
   const view = parseProductsView(query);
@@ -112,6 +116,38 @@ export default async function ProductsPage({
     sort,
   );
   const filters = productsFilterCount(view);
+  // The price beside each product (§9.12): owners, managers and staff. A
+  // mechanic or a driver has no prices to see, and the database would send
+  // none (RLS). Worked out from pricing_inputs by @mango/core.
+  const seePrices = canPricing(role, "read");
+  const prices = seePrices
+    ? await getPricingInputs(
+        tenant.id,
+        products.map((p) => p.id),
+      )
+    : null;
+  const priceRows = new Map(
+    (prices?.products ?? []).map((row) => [row.product_id, row]),
+  );
+  const priceText = (id: string): string => {
+    const summary = priceSummary(priceRows.get(id));
+    const money = (amount: bigint) =>
+      formatMinor(amount, tenant.currency, locale);
+    switch (summary.kind) {
+      case "day":
+        return t("price.perDay", { amount: money(summary.amount) });
+      case "period":
+        return t(`price.per_${summary.period}`, {
+          amount: money(summary.amount),
+        });
+      case "fixed":
+        return money(summary.amount);
+      case "free":
+        return t("price.free");
+      case "none":
+        return t("price.none");
+    }
+  };
   // The order is changed on the whole list of a tab in its own order, never
   // on a search, a filter or another sort.
   const custom = hasCustomOrder(products);
@@ -203,17 +239,32 @@ export default async function ProductsPage({
         title={t("title")}
         intro={t("intro", { count: total })}
         actions={
-          manage && (
-            <Link
-              href={`${base}/new`}
-              className={cn(
-                buttonVariants({ variant: "default" }),
-                "h-11 px-4",
+          (manage || seePrices) && (
+            <div className="flex flex-wrap gap-2">
+              {seePrices && (
+                <Link
+                  href={`${base}/price-lists`}
+                  className={cn(
+                    buttonVariants({ variant: "outline" }),
+                    "h-11 px-4",
+                  )}
+                >
+                  {t("priceLists")}
+                </Link>
               )}
-            >
-              <Plus aria-hidden />
-              {t("new")}
-            </Link>
+              {manage && (
+                <Link
+                  href={`${base}/new`}
+                  className={cn(
+                    buttonVariants({ variant: "default" }),
+                    "h-11 px-4",
+                  )}
+                >
+                  <Plus aria-hidden />
+                  {t("new")}
+                </Link>
+              )}
+            </div>
           )
         }
       />
@@ -446,7 +497,8 @@ export default async function ProductsPage({
                   <span className={cell.summary}>
                     <span className="min-w-0 shrink-0 truncate tabular-nums max-sm:shrink">
                       {retired && <>{tFleet("listing.retired")} · </>}
-                      {summary}
+                      <span>{summary}</span>
+                      {seePrices && <span> · {priceText(row.id)}</span>}
                     </span>
                     {/* Wide screens: what it is, as far as it fits. */}
                     <RowTags

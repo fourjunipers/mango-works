@@ -6,7 +6,6 @@ import { PageHeader } from "@/components/page";
 import { requireArea } from "@/lib/access";
 import { minutesToHours } from "@/lib/fleet";
 import { getLocations, getModel } from "@/lib/fleet-data";
-import { moneyInputValue } from "@/lib/money";
 import { backTarget, keptBack } from "@/lib/product-list";
 import { canManageFleet } from "@/lib/roles";
 import { GeneralForm, NewProductChoice } from "../general-forms";
@@ -53,7 +52,6 @@ export default async function NewProductPage({
   const vehicleForm = (
     <ProductForm
       slug={slug}
-      currency={membership.tenant.currency}
       then={then}
       focusName={Boolean(source)}
       what={{
@@ -70,10 +68,6 @@ export default async function NewProductPage({
         buffer_after_hours: minutesToHours(
           source?.buffer_after_minutes ?? null,
         ),
-        deposit:
-          source && source.deposit !== null
-            ? moneyInputValue(source.deposit, membership.tenant.currency)
-            : "",
         min_age: text(source?.min_age ?? null),
         licence_class: source?.licence_class ?? "",
       }}

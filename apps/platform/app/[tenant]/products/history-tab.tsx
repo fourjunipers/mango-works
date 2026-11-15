@@ -12,6 +12,18 @@ import {
   gearUnitHistory,
   historyValue,
 } from "@/lib/history";
+import { formatMinor, multiplierText } from "@/lib/money";
+import {
+  getPricingAudit,
+  getTaxProfileNames,
+  getTemplateNames,
+} from "@/lib/pricing-data";
+import {
+  pricingHistory,
+  templatesFromAudit,
+  type PricingArg,
+  type PricingEntry,
+} from "@/lib/pricing-history";
 import { formatInstant } from "@/lib/shop-time";
 import { humanizeKey } from "@/lib/vehicle-kinds";
 
@@ -30,6 +42,7 @@ export async function HistoryTab({
   unitsAre,
   trackedGear,
   timezone,
+  currency,
   locale,
 }: {
   tenantId: string;
@@ -40,10 +53,21 @@ export async function HistoryTab({
   /** Gear tracked unit by unit: each unit's own lines are added. */
   trackedGear?: boolean;
   timezone: string;
+  /** The shop's currency: price lines show amounts in it. */
+  currency: string;
   locale: string;
 }) {
   const limit = 100;
-  const [t, tFleet, productRows, names, unitRows] = await Promise.all([
+  const [
+    t,
+    tFleet,
+    productRows,
+    names,
+    unitRows,
+    pricingRows,
+    templateNames,
+    taxNames,
+  ] = await Promise.all([
     getTranslations("Products.history"),
     getTranslations("Fleet"),
     getProductHistory(
@@ -54,7 +78,21 @@ export async function HistoryTab({
     ),
     getMemberNames(tenantId),
     trackedGear ? getGearUnitAudit(tenantId, productId, limit) : [],
+    getPricingAudit(tenantId, productId, limit),
+    getTemplateNames(tenantId),
+    getTaxProfileNames(tenantId),
   ]);
+  // Price lines (lib/pricing-history.ts): the product's pricing rows and
+  // pricing_change events, its own lists and the shared lists it is on.
+  const templates = new Map([
+    ...templatesFromAudit(pricingRows),
+    ...templateNames,
+  ]);
+  const priceEntries = pricingHistory(
+    [...productRows, ...pricingRows],
+    productId,
+    templates,
+  );
   const gear = gearUnitHistory(unitRows);
   // A stock function's own line says what a unit's rows of the same moment
   // would say again. A label's change stays.
@@ -70,6 +108,47 @@ export async function HistoryTab({
     .sort((a, b) => b.at.localeCompare(a.at) || b.id - a.id)
     .slice(0, limit);
   const entries = buildHistory(rows);
+  // Both kinds of line, newest first, the latest `limit` of them.
+  const timeline = [
+    ...entries.map((entry) => ({
+      at: entry.at,
+      id: entry.id,
+      entry,
+      price: null,
+    })),
+    ...priceEntries.map((price) => ({
+      at: price.at,
+      id: price.rowId,
+      entry: null,
+      price,
+    })),
+  ]
+    .sort((a, b) => b.at.localeCompare(a.at) || b.id - a.id)
+    .slice(0, limit);
+  const tp = await getTranslations("Products.history.pricing");
+  const arg = (value: PricingArg, name: string): string | number => {
+    if ("money" in value)
+      return value.money ? formatMinor(value.money, currency, locale) : "";
+    if ("multiplier" in value)
+      return value.multiplier ? `×${multiplierText(value.multiplier)}` : "";
+    if ("number" in value) return value.number;
+    if ("method" in value)
+      return value.method ? tp(`method.${value.method}`) : tp("method.none");
+    if ("period" in value) return tp(`period.${value.period}`);
+    if ("tax" in value)
+      return value.tax === "default"
+        ? tp("tax.default")
+        : value.tax === "none"
+          ? tp("tax.none")
+          : (taxNames.get(value.tax) ?? tp("tax.removed"));
+    // A quick-entry box is named in words; a list's name is shown as it is.
+    if (name === "box") return tp(`box.${value.text}` as "box.daily");
+    return value.text;
+  };
+  const priceWords = (args: PricingEntry["line"]["args"]) =>
+    Object.fromEntries(
+      Object.entries(args).map(([name, value]) => [name, arg(value, name)]),
+    );
   const unnamed = unitsAre === "vehicles" ? tFleet("noPlate") : t("unlabelled");
   const unitNames = new Map([
     ...[...gear.names].map(([id, name]) => [id, name ?? unnamed] as const),
@@ -97,11 +176,45 @@ export async function HistoryTab({
       intro={t(unitsAre === "vehicles" ? "intro" : "introGeneral")}
       className="max-w-3xl"
     >
-      {entries.length === 0 ? (
+      {timeline.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("none")}</p>
       ) : (
         <ol className="divide-y rounded-md border">
-          {entries.map((entry) => {
+          {timeline.map((item) => {
+            if (item.price) {
+              const price = item.price;
+              const who =
+                price.actor === null
+                  ? t("system")
+                  : (names.get(price.actor) ?? t("formerMember"));
+              return (
+                <li key={`price-${price.key}`} className="p-3 text-sm">
+                  <p className="font-medium">
+                    {tp(`line.${price.line.key}` as "line.depositSet", {
+                      who,
+                      ...priceWords(price.line.args),
+                    })}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    <time dateTime={price.at}>
+                      {formatInstant(new Date(price.at), timezone, locale)}
+                    </time>
+                  </p>
+                  {price.line.sub && (
+                    <ul className="mt-2 space-y-1">
+                      {price.line.sub.map((sub, i) => (
+                        <li key={i}>
+                          {tp(`line.${sub.key}` as "line.otherDays", {
+                            ...priceWords(sub.args),
+                          })}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            }
+            const entry = item.entry!;
             const who =
               entry.actor === null
                 ? t("system")

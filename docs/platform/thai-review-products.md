@@ -529,3 +529,238 @@ New or changed texts on the branch `platform/products-stage-c-tab`. The Moto Man
 | `Fleet.model.instantUnits` | Instant units | จำนวนคันยืนยันทันที |
 | `Fleet.model.requestUnits` | Request units | จำนวนคันขออนุมัติ |
 | `Fleet.model.readyNow` | Walk-ins | ลูกค้าหน้าร้าน |
+
+## Pricing, stage D5: the Pricing tab (15 Nov 2026)
+
+Claude's translations, for Korn or BSR's admin (docs/products-redesign.md §9.12). The terms follow §9.12's provisional list: price ราคา, price list ตารางราคา, base price ราคาฐาน, multiplier ตัวคูณ, flat fee ราคาต่อช่วงเวลา, fixed price ราคาคงที่, free ฟรี, long-stay daily rate ราคาต่อวันสำหรับเช่าระยะยาว, deposit เงินมัดจำ, season ฤดูกาล, replacement value มูลค่าทดแทน.
+
+- **Tax words are not ours to choose:** ภาษีมูลค่าเพิ่ม, รวมภาษีมูลค่าเพิ่ม and ไม่คิดภาษี are to be confirmed by Korn or the shop's accountant as the Revenue Department's wording.
+- Thai has no plural: a count is one message with the number (`{count, plural, other {#}} วัน`).
+- Amounts are never in a translation: `{amount}`, `{from}`, `{to}` are filled with the shop's currency in the viewer's number format.
+- The six quick-entry boxes stack two to a row on a phone; the browser test checks the Thai labels fit at 375 px.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Fleet.motoMangos.noPrice` | No price by rental length yet: it won't be offered on Moto Mangos. Set one on the Pricing tab. | ยังไม่มีราคาตามระยะเวลาเช่า จึงจะไม่แสดงบน Moto Mangos ตั้งราคาได้ที่แท็บราคา |
+| `Products.tabs.pricing` | Pricing | ราคา |
+| `Products.history.pricing.box.daily` | daily | รายวัน |
+| `Products.history.pricing.box.weekly` | weekly | รายสัปดาห์ |
+| `Products.history.pricing.box.twoWeeks` | 2-week | 2 สัปดาห์ |
+| `Products.history.pricing.box.threeWeeks` | 3-week | 3 สัปดาห์ |
+| `Products.history.pricing.box.monthly` | monthly | รายเดือน |
+| `Products.history.pricing.method.tiered` | By rental length | ตามระยะเวลาเช่า |
+| `Products.history.pricing.method.per_period` | Flat fee per period | ราคาต่อช่วงเวลา |
+| `Products.history.pricing.method.fixed` | Fixed price | ราคาคงที่ |
+| `Products.history.pricing.method.free` | Free | ฟรี |
+| `Products.history.pricing.method.none` | not priced | ยังไม่มีราคา |
+| `Products.history.pricing.period.hour` | per hour | ต่อชั่วโมง |
+| `Products.history.pricing.period.day` | per day | ต่อวัน |
+| `Products.history.pricing.period.week` | per week | ต่อสัปดาห์ |
+| `Products.history.pricing.period.month` | per month | ต่อเดือน |
+| `Products.history.pricing.tax.default` | Shop default | ค่าเริ่มต้นของร้าน |
+| `Products.history.pricing.tax.none` | Not taxable | ไม่คิดภาษี |
+| `Products.history.pricing.tax.removed` | a removed tax profile | รายการภาษีที่ถูกลบแล้ว |
+| `Products.history.pricing.line.methodSet` | {who} set how it is priced: {to} | {who} ตั้งวิธีคิดราคา: {to} |
+| `Products.history.pricing.line.methodChanged` | {who} changed how it is priced from {from} to {to} | {who} เปลี่ยนวิธีคิดราคาจาก {from} เป็น {to} |
+| `Products.history.pricing.line.firstPrice` | {who} set the price: daily {daily}, weekly {weekly}, 2 weeks {twoWeeks}, 3 weeks {threeWeeks}, monthly {monthly} | {who} ตั้งราคา: รายวัน {daily} รายสัปดาห์ {weekly} 2 สัปดาห์ {twoWeeks} 3 สัปดาห์ {threeWeeks} รายเดือน {monthly} |
+| `Products.history.pricing.line.boxChanged` | {who} changed the {box} price from {from} to {to} | {who} เปลี่ยนราคา{box}จาก {from} เป็น {to} |
+| `Products.history.pricing.line.dayChanged` | {who} changed the {days}-day price from {from} to {to} | {who} เปลี่ยนราคา {days} วันจาก {from} เป็น {to} |
+| `Products.history.pricing.line.daysChanged` | {who} changed the prices of {count, plural, one {# day} other {# days}} | {who} เปลี่ยนราคา {count, plural, other {#}} วัน |
+| `Products.history.pricing.line.otherDays` | {count, plural, one {# other day} other {# other days}} changed | วันอื่นเปลี่ยน {count, plural, other {#}} วัน |
+| `Products.history.pricing.line.sharedListChanged` | Price list {list} changed (also used by {others, plural, one {# other product} other {# other products}}) | ตารางราคา {list} เปลี่ยน (ใช้กับสินค้าอื่นอีก {others, plural, other {#}} รายการ) |
+| `Products.history.pricing.line.sharedDay` | {days, plural, one {# day} other {# days}}: {from} → {to} | {days, plural, other {#}} วัน: {from} → {to} |
+| `Products.history.pricing.line.priceSet` | {who} set the price to {to} | {who} ตั้งราคาเป็น {to} |
+| `Products.history.pricing.line.priceChanged` | {who} changed the price from {from} to {to} | {who} เปลี่ยนราคาจาก {from} เป็น {to} |
+| `Products.history.pricing.line.priceRemoved` | {who} removed the price (it was {from}) | {who} ลบราคา (เดิม {from}) |
+| `Products.history.pricing.line.pricePerSet` | {who} set the price to {to} {period} | {who} ตั้งราคาเป็น {to} {period} |
+| `Products.history.pricing.line.pricePerChanged` | {who} changed the price from {from} to {to} {period} | {who} เปลี่ยนราคาจาก {from} เป็น {to} {period} |
+| `Products.history.pricing.line.pricePerRemoved` | {who} removed the price (it was {from} {period}) | {who} ลบราคา (เดิม {from} {period}) |
+| `Products.history.pricing.line.periodChanged` | {who} changed the period from {from} to {to} | {who} เปลี่ยนช่วงเวลาจาก {from} เป็น {to} |
+| `Products.history.pricing.line.ownPrices` | {who} gave it its own prices | {who} กำหนดราคาของสินค้านี้เอง |
+| `Products.history.pricing.line.ownPricesFrom` | {who} gave it its own prices (it was on {list}) | {who} กำหนดราคาของสินค้านี้เอง (เดิมใช้ {list}) |
+| `Products.history.pricing.line.movedToList` | {who} moved it to the shared price list {list} | {who} ย้ายไปใช้ตารางราคา {list} |
+| `Products.history.pricing.line.movedToListBase` | {who} moved it to the shared price list {list} with a base price of {base} | {who} ย้ายไปใช้ตารางราคา {list} ราคาฐาน {base} |
+| `Products.history.pricing.line.baseSet` | {who} set the base price to {to} | {who} ตั้งราคาฐานเป็น {to} |
+| `Products.history.pricing.line.baseChanged` | {who} changed the base price from {from} to {to} | {who} เปลี่ยนราคาฐานจาก {from} เป็น {to} |
+| `Products.history.pricing.line.baseRemoved` | {who} removed the base price (it was {from}) | {who} ลบราคาฐาน (เดิม {from}) |
+| `Products.history.pricing.line.longStaySet` | {who} set the long-stay daily rate to {to} | {who} ตั้งราคาต่อวันสำหรับเช่าระยะยาวเป็น {to} |
+| `Products.history.pricing.line.longStayChanged` | {who} changed the long-stay daily rate from {from} to {to} | {who} เปลี่ยนราคาต่อวันสำหรับเช่าระยะยาวจาก {from} เป็น {to} |
+| `Products.history.pricing.line.longStayRemoved` | {who} removed the long-stay daily rate (it was {from}) | {who} ลบราคาต่อวันสำหรับเช่าระยะยาว (เดิม {from}) |
+| `Products.history.pricing.line.hourlySet` | {who} set the hourly price to {to} | {who} ตั้งราคารายชั่วโมงเป็น {to} |
+| `Products.history.pricing.line.hourlyChanged` | {who} changed the hourly price from {from} to {to} | {who} เปลี่ยนราคารายชั่วโมงจาก {from} เป็น {to} |
+| `Products.history.pricing.line.hourlyRemoved` | {who} removed the hourly price (it was {from}) | {who} ลบราคารายชั่วโมง (เดิม {from}) |
+| `Products.history.pricing.line.depositSet` | {who} set the deposit to {to} | {who} ตั้งเงินมัดจำเป็น {to} |
+| `Products.history.pricing.line.depositChanged` | {who} changed the deposit from {from} to {to} | {who} เปลี่ยนเงินมัดจำจาก {from} เป็น {to} |
+| `Products.history.pricing.line.depositRemoved` | {who} removed the deposit (it was {from}) | {who} ลบเงินมัดจำ (เดิม {from}) |
+| `Products.history.pricing.line.replacementSet` | {who} set the replacement value to {to} | {who} ตั้งมูลค่าทดแทนเป็น {to} |
+| `Products.history.pricing.line.replacementChanged` | {who} changed the replacement value from {from} to {to} | {who} เปลี่ยนมูลค่าทดแทนจาก {from} เป็น {to} |
+| `Products.history.pricing.line.replacementRemoved` | {who} removed the replacement value (it was {from}) | {who} ลบมูลค่าทดแทน (เดิม {from}) |
+| `Products.history.pricing.line.taxChanged` | {who} changed tax from {from} to {to} | {who} เปลี่ยนภาษีจาก {from} เป็น {to} |
+| `Products.priceLists` | Price lists | ตารางราคา |
+| `Products.price.perDay` | {amount} / day | {amount} / วัน |
+| `Products.price.per_hour` | {amount} / hour | {amount} / ชั่วโมง |
+| `Products.price.per_day` | {amount} / day | {amount} / วัน |
+| `Products.price.per_week` | {amount} / week | {amount} / สัปดาห์ |
+| `Products.price.per_month` | {amount} / month | {amount} / เดือน |
+| `Products.price.free` | Free | ฟรี |
+| `Products.price.none` | No price yet | ยังไม่มีราคา |
+| `Pricing.save` | Save prices | บันทึกราคา |
+| `Pricing.readOnly` | You can see these prices but not change them. | คุณดูราคาเหล่านี้ได้ แต่แก้ไขไม่ได้ |
+| `Pricing.method.title` | How it is priced | วิธีคิดราคา |
+| `Pricing.method.tiered` | By rental length | ตามระยะเวลาเช่า |
+| `Pricing.method.tieredHelp` | A total for each length from 1 to 30 days; longer rentals by the month. | ราคารวมสำหรับแต่ละระยะเวลา 1 ถึง 30 วัน เช่านานกว่านั้นคิดเป็นรายเดือน |
+| `Pricing.method.per_period` | Flat fee per period | ราคาต่อช่วงเวลา |
+| `Pricing.method.per_periodHelp` | One amount per hour, day, week or month. | ราคาเดียวต่อชั่วโมง วัน สัปดาห์ หรือเดือน |
+| `Pricing.method.fixed` | Fixed price | ราคาคงที่ |
+| `Pricing.method.fixedHelp` | One amount per order, however long. | ราคาเดียวต่อคำสั่งซื้อ ไม่ว่าจะเช่านานเท่าใด |
+| `Pricing.method.free` | Free | ฟรี |
+| `Pricing.method.freeHelp` | Shown as included; nothing is charged. | แสดงว่ารวมอยู่แล้ว ไม่คิดเงิน |
+| `Pricing.period.hour` | Per hour | ต่อชั่วโมง |
+| `Pricing.period.day` | Per day | ต่อวัน |
+| `Pricing.period.week` | Per week | ต่อสัปดาห์ |
+| `Pricing.period.month` | Per month | ต่อเดือน |
+| `Pricing.flat.title` | Flat fee | ราคาต่อช่วงเวลา |
+| `Pricing.flat.amount` | Amount ({currency}) | ราคา ({currency}) |
+| `Pricing.flat.period` | Period | ช่วงเวลา |
+| `Pricing.flat.help` | Every started period is charged. A week is 7 days; a month runs date to date from the pickup. | คิดทุกช่วงเวลาที่เริ่มแล้ว หนึ่งสัปดาห์คือ 7 วัน หนึ่งเดือนนับวันที่ถึงวันที่จากวันรับรถ |
+| `Pricing.fixed.title` | Fixed price | ราคาคงที่ |
+| `Pricing.fixed.amount` | Price ({currency}) | ราคา ({currency}) |
+| `Pricing.fixed.help` | Charged once per order, whatever the length. | คิดครั้งเดียวต่อคำสั่งซื้อ ไม่ว่าจะเช่านานเท่าใด |
+| `Pricing.free.title` | Free | ฟรี |
+| `Pricing.free.help` | Shown as included on the order. Nothing is charged. | แสดงในคำสั่งซื้อว่ารวมอยู่แล้ว ไม่คิดเงิน |
+| `Pricing.tiered.title` | By rental length | ตามระยะเวลาเช่า |
+| `Pricing.tiered.own` | Set this product's own prices | กำหนดราคาของสินค้านี้เอง |
+| `Pricing.tiered.ownHelp` | Type up to six prices; the days between fill in. | กรอกราคาได้สูงสุดหกช่อง วันที่อยู่ระหว่างกลางจะเติมให้เอง |
+| `Pricing.tiered.shared` | Use a shared price list | ใช้ตารางราคาที่ใช้ร่วมกัน |
+| `Pricing.tiered.sharedHelp` | One list for several products. Change it once, every product on it follows. | ตารางเดียวสำหรับหลายสินค้า แก้ครั้งเดียว ทุกสินค้าในตารางจะเปลี่ยนตาม |
+| `Pricing.tiered.list` | Price list | ตารางราคา |
+| `Pricing.tiered.pickList` | Choose a price list | เลือกตารางราคา |
+| `Pricing.tiered.noLists` | There are no shared price lists yet. | ยังไม่มีตารางราคาที่ใช้ร่วมกัน |
+| `Pricing.tiered.manageLists` | Manage price lists | จัดการตารางราคา |
+| `Pricing.tiered.base` | Base price ({currency}) | ราคาฐาน ({currency}) |
+| `Pricing.tiered.baseHelp` | This list holds multipliers. Each day's price is this base price × the day's multiplier. | ตารางนี้เก็บตัวคูณ ราคาแต่ละวันคือราคาฐานนี้ × ตัวคูณของวันนั้น |
+| `Pricing.tiered.resulting` | Prices for this product | ราคาของสินค้านี้ |
+| `Pricing.tiered.longStay` | Long-stay daily rate ({currency}) | ราคาต่อวันสำหรับเช่าระยะยาว ({currency}) |
+| `Pricing.tiered.longStayHelp` | For each day after a whole month (rentals of 31 days or more). Blank: the monthly price ÷ 30. | สำหรับแต่ละวันหลังครบเดือน (เช่าตั้งแต่ 31 วันขึ้นไป) เว้นว่าง: ราคารายเดือน ÷ 30 |
+| `Pricing.quick.title` | Quick price entry | กรอกราคาแบบด่วน |
+| `Pricing.quick.help` | Daily and monthly are required. The days between fill in in equal steps; you can change any day below. | ต้องกรอกรายวันและรายเดือน วันระหว่างกลางจะเพิ่มขึ้นทีละเท่า ๆ กัน คุณแก้ไขวันใดก็ได้ด้านล่าง |
+| `Pricing.quick.helpMultipliers` | Daily and monthly are required. Type multipliers, such as 3 or 1.1666. The days between fill in; you can change any day below. | ต้องกรอกรายวันและรายเดือน กรอกตัวคูณ เช่น 3 หรือ 1.1666 วันระหว่างกลางจะเติมให้เอง คุณแก้ไขวันใดก็ได้ด้านล่าง |
+| `Pricing.quick.hourly` | Hourly | รายชั่วโมง |
+| `Pricing.quick.daily` | Daily (1 day) | รายวัน (1 วัน) |
+| `Pricing.quick.weekly` | Weekly (7 days) | รายสัปดาห์ (7 วัน) |
+| `Pricing.quick.twoWeeks` | 2 weeks (14 days) | 2 สัปดาห์ (14 วัน) |
+| `Pricing.quick.threeWeeks` | 3 weeks (21 days) | 3 สัปดาห์ (21 วัน) |
+| `Pricing.quick.monthly` | Monthly (30 days) | รายเดือน (30 วัน) |
+| `Pricing.quick.required` | Daily and monthly are both needed. | ต้องกรอกทั้งรายวันและรายเดือน |
+| `Pricing.quick.requiredMark` | Required | จำเป็น |
+| `Pricing.quick.invalid` | Enter an amount above 0, such as 300 or 300.50. | กรอกราคาที่มากกว่า 0 เช่น 300 หรือ 300.50 |
+| `Pricing.quick.invalidMultiplier` | Enter a multiplier above 0, such as 3 or 1.1666. | กรอกตัวคูณที่มากกว่า 0 เช่น 3 หรือ 1.1666 |
+| `Pricing.quick.sameEveryDay` | Same price every day | ราคาเท่ากันทุกวัน |
+| `Pricing.grid.label` | Price for each length | ราคาสำหรับแต่ละระยะเวลา |
+| `Pricing.grid.showAll` | Show all days | แสดงทุกวัน |
+| `Pricing.grid.hide` | Hide the days | ซ่อนรายวัน |
+| `Pricing.grid.day` | {days, plural, one {# day} other {# days}} | {days, plural, other {#}} วัน |
+| `Pricing.grid.fromBox` | from quick entry | จากการกรอกด่วน |
+| `Pricing.grid.byHand` | by hand | แก้เอง |
+| `Pricing.grid.filled` | filled in | เติมให้อัตโนมัติ |
+| `Pricing.grid.reset` | Reset | คืนค่า |
+| `Pricing.grid.fallsTitle` | A longer rental can't cost less | เช่านานขึ้นต้องไม่ถูกลง |
+| `Pricing.grid.falls` | {day} days cost less than {before} days. Raise it, or lower the days before it. Equal prices are fine. | {day} วันมีราคาต่ำกว่า {before} วัน ให้เพิ่มราคาวันนี้ หรือลดราคาวันก่อนหน้า ราคาเท่ากันได้ |
+| `Pricing.grid.invalidDays` | A day typed by hand isn't a valid price. | มีวันที่แก้เองซึ่งไม่ใช่ราคาที่ถูกต้อง |
+| `Pricing.deposit.title` | Deposit | เงินมัดจำ |
+| `Pricing.deposit.amount` | Deposit ({currency}) | เงินมัดจำ ({currency}) |
+| `Pricing.deposit.help` | Taken per vehicle on an order. Blank: the shop's amount; 0: no deposit. | เก็บต่อรถหนึ่งคันในคำสั่งซื้อ เว้นว่าง: ใช้จำนวนของร้าน 0: ไม่เก็บมัดจำ |
+| `Pricing.deposit.shopAmount` | Blank uses the shop's amount: {amount}. 0: no deposit for this one. | เว้นว่างจะใช้จำนวนของร้าน: {amount} 0: ไม่เก็บมัดจำสำหรับคันนี้ |
+| `Pricing.deposit.firstHelp` | Taken per vehicle on an order. The shop's other deposit choices come with its pricing settings. | เก็บต่อรถหนึ่งคันในคำสั่งซื้อ ตัวเลือกเงินมัดจำอื่นของร้านจะมาพร้อมการตั้งค่าราคา |
+| `Pricing.deposit.none` | The shop takes no deposit. | ร้านไม่เก็บเงินมัดจำ |
+| `Pricing.deposit.percent` | The shop takes {percent} of each order as a deposit. | ร้านเก็บเงินมัดจำ {percent} ของแต่ละคำสั่งซื้อ |
+| `Pricing.deposit.fixed` | The shop takes {amount} per order as a deposit. | ร้านเก็บเงินมัดจำ {amount} ต่อคำสั่งซื้อ |
+| `Pricing.tax.title` | Tax | ภาษี |
+| `Pricing.tax.label` | Tax on this product | ภาษีของสินค้านี้ |
+| `Pricing.tax.default` | Shop default ({name}) | ค่าเริ่มต้นของร้าน ({name}) |
+| `Pricing.tax.defaultNone` | Shop default (no tax) | ค่าเริ่มต้นของร้าน (ไม่มีภาษี) |
+| `Pricing.tax.none` | Not taxable | ไม่คิดภาษี |
+| `Pricing.replacement.title` | Replacement value | มูลค่าทดแทน |
+| `Pricing.replacement.amount` | Replacement value ({currency}) | มูลค่าทดแทน ({currency}) |
+| `Pricing.replacement.help` | What a lost or broken item costs the customer. | จำนวนเงินที่ลูกค้าต้องจ่ายหากของหายหรือเสียหาย |
+| `Pricing.seasons.title` | Seasons | ฤดูกาล |
+| `Pricing.seasons.off` | {percent} off | ลด {percent} |
+| `Pricing.seasons.more` | {percent} more | เพิ่ม {percent} |
+| `Pricing.seasons.yearly` | {from} to {to}, every year | {from} ถึง {to} ทุกปี |
+| `Pricing.seasons.once` | {from} to {to} | {from} ถึง {to} |
+| `Pricing.seasons.help` | Seasons are set for the whole shop. They change the price for the part of a rental inside them. | ฤดูกาลตั้งไว้สำหรับทั้งร้าน และเปลี่ยนราคาเฉพาะส่วนของการเช่าที่อยู่ในช่วงนั้น |
+| `Pricing.check.title` | Check a price | ตรวจสอบราคา |
+| `Pricing.check.intro` | Prices a sample rental with these prices. | คิดราคาการเช่าตัวอย่างด้วยราคาเหล่านี้ |
+| `Pricing.check.introUnsaved` | Prices a sample rental with the prices on screen, saved or not. | คิดราคาการเช่าตัวอย่างด้วยราคาบนหน้าจอ ไม่ว่าจะบันทึกแล้วหรือยัง |
+| `Pricing.check.by` | Sample rental by | การเช่าตัวอย่างตาม |
+| `Pricing.check.by_days` | Number of days | จำนวนวัน |
+| `Pricing.check.by_dates` | Dates | วันที่ |
+| `Pricing.check.pickup` | Pickup | รับรถ |
+| `Pricing.check.return` | Return | คืนรถ |
+| `Pricing.check.days` | Days | จำนวนวัน |
+| `Pricing.check.quantity` | How many | จำนวน |
+| `Pricing.check.notPriced` | Fill in the prices to check one. | กรอกราคาก่อนจึงจะตรวจสอบได้ |
+| `Pricing.check.cantPrice` | This rental can't be priced. Check the dates and the quantity. | คิดราคาการเช่านี้ไม่ได้ โปรดตรวจสอบวันที่และจำนวน |
+| `Pricing.check.listPrice` | List price | ราคาตามตาราง |
+| `Pricing.check.season` | Season: {name} | ฤดูกาล: {name} |
+| `Pricing.check.seasonDays` | {count, plural, one {# day} other {# days}} inside | {count, plural, other {#}} วันอยู่ในช่วง |
+| `Pricing.check.vatIncluded` | Includes VAT {rate} | รวมภาษีมูลค่าเพิ่ม {rate} |
+| `Pricing.check.vatAdded` | VAT {rate} | ภาษีมูลค่าเพิ่ม {rate} |
+| `Pricing.check.total` | Total | รวม |
+| `Pricing.check.deposit` | Deposit | เงินมัดจำ |
+| `Pricing.check.depositHelp` | Taken beside the total; never taxed. | เก็บแยกจากยอดรวม ไม่คิดภาษี |
+| `Pricing.basis.hours` | {hours, plural, one {# hour} other {# hours}} at {hourly} | {hours, plural, other {#}} ชั่วโมง ชั่วโมงละ {hourly} |
+| `Pricing.basis.hoursCapped` | {hours, plural, one {# hour} other {# hours}}, held to the 1-day price | {hours, plural, other {#}} ชั่วโมง ไม่เกินราคา 1 วัน |
+| `Pricing.basis.list` | {days, plural, one {# day} other {# days}} from the price list | {days, plural, other {#}} วัน ตามตารางราคา |
+| `Pricing.basis.months` | {months, plural, one {# month} other {# months}} and {days, plural, one {# day} other {# days}} at {rate} a day | {months, plural, other {#}} เดือน และ {days, plural, other {#}} วัน วันละ {rate} |
+| `Pricing.basis.underOneMonth` | 31 days started: the monthly price | เริ่มวันที่ 31 แล้ว: คิดราคารายเดือน |
+| `Pricing.basis.periods_hour` | {count, plural, one {# hour} other {# hours}} | {count, plural, other {#}} ชั่วโมง |
+| `Pricing.basis.periods_day` | {count, plural, one {# day} other {# days}} | {count, plural, other {#}} วัน |
+| `Pricing.basis.periods_week` | {count, plural, one {# week} other {# weeks}} | {count, plural, other {#}} สัปดาห์ |
+| `Pricing.basis.periods_month` | {count, plural, one {# month} other {# months}} | {count, plural, other {#}} เดือน |
+| `Pricing.basis.fixed` | Fixed price | ราคาคงที่ |
+| `Pricing.basis.free` | Free | ฟรี |
+| `Pricing.lists.title` | Price lists | ตารางราคา |
+| `Pricing.lists.intro` | Shared price lists. Each product on a list follows it. | ตารางราคาที่ใช้ร่วมกัน ทุกสินค้าในตารางจะใช้ราคาตามตาราง |
+| `Pricing.lists.new` | New price list | ตารางราคาใหม่ |
+| `Pricing.lists.none` | No shared price lists yet. | ยังไม่มีตารางราคาที่ใช้ร่วมกัน |
+| `Pricing.lists.deleted` | Price list deleted. | ลบตารางราคาแล้ว |
+| `Pricing.lists.products` | {count, plural, =0 {No products} one {# product} other {# products}} | {count, plural, =0 {ไม่มีสินค้า} other {# สินค้า}} |
+| `Pricing.lists.firstDay` | 1 day: {amount} | 1 วัน: {amount} |
+| `Pricing.lists.newTitle` | New price list | ตารางราคาใหม่ |
+| `Pricing.lists.newIntro` | Choose its kind, name it and enter its prices. | เลือกประเภท ตั้งชื่อ และกรอกราคา |
+| `Pricing.lists.editTitle` | Price list | ตารางราคา |
+| `Pricing.lists.editIntro` | A shared price list. | ตารางราคาที่ใช้ร่วมกัน |
+| `Pricing.lists.added` | Price list saved. | บันทึกตารางราคาแล้ว |
+| `Pricing.lists.name` | Name | ชื่อ |
+| `Pricing.lists.nameHelp` | For example 300–3000. Names are unique in the shop. | เช่น 300–3000 ชื่อต้องไม่ซ้ำกันในร้าน |
+| `Pricing.lists.kind` | What does it hold? | ตารางนี้เก็บอะไร |
+| `Pricing.lists.kindAmounts` | Amounts | จำนวนเงิน |
+| `Pricing.lists.kindAmountsHelp` | The price for each length, in money. | ราคาสำหรับแต่ละระยะเวลาเป็นจำนวนเงิน |
+| `Pricing.lists.kindMultipliers` | Multipliers of a base price | ตัวคูณของราคาฐาน |
+| `Pricing.lists.kindMultipliersHelp` | Each product on it sets its own base price, which the list multiplies. | แต่ละสินค้าในตารางกำหนดราคาฐานของตัวเอง แล้วตารางจะคูณให้ |
+| `Pricing.lists.kindFixed` | A list's kind can't be changed. | เปลี่ยนประเภทของตารางไม่ได้ |
+| `Pricing.lists.sampleBase` | Sample base price ({currency}) | ราคาฐานตัวอย่าง ({currency}) |
+| `Pricing.lists.sampleBaseHelp` | Shows what these multipliers come to at this base price. | แสดงราคาที่ได้จากตัวคูณเหล่านี้ที่ราคาฐานนี้ |
+| `Pricing.lists.usedBy` | Products on this list | สินค้าในตารางนี้ |
+| `Pricing.lists.unused` | No product uses this list yet. | ยังไม่มีสินค้าใช้ตารางนี้ |
+| `Pricing.lists.repriceNote` | Saving changes the prices of {count, plural, one {this product} other {these # products}}: | การบันทึกจะเปลี่ยนราคาของสินค้า {count, plural, other {#}} รายการนี้: |
+| `Pricing.lists.repriceConfirm` | Saving changes the prices of {count, plural, one {# product} other {# products}}. Save? | การบันทึกจะเปลี่ยนราคาของสินค้า {count, plural, other {#}} รายการ บันทึกหรือไม่ |
+| `Pricing.lists.save` | Save price list | บันทึกตารางราคา |
+| `Pricing.lists.create` | Create price list | สร้างตารางราคา |
+| `Pricing.lists.delete` | Delete price list | ลบตารางราคา |
+| `Pricing.lists.deleteConfirm` | Delete this price list? This can't be undone. | ลบตารางราคานี้หรือไม่ ยกเลิกไม่ได้ |
+| `Pricing.lists.deleteBlocked` | A list can't be deleted while a product uses it. Move those products to other prices first. | ลบตารางไม่ได้ขณะที่มีสินค้าใช้อยู่ ให้ย้ายสินค้าเหล่านั้นไปใช้ราคาอื่นก่อน |
+| `FormErrors.priceListFalls` | A longer rental can't cost less than a shorter one. Equal prices are fine. | เช่านานขึ้นต้องไม่ถูกกว่าเช่าสั้นกว่า ราคาเท่ากันได้ |
+| `FormErrors.priceListIncomplete` | A price list needs all 30 days. | ตารางราคาต้องมีครบ 30 วัน |
+| `FormErrors.priceListInUse` | This price list is used by a product, so it can't be deleted. Move those products to other prices first. | มีสินค้าใช้ตารางราคานี้อยู่ จึงลบไม่ได้ ให้ย้ายสินค้าเหล่านั้นไปใช้ราคาอื่นก่อน |
+| `FormErrors.priceListKindFixed` | A price list's kind can't be changed. | เปลี่ยนประเภทของตารางราคาไม่ได้ |
+| `FormErrors.priceListRequired` | Choose a price list, or set this product's own prices. | เลือกตารางราคา หรือกำหนดราคาของสินค้านี้เอง |
+| `FormErrors.basePriceRequired` | This list holds multipliers: enter a base price. | ตารางนี้เก็บตัวคูณ: กรอกราคาฐาน |
+| `FormErrors.priceRequired` | Enter a price. | กรอกราคา |
+| `FormErrors.priceZero` | A price can't be 0. To charge nothing, choose Free. | ราคาเป็น 0 ไม่ได้ ถ้าไม่คิดเงิน ให้เลือกฟรี |
+| `FormErrors.methodNotAllowed` | This kind of product can't be priced that way. | สินค้าประเภทนี้คิดราคาแบบนี้ไม่ได้ |
+| `FormErrors.depositVehiclesOnly` | Only vehicles have a deposit. | มีเงินมัดจำได้เฉพาะรถเท่านั้น |
+| `FormErrors.invalidTaxProfile` | That tax profile is no longer in use. | รายการภาษีนั้นไม่ได้ใช้งานแล้ว |
+| `FormErrors.listNameExists` | The shop already has a price list with this name. | ร้านมีตารางราคาชื่อนี้อยู่แล้ว |
+| `FormErrors.listNotReady` | Fill in daily and monthly, and fix the days marked in red, before saving. | กรอกรายวันและรายเดือน และแก้วันที่เป็นสีแดงก่อนบันทึก |

@@ -66,6 +66,78 @@ The fourth build stage of pricing, of seven (`docs/products-redesign.md` §9.2, 
 
 **Next:** D5, the Pricing tab: the tab, "Check a price", the Products list's price column, History lines and the Thai review list. The deposit field moves there from the vehicle form.
 
+## Products, stage D5: the Pricing tab (branch `platform/products-stage-d5-pricing-tab`, 15 Nov 2026)
+
+The fifth build stage of pricing, of seven (`docs/products-redesign.md` §9.12, §9.15). **No migration**: everything reads and writes through stage D4's functions. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **A Pricing tab on every product page**, after Units or Stock and before Moto Mangos. Owners and managers edit; staff see the same, read only; mechanics and drivers have no tab (and the database gives them no row).
+  - **How it is priced:** only the ways the product's type allows (vehicles: by rental length or flat fee; rental gear: also fixed; services and extras: flat fee, fixed or free; items for sale: fixed).
+  - **Flat fee:** one amount per hour, day, week or month. **Fixed price**, **Free**.
+  - **By rental length:** this product's own prices (six quick-entry boxes: hourly, daily, weekly, 2 weeks, 3 weeks, monthly; days 1 to 30 fill in equal steps to the rounding step; every day editable by hand, with Reset; "Same price every day"), or a shared price list (a multipliers list asks for this product's base price and shows the resulting amounts). A total lower than the day before is named on the day, in words, and Save waits; equal neighbours save.
+  - **Long-stay daily rate** for rentals of 31 days or more.
+  - **Deposit**, moved here from the vehicle form (vehicles only). **Tax** (shop default, another profile, or not taxable; hidden while the shop has no profile). **Replacement value** (gear). **Seasons** that apply, read only.
+  - **Check a price:** a sample rental by number of days or by dates, and a quantity, priced by `quote()` from what is on screen, saved or not: list price and how it was worked out, seasons, VAT lines, total, deposit.
+- **Price lists** (Products › Price lists): the shop's shared lists with the products on each; New price list (Amounts or Multipliers of a base price, chosen once), edit, delete. Delete is refused while a product uses the list (`price_list_in_use`), in words. Saving a list that products use asks first and names them. A multipliers list shows its amounts at a sample base price.
+- **The Products list** shows each product's price beside its stock line ("฿300 / day", "฿200 / week", "฿150", "Free", "No price yet") for owners, managers and staff.
+- **The Moto Mangos tab** says when a listed motorbike has no price by rental length ("it won't be offered on Moto Mangos"; open item 9 (a)).
+- **History:** one line per price change in the field's words (first price, a box, a day, the hourly price, a flat fee, how it is priced, a shared list moved to or edited, base price, long-stay rate, deposit, tax, replacement value).
+- **No money arithmetic in the app.** Lists are filled by `fillPriceList`, multipliers resolved by `resolvePriceList`, prices by `quote()`; the app only parses and formats amounts as digits (`lib/money.ts`). The one-pricer lint rule passes. Saves go through `save_product_pricing`, `save_price_template` and `delete_price_template` only.
+- New: `lib/pricing-form.ts`, `lib/pricing-preview.ts`, `lib/pricing-history.ts`, `lib/pricing-data.ts`; `app/[tenant]/products/pricing-*.tsx`, `price-list-form.tsx`, `price-lists/`. About 220 new Thai lines in `docs/platform/thai-review-products.md` for Korn.
+
+**Decided here, not specified by the owner** (say if any should change)
+
+- **Price lists live under Products for now** (`/products/price-lists`), linked from the Products list and the Pricing tab. Stage D6 can move them under Settings. Staff read them.
+- **One Save for the whole tab.** "Check a price" sits outside it and prices the unsaved form.
+- **The rounding step when the shop has none:** ฿10 for THB (the design's figure), one major unit for any other currency. Multipliers fill to four decimal places.
+- **Editor-only details are read straight from the tables** (under the same row-level security): how each day of a list got its value, which tax choice a product has, the shop's lists and profiles. Prices themselves come from `pricing_inputs()`. That read did not need to change, so no migration.
+- **A day with a quick-entry price is read only in the grid** (change it in its box). Typing in a box replaces a hand-typed value on the same day. Reading a list back, daily and monthly are always boxes, so a list loaded with every day by hand keeps every day.
+- **The deposit card** shows on a vehicle while the shop has no settings or charges per product: blank is the shop's amount, 0 is no deposit for this one. Any other shop choice is one line saying what the shop charges. A shop's first product deposit still sets it to "per product" (as in D4) until Settings exist.
+- **Replacement value for gear** is on the tab now (open item 7, as recommended).
+- **History:** a day's "by hand" cannot be told from the audit (it keeps values, not how each was set), so a single day changed reads "changed the 10-day price", without "(by hand)". Box prices are told by their day (1, 7, 14, 21, 30). A shared list's hourly price and name changes are not on each product's History. A change of how it is priced names the way, not the period.
+- **The price is on each row's second line**, after the stock ("3 vehicles in the fleet · ฿300 / day"), not a column of its own: the row layout has no room for one at 375 px.
+- **Duplicate no longer copies the deposit:** prices are not copied with a product.
+- **The sample rental** starts tomorrow at 10:00 on the shop's clock, 7 days, quantity 1, in the shop's time zone (not a location's: the tab has no location).
+- **A staff member on a service** sees only its Pricing tab.
+
+**Tests**
+
+- Unit: 286 on the platform (244 before; new `lib/pricing-form.test.ts` 26, `lib/pricing-preview.test.ts` 8, `lib/pricing-history.test.ts` 8), 284 in `@mango/core`, 202 on the marketplace. Typecheck and lint pass for every workspace.
+- The preview's figures pinned through `quote()`: a month and 14 days from 1 Jan at ฿3,000 and ฿100 a long-stay day = ฿4,400; 14 days = the list's two-week price; a month = ฿3,000 with VAT ฿196.26; 3 of 7 days in a −20% season off a ฿200 daily fee = ฿160 off; a multipliers list at a ฿100 base.
+- Browser: `e2e/products-stage-d5.spec.ts` replaces `products-stage-d4.spec.ts` (the deposit left the vehicle form): own prices entered, the fall refused and reset, equal neighbours, Check a price, saved, reloaded, History, the price on the list, the deposit cleared; a flat fee and the role check (staff read only, mechanic and driver no tab); a shared multipliers list made, used with a base price, delete refused while used, then deleted; the ways offered for a service and an item for sale, 0 refused; Thai at 375 px. 9 passed and 1 skipped (Thai is phone only), at 375 px and 1280 px, against a production build on the local database.
+- Older specs updated for the new tab and the price on the list (`products`, `products-stage-b`, `products-stage-c`, `gear-stock`, `fleet`): all pass run one file at a time, except `fleet.spec.ts`'s search for "pcx", which fails locally because this machine's shared database holds leftover "PCX copy" products from earlier interrupted runs. CI starts from a clean database.
+- No database tests changed: nothing in the database changed.
+- **Not run against staging.** Note for when it is: the deposit test saves BSR's first product deposit, which gives BSR a settings row on "per product", as the D4 test did.
+
+**Review fixes (15 Nov 2026, after the review of PR 29).** No migration.
+
+- **Check a price and a shop with no settings row.** The CI failure at `products-stage-d5.spec.ts:146` was not a clock or a pricing fault: ฿9,000 was the right total (2 × (฿3,000 + 15 × ฿100) for 45 days from 16 Nov). The test's "4,000" was the deposit line, 2 × ฿2,000, which only showed on a database where BSR already had a settings row; on a clean one the preview said ฿0, although saving the first product deposit sets the shop to "per product". The preview now prices the sample the way Save will (`previewInputs` in `lib/pricing-preview.ts`).
+- **The D5 browser test no longer depends on the date or on what an earlier run left.** Every "Check a price" gets a fixed pickup (1 Jan 2027, 10:00), so 45 days is always a month and 14 days; the Total (฿8,800 for two) and the Deposit (฿4,000) are each read from their own row.
+- **A saved list reads as it is stored.** The days that were filled in used to be thrown away on load and filled in again with the rounding step of the day, so after a change of step the grid and Check a price would have shown amounts that are not the ones stored and charged, and any Save would have rewritten the list (on a shared list, repricing every product on it). Now a list read back keeps each filled day's saved value (`ListDraft.stored`); only the days between the boxes on either side of a box the owner changes are filled in again (`withBox`). This holds for a product's own prices and for the shared-list editor.
+- **A save that leaves the prices alone sends no days.** The deposit alone, or a shared list's new name, no longer rewrites the 30 rows (`sameAsSaved`; `save_product_pricing` and `save_price_template` already keep what is not sent).
+- **Amounts read from the tables are strings of digits** (`value::text`, `hourly::text` in the query), as `pricing_inputs()` sends them, never JSON numbers. A shared list's days are read with their list (an embedded read), so the API's 1,000-row limit can't drop a day of the 34th list.
+- **Local set-up.** In a worktree with its own local stack, `supabase/config.toml` (project and ports) and `apps/platform/.env.local` must name the same stack: the database tests reach the database through the container named in `config.toml`, the app through `.env.local`. In this worktree they did not, which is why the database tests failed here and the browser run used a database with leftovers. `fleet.spec.ts`'s "pcx" search passes on a clean database.
+
+- **Tests after the fixes:** 297 unit tests on the platform (11 new), 284 in `@mango/core`, 202 on the marketplace; 342 database tests; the full browser suite on a freshly reset and seeded local database: 119 passed, 5 skipped (each runs at one width only), none failed. A new browser test saves a list in the Saigon demo shop (dong, no decimals), changes the shop's rounding step in the database, and checks that the grid, Check a price and a save of the deposit alone all keep the stored days.
+
+**Follow-ups from the review (not done here)**
+
+1. **One table of per-currency defaults** in place of the two `currency === "THB"` checks (`lib/pricing-form.ts` `suggestedStep`: ฿10; `price-list-form.tsx`: the sample base price of 100). The figures are the design's; a currency check in code is against "Built for any country".
+2. **`parseBase` in `pricing-form.tsx` is a second money parser** with other rules than `parseMinorUnits` ("1 000" saves, but hides the resulting amounts). Use `parseMinorUnits`. Guard the server action's reading of the form: a hand-made draft (a day 31 typed by hand, no `list`) throws instead of returning a form error.
+3. **"A shop's first product deposit sets it to per product" is a second call** (`save_pricing_settings`) after the prices are saved. If it fails, the form shows an error although the prices were saved. One transaction, or say what was saved. Stage D6's Settings screen may remove the need.
+4. Nits:
+   - a season's amount is negated in the component to show "−" (`pricing-form.tsx`, Check a price): the pricer could return the sign and the size;
+   - a season's dates show as ISO text ("2027-04-01"), not in the viewer's format;
+   - `formatMinor` passes a decimal string to `Intl.NumberFormat.format` through a cast: fine on Node 24 and today's browsers, worth a line on the oldest browser supported;
+   - after a save, "Check a price" can still say "saved or not" when what was typed ("300") differs from what is read back ("300.00");
+   - the products on shared lists (`getSharedLists`) are read in one query, so past 1,000 priced products the names under a list would be cut short (the prices would not);
+   - History reads `product_pricing` amounts from the audit rows as JSON numbers (exact below 2^53);
+   - no browser test opens a duplicate's Pricing tab to show it starts empty;
+   - the shared-list editor's "reads as stored" is covered by unit tests only; the browser test uses a product's own list.
+
+**Next:** D6, Settings: pricing and tax (rounding step, tax profiles and the default, include or exclude tax, the deposit choice, the coupons switch) and Seasons; perhaps the price lists screen moved under it.
+
 ## Products, stage D3: rental-period maths (branch `platform/products-stage-d3-rental-periods`, 15 Nov 2026)
 
 The third build stage of pricing, of seven (`docs/products-redesign.md` §9.15 and §9.19). **`@mango/core` and docs only: no migration, no screen, nothing in `apps/`.** Phase 3 builds the orders, the screens and the atomic database step; the money for extending, swapping and returning early is worked out here.
