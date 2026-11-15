@@ -35,6 +35,8 @@ export type HistoryEntry = {
   quantity?: number;
   /** For a gear stock event: the record of the units it was about. */
   details?: GearDetails;
+  /** For a lead time change on its own: hours before and after (null: none). */
+  leadTime?: { from: number | null; to: number | null };
 };
 
 /** What a gear stock event keeps of a unit's record. Days are "2026-11-14". */
@@ -117,9 +119,10 @@ const record = (value: unknown): Record<string, unknown> =>
 /**
  * A product's Moto Mangos listing has its own table since stage C
  * (platform.product_listings); before, its settings were columns of the
- * product. Its rows read as the product's own, in the same words: the switch
- * is still "Listed on Moto Mangos". A listing's first save is an insert:
- * told as a change from "off, zero, none".
+ * product. Its rows read as the product's own, in the same words. A
+ * listing's first save is an insert: told as a change from "off, zero,
+ * none". The switch is left out of the row: its own event says it
+ * ("switched Moto Mangos on", listing_on and listing_off).
  */
 const listingStart: Record<string, unknown> = {
   enabled: false,
@@ -133,15 +136,12 @@ function asProductRow(row: AuditRow): AuditRow {
   if (row.entity !== "product_listings") return row;
   const named = (values: Record<string, unknown>) =>
     Object.fromEntries(
-      Object.entries(values).map(([key, value]) => [
-        key === "enabled" ? "marketplace_listed" : key,
-        value,
-      ]),
+      Object.entries(values).filter(([key]) => key !== "enabled"),
     );
   if (row.action === "insert") {
     const made = record(row.after);
     const changed = Object.keys(listingStart).filter(
-      (key) => (made[key] ?? null) !== listingStart[key],
+      (key) => key !== "enabled" && (made[key] ?? null) !== listingStart[key],
     );
     return {
       ...row,
@@ -162,16 +162,33 @@ function asProductRow(row: AuditRow): AuditRow {
 }
 
 /**
- * The switch going on or off is also written as an event of its own
- * (listing_on, listing_off). Until the Moto Mangos tab gives those their
- * words, the listing's own row says it ("Listed on Moto Mangos: No → Yes"),
- * as it always has, and the event is left out so it isn't said twice. A
+ * One action, one line. Retiring a listed product, or disconnecting it from
+ * Moto Mangos, also switches its listing off and zeroes its counts in the
+ * same moment: the retire's or the disconnect's own line says it, so the
+ * listing's row and its listing_off of that moment are left out. A
  * listing's row going with its deleted product is left out too.
  */
-const unsaid = (row: AuditRow) =>
-  row.action === "listing_on" ||
-  row.action === "listing_off" ||
-  (row.entity === "product_listings" && row.action === "delete");
+function unsaidRows(rows: AuditRow[]): (row: AuditRow) => boolean {
+  const covered = new Set(
+    rows
+      .filter(
+        (row) =>
+          row.action === "listing_disconnect" ||
+          (row.entity === "products" &&
+            row.action === "update" &&
+            record(row.after).retired_at),
+      )
+      .map((row) => `${row.entity_id} ${row.at}`),
+  );
+  return (row) =>
+    (row.entity === "product_listings" && row.action === "delete") ||
+    ((row.entity === "product_listings" ||
+      row.action === "listing_on" ||
+      row.action === "listing_off") &&
+      covered.has(`${row.entity_id} ${row.at}`));
+}
+
+const hours = (value: unknown) => (typeof value === "number" ? value : null);
 
 /** One audit row as a history entry. Updates list what changed, in column order. */
 export function toHistoryEntry(stored: AuditRow): HistoryEntry {
@@ -238,6 +255,28 @@ export function toHistoryEntry(stored: AuditRow): HistoryEntry {
             to: after[field] ?? null,
           }))
       : [];
+  // The lead time changed on its own: one line that says it all ("changed
+  // lead time from 12 to 24 hours"). With other settings, it is one of the
+  // changes listed under the line.
+  if (changes.length === 1 && changes[0].field === "lead_time_hours") {
+    const from = hours(changes[0].from);
+    const to = hours(changes[0].to);
+    return {
+      id: row.id,
+      at: row.at,
+      actor: row.actor,
+      entity: row.entity,
+      entityId: row.entity_id,
+      action:
+        from === null
+          ? "lead_time_set"
+          : to === null
+            ? "lead_time_clear"
+            : "lead_time_change",
+      changes: [],
+      leadTime: { from, to },
+    };
+  }
   return {
     id: row.id,
     at: row.at,
@@ -256,6 +295,7 @@ export function toHistoryEntry(stored: AuditRow): HistoryEntry {
  * timestamp, say) is left out.
  */
 export function buildHistory(rows: AuditRow[]): HistoryEntry[] {
+  const unsaid = unsaidRows(rows);
   return rows
     .filter((row) => !unsaid(row))
     .map(toHistoryEntry)

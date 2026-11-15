@@ -112,6 +112,8 @@ export async function HistoryTab({
                   who,
                   what: subject,
                   count: entry.quantity ?? 0,
+                  from: entry.leadTime?.from ?? 0,
+                  to: entry.leadTime?.to ?? 0,
                 })
               : t("action.other", {
                   who,
