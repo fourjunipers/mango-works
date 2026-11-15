@@ -18,6 +18,8 @@ import {
   sqlBackground,
   type TestTenant,
   type TestUser,
+  forceListing,
+  listingOf,
 } from "./helpers";
 
 let shop: TestTenant;
@@ -225,17 +227,17 @@ describe("1. locks no stronger than they need to be", () => {
   it("the counts are still clamped when a bike leaves a model", async () => {
     const model = await addModel();
     const [one] = [await addUnit(model), await addUnit(model)];
-    await service
-      .from("products")
-      .update({ instant_units: 2, ready_now: 2 })
-      .eq("id", model);
+    await forceListing(shop.id, model, {
+      instant_units: 2,
+      ready_now: 2,
+    }).throwOnError();
     await service.from("units").update({ status: "sold" }).eq("id", one);
-    const { data } = await service
-      .from("products")
-      .select("instant_units, request_units, ready_now")
-      .eq("id", model)
-      .single();
-    expect(data).toEqual({ instant_units: 1, request_units: 0, ready_now: 1 });
+    expect(await listingOf(model)).toEqual({
+      marketplace_listed: false,
+      instant_units: 1,
+      request_units: 0,
+      ready_now: 1,
+    });
   });
 });
 

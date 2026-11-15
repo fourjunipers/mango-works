@@ -219,6 +219,95 @@ describe("a product's history", () => {
     ).toEqual([]);
   });
 
+  it("reads a Moto Mangos listing's rows as the product's own, in the words used before stage C", () => {
+    const listing = (extra: Partial<AuditRow>) =>
+      row({ entity: "product_listings", ...extra });
+    const entries = buildHistory([
+      // First listed: the row is made. Told as a change from off and zero.
+      listing({
+        id: 1,
+        action: "insert",
+        before: null,
+        after: {
+          product_id: "p1",
+          tenant_id: "t1",
+          product_type: "vehicle",
+          enabled: true,
+          instant_units: 2,
+          request_units: 0,
+          ready_now: 0,
+          lead_time_hours: null,
+          ready_updated_at: null,
+          created_at: "2026-11-14T02:00:00Z",
+        },
+      }),
+      listing({
+        id: 2,
+        before: { enabled: true, ready_now: 0, ready_updated_at: null },
+        after: {
+          enabled: false,
+          ready_now: 1,
+          ready_updated_at: "2026-11-14T03:00:00Z",
+        },
+      }),
+    ]);
+    expect(entries).toMatchObject([
+      {
+        entity: "products",
+        action: "update",
+        changes: [
+          { field: "marketplace_listed", from: false, to: true },
+          { field: "instant_units", from: 0, to: 2 },
+        ],
+      },
+      {
+        entity: "products",
+        action: "update",
+        changes: [
+          { field: "marketplace_listed", from: true, to: false },
+          { field: "ready_now", from: 0, to: 1 },
+        ],
+      },
+    ]);
+  });
+
+  it("says the switch once: the listing_on and listing_off events are left to the row's own line", () => {
+    const entries = buildHistory([
+      row({ id: 1, action: "listing_on", after: { enabled: true } }),
+      row({ id: 2, action: "listing_off", after: { enabled: false } }),
+      row({
+        id: 3,
+        entity: "product_listings",
+        before: { enabled: false },
+        after: { enabled: true },
+      }),
+    ]);
+    expect(entries.map((e) => e.id)).toEqual([3]);
+  });
+
+  it("leaves out a listing's row that says nothing: made with nothing set, or gone with its product", () => {
+    expect(
+      buildHistory([
+        row({
+          entity: "product_listings",
+          action: "insert",
+          after: {
+            enabled: false,
+            instant_units: 0,
+            request_units: 0,
+            ready_now: 0,
+            lead_time_hours: null,
+          },
+        }),
+        row({
+          entity: "product_listings",
+          action: "delete",
+          before: { enabled: true },
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
   it("keeps additions, deletions and named actions, without a change list", () => {
     const entries = buildHistory([
       row({ id: 3, action: "insert", after: { name: "PCX" } }),

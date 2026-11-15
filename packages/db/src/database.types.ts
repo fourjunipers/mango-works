@@ -157,6 +157,32 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"product_listings": {
+                  Row: {
+                    "created_at": string,"enabled": boolean,"instant_units": number,"lead_time_hours": number | null,"product_id": string,"product_type": string,"ready_now": number,"ready_updated_at": string | null,"request_units": number,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"enabled"?: boolean,"instant_units"?: number,"lead_time_hours"?: number | null,"product_id": string,"product_type"?: string,"ready_now"?: number,"ready_updated_at"?: string | null,"request_units"?: number,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"enabled"?: boolean,"instant_units"?: number,"lead_time_hours"?: number | null,"product_id"?: string,"product_type"?: string,"ready_now"?: number,"ready_updated_at"?: string | null,"request_units"?: number,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "product_listings_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "product_listings_tenant_id_product_id_product_type_fkey"
+      columns: ["tenant_id","product_id","product_type"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id","type"]
+    }
+                  ]
                 },"product_year_bands": {
                   Row: {
                     "created_at": string,"id": string,"product_id": string,"tenant_id": string,"year_from": number,"year_to": number
@@ -185,14 +211,14 @@ isOneToOne: false
                   ]
                 },"products": {
                   Row: {
-                    "bookable_online": boolean,"buffer_after_minutes": number | null,"buffer_before_minutes": number | null,"catalog_approved_at": string | null,"catalog_id": string | null,"catalog_reject_reason": string | null,"catalog_rejected_at": string | null,"categories": (string)[],"cc": number | null,"created_at": string,"deposit": number | null,"deposit_currency": string | null,"description": string | null,"id": string,"instant_units": number,"licence_class": string | null,"make": string | null,"marketplace_listed": boolean,"min_age": number | null,"model": string | null,"name": string,"photos": (string)[],"ready_now": number,"ready_updated_at": string | null,"request_units": number,"retired_at": string | null,"sort_position": number | null,"tenant_id": string,"tracking": string,"transmission": Database["public"]['Enums']["transmission"] | null,"type": string,"updated_at": string,"vehicle_type": string | null
+                    "bookable_online": boolean,"buffer_after_minutes": number | null,"buffer_before_minutes": number | null,"catalog_approved_at": string | null,"catalog_id": string | null,"catalog_reject_reason": string | null,"catalog_rejected_at": string | null,"categories": (string)[],"cc": number | null,"created_at": string,"deposit": number | null,"deposit_currency": string | null,"description": string | null,"id": string,"licence_class": string | null,"make": string | null,"min_age": number | null,"model": string | null,"name": string,"photos": (string)[],"retired_at": string | null,"sort_position": number | null,"tenant_id": string,"tracking": string,"transmission": Database["public"]['Enums']["transmission"] | null,"type": string,"updated_at": string,"vehicle_type": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"deposit"?: number | null,"deposit_currency"?: string | null,"description"?: string | null,"id"?: string,"instant_units"?: number,"licence_class"?: string | null,"make"?: string | null,"marketplace_listed"?: boolean,"min_age"?: number | null,"model"?: string | null,"name": string,"photos"?: (string)[],"ready_now"?: number,"ready_updated_at"?: string | null,"request_units"?: number,"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id": string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
+                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"deposit"?: number | null,"deposit_currency"?: string | null,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"model"?: string | null,"name": string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id": string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
                   }
                   Update: {
-                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"deposit"?: number | null,"deposit_currency"?: string | null,"description"?: string | null,"id"?: string,"instant_units"?: number,"licence_class"?: string | null,"make"?: string | null,"marketplace_listed"?: boolean,"min_age"?: number | null,"model"?: string | null,"name"?: string,"photos"?: (string)[],"ready_now"?: number,"ready_updated_at"?: string | null,"request_units"?: number,"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id"?: string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
+                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"deposit"?: number | null,"deposit_currency"?: string | null,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"model"?: string | null,"name"?: string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id"?: string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
                   }
                   Relationships: [
                     {
@@ -477,6 +503,9 @@ isOneToOne: false
                            },
 "review_catalog_request":
 { Args: { "p_approve": boolean,"p_catalog_id": string,"p_merge_into"?: string,"p_notes"?: string,"p_year_from"?: number,"p_year_to"?: number }; Returns: Json
+                           },
+"save_listing":
+{ Args: { "p_product_id": string,"p_settings": Json }; Returns: Json
                            },
 "set_member_role":
 { Args: { "p_membership_id": string,"p_role": Database["platform"]['Enums']["platform_role"] }; Returns: undefined
