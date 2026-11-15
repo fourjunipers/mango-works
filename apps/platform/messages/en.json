@@ -964,7 +964,7 @@
     "reorder": {
       "start": "Reorder",
       "done": "Done",
-      "help": "Drag a product by its handle (on a phone, hold it first), or use the arrows. Fleet and the Products list share this order."
+      "help": "Select and drag to move anywhere on the list, or use the arrows to move one row at a time"
     },
     "drag": {
       "handle": "Drag to move",

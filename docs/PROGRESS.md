@@ -19,7 +19,7 @@ Fleet and the Products list can be reordered by dragging, in Reorder mode. The d
 
 **What changed**
 
-- **A drag handle on each row in Reorder mode**, before Move up and Move down: small and quiet to see, 44 px to hold. Only the handle starts a drag. Mouse: press and move 8 px. Touch: hold a quarter of a second, then drag; a quick tap does nothing and a finger that moves sooner scrolls the page. Keyboard: Space, arrows, Space (Escape cancels), with announcements for screen readers in English and Thai.
+- **A drag handle on each row in Reorder mode**, at the row's outside (right) edge, after Move up and Move down: small and quiet to see, 44 px to hold. Only the handle starts a drag. Mouse: press and move 8 px. Touch: hold a quarter of a second, then drag; a quick tap does nothing and a finger that moves sooner scrolls the page. Keyboard: Space, arrows, Space (Escape cancels), with announcements for screen readers in English and Thai.
 - **One order, one move:** a drop saves through the same action and database function as the arrows. Fleet and the Products list share the order and general products take part. A Fleet group drags as one block (its line is shut in Reorder mode). The arrows stay, and work without JavaScript.
 - **New dependency, approved by Mark (14 Nov 2026):** `@dnd-kit/core` 6.3.1 and `@dnd-kit/sortable` 10.0.0, exact versions. Confirmed on React 19.3.0 by building and running before it was installed here (a throwaway project, then `next build` and the browser tests).
 - **Loaded only in Reorder mode**, which only owners and managers reach: 47.8 kB minified, 15.9 kB gzipped (14.4 kB with Brotli), measured from this build, in its own file. A browser test checks that the two lists as they normally are, and staff, do not fetch it.
@@ -28,13 +28,17 @@ Fleet and the Products list can be reordered by dragging, in Reorder mode. The d
 
 **Decided here without being asked**
 
-- **The handle sits before the arrows**, in the place PR 19 marked, not at the row's start as the PR 17 proposal said.
 - **On a phone in Reorder mode the Moto Mangos mango is hidden** and its column goes to the name. With the handle added, names were cut to "Yamaha …" and two Yamahas could not be told apart. Desktop keeps the mango; outside Reorder mode nothing changed.
-- **The line above the list in Reorder mode** now reads "Drag a product by its handle (on a phone, hold it first), or use the arrows. Fleet and the Products list share this order."
 - **Rows move up and down only**; the row being dragged gets a shadow. **Enter** also picks up and drops (the library's default); the brief asked for Space, which works.
 - **A refused save is silent:** the list goes back to the saved order, with no message. The arrows behave the same way today.
 - **The browser test for dragging runs once** (in the phone project) and opens 375 px and 1280 px itself, in the `big-fleet` demo shop: the order is shop-wide, so two copies side by side would reorder the same shop under each other. It adds one rental-gear product and removes it, and resets the shop to A to Z at the end.
 - **No `@dnd-kit/modifiers`:** "up and down only" is four lines of our own, to keep to the two approved packages.
+
+**After Mark's phone test (15 Nov 2026): passed, with two changes**
+
+- **The handle moved to the row's outside (right) edge**, after the arrows, on both lists.
+- **The line above the list in Reorder mode** is his sentence: "Select and drag to move anywhere on the list, or use the arrows to move one row at a time".
+- **The mango is still hidden on a phone in Reorder mode.** Moving the handle changes the order of the three controls, not their width: two arrows and the handle are 132 px either way. With the mango's 44 px column back, a name gets about 85 px at 375 px wide ("Yamaha …"); without it, about 137 px. Desktop shows the mango.
 
 **Known issues and what was not tested**
 

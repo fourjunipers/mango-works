@@ -277,7 +277,7 @@ test("Reorder mode: quiet arrows, no pencil, the line doesn't open; Done leaves"
     await expect(page).toHaveURL(/reorder=1/);
     await expect(
       page.getByText(
-        "Drag a product by its handle (on a phone, hold it first), or use the arrows. Fleet and the Products list share this order.",
+        "Select and drag to move anywhere on the list, or use the arrows to move one row at a time",
       ),
     ).toBeVisible();
     const first = rows(list).first();

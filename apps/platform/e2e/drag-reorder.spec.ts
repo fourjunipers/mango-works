@@ -1,7 +1,7 @@
 /**
  * Dragging to reorder on Fleet and the Products list (design §5.8; owner, 14
- * Nov 2026). In reorder mode each row has a small drag handle before its
- * arrows, and only the handle starts a drag:
+ * Nov 2026). In reorder mode each row has a small drag handle at its outside
+ * edge, after the arrows, and only the handle starts a drag:
  *
  * - mouse: press the handle and move 8 px; a plain click does nothing;
  * - touch: hold the handle a quarter of a second, then drag; a quick tap does
@@ -224,7 +224,7 @@ test("drag to reorder with a mouse, a finger and the keyboard; saved, shared by 
       await p.goto(`/${shop}/products?reorder=1`);
       await expect(
         p.getByText(
-          "Drag a product by its handle (on a phone, hold it first), or use the arrows. Fleet and the Products list share this order.",
+          "Select and drag to move anywhere on the list, or use the arrows to move one row at a time",
         ),
       ).toBeVisible();
       let order = await namesOf(products);
@@ -232,15 +232,25 @@ test("drag to reorder with a mouse, a finger and the keyboard; saved, shared by 
       expect(order).toContain(gear);
       await bringIntoView(products);
 
-      // A picture of reorder mode at this width, attached to the run.
-      const shot = testInfo.outputPath(`reorder-${size.name}.png`);
-      await p.screenshot({ path: shot });
-      await testInfo.attach(`reorder-${size.name}`, {
-        path: shot,
-        contentType: "image/png",
-      });
+      // Pictures of reorder mode at this width, light and dark, attached to
+      // the run.
+      for (const scheme of ["dark", "light"] as const) {
+        await p.emulateMedia({ colorScheme: scheme });
+        await expect(p.locator("html")).toHaveClass(
+          scheme === "dark" ? /\bdark\b/ : /^(?!.*\bdark\b)/,
+        );
+        const shot = testInfo.outputPath(
+          `reorder-${size.name}-${scheme}.png`,
+        );
+        await p.screenshot({ path: shot });
+        await testInfo.attach(`reorder-${size.name}-${scheme}`, {
+          path: shot,
+          contentType: "image/png",
+        });
+      }
 
-      // The handle: before the arrows, small to see, 44 px to hold, and it
+      // The handle: after the arrows, at the row's outside edge, small to
+      // see, 44 px to hold, and it
       // leaves the page free to scroll under a finger.
       const first = handle(p, order[0]);
       const box = (await first.boundingBox())!;
@@ -251,10 +261,35 @@ test("drag to reorder with a mouse, a finger and the keyboard; saved, shared by 
           .locator("svg")
           .evaluate((svg) => svg.getBoundingClientRect().width),
       ).toBeLessThanOrEqual(16);
-      const up = (await p
-        .getByRole("button", { name: `Move up: ${order[0]}` })
+      // Up, down, then the handle, side by side without overlapping; the
+      // arrows are 44 px too; the handle ends the row; the name has room.
+      const arrow = async (direction: "up" | "down") => {
+        const found = (await p
+          .getByRole("button", { name: `Move ${direction}: ${order[0]}` })
+          .boundingBox())!;
+        expect(Math.round(found.width)).toBeGreaterThanOrEqual(44);
+        expect(Math.round(found.height)).toBeGreaterThanOrEqual(44);
+        return found;
+      };
+      const up = await arrow("up");
+      const down = await arrow("down");
+      expect(up.x + up.width).toBeLessThanOrEqual(down.x + 0.5);
+      expect(down.x + down.width).toBeLessThanOrEqual(box.x + 0.5);
+      const rowBox = (await products
+        .locator("[data-list-row]")
+        .first()
         .boundingBox())!;
-      expect(box.x).toBeLessThan(up.x);
+      // Nothing but the row's padding is to the right of the handle.
+      expect(rowBox.x + rowBox.width - (box.x + box.width)).toBeLessThanOrEqual(
+        20,
+      );
+      expect(box.x + box.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
+      // Names stay readable: at least 130 px for the name on a phone.
+      const nameWidth = await products
+        .locator("[data-list-row] .font-semibold[title]")
+        .first()
+        .evaluate((element) => element.getBoundingClientRect().width);
+      expect(nameWidth).toBeGreaterThanOrEqual(130);
       expect(
         await first.evaluate((button) => getComputedStyle(button).touchAction),
       ).toBe("manipulation");
