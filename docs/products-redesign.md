@@ -35,6 +35,7 @@
 | 23 | **Stage C answers (14 Nov 2026).** (1) No shop minimum notice in stage C: only the listing's lead time is stored, and the stricter-of rule is a pure, tested function in `@mango/core`. (2) The stricter rule stands, though the old marketplace let a model's notice replace its shop's; noted for the 3M switch-over check (`docs/platform/MAPPING.md`). (3) The quantities stay three plain lines (Instant units, Request units, Walk-ins) with a derived "Offering N of M" line: **this supersedes decision 2's "simple control on top" and §1.4's "Units to offer / All instant / All by request / Split them"**. (4) Owners and managers only for now, the walk-ins count included, with the database built so staff can be added later: **this supersedes §1.4 and §4.2 where they let staff change the walk-ins count**. (5) No switch on the Products list row: **this supersedes §4.1's "Moto Mangos chip and switch" on the list**. (6) "Ride today" bookings do not count against the cap. (7) The listing's counts are per product, not per location. (8) Only a product that is listed, has a count above zero or has a ready-updated time gets a listing row at conversion | §1.4, §2.6, §5.10 |
 | 24 | **Stage D, pricing (15 Nov 2026), from BSR's real Booqable data.** Booqable's templates are multipliers; BSR's have a tile for every day 1 to 31 and then a set amount per extra day. Equal totals on neighbouring days are allowed; only a total that falls as days rise is refused. An import stores the exact amount Booqable charges for each day, satang included. Only four templates are loaded (300–3000, 350–3500, 400–4000, 500–5400). All in stage D: flat fee per period, fixed price and tiered pricing (a base price × multipliers, or amounts per day); quick entry of hourly, daily, weekly, two-week, three-week and monthly prices with the days between filled in and editable; seasonal date-range percentage rules on the part of the order inside the range; four deposit choices (none, a percentage of the order, fixed per order, per product) with order and customer overrides; shops' own tax profiles, a default, non-taxable products and a shop setting for prices including or excluding tax; a coupons on/off switch and the pricer's discount step, with coupon creation in Phase 2. **This supersedes decision 15 and §3.2 where they say price lists are never multipliers, decision 14 as the only deposit rule, decision 16, and §3.3's inclusive flag per tax profile** | §9 |
 | 25 | **Stage D, pricing, second round of answers (15 Nov 2026).** (1) Booqable's four pickup-day and return-day rules and weekday skipping are shop settings, off by default; BSR uses none. (2) **A month is date to date, anchored on the original pickup date** (1 Jan to 1 Feb; a month without the date uses its last day: 31 Jan renews 28 Feb, then 31 Mar). (3) The long-stay daily rate, for days after whole months, is a per-product setting until tested. (4) For Phase 3, and the pricer must fit it now: a rental has billed periods (one bike, one date range, one frozen price), each its own order line with a list price, the price charged and an automatic note; several rentals per order, each with its own dates; Extend rental, priced as a continuation (whole months at the monthly price, leftover days at the long-stay rate); Swap bike with owner-chosen pricing options (remainder of the period, prorated difference, no charge, manual amount; credit, refund or no charge for a cheaper bike), as one atomic step. (5) Decided as recommended: the rounding step is a shop setting; a deposit is never taxed, a percentage deposit is of the order total after discounts with tax, per-product deposits are for vehicles only; hourly below a day, capped at the 1-day price; no zero price, and "Free" stays for services and extras; a season-adjusted price keeps its satang. (6) Tax per line on a Thai tax invoice waits for Korn or BSR's accountant. (7) Mark supplies BSR's four lists in full before the last build stage. **This supersedes the over-30-days rule of §3.2 and §3.4, the second version's extra-day amount on a price list, and decision 24 where it has an import keep day 31** | §9.13, §9.17 to §9.19 |
+| 26 | **Stage D design approved (15 Nov 2026).** (1) The price list prices every rental of 30 days or fewer; the month rule starts at 31 days; a rental never costs more than the list's price for the same number of days. (2) A product with no long-stay rate uses its monthly price ÷ 30, and leftover days never cost more than one more month. (3) Extend uses today's price to the new end minus today's price to the old end, with "keep the last period's discount" on by default and the amount editable by staff. (4) In a season each charged day belongs to the calendar day it starts on. (5) The rental-period maths goes into stage D as pure functions with tests. (6) Charge rules stay after Phase 3 and before 3M; their worked examples are not confirmed until then. (7) Early return is a Phase 3 swap to nothing, with the same credit, refund and no-charge settings. (8) Tax per line, and credit notes for swap credits and refunds, go to Korn and do not block the maths. (9) Build in small stages, one PR each; no migration until the database stage; nothing to staging or live | §9.13, §9.15, §9.19 |
 
 Decisions 9, 12 and 15 include Mark's second round of answers the same day (items for sale by stage, who may mark a unit lost, and the price-per-day mode).
 
@@ -803,13 +804,15 @@ Still open:
 - Root `CLAUDE.md`: the two-level lock order (§2.2) once Phase 2 builds it.
 - `apps/platform/CLAUDE.md` still says the exclusion constraint is "on allocations/downtime"; it is on `unit_blocks`.
 
-## 9. Stage D: pricing (design for review, third version, 15 Nov 2026)
+## 9. Stage D: pricing (approved 15 Nov 2026)
 
 Design only: no code, no migration, nothing applied anywhere. Written from `main` at `dc4d8ee` (stages A to C merged; 58 migrations). It builds on §3 and says where it changes it.
 
 **Second version, same day.** Mark looked at BSR's real Booqable data, answered the import questions and added seven requirements, all for stage D (decision 24). They are worked in below.
 
-**Third version, same day.** Mark answered the second version's questions and added requirements for rentals, extensions and swaps that Phase 3 will build but the pricer must fit from the start (decision 25). New here: charge rules (§9.17), date-to-date months and the long-stay daily rate (§9.18), rental periods, Extend rental and Swap bike (§9.19). §9.13 lists what is decided and the 15 items still open; §9.14 lists every place the answers cut across the spec, the contract or an earlier decision. "Recommended" is a proposal. **No money rule here is to be built from a guess: every one that is not a recorded decision is in §9.13's open list.**
+**Third version, same day.** Mark answered the second version's questions and added requirements for rentals, extensions and swaps that Phase 3 will build but the pricer must fit from the start (decision 25). New here: charge rules (§9.17), date-to-date months and the long-stay daily rate (§9.18), rental periods, Extend rental and Swap bike (§9.19). §9.13 lists what is decided and what is still open; §9.14 lists every place the answers cut across the spec, the contract or an earlier decision.
+
+**Approved by Mark, 15 Nov 2026 (decision 26)**, with the four maths questions settled, the rental-period maths in stage D, charge rules after Phase 3, early return added to Phase 3, and the two tax questions sent to Korn. The build goes in the stages of §9.15, one PR each. "Recommended" is a proposal. **No money rule here is to be built from a guess: every one that is not a recorded decision is in §9.13's open list.**
 
 ### 9.1 What changed from §3 and from the first version
 
@@ -910,7 +913,7 @@ Either way the pricer first turns the list into totals and then does one lookup:
 
 1. **Under 24 hours, when the list has an hourly price:** every started hour × the hourly price, never more than the 1-day total (decided). With no hourly price it is one day.
 2. **Up to 30 days:** the list's total for that many days. A day is every started 24 hours of the charged period (§9.17; with no charge rule, from pickup).
-3. **Past the list:** whole months at the monthly price plus leftover days at the product's long-stay daily rate (§9.18). Where exactly the list stops and this starts is open item 1.
+3. **From 31 days:** whole months at the monthly price plus leftover days at the product's long-stay daily rate (§9.18). The list prices every rental of 30 days or fewer (decision 26).
 
 **BSR's four lists**, from Mark's reading of the Booqable account (example base ฿100):
 
@@ -921,7 +924,7 @@ Either way the pricer first turns the list into totals and then does one lookup:
 | 400–4000 | ฿400 | ฿1,800 | ฿2,800 | ฿4,000 | ฿133.33 |
 | 500–5400 | ฿500 | ฿2,200 | ฿3,500 | ฿5,400 | ฿180 |
 
-Each has a tile for every day 1 to 31; steps between days are uneven, and some neighbouring days cost the same. The extra-day amounts are the 30-day total ÷ 30 cut off, not rounded, at the satang (3,500 ÷ 30 = 116.666…, stored as 116.66), which is why they are stored and never re-derived. Under the month rule they become each product's long-stay daily rate, and a list's day-31 tile is no longer used (open item 15).
+Each has a tile for every day 1 to 31; steps between days are uneven, and some neighbouring days cost the same. The extra-day amounts are the 30-day total ÷ 30 cut off, not rounded, at the satang (3,500 ÷ 30 = 116.666…, stored as 116.66), which is why they are stored and never re-derived. Under the month rule they become each product's long-stay daily rate, and a list's day-31 tile is no longer used.
 
 ### 9.4 Quick price entry (requirement 2)
 
@@ -957,10 +960,10 @@ adjustment       round half up ( P × adjust_bp × inside ÷ (N × 10000) )   on
 season price     P + the adjustments of every rule that applies
 ```
 
-- **Which periods are inside** (recommended; open item 4): each charged day belongs to the calendar day it **starts** on, at the location, in the location's time zone. Day 1 starts at pickup, day 2 exactly 24 hours later. So the pickup day decides for day 1, and the return day counts only if a new 24 hours starts on it.
+- **Which periods are inside** (decision 26): each charged day belongs to the calendar day it **starts** on, at the location, in the location's time zone. Day 1 starts at pickup, day 2 exactly 24 hours later. So the pickup day decides for day 1, and the return day counts only if a new 24 hours starts on it.
 - Examples. 7 days at ฿1,400, 3 of them in a −20% season: 1,400 × 20% × 3 ÷ 7 = ฿120 off, ฿1,280. 7 days at ฿1,500, 2 of them inside: ฿85.71 off, ฿1,414.29. The satang are kept (decided).
 - **Every day carries an equal share of the list price.** A price list makes early days dearer than late ones; the rule ignores that on purpose, so a customer can check the sum by hand.
-- **Two rules on the same day** are each worked out on the list price and added, never compounded (Booqable's "stacking off"; recommended, open item 4).
+- **Two rules on the same day** are each worked out on the list price and added, never compounded (Booqable's "stacking off").
 - **What it applies to:** lines priced by time (by rental length, or a flat fee per period). Never a fixed price, a free line, an item for sale or a deposit.
 - **Order of steps:** after the list price and before any discount, so a coupon later applies to the season price.
 - **Pickup-day and return-day charge rules.** Booqable has four optional rules of its own kind ("Adjust charge period"): charge, or don't charge, the pickup day when pickup is before or after a time; the same for the return day by the return time. They change how many days are charged, before any price is looked up. BSR uses none of them. They are designed in §9.17 as shop settings, off by default, beside the seasons.
@@ -1120,27 +1123,28 @@ Shop-level changes (rounding step, deposit choice, tax profiles, the coupons swi
 | Q1, Q19, old item 2 | Replaced by the month rule (§9.18): whole months at the monthly price, leftover days at the product's long-stay daily rate |
 | Old item 4 | A month is date to date, anchored on the original pickup date (§9.18) |
 | Old item 6 | The four pickup-day and return-day rules and weekday skipping are shop settings, off by default; BSR uses none (§9.17) |
+| Open item 1 | The price list prices every rental of 30 days or fewer; the month rule starts at 31 days. A rental never costs more than the list's price for the same number of days |
+| Open item 2 | A product with no long-stay rate: the monthly price ÷ 30; leftover days never cost more than one more month |
+| Open item 3 | Extending: today's price to the new end minus today's price to the old end. "Keep the last period's discount" on by default, the amount editable by staff |
+| Open item 4 | Seasons: each charged day belongs to the calendar day it starts on |
+| Open item 14 | The rental-period maths (continuation, swap, early return) goes into stage D as pure functions with tests |
+| Charge rules | After Phase 3 and before 3M. The worked examples of §9.17 are not confirmed until then |
+| Early return | Phase 3: a swap to nothing, with the same credit, refund and no-charge settings |
 | Q16 to Q18 | Multipliers; exact amounts, satang included; four lists only. Mark supplies every daily amount, the base prices and which product is on which list before the last build stage; the maths stages don't wait for it |
 
-**Still open.** Items 1 to 4 change the maths of stage D.
+**Still open.** The design is approved, so each of these goes ahead as recommended unless Mark says otherwise. Item 5 is with Korn and blocks nothing: if the answer is (b), only the tax step inside `quote()` changes (stage D2); the credit-note half touches Phase 3's documents only. Item 11 is used by stage D3; item 6 by stage D4.
 
 | # | Question | Options | Recommended |
 | --- | --- | --- | --- |
-| **1** | **Where the month rule starts.** A list has a price for 1 to 30 days. February is 28 days. From 1 Feb: | (a) the month rule applies as soon as the rental reaches one calendar month: 28 days = ฿3,000, 29 days = ฿3,100, 30 days = ฿3,200 (the list's ฿3,000 for 30 days is never used in February). (b) the list prices every rental of 30 days or fewer; the month rule starts at 31 days: 28, 29 and 30 days come from the list, 31 days from 1 Feb = one month + 3 days = ฿3,300 | (b). The same number of days costs the same whatever the month, up to 30. Over 30 the calendar decides, as Mark asked. Both give ฿3,000 for 1 Jan to 1 Feb and ฿36,000 for a year |
-| **2** | **The long-stay daily rate when a product has none; and a cap.** | Empty: (a) the monthly price ÷ 30, half up to one minor unit (฿3,200 → ฿106.67). (b) the product can't be rented past a month until one is set. Cap: leftover days never cost more than one more month (30 leftover days at ฿116.66 = ฿3,499.80, under ฿3,500; a higher typed rate would otherwise make 1 month + 30 days dearer than 2 months) | (a), and the cap |
-| **3** | **Extending after a price change.** "Minus what is already billed" can be read two ways once the list has changed or the first period was discounted | (a) the new period = today's price for the whole rental to the new end, minus today's price for the rental to the old end. (b) today's price for the whole rental, minus the amounts actually billed | (a). With (b), a rise from ฿3,000 to ฿3,300 makes month 13 cost ฿6,900, and a ฿500 staff discount on month 1 is taken back in month 2. With unchanged prices and no discount the two are the same, and both give Mark's examples |
-| **4** | **Which days are "inside" a season**; two rules on one day; "every year" | Inside: (a) each charged day belongs to the calendar day it starts on; (b) by exact time, as Booqable's example reads. Two rules: added, or compounded. A tick box for every year | (a); added; yes |
-| **5** | **Tax per line on a Thai tax invoice** (Q7) | (a) per line, the order shows the sum. (b) on the order total, shared out over the lines | (a). **Waits for Korn or BSR's accountant.** The same person should be asked how a swap's credit line and a refund appear (credit note) |
+| **5** | **Tax per line on a Thai tax invoice** (Q7) | (a) per line, the order shows the sum. (b) on the order total, shared out over the lines | (a). **With Korn** (decision 26), together with how a swap's credit line and a refund appear (credit note). Neither blocks the maths stages |
 | **6** | **Which type gets which way of pricing** | Vehicle: by rental length, flat fee. Rental gear: by rental length, flat fee, fixed. Service or extra: flat fee, fixed, free. Item for sale: fixed only | As listed. "Free" is for services and extras only, as Mark put it; a helmet that comes with the bike is an included quantity (Phase 2), not a free product |
 | **7** | **Replacement value for gear; `product_extras`** | The field now or with damage charges (Phase 5). `product_extras` with the order editor (Phase 2) or now | The field now; `product_extras` in Phase 2 |
 | **8** | **Does minimum notice bind staff?** | (a) online channels only. (b) staff too, with a manager's override | (a) |
 | **9** | **A listed product with no price** | (a) warn on the Moto Mangos tab now; never offered at 3M. (b) refuse to switch the listing on | (a) |
 | **10** | **A new shop's tax** | (a) none until the owner adds a profile; one tap offers the country's usual one. (b) the country's default on from the start | (a) |
 | **11** | **Swap, "prorated difference", when the period is not a month**; and what "remaining share" is measured in | (a) the difference between the two bikes' list prices for this period × remaining charged days ÷ the period's charged days. (b) offered only on month periods | (a). For a month period it is the monthly difference, as Mark wrote it |
-| **12** | **Left for Phase 3, named now:** credit still unused when a rental ends (refund it, or it lapses); the deposit when a swap or an extension changes what it should be; ending a rental early (the spec says "a credit or charge"; nothing here covers it); a swap on a Moto Mangos booking and the booking fee | To be designed with Phase 3 | — |
+| **12** | **Left for Phase 3, named now:** credit still unused when a rental ends (refund it, or it lapses); the deposit when a swap or an extension changes what it should be; a swap or early return on a Moto Mangos booking and the booking fee | To be designed with Phase 3 | — |
 | **13** | **Charge rules, before they are built** (§9.17): Mark confirms the worked examples; is there always at least one charged day; do the rules move the month anchor; are minimum days counted in charged days | See §9.17 | At least one day; the anchor stays the real pickup date; charged days |
-| **14** | **When the period maths is written.** Continuation and swap prices are pure functions | (a) in stage D, with their tests, so the examples are pinned before Phase 3 builds on them. (b) with Phase 3 | (a): one small stage, no database, no screen |
-| **15** | **Day 31 of BSR's lists and Booqable's extra day.** Under the month rule a 31-day rental is a month (or a month and days), so a day-31 tile is never used; and Booqable's own totals over a month differ from the month rule's (§9.14, 3) | (a) lists hold days 1 to 30; the extra-day amount becomes each product's long-stay daily rate; day 31 is not stored. (b) keep day 31 for reference only | (a) |
 
 ### 9.14 Where the answers cut across the spec, the contract or earlier decisions
 
@@ -1150,7 +1154,7 @@ Shop-level changes (rounding step, deposit choice, tax profiles, the coupons swi
 2. **A long rental's price now depends on its start date.** The contract passes 30 day prices (`dayPrices[30]`) and lets the marketplace derive the rest. That no longer works past 30 days: at 3M the marketplace must ask the platform for the price of the actual dates, and the contract needs the long-stay rate or a quote call. Until 3M the marketplace keeps its own rule, so the same bike could show two prices for a long rental if both were live at once; they are not.
 3. **It does not match Booqable past a month.** Booqable charges BSR's day-31 tile and then a set amount per day. Gate A's "reconciles exactly" therefore holds for 1 to 30 days and not beyond, by choice. Decision 24's "the exact amount Booqable charges for each day" stands for days 1 to 30.
 4. **The extra-day amount moves** from the price list (the second version, and Booqable) to the product, as Mark decided. The load script copies each list's amount to the products on it.
-5. **February** (open item 1): read literally, the rule makes 29 or 30 days from 1 Feb dearer than the list's price for 29 or 30 days.
+5. **February.** Settled by decision 26: the list prices 30 days or fewer, so 29 or 30 days from 1 Feb never cost more than the list. The same 60 days still cost ฿6,100 from 1 Jan in a common year and ฿6,000 in a leap year, because two months are then 59 or 60 days.
 6. **The spec's long-term rentals** (`subscriptions_lt`: interval, next charge, auto-charge) describe the same thing as "extend by another month" from another side. Phase 3 should build one of them on the other, not both.
 
 **Charge rules (§9.17)**
@@ -1162,7 +1166,7 @@ Shop-level changes (rounding step, deposit choice, tax profiles, the coupons swi
 **Rental periods, extending and swapping (§9.19)**
 
 10. **The spec's order carries the dates** (`orders.starts_at`, `ends_at`) and its lines a `kind` (model, extra, bundle, fee, discount). Dates on each rental and one line per billed period replace that; the order's dates become the earliest start and latest end of its rentals.
-11. **"Nothing reprices a billed period"** against the spec's "extend, swap and early return with automatic re-pricing and a credit or charge". The new rule is the stricter and clearer one; early return is the part it leaves unanswered (open item 12).
+11. **"Nothing reprices a billed period"** against the spec's "extend, swap and early return with automatic re-pricing and a credit or charge". The new rule is the stricter and clearer one. Early return is a swap to nothing (§9.19).
 12. **§3.5's order line** had one price snapshot. A period needs two amounts (list and charged), the rental it belongs to, and the price list it was worked out from, so a swap can take its shares from the same numbers.
 13. **A staff discount is not a coupon.** It goes through the same discount step but is not stopped by the "Accept coupons" switch.
 14. **Profit per vehicle** (spec): a swap's credit moves money already paid from the first bike to the second. Reports must count each period's revenue net of that, or bike A is credited with a month it worked two weeks of.
@@ -1178,7 +1182,7 @@ Small stages, each its own PR. No migration reaches staging or live without Mark
 | --- | --- | --- |
 | **D1. Price lists and ways of pricing** (`@mango/core`, no database) | The fill made currency-neutral, with the hourly box; amounts and multipliers lists; date-to-date months; the month rule and the long-stay daily rate; flat fee per hour, day, week, month; fixed; free. `rentalDays` takes charge rules as an argument, always empty for now | Hand-worked tables: every day 1 to 30 of each published BSR price set; equal neighbours accepted, a fall refused; multipliers at four decimals with every half-up boundary; months from the 28th, 29th, 30th and 31st, across February in a leap and a common year, and across a daylight-saving change; a month, a month + 14 days, 13 months, a year; under 24 hours with and without an hourly price, at the cap; THB, a zero-decimal and a three-decimal currency; the marketplace's numbers unchanged to the baht |
 | **D2. `quote()`** (`@mango/core`) | The eight steps: season rules, the discount step with the coupons switch, tax both ways, the four deposit choices with both overrides, sharing out an order discount | Seasons: a rental inside, outside, across the start, across the end, across a year's end, two rules at once; satang kept; tax per line against the order total; discount shares always add up; each deposit choice and override order; a coupon refused when the switch is off, a staff price not |
-| **D3. Rental-period maths** (`@mango/core`; open item 14) | The price of a continuation; a swap's amounts under each option | Mark's examples to the baht: month 13 = ฿3,000 and a year = ฿36,000; a month + 14 days = ฿1,400; a first 14 days = the two-week price; the swap at two weeks = ฿300; with a ฿2,500 payment, ฿250 keeping the discount and ฿550 without; a cheaper bike giving a negative amount; a swap in a second period |
+| **D3. Rental-period maths** (`@mango/core`; decision 26) | The price of a continuation, with "keep the last period's discount"; a swap's amounts under each option; an early return's unused part | Mark's examples to the baht: month 13 = ฿3,000 and a year = ฿36,000; a month + 14 days = ฿1,400; a first 14 days = the two-week price; the swap at two weeks = ฿300; with a ฿2,500 payment, ฿250 keeping the discount and ฿550 without; a cheaper bike giving a negative amount; a swap in a second period |
 | **D4. The database** | The migration of §9.2: seven tables, RLS, the five save functions, the deposit's move, the wider currency lock | Each role by function and by hand; another shop and a signed-out visitor; shape checks; the lock order; races (two saves of one list, a product moved to a list being deleted, twelve first saves, a rule saved while its product is deleted); isolation fixtures and default grants; the deposit carried across on a copy shaped like staging |
 | **D5. The Pricing tab** | The tab, "Check a price", the Products list's price column, History, Thai review list | Browser tests at 375 px and 1280 px in both languages, by owner, staff, mechanic and driver; the same fixtures priced on screen as in D1 and D2 |
 | **D6. Settings** | Price lists, Seasons, Pricing and tax (profiles, include or exclude, deposit choice, the coupons switch) | The reprice warning names the right products; a profile in use can't be deleted; a season shows on the products it covers |
@@ -1204,7 +1208,7 @@ After stage D:
 - The "Monthly" box of quick entry is both the list's 30-day total and the price of one calendar month.
 - A month boundary keeps the pickup's time of day on the wall clock, in the location's time zone.
 - A swap's money moved from the old bike is its own line beside the new period, not a discount on it.
-- Charge rules are built after Phase 3, before 3M.
+- "Keep the last period's discount" keeps the same proportion (charged ÷ list), not the same amount in baht.
 
 ### 9.17 Charge rules: the pickup day, the return day and skipped weekdays
 
@@ -1222,7 +1226,7 @@ Five optional rules, **all off by default** (decision 25). BSR uses none: its on
 
 Charged days are then every started 24 hours of the time that is left, in the location's time zone, with no fixed offset assumed. With every rule off the charged period is the rental itself, which is today's rule exactly.
 
-Worked examples, for Mark to confirm before anything is built (open item 13):
+Worked examples. **Not confirmed, on purpose** (decision 26): Mark confirms them when the rules are built, after Phase 3, and nothing is built from them before:
 
 | Rule on | Rental | Without it | With it |
 | --- | --- | --- | --- |
@@ -1266,11 +1270,11 @@ Examples at ฿3,000 a month and ฿100 a long-stay day:
 | 1 Jan to 1 Jan next year | 12 months | ฿36,000 |
 | 31 Jan to 31 Mar | 2 months | ฿6,000 |
 
-- **Where the list stops and the month rule starts** is open item 1 (recommended: the list prices 30 days or fewer; the month rule starts at 31 days).
-- **A product with no long-stay rate, and a cap on leftover days,** are open item 2.
+- **The list prices every rental of 30 days or fewer; the month rule starts at 31 days** (decision 26). So 28, 29 and 30 days from 1 Feb cost what the list says, never more, and 31 days from 1 Feb is one month and 3 days.
+- **A product with no long-stay rate** uses its monthly price ÷ 30, rounded half up to one minor unit (฿3,200 → ฿106.67). **Leftover days never cost more than one more month** (decision 26).
 - **Totals still never fall as days rise:** the monthly price is the list's highest total, and with the cap a month plus its leftover days never passes two months.
 - **Seasons on a long stay** work as in §9.5, on the rental's charged days.
-- The list no longer has a day 31 or an extra-day amount of its own (open item 15).
+- The list no longer has a day 31 or an extra-day amount of its own.
 
 ### 9.19 Rental periods, extending and swapping (Phase 3; the maths fits the pricer now)
 
@@ -1291,12 +1295,13 @@ new period's list price = price of the whole rental, from the original pickup to
                         − price of the rental up to the current end
 ```
 
-Both at the bike's price list, with the rental's clock running from the original pickup (open item 3 settles which prices when the list has changed). So:
+Both at **today's prices** for the bike (decision 26), with the rental's clock running from the original pickup. A price rise therefore reaches only the new period, and a discount on an earlier period is not taken back. So:
 
 - Whole months renew at the monthly price: month 13 is 13 × ฿3,000 − 12 × ฿3,000 = ฿3,000, and a year is ฿36,000.
 - Days after the first month use the long-stay daily rate: a month extended by 14 days is (฿3,000 + 14 × ฿100) − ฿3,000 = ฿1,400, not the two-week price.
 - A first-time 14-day rental is not a continuation and pays the two-week price.
-- The new period then goes through seasons (its own days only), any staff discount, and tax, like any line. The same bike must be free for the added time and its buffer.
+- **"Keep the last period's discount"**, on by default (decision 26): the new period's charged price starts as its list price × the last period's charged price ÷ the last period's list price, rounded half up to one minor unit (last period ฿2,500 against ฿3,000, new period ฿3,000 → ฿2,500). Staff can change the amount before confirming; off, it starts at the list price.
+- The new period then goes through seasons (its own days only) and tax, like any line. The same bike must be free for the added time and its buffer.
 
 **Swap bike** (on a rental that is out). The current period closes at the swap time and the old bike is released then. A new period opens for the new bike to the same end date. Staff pick how it is priced from the options the owner has switched on in shop settings, one of them the default:
 
@@ -1322,7 +1327,9 @@ extra to pay      = B's remainder − paid remainder
 - **How it is recorded.** The new period's list price is B's remainder and its charged price is the same, or the scaled amount when the discount is kept. The paid remainder is a separate credit line beside it ("Credit from Honda Click 125i, 14 unused days: −฿1,500"). The closed period keeps the amounts it was billed; only its end date changes. Each bike's revenue is then its own.
 - Every division rounds once, half up to one minor unit, as elsewhere.
 
-**Shop settings for swaps** (Phase 3, on `pricing_settings`): which of the four options are offered and which is the default; "Keep the customer's discount" on or off by default; which of credit, refund and no charge are allowed for a cheaper bike. Owners and managers.
+**Early return** (decision 26) is a swap to nothing. The period closes at the return time and the bike is released then; no new period opens. The unused part is the paid remainder of the swap formula (the amount paid × the unused share of the bike's list price for the period), and what happens to it follows the same shop settings as a swap to a cheaper bike: credit, refund or no charge. It runs through the same atomic step, with no new bike to block.
+
+**Shop settings for swaps and early returns** (Phase 3, on `pricing_settings`): which of the four options are offered and which is the default; "Keep the customer's discount" on or off by default; which of credit, refund and no charge are allowed for a cheaper bike. Owners and managers.
 
 **The risky part, for Phase 3: a swap is one atomic step.** Shortening the old period, releasing the old bike and blocking the new one must happen in one database function and one transaction, or not at all. A swap that fails because the new bike is taken must leave the customer's old bike still held.
 
