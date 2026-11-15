@@ -270,7 +270,7 @@ From `apps/platform`, with staging's demo password in the environment:
 PLAYWRIGHT_BASE_URL=https://mango-works-platform.netlify.app npx playwright test
 ```
 
-A deploy preview's address works the same way. The tests create what they need and remove it again. One thing stays behind: the first time a product deposit is saved in a shop, that shop's deposit setting becomes "per product" (`pricing_settings`), and the demo shop BSR has had it since 15 Nov 2026.
+A deploy preview's address works the same way. The tests create what they need and remove it again. One thing stays behind: the first time a product deposit is saved in a shop that has no pricing settings yet, the shop gets a settings row on "per product" (`pricing_settings`), and the deposit test does that to the demo shop BSR. After the run of 15 Nov 2026 the row was removed again by hand, on the owner's instruction, so BSR is back to no settings row ("none"). A later run against staging will make the row again.
 
 ## Netlify environment variables
 
