@@ -827,20 +827,21 @@ export async function saveListing(
   });
   if (!parsed.success) return { errors: fieldErrors(parsed.error) };
   const { listed, ...counts } = parsed.data;
-  const { data, error } = await supabase
+  // Only an owner or manager of this shop gets this far; the function
+  // checks the same again, and that the product is theirs.
+  const { data: product } = await supabase
     .from("products")
-    .update({
-      marketplace_listed: listed,
-      ...counts,
-      ...(counts.ready_now > 0
-        ? { ready_updated_at: new Date().toISOString() }
-        : {}),
-    })
+    .select("id")
     .eq("tenant_id", tenant.id)
     .eq("id", field(formData, "id"))
-    .select("id");
-  if (error || data.length !== 1)
-    return { errors: { form: dbErrorKey(error) } };
+    .maybeSingle();
+  if (!product) return { errors: { form: dbErrorKey(null) } };
+  // The database sets the ready-updated time itself.
+  const { error } = await supabase.rpc("save_listing", {
+    p_product_id: product.id,
+    p_settings: { enabled: listed, ...counts },
+  });
+  if (error) return { errors: { form: dbErrorKey(error) } };
   refresh(slug);
   return { ok: true };
 }

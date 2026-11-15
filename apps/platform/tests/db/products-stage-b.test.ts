@@ -21,6 +21,8 @@ import {
   serviceClient,
   type Db,
   type TestTenant,
+  listingOf,
+  setListing,
 } from "./helpers";
 
 let shop: TestTenant;
@@ -838,11 +840,11 @@ describe("Moto Mangos: change model and disconnect", () => {
       })
       .select("id")
       .single();
-    const on = await db("owner")
-      .from("products")
-      .update({ marketplace_listed: true, instant_units: 1, ready_now: 1 })
-      .eq("id", id)
-      .select("id");
+    const on = await setListing(db("owner"), id, {
+      marketplace_listed: true,
+      instant_units: 1,
+      ready_now: 1,
+    });
     expect(on.error).toBeNull();
     // A booking made through Moto Mangos holds the vehicle (hand-made here:
     // orders arrive in Phase 3).
@@ -859,12 +861,16 @@ describe("Moto Mangos: change model and disconnect", () => {
       .single();
     return { id, unitId: unit!.id, block: block! };
   }
-  const product = async (id: string) =>
+  const product = async (id: string) => ({
+    ...(await productRow(id)),
+    ...(await listingOf(id)),
+  });
+  const productRow = async (id: string) =>
     (
       await service
         .from("products")
         .select(
-          "catalog_id, make, model, cc, transmission, marketplace_listed, instant_units, request_units, ready_now, catalog_approved_at",
+          "catalog_id, make, model, cc, transmission, catalog_approved_at",
         )
         .eq("id", id)
         .single()

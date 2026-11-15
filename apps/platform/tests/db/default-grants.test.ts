@@ -353,3 +353,87 @@ describe("gear stock rework: the functions", () => {
     ]);
   });
 });
+
+/**
+ * Products, stage C (20261114000200): Moto Mangos listings in their own
+ * table. Members read it; nobody signed in writes it directly (a listing is
+ * changed through save_listing(), which locks the product's row first).
+ */
+describe("products stage C: product_listings and its functions", () => {
+  it("product_listings: members read, nobody signed in writes, signed-out visitors get nothing; the service role is granted on purpose", () => {
+    const rows = lines(`
+      select r || ' ' || coalesce(string_agg(p, ',' order by p)
+        filter (where has_table_privilege(r, 'platform.product_listings', p)), 'none')
+      from unnest(array['anon', 'authenticated']) r,
+           unnest(array['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger']) p
+      group by r order by r;
+    `);
+    expect(rows).toEqual(["anon none", "authenticated select"]);
+    const migrations = migrationsText();
+    expect(hasExplicitGrant(migrations, "platform.product_listings")).toBe(
+      true,
+    );
+    expect(migrations).toMatch(
+      /grant select, insert, update, delete on platform\.product_listings to service_role/,
+    );
+  });
+
+  it("row level security is on, with one policy: members read their own shop's", () => {
+    const rows = lines(`
+      select c.relrowsecurity::text from pg_class c
+      where c.oid = 'platform.product_listings'::regclass;
+      select polname || ' ' || polcmd::text || ' ' || polroles::regrole[]::text
+      from pg_policy where polrelid = 'platform.product_listings'::regclass order by 1;
+    `);
+    expect(rows).toEqual([
+      "true",
+      "Members read product listings r {authenticated}",
+    ]);
+  });
+
+  it("every stage C function is closed to signed-out visitors and to PUBLIC; members call the ones meant for them", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in (
+          'save_listing', 'listing_roles', 'listing_clear',
+          'product_listings_guard', 'product_listings_switch_event',
+          'review_catalog_request', 'disconnect_listing', 'products_retire_guard')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, PUBLIC
+      "platform.disconnect_listing false true false",
+      "platform.review_catalog_request false true false",
+      "platform.save_listing false true false",
+      // Helpers the functions above call as the member.
+      "platform_private.listing_clear false true false",
+      "platform_private.listing_roles false true false",
+      // Trigger functions: nobody calls them.
+      "platform_private.product_listings_guard false false false",
+      "platform_private.product_listings_switch_event false false false",
+      "platform_private.products_retire_guard false false false",
+    ]);
+  });
+
+  it("the functions that run with their owner's rights pin their search path", () => {
+    const rows = lines(`
+      select p.proname || ' ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in ('save_listing', 'listing_clear', 'product_listings_guard',
+          'product_listings_switch_event')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      'listing_clear true search_path=""',
+      'product_listings_guard true search_path=""',
+      'product_listings_switch_event true search_path=""',
+      'save_listing true search_path=""',
+    ]);
+  });
+});

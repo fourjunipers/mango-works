@@ -72,7 +72,7 @@ export const getFleet = cache(async (tenantId: string) => {
     supabase
       .from("products")
       .select(
-        "id, name, type, catalog_id, make, model, vehicle_type, categories, cc, transmission, bookable_online, marketplace_listed, catalog_rejected_at, catalog_approved_at, photos, retired_at, sort_position",
+        "id, name, type, catalog_id, make, model, vehicle_type, categories, cc, transmission, bookable_online, catalog_rejected_at, catalog_approved_at, photos, retired_at, sort_position, product_listings(enabled)",
       )
       .eq("tenant_id", tenantId)
       // Vehicles: general products are read by getGeneralProducts.
@@ -89,7 +89,12 @@ export const getFleet = cache(async (tenantId: string) => {
   ]);
   if (models.error) throw models.error;
   if (units.error) throw units.error;
-  const vehicles = models.data.map(asVehicle);
+  const vehicles = models.data.map(
+    ({ product_listings: listing, ...model }) => ({
+      ...asVehicle(model),
+      marketplace_listed: listingOf(listing).enabled,
+    }),
+  );
   // Where each linked entry stands: the list holds the approved ones; the
   // rest (a shop's own request, waiting or turned down) are looked up.
   const status = new Map<string, string>(
@@ -148,6 +153,29 @@ function asVehicle<
   };
 }
 
+/**
+ * A product's Moto Mangos listing (platform.product_listings), under the
+ * names the screens use. A product that was never listed has no row: that
+ * reads as off, with every count at zero. The API answers with a list for
+ * this relation, of one row at most.
+ */
+function listingOf<
+  T extends {
+    enabled: boolean;
+    instant_units?: number;
+    request_units?: number;
+    ready_now?: number;
+  },
+>(listing: T | T[] | null) {
+  const row = Array.isArray(listing) ? listing[0] : listing;
+  return {
+    enabled: row?.enabled ?? false,
+    instant_units: row?.instant_units ?? 0,
+    request_units: row?.request_units ?? 0,
+    ready_now: row?.ready_now ?? 0,
+  };
+}
+
 export type FleetModel = Awaited<ReturnType<typeof getFleet>>[number];
 export type FleetUnit = FleetModel["units"][number];
 
@@ -195,14 +223,17 @@ export async function getModel(tenantId: string, id: string) {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, type, catalog_id, make, model, vehicle_type, cc, transmission, marketplace_listed, description, bookable_online, buffer_before_minutes, buffer_after_minutes, deposit, min_age, licence_class, instant_units, request_units, ready_now, categories, catalog_rejected_at, catalog_reject_reason, catalog_approved_at, retired_at",
+      "id, name, type, catalog_id, make, model, vehicle_type, cc, transmission, description, bookable_online, buffer_before_minutes, buffer_after_minutes, deposit, min_age, licence_class, categories, catalog_rejected_at, catalog_reject_reason, catalog_approved_at, retired_at, product_listings(enabled, instant_units, request_units, ready_now)",
     )
     .eq("tenant_id", tenantId)
     .eq("id", id)
     .eq("type", "vehicle")
     .maybeSingle();
   if (error) throw error;
-  return data ? asVehicle(data) : null;
+  if (!data) return null;
+  const { product_listings: listing, ...model } = data;
+  const { enabled, ...counts } = listingOf(listing);
+  return { ...asVehicle(model), marketplace_listed: enabled, ...counts };
 }
 
 export async function getUnit(tenantId: string, id: string) {
@@ -352,7 +383,8 @@ export async function getProductHistory(
       .from("audit_events")
       .select(columns)
       .eq("tenant_id", tenantId)
-      .eq("entity", "products")
+      // Its Moto Mangos listing's rows are part of the product's story.
+      .in("entity", ["products", "product_listings"])
       .eq("entity_id", productId)
       .order("at", { ascending: false })
       .limit(limit),

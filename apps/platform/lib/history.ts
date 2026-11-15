@@ -114,8 +114,68 @@ const record = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
+/**
+ * A product's Moto Mangos listing has its own table since stage C
+ * (platform.product_listings); before, its settings were columns of the
+ * product. Its rows read as the product's own, in the same words: the switch
+ * is still "Listed on Moto Mangos". A listing's first save is an insert:
+ * told as a change from "off, zero, none".
+ */
+const listingStart: Record<string, unknown> = {
+  enabled: false,
+  instant_units: 0,
+  request_units: 0,
+  ready_now: 0,
+  lead_time_hours: null,
+};
+
+function asProductRow(row: AuditRow): AuditRow {
+  if (row.entity !== "product_listings") return row;
+  const named = (values: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [
+        key === "enabled" ? "marketplace_listed" : key,
+        value,
+      ]),
+    );
+  if (row.action === "insert") {
+    const made = record(row.after);
+    const changed = Object.keys(listingStart).filter(
+      (key) => (made[key] ?? null) !== listingStart[key],
+    );
+    return {
+      ...row,
+      entity: "products",
+      action: "update",
+      before: named(
+        Object.fromEntries(changed.map((key) => [key, listingStart[key]])),
+      ),
+      after: named(Object.fromEntries(changed.map((key) => [key, made[key]]))),
+    };
+  }
+  return {
+    ...row,
+    entity: "products",
+    before: named(record(row.before)),
+    after: named(record(row.after)),
+  };
+}
+
+/**
+ * The switch going on or off is also written as an event of its own
+ * (listing_on, listing_off). Until the Moto Mangos tab gives those their
+ * words, the listing's own row says it ("Listed on Moto Mangos: No → Yes"),
+ * as it always has, and the event is left out so it isn't said twice. A
+ * listing's row going with its deleted product is left out too.
+ */
+const unsaid = (row: AuditRow) =>
+  row.action === "listing_on" ||
+  row.action === "listing_off" ||
+  (row.entity === "product_listings" && row.action === "delete");
+
 /** One audit row as a history entry. Updates list what changed, in column order. */
-export function toHistoryEntry(row: AuditRow): HistoryEntry {
+export function toHistoryEntry(stored: AuditRow): HistoryEntry {
+  const row = asProductRow(stored);
   const before = record(row.before);
   const after = record(row.after);
   // A quantity change reads "Quantity: 20 -> 25"; marking units damaged or
@@ -197,6 +257,7 @@ export function toHistoryEntry(row: AuditRow): HistoryEntry {
  */
 export function buildHistory(rows: AuditRow[]): HistoryEntry[] {
   return rows
+    .filter((row) => !unsaid(row))
     .map(toHistoryEntry)
     .filter((entry) => entry.action !== "update" || entry.changes.length > 0);
 }
