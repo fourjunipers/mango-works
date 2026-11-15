@@ -13,6 +13,16 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Products, stage D: pricing, design only (branch `platform/products-stage-d-pricing`, 15 Nov 2026)
+
+**No code and no migration.** The design is `docs/products-redesign.md` §9, written from `main` at `dc4d8ee`. It waits for the owner's review; nothing is built until he gives the go-ahead.
+
+- **What it covers:** where prices live (five tables, written only through functions, hidden from mechanics and drivers); the lookup for a product, a length and a date; one pricer, `quote()` in `@mango/core`, as the only code that produces a price; tax per line; how Phase 2 uses it, with minimum notice by channel; the room left for vendor coupons (nothing built); the Booqable import; the Pricing tab, History lines and Thai wording needs; a build order in four small stages (D1 maths, D2 database, D3 tab, D4 settings).
+- **Booqable price templates: multipliers, not fixed amounts**, by Booqable's own help pages; between tiles Booqable charges the next tile up. BSR's own account was **not** seen (Chrome was not signed in), and the API's field names were not confirmed. The importer is designed for multipliers and writes absolute 30-day totals.
+- **Found while reading:** §3.4 rounds an over-30-day total to one minor unit, but the spec, the contract (§4.2) and `priceForDays` round to the whole baht (Q1). The platform design refuses a falling total where the marketplace editor only warns (Q3).
+- **Open for the owner:** 20 questions in §9.12, each with options and a recommendation. Q1 to Q9 change the maths and are needed before D1. Eight things decided in the design without asking are listed in §9.11.
+- `docs/platform/SPEC.md` and `docs/platform/MAPPING.md` are not changed.
+
 ## Products, stage C: the Moto Mangos tab (branch `platform/products-stage-c-tab`, 15 Nov 2026)
 
 PR 2 of stage C, of two. The Moto Mangos panel moves from a motorbike's Details tab to its own tab, with the listing part reworked. The design is `docs/products-redesign.md` §5.11. Platform only; **no migration** (the database is PR 21's). `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
