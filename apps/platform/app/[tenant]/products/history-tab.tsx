@@ -1,3 +1,5 @@
+import { seasonHistory } from "@/lib/season-history";
+import { percentLabel, seasonDates } from "@/lib/seasons";
 import { getTranslations } from "next-intl/server";
 import { Panel } from "@/components/action-form";
 import {
@@ -15,6 +17,7 @@ import {
 import { formatMinor, multiplierText } from "@/lib/money";
 import {
   getPricingAudit,
+  getSeasonAudit,
   getTaxProfileNames,
   getTemplateNames,
 } from "@/lib/pricing-data";
@@ -67,6 +70,7 @@ export async function HistoryTab({
     pricingRows,
     templateNames,
     taxNames,
+    seasonRows,
   ] = await Promise.all([
     getTranslations("Products.history"),
     getTranslations("Fleet"),
@@ -81,6 +85,7 @@ export async function HistoryTab({
     getPricingAudit(tenantId, productId, limit),
     getTemplateNames(tenantId),
     getTaxProfileNames(tenantId),
+    getSeasonAudit(tenantId),
   ]);
   // Price lines (lib/pricing-history.ts): the product's pricing rows and
   // pricing_change events, its own lists and the shared lists it is on.
@@ -88,11 +93,11 @@ export async function HistoryTab({
     ...templatesFromAudit(pricingRows),
     ...templateNames,
   ]);
-  const priceEntries = pricingHistory(
-    [...productRows, ...pricingRows],
-    productId,
-    templates,
-  );
+  const priceEntries = [
+    ...pricingHistory([...productRows, ...pricingRows], productId, templates),
+    // Seasons that cover it (lib/season-history.ts).
+    ...seasonHistory(seasonRows, productId),
+  ];
   const gear = gearUnitHistory(unitRows);
   // A stock function's own line says what a unit's rows of the same moment
   // would say again. A label's change stays.
@@ -132,6 +137,19 @@ export async function HistoryTab({
     if ("multiplier" in value)
       return value.multiplier ? `×${multiplierText(value.multiplier)}` : "";
     if ("number" in value) return value.number;
+    if ("adjust" in value)
+      return tp(value.adjust < 0 ? "seasonOff" : "seasonMore", {
+        percent: percentLabel(value.adjust, locale),
+      });
+    if ("dates" in value)
+      return tp(value.dates.yearly ? "seasonYearly" : "seasonOnce", {
+        ...seasonDates(
+          value.dates.startsOn,
+          value.dates.endsOn,
+          value.dates.yearly,
+          locale,
+        ),
+      });
     if ("method" in value)
       return value.method ? tp(`method.${value.method}`) : tp("method.none");
     if ("period" in value) return tp(`period.${value.period}`);

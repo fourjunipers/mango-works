@@ -263,10 +263,10 @@
         "none": "ยังไม่มีประเภทภาษี",
         "isDefault": "ค่าเริ่มต้น",
         "unused": "ไม่มีสินค้าที่ใช้ประเภทภาษีนี้",
-        "usedBy": "ใช้กับสินค้า {count} รายการ: {names}",
+        "usedBy": "ใช้กับ{count, plural, other {สินค้า # รายการ}}: {names}",
         "edit": "เปลี่ยนชื่อหรืออัตรา",
         "save": "บันทึกประเภทภาษี",
-        "rateConfirm": "การนี้จะเปลี่ยนภาษีของสินค้า {count} รายการ: {names} บันทึกหรือไม่",
+        "rateConfirm": "การนี้จะเปลี่ยนภาษีของ{count, plural, other {สินค้า # รายการ}}: {names} บันทึกหรือไม่",
         "remove": "นำออก",
         "removeConfirm": "นำ {name} ออกหรือไม่ สินค้าจะเลือกประเภทนี้ไม่ได้อีก คำสั่งซื้อเดิมยังคงใช้อยู่",
         "addUsual": "เพิ่ม {name} เป็นค่าเริ่มต้น",
@@ -444,7 +444,7 @@
     "seasonEndsBeforeStart": "วันสุดท้ายอยู่ก่อนวันแรก เลือก \"ทุกปี\" สำหรับฤดูกาลที่ข้ามปีใหม่",
     "seasonNoProducts": "เลือกสินค้าอย่างน้อยหนึ่งรายการ หรือสินค้าทั้งหมด",
     "invalidRate": "กรอกอัตราตั้งแต่ 0 ถึง 100",
-    "taxProfileInUse": "ยังมีสินค้า {count} รายการที่ใช้อยู่: {names} ย้ายไปใช้ภาษีแบบอื่นในแท็บราคาของสินค้านั้นก่อน",
+    "taxProfileInUse": "ยังมี{count, plural, other {สินค้า # รายการ}}ที่ใช้อยู่: {names} ย้ายไปใช้ภาษีแบบอื่นในแท็บราคาของสินค้านั้นก่อน",
     "taxProfileIsDefault": "นี่คือประเภทภาษีเริ่มต้นของร้าน เลือกค่าเริ่มต้นอื่นก่อน",
     "profileNameExists": "มีประเภทภาษีชื่อนี้แล้ว",
     "depositNumberRequired": "กรอกเปอร์เซ็นต์หรือจำนวนเงินมัดจำ",
@@ -974,8 +974,19 @@
           "replacementSet": "{who} ตั้งมูลค่าทดแทนเป็น {to}",
           "replacementChanged": "{who} เปลี่ยนมูลค่าทดแทนจาก {from} เป็น {to}",
           "replacementRemoved": "{who} ลบมูลค่าทดแทน (เดิม {from})",
-          "taxChanged": "{who} เปลี่ยนภาษีจาก {from} เป็น {to}"
-        }
+          "taxChanged": "{who} เปลี่ยนภาษีจาก {from} เป็น {to}",
+          "seasonAdded": "{who} เพิ่มฤดูกาล {name}: {change} {when}",
+          "seasonRemoved": "{who} นำฤดูกาล {name} ออก",
+          "seasonChanged": "{who} เปลี่ยนฤดูกาล {name} จาก {from} เป็น {to}",
+          "seasonDatesChanged": "{who} เปลี่ยนวันที่ของฤดูกาล {name} จาก {from} เป็น {to}",
+          "seasonRenamed": "{who} เปลี่ยนชื่อฤดูกาล {from} เป็น {to}",
+          "seasonOff": "{who} ปิดฤดูกาล {name}",
+          "seasonOn": "{who} เปิดฤดูกาล {name}"
+        },
+        "seasonOff": "ลด {percent}",
+        "seasonMore": "เพิ่ม {percent}",
+        "seasonYearly": "{from} ถึง {to} ทุกปี",
+        "seasonOnce": "{from} ถึง {to}"
       }
     },
     "duplicate": "ทำสำเนา",

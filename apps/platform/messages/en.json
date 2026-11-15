@@ -974,8 +974,19 @@
           "replacementSet": "{who} set the replacement value to {to}",
           "replacementChanged": "{who} changed the replacement value from {from} to {to}",
           "replacementRemoved": "{who} removed the replacement value (it was {from})",
-          "taxChanged": "{who} changed tax from {from} to {to}"
-        }
+          "taxChanged": "{who} changed tax from {from} to {to}",
+          "seasonAdded": "{who} added the season {name}: {change}, {when}",
+          "seasonRemoved": "{who} removed the season {name}",
+          "seasonChanged": "{who} changed the season {name} from {from} to {to}",
+          "seasonDatesChanged": "{who} changed the dates of the season {name} from {from} to {to}",
+          "seasonRenamed": "{who} renamed the season {from} to {to}",
+          "seasonOff": "{who} switched off the season {name}",
+          "seasonOn": "{who} switched on the season {name}"
+        },
+        "seasonOff": "{percent} off",
+        "seasonMore": "{percent} more",
+        "seasonYearly": "{from} to {to}, every year",
+        "seasonOnce": "{from} to {to}"
       }
     },
     "duplicate": "Duplicate",
