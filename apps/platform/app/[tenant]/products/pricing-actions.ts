@@ -9,12 +9,14 @@ import {
   daysPayload,
   listNameError,
   pricingPayload,
+  sameAsSaved,
   suggestedStep,
   type ListDraft,
   type ListKind,
   type PricingDraft,
   type ProductType,
 } from "@/lib/pricing-form";
+import { getProductPricingExtras, getSharedList } from "@/lib/pricing-data";
 import { canPricing } from "@/lib/pricing-permissions";
 import { requireMembership } from "@/lib/session";
 import { createClient } from "@mango/db/platform-server";
@@ -81,7 +83,7 @@ async function stepOf(
 ): Promise<bigint> {
   const { data } = await supabase
     .from("pricing_settings")
-    .select("rounding_step")
+    .select("rounding_step::text")
     .eq("tenant_id", tenantId)
     .maybeSingle();
   return data?.rounding_step
@@ -102,6 +104,9 @@ function parseJson<T>(text: string): T | null {
  * typed; it is read again here with the same rules (lib/pricing-form.ts)
  * and sent to platform.save_product_pricing().
  *
+ * A list that is on the form as it is saved is not sent again, so a save of
+ * the deposit alone leaves the list's days as they are.
+ *
  * Until the shop's settings have a screen (stage D6), a shop that enters
  * its first product deposit is set to "per product", as it was in stage D4.
  */
@@ -115,7 +120,7 @@ export async function saveProductPricing(
   const draft = parseJson<PricingDraft>(field(formData, "draft"));
   if (!productId || !draft) return { errors: { form: "saveFailed" } };
 
-  const [product, settings, lists, profiles] = await Promise.all([
+  const [product, settings, lists, profiles, extras] = await Promise.all([
     supabase
       .from("products")
       .select("id, type")
@@ -124,7 +129,7 @@ export async function saveProductPricing(
       .maybeSingle(),
     supabase
       .from("pricing_settings")
-      .select("rounding_step, deposit_mode")
+      .select("rounding_step::text, deposit_mode")
       .eq("tenant_id", tenant.id)
       .maybeSingle(),
     supabase
@@ -137,6 +142,7 @@ export async function saveProductPricing(
       .select("id")
       .eq("tenant_id", tenant.id)
       .is("archived_at", null),
+    getProductPricingExtras(tenant.id, productId),
   ]);
   if (!product.data) return notAllowed;
   const type = product.data.type as ProductType;
@@ -154,6 +160,7 @@ export async function saveProductPricing(
     ),
     showDeposit,
     showTax: (profiles.data ?? []).length > 0,
+    savedOwn: extras.ownList,
   });
   if (!result.ok) return { errors: result.errors };
 
@@ -201,6 +208,10 @@ export async function savePriceList(
       : await stepOf(supabase, tenant.id, tenant.currency);
   const list = computeList(draft, kind, tenant.currency, step);
   if (!list.ok) return { errors: { form: "listNotReady" } };
+  // A list that is as it was saved keeps its days: a new name alone
+  // rewrites nothing and reprices nothing.
+  const saved = id ? await getSharedList(tenant.id, id) : null;
+  const unchanged = saved?.kind === kind && sameAsSaved(list, saved);
 
   const { data, error } = await supabase.rpc("save_price_template", {
     p_tenant_id: tenant.id,
@@ -208,7 +219,7 @@ export async function savePriceList(
       ...(id ? { id } : { kind }),
       name,
       hourly: list.hourly === null ? null : String(list.hourly),
-      days: daysPayload(list),
+      ...(unchanged ? {} : { days: daysPayload(list) }),
     } as never,
   });
   if (error) {

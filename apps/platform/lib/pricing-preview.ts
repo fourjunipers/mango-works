@@ -146,6 +146,37 @@ function draftDeposit(text: string, currency: string): string | null {
   return value === null || value === "invalid" ? null : String(value);
 }
 
+/**
+ * The shop's settings as they will be once the form is saved. A shop with
+ * no settings row takes no deposit, but the save of its first product
+ * deposit sets it to "per product" (saveProductPricing): the sample is
+ * priced that way too, so "Check a price" shows the deposit Save will give.
+ */
+export function previewInputs(
+  inputs: PricingInputs,
+  draft: PricingDraft,
+  ctx: PricingContext,
+): PricingInputs {
+  if (inputs.settings !== null || !ctx.showDeposit) return inputs;
+  const deposit = parseMinorUnits(draft.deposit, ctx.currency);
+  if (deposit === null || deposit === "invalid" || deposit === BigInt(0))
+    return inputs;
+  return {
+    ...inputs,
+    // The columns' defaults, and "per product".
+    settings: {
+      currency: ctx.currency,
+      rounding_step: null,
+      tax_inclusive: true,
+      coupons_enabled: false,
+      deposit_mode: "per_product",
+      deposit_percent_bp: null,
+      deposit_amount: null,
+      default_tax_profile_id: null,
+    },
+  };
+}
+
 /** The sample rental: from, to, how many, in the shop's time zone. */
 export type Sample = {
   start: Date;

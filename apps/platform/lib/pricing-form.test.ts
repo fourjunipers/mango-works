@@ -14,9 +14,11 @@ import {
   listNameError,
   methodsFor,
   pricingPayload,
+  sameAsSaved,
   sameEveryDayDraft,
   suggestedStep,
   taxChoice,
+  withBox,
   type ListDraft,
   type PricingContext,
   type PricingDraft,
@@ -423,5 +425,169 @@ describe("what save_product_pricing is sent", () => {
     expect(listNameError("  ")).toBe("required");
     expect(listNameError("x".repeat(121))).toBe("tooLong");
     expect(listNameError("300–3000")).toBeNull();
+  });
+});
+
+describe("a saved list reads as it is stored (filled days are not filled again)", () => {
+  // Saved with a ฿10 step: daily, weekly, 2 weeks and monthly entered.
+  const first = computeList(
+    boxes({ daily: "300", weekly: "1400", twoWeeks: "2100", monthly: "3000" }),
+    "amounts",
+    THB,
+    step,
+  );
+  const saved = daysPayload(first);
+  const savedList = { hourly: null, days: saved };
+  const values = saved.map((d) => BigInt(d.value));
+  // The shop has since chosen another step: ฿500.
+  const newStep = BigInt(50000);
+  const read = () => draftFromSaved(saved, null, "amounts", THB);
+  const totals = (draft: ListDraft) =>
+    computeList(draft, "amounts", THB, newStep).days.map((d) => d.value);
+
+  it("shows every day as stored, whatever the rounding step is now", () => {
+    const draft = read();
+    expect(Object.keys(draft.stored ?? {})).toHaveLength(26);
+    const list = computeList(draft, "amounts", THB, newStep);
+    expect(list.ok).toBe(true);
+    expect(list.days.map((d) => d.value)).toEqual(values);
+    expect(list.days.map((d) => d.source)).toEqual(saved.map((d) => d.source));
+    // Without the stored values the new step would move them.
+    expect(totals({ ...draft, stored: undefined })).not.toEqual(values);
+  });
+
+  it("a changed box fills in only the days between the boxes around it", () => {
+    const draft = withBox(read(), "weekly", "1500");
+    const after = totals(draft);
+    // Days 2–6 and 8–13 are filled in again, to the step of today.
+    expect(Object.keys(draft.stored ?? {}).map(Number)).toEqual([
+      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+    ]);
+    expect(after[6]).toBe(n(150000));
+    expect(after.slice(1, 6)).not.toEqual(values.slice(1, 6));
+    // Days 15–29 are beyond the next box: as stored.
+    expect(after.slice(13)).toEqual(values.slice(13));
+    expect(after[0]).toBe(values[0]);
+  });
+
+  it("the first and the last box reach only as far as the next box", () => {
+    expect(
+      Object.keys(withBox(read(), "daily", "310").stored ?? {}).map(Number)[0],
+    ).toBe(8);
+    expect(
+      Object.keys(withBox(read(), "monthly", "3100").stored ?? {})
+        .map(Number)
+        .at(-1),
+    ).toBe(13);
+  });
+
+  it("a box cleared, or a new one typed, fills in its own stretch again", () => {
+    // Weekly cleared: days 2–13 run straight from daily to 2 weeks.
+    const cleared = withBox(read(), "weekly", "");
+    expect(Object.keys(cleared.stored ?? {}).map(Number)[0]).toBe(15);
+    // 3 weeks typed: only days 15–29 are filled in again.
+    const typed = withBox(read(), "threeWeeks", "2600");
+    expect(Object.keys(typed.stored ?? {}).map(Number)).toEqual([
+      2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13,
+    ]);
+    expect(totals(typed).slice(0, 14)).toEqual(values.slice(0, 14));
+  });
+
+  it("the hourly box, and a box left as it was, fill nothing in again", () => {
+    expect(totals(withBox(read(), "hourly", "80"))).toEqual(values);
+    expect(totals(withBox(read(), "weekly", "1400.00"))).toEqual(values);
+  });
+
+  it("a day typed by hand leaves the other days as stored; Reset brings it back", () => {
+    const draft = read();
+    const typed = { ...draft, manual: { 10: "1700" } };
+    const after = totals(typed);
+    expect(after[9]).toBe(n(170000));
+    expect(after.filter((_, i) => i !== 9)).toEqual(
+      values.filter((_, i) => i !== 9),
+    );
+    expect(totals({ ...typed, manual: {} })).toEqual(values);
+  });
+
+  it("'Same price every day' starts the list again", () => {
+    expect(sameEveryDayDraft(read(), "amounts", THB)?.stored).toBeUndefined();
+  });
+
+  it("ignores a stored value that is not an amount", () => {
+    const draft = { ...read(), stored: { 2: "abc", 3: "0", 4: "-5" } };
+    const list = computeList(draft, "amounts", THB, step);
+    expect(list.days.slice(1, 4).map((d) => d.value)).toEqual(
+      values.slice(1, 4),
+    );
+  });
+
+  it("knows the list on the form from the saved one", () => {
+    const same = computeList(read(), "amounts", THB, newStep);
+    expect(sameAsSaved(same, savedList)).toBe(true);
+    expect(sameAsSaved(same, null)).toBe(false);
+    expect(sameAsSaved(same, { hourly: "8000", days: saved })).toBe(false);
+    const moved = computeList(
+      withBox(read(), "weekly", "1500"),
+      "amounts",
+      THB,
+      newStep,
+    );
+    expect(sameAsSaved(moved, savedList)).toBe(false);
+    // The same amount, but typed by hand now: not the same list.
+    const byHand = computeList(
+      { ...read(), manual: { 10: minorDecimal(values[9], THB) } },
+      "amounts",
+      THB,
+      newStep,
+    );
+    expect(byHand.days.map((d) => d.value)).toEqual(values);
+    expect(sameAsSaved(byHand, savedList)).toBe(false);
+  });
+
+  it("a save that leaves the prices alone sends no days (the deposit alone)", () => {
+    const ctx: PricingContext = {
+      type: "vehicle",
+      currency: THB,
+      step: newStep,
+      sharedKinds: new Map(),
+      showDeposit: true,
+      showTax: false,
+      savedOwn: savedList,
+    };
+    const draft: PricingDraft = {
+      method: "tiered",
+      flatAmount: "",
+      flatPeriod: "day",
+      fixedAmount: "",
+      source: "own",
+      sharedId: "",
+      baseAmount: "",
+      list: read(),
+      longStay: "",
+      deposit: "2500",
+      tax: "default",
+      replacement: "",
+    };
+    const kept = pricingPayload(draft, ctx);
+    expect(kept.ok && kept.payload).toEqual({
+      pricing_method: "tiered",
+      long_stay_day: null,
+      deposit: "250000",
+    });
+    // A price changed: the 30 days go, the untouched ones as stored.
+    const changed = pricingPayload(
+      { ...draft, list: withBox(read(), "threeWeeks", "2600") },
+      { ...ctx, step },
+    );
+    const sent = changed.ok
+      ? (changed.payload.own_list as { days: { value: string }[] }).days
+      : [];
+    expect(sent).toHaveLength(30);
+    expect(sent.slice(0, 14).map((d) => d.value)).toEqual(
+      saved.slice(0, 14).map((d) => d.value),
+    );
+    // With no saved list to compare with, the days always go.
+    const first = pricingPayload(draft, { ...ctx, savedOwn: null });
+    expect(first.ok && "own_list" in first.payload).toBe(true);
   });
 });

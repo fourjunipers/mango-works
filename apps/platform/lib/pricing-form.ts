@@ -101,6 +101,13 @@ export type ListDraft = {
   boxes: BoxValues;
   /** Days typed by hand (never a day whose box is filled), as typed. */
   manual: Record<number, string>;
+  /**
+   * The saved values of the days that were filled in, as strings of digits.
+   * A list read back shows these as they are stored, whatever the rounding
+   * step is today; only the days around a box the owner changes are filled
+   * in again (withBox). Absent on a list that has not been saved.
+   */
+  stored?: Record<number, string>;
 };
 
 export type ListResult = {
@@ -137,11 +144,53 @@ function anchoredDays(values: BoxValues): Set<number> {
   return days;
 }
 
+/** The saved values of filled days that are still good: day → value. */
+function storedDays(draft: ListDraft): Map<number, bigint> {
+  const stored = new Map<number, bigint>();
+  for (const [key, digits] of Object.entries(draft.stored ?? {})) {
+    if (typeof digits !== "string" || !/^\d+$/.test(digits)) continue;
+    const value = BigInt(digits);
+    if (value > BigInt(0)) stored.set(Number(key), value);
+  }
+  return stored;
+}
+
+/**
+ * A quick-entry box changed. A day typed by hand on the box's day gives
+ * way, and the saved values between the boxes on either side of it are
+ * dropped, so those days (and only those) are filled in again. The hourly
+ * box is not a day: nothing is filled in again.
+ */
+export function withBox(draft: ListDraft, box: Box, text: string): ListDraft {
+  const next: ListDraft = {
+    ...draft,
+    boxes: { ...draft.boxes, [box]: text },
+    manual: { ...draft.manual },
+  };
+  if (box === "hourly" || text === draft.boxes[box]) return next;
+  const day = boxDay[box];
+  if (text.trim()) delete next.manual[day];
+  if (draft.stored) {
+    const others = [...anchoredDays(next.boxes)].filter((d) => d !== day);
+    const before = Math.max(0, ...others.filter((d) => d < day));
+    const after = Math.min(LIST_DAYS + 1, ...others.filter((d) => d > day));
+    next.stored = Object.fromEntries(
+      Object.entries(draft.stored).filter(([key]) => {
+        const d = Number(key);
+        return d <= before || d >= after;
+      }),
+    );
+  }
+  return next;
+}
+
 /**
  * The 30 days from what was typed. Entered boxes keep their exact value,
  * days typed by hand keep theirs, and the rest rise in equal steps between
- * them (fillPriceList), rounded to `step`. Equal neighbours are fine; a day
- * lower than the day before is a problem, and the list can't be saved.
+ * them (fillPriceList), rounded to `step`. A filled day that was saved keeps
+ * its saved value (draft.stored) until a box around it changes. Equal
+ * neighbours are fine; a day lower than the day before is a problem, and
+ * the list can't be saved.
  */
 export function computeList(
   draft: ListDraft,
@@ -173,6 +222,7 @@ export function computeList(
     else manual.set(day, value);
   }
 
+  const stored = storedDays(draft);
   const dayNumbers = Array.from({ length: LIST_DAYS }, (_, i) => i + 1);
   if (Object.keys(boxErrors).length > 0) {
     // Without daily and monthly nothing can be filled: show what is known.
@@ -186,6 +236,8 @@ export function computeList(
         return { day, value: known.get(day)!, source: "anchor" };
       if (manual.has(day))
         return { day, value: manual.get(day)!, source: "manual" };
+      if (stored.has(day) && !invalidDays.has(day))
+        return { day, value: stored.get(day)!, source: "filled" };
       return {
         day,
         value: null,
@@ -197,13 +249,16 @@ export function computeList(
   }
 
   const filled = fillPriceList(entry, manual, step);
-  const days = filled.days.map((d): GridDay =>
+  // A filled day that was saved shows what is stored, not a new fill.
+  const totals = filled.days.map((d) =>
+    d.source === "filled" ? (stored.get(d.day) ?? d.total) : d.total,
+  );
+  const days = filled.days.map((d, i): GridDay =>
     invalidDays.has(d.day)
       ? { day: d.day, value: null, source: "manual", invalid: true }
-      : { day: d.day, value: d.total, source: d.source },
+      : { day: d.day, value: totals[i], source: d.source },
   );
-  const problems =
-    invalidDays.size > 0 ? [] : listProblems(filled.days.map((d) => d.total));
+  const problems = invalidDays.size > 0 ? [] : listProblems(totals);
   return {
     boxErrors,
     days,
@@ -243,8 +298,10 @@ export type SavedDay = { day: number; value: string; source: DaySource };
 /**
  * Back from a saved list to what the owner typed. A box shows its day's
  * value when that day was entered. Daily and monthly are always boxes. A day
- * typed by hand stays typed by hand. A list loaded as it was (every day by
- * hand, §9.11) keeps every day: typing in a box then changes that day only.
+ * typed by hand stays typed by hand. A day that was filled in keeps its saved
+ * value (`stored`), so the list reads as it is stored and charged. A list
+ * loaded as it was (every day by hand, §9.11) keeps every day: typing in a
+ * box then changes that day only.
  */
 export function draftFromSaved(
   days: readonly SavedDay[],
@@ -264,11 +321,40 @@ export function draftFromSaved(
       draft.boxes[box] = text(saved.value);
   }
   const anchors = anchoredDays(draft.boxes);
+  const stored: Record<number, string> = {};
   for (const saved of days) {
-    if (saved.source === "manual" && !anchors.has(saved.day))
-      draft.manual[saved.day] = text(saved.value);
+    if (anchors.has(saved.day)) continue;
+    if (saved.source === "manual") draft.manual[saved.day] = text(saved.value);
+    else stored[saved.day] = saved.value;
   }
+  if (Object.keys(stored).length > 0) draft.stored = stored;
   return draft;
+}
+
+/** A list as it is saved: its hourly value and its 30 days. */
+export type SavedList = { hourly: string | null; days: readonly SavedDay[] };
+
+/**
+ * True when the list on the form is the saved one, day for day: a save then
+ * leaves the list's days alone (the deposit alone, a new name).
+ */
+export function sameAsSaved(
+  list: ListResult,
+  saved: SavedList | null,
+): boolean {
+  if (!saved || !list.ok || saved.days.length !== list.days.length)
+    return false;
+  if ((list.hourly === null ? null : String(list.hourly)) !== saved.hourly)
+    return false;
+  const byDay = new Map(saved.days.map((d) => [d.day, d]));
+  return list.days.every((d) => {
+    const was = byDay.get(d.day);
+    return (
+      was !== undefined &&
+      was.value === String(d.value) &&
+      was.source === d.source
+    );
+  });
 }
 
 /** The 30 days as platform.save_price_template() and own_list take them. */
@@ -317,6 +403,11 @@ export type PricingContext = {
   showDeposit: boolean;
   /** The tax picker is on the form (the shop has a tax profile). */
   showTax: boolean;
+  /**
+   * The product's own list as it is saved, when it has one. With it, a save
+   * that leaves the list as it is sends no days, so they are not rewritten.
+   */
+  savedOwn?: SavedList | null;
 };
 
 /** An error key per field, as FormErrors / Pricing.errors name them. */
@@ -375,7 +466,7 @@ export function pricingPayload(
             ctx.step,
           );
           if (!list.ok) errors.list = "listNotReady";
-          else
+          else if (!sameAsSaved(list, ctx.savedOwn ?? null))
             payload.own_list = {
               hourly: list.hourly === null ? null : String(list.hourly),
               days: daysPayload(list),

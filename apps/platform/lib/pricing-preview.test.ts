@@ -7,6 +7,7 @@ import {
 import type { PricingInputs } from "./pricing-inputs";
 import {
   draftRow,
+  previewInputs,
   previewQuote,
   priceSummary,
   sampleSpan,
@@ -121,6 +122,60 @@ describe("Check a price: the form priced by quote()", () => {
     expect(quote.totals.total).toBe(n(60000));
     expect(quote.taxGroups).toEqual([]);
     expect(quote.deposit.amount).toBe(n(1000000));
+  });
+
+  it("a shop with no settings row: the deposit typed is the deposit Save will give", () => {
+    // No pricing settings saved yet: the shop takes no deposit, until the
+    // save of its first product deposit sets it to "per product".
+    const none: PricingInputs = { settings: null, products: [], seasons: [] };
+    const typed = draft({ deposit: "2000" });
+    const row = draftRow("p", typed, ctx, [], tax);
+    const sample = {
+      ...span("2027-01-01T10:00", 45),
+      quantity: 2,
+      timeZone: zone,
+    };
+    const quote = previewQuote(previewInputs(none, typed, ctx), row, sample);
+    expect(quote?.ok).toBe(true);
+    if (!quote?.ok) return;
+    // A month and 14 days: 2 × (฿3,000 + 14 × ฿100), and 2 × ฿2,000.
+    expect(quote.totals.total).toBe(n(880000));
+    expect(quote.deposit.amount).toBe(n(400000));
+    // The settings row's defaults otherwise: tax included, no coupons.
+    expect(previewInputs(none, typed, ctx).settings).toMatchObject({
+      currency: "THB",
+      deposit_mode: "per_product",
+      deposit_amount: null,
+      tax_inclusive: true,
+      coupons_enabled: false,
+    });
+
+    // Nothing typed, or 0 ("no deposit for this one"): Save sets nothing.
+    for (const deposit of ["", "0", "abc"]) {
+      const d = draft({ deposit });
+      expect(previewInputs(none, d, ctx)).toBe(none);
+      const q = previewQuote(
+        previewInputs(none, d, ctx),
+        draftRow("p", d, ctx, [], tax),
+        sample,
+      );
+      expect(q?.ok && q.deposit.amount).toBe(n(0));
+    }
+    // The deposit is not on the form (not a vehicle): nothing changes.
+    expect(previewInputs(none, typed, { ...ctx, showDeposit: false })).toBe(
+      none,
+    );
+    // A shop that has chosen keeps its choice.
+    expect(previewInputs(inputs, typed, ctx)).toBe(inputs);
+    const fixed: PricingInputs = {
+      ...inputs,
+      settings: {
+        ...inputs.settings!,
+        deposit_mode: "none",
+        deposit_amount: null,
+      },
+    };
+    expect(previewInputs(fixed, typed, ctx)).toBe(fixed);
   });
 
   it("a shared multipliers list at this product's base price", () => {

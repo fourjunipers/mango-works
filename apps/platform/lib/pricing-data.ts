@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@mango/db/platform-server";
 import type { AuditRow } from "./history";
-import type { ListKind, ProductType } from "./pricing-form";
+import type { ListKind, ProductType, SavedList } from "./pricing-form";
 import type { PricingInputs } from "./pricing-inputs";
 import type { SharedList, TaxProfile } from "./pricing-preview";
 import type { DaySource } from "@mango/core/price-list";
@@ -17,6 +17,11 @@ import type { DaySource } from "@mango/core/price-list";
  * each day of a list got its value, which tax choice a product has, the
  * shop's lists and tax profiles): those are read from the tables directly,
  * which the same row-level security guards. Nothing here writes.
+ *
+ * Amounts read from a table are cast to text in the query (`value::text`),
+ * as pricing_inputs() sends them: a string of digits, never a JSON number,
+ * so nothing is lost at any size. A list's days are read with their list
+ * (an embedded read), so the API's row limit can never drop a day.
  */
 
 /** The rows quote() is fed for these products. */
@@ -42,19 +47,15 @@ export type ListSummary = SharedList & {
 /** The shop's shared price lists, with their days and the products on each. */
 export async function getSharedLists(tenantId: string): Promise<ListSummary[]> {
   const supabase = await createClient();
-  const [lists, days, users] = await Promise.all([
+  const [lists, users] = await Promise.all([
     supabase
       .from("price_templates")
-      .select("id, name, kind, hourly, updated_at")
+      .select(
+        "id, name, kind, hourly::text, updated_at, price_template_days(day, value::text)",
+      )
       .eq("tenant_id", tenantId)
       .is("product_id", null)
       .order("name"),
-    supabase
-      .from("price_template_days")
-      .select("template_id, day, value, price_templates!inner(product_id)")
-      .eq("tenant_id", tenantId)
-      .is("price_templates.product_id", null)
-      .order("day"),
     supabase
       .from("product_pricing")
       .select("price_template_id, products!inner(id, name)")
@@ -62,17 +63,16 @@ export async function getSharedLists(tenantId: string): Promise<ListSummary[]> {
       .not("price_template_id", "is", null),
   ]);
   if (lists.error) throw lists.error;
-  if (days.error) throw days.error;
   if (users.error) throw users.error;
   return lists.data.map((list) => ({
     id: list.id,
     name: list.name,
     kind: list.kind as ListKind,
-    hourly: list.hourly === null ? null : String(list.hourly),
+    hourly: list.hourly,
     updated_at: list.updated_at,
-    days: days.data
-      .filter((d) => d.template_id === list.id)
-      .map((d) => String(d.value)),
+    days: [...list.price_template_days]
+      .sort((a, b) => a.day - b.day)
+      .map((d) => d.value),
     products: users.data
       .filter((u) => u.price_template_id === list.id)
       .map((u) => {
@@ -88,7 +88,9 @@ export async function getSharedList(tenantId: string, id: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("price_templates")
-    .select("id, name, kind, hourly, price_template_days(day, value, source)")
+    .select(
+      "id, name, kind, hourly::text, price_template_days(day, value::text, source)",
+    )
     .eq("tenant_id", tenantId)
     .eq("id", id)
     .is("product_id", null)
@@ -99,12 +101,12 @@ export async function getSharedList(tenantId: string, id: string) {
     id: data.id,
     name: data.name,
     kind: data.kind as ListKind,
-    hourly: data.hourly === null ? null : String(data.hourly),
+    hourly: data.hourly,
     days: [...data.price_template_days]
       .sort((a, b) => a.day - b.day)
       .map((d) => ({
         day: d.day,
-        value: String(d.value),
+        value: d.value,
         source: d.source as DaySource,
       })),
   };
@@ -133,6 +135,8 @@ export async function getProductPricingExtras(
   taxable: boolean;
   /** Its own list's days, with how each got its value. */
   ownDays: { day: number; value: string; source: DaySource }[];
+  /** Its own list as it is saved. Null: it has none. */
+  ownList: SavedList | null;
 }> {
   const supabase = await createClient();
   const [pricing, own] = await Promise.all([
@@ -144,24 +148,26 @@ export async function getProductPricingExtras(
       .maybeSingle(),
     supabase
       .from("price_templates")
-      .select("id, price_template_days(day, value, source)")
+      .select("id, hourly::text, price_template_days(day, value::text, source)")
       .eq("tenant_id", tenantId)
       .eq("product_id", productId)
       .maybeSingle(),
   ]);
   if (pricing.error) throw pricing.error;
   if (own.error) throw own.error;
+  const ownDays = [...(own.data?.price_template_days ?? [])]
+    .sort((a, b) => a.day - b.day)
+    .map((d) => ({
+      day: d.day,
+      value: d.value,
+      source: d.source as DaySource,
+    }));
   return {
     type: (pricing.data?.product_type ?? "vehicle") as ProductType,
     taxable: pricing.data?.taxable ?? true,
     tax_profile_id: pricing.data?.tax_profile_id ?? null,
-    ownDays: [...(own.data?.price_template_days ?? [])]
-      .sort((a, b) => a.day - b.day)
-      .map((d) => ({
-        day: d.day,
-        value: String(d.value),
-        source: d.source as DaySource,
-      })),
+    ownDays,
+    ownList: own.data ? { hourly: own.data.hourly, days: ownDays } : null,
   };
 }
 

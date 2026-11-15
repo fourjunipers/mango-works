@@ -15,6 +15,7 @@ import {
   periods,
   sameEveryDayDraft,
   valueText,
+  withBox,
   type Box,
   type ListDraft,
   type ListKind,
@@ -27,6 +28,7 @@ import {
 import type { PricingInputs } from "@/lib/pricing-inputs";
 import {
   draftRow,
+  previewInputs,
   previewQuote,
   sampleSpan,
   type SharedList,
@@ -507,11 +509,8 @@ export function ListEditor({
     kind === "amounts"
       ? formatMinor(value, currency, locale)
       : `×${multiplierText(value)}`;
-  const setBox = (box: Box, text: string) => {
-    const manual = { ...draft.manual };
-    if (box !== "hourly" && text.trim()) delete manual[boxDay[box]];
-    onChange({ boxes: { ...draft.boxes, [box]: text }, manual });
-  };
+  const setBox = (box: Box, text: string) =>
+    onChange(withBox(draft, box, text));
   const setDay = (day: number, text: string) =>
     onChange({ ...draft, manual: { ...draft.manual, [day]: text } });
   const resetDay = (day: number) => {
@@ -884,7 +883,7 @@ function CheckPrice({
     defaultId: defaultTaxId,
   });
   const result = span
-    ? previewQuote(inputs, row, {
+    ? previewQuote(previewInputs(inputs, draft, ctx), row, {
         ...span,
         quantity: Number(quantity),
         timeZone,
