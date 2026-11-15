@@ -23,6 +23,11 @@ import {
   type OutState,
   type ProblemKind,
 } from "@/lib/gear-permissions";
+import {
+  changedSettings,
+  countProblems,
+  listingSettingsSchema,
+} from "@/lib/listing-settings";
 import { canManageFleet } from "@/lib/roles";
 import { requireMembership } from "@/lib/session";
 import { createClient } from "@mango/db/platform-server";
@@ -425,6 +430,97 @@ export async function disconnectListing(
     p_product_id: field(formData, "id"),
   });
   if (error) return { errors: { form: dbErrorKey(error) } };
+  refresh(slug);
+  return { ok: true };
+}
+
+// Moto Mangos: the listing ---------------------------------------------------------------
+
+/** Active vehicles of a product of this shop: what the listing's counts may reach. */
+async function activeVehicles(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  productId: string,
+) {
+  const { count } = await supabase
+    .from("units")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("product_id", productId)
+    .eq("status", "active");
+  return count ?? 0;
+}
+
+/**
+ * The on and off switch, saved by itself the moment it is pressed. The
+ * database lets a product be switched on only on an approved list entry and
+ * while it isn't retired.
+ */
+export async function setListingSwitch(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const { slug, role, supabase } = await context(formData);
+  if (!canManageFleet(role)) return notAllowed;
+  const id = field(formData, "id");
+  if (!uuid.test(id)) return { errors: { form: "saveFailed" } };
+  const { error } = await supabase.rpc("save_listing", {
+    p_product_id: id,
+    p_settings: { enabled: field(formData, "enabled") === "on" },
+  });
+  if (error) return { errors: { form: dbErrorKey(error) } };
+  refresh(slug);
+  return { ok: true };
+}
+
+/**
+ * Instant units, Request units, Walk-ins and the lead time, under one Save
+ * button. Only the settings that changed from what the page showed are sent
+ * (save_listing takes only what is to change). The counts are checked
+ * against the active vehicles here first, so the message can say which
+ * count is too high; the database checks the same again.
+ */
+export async function saveListingSettings(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const { slug, tenant, role, supabase } = await context(formData);
+  if (!canManageFleet(role)) return notAllowed;
+  const id = field(formData, "id");
+  if (!uuid.test(id)) return { errors: { form: "saveFailed" } };
+  const read = (prefix: string) =>
+    listingSettingsSchema.safeParse({
+      instant_units: formData.get(`${prefix}instant_units`) ?? undefined,
+      request_units: formData.get(`${prefix}request_units`) ?? undefined,
+      ready_now: formData.get(`${prefix}ready_now`) ?? undefined,
+      lead_time_hours: formData.get(`${prefix}lead_time_hours`) ?? undefined,
+    });
+  const now = read("");
+  if (!now.success) return { errors: fieldErrors(now.error) };
+  const was = read("was_");
+  const changes = was.success ? changedSettings(was.data, now.data) : now.data;
+  if (Object.keys(changes).length === 0) return { ok: true };
+  const problems = countProblems(
+    now.data,
+    await activeVehicles(supabase, tenant.id, id),
+  );
+  if (problems.length > 0) return { errors: { form: problems[0] } };
+  const { error } = await supabase.rpc("save_listing", {
+    p_product_id: id,
+    p_settings: changes,
+  });
+  if (error) {
+    const key = dbErrorKey(error);
+    // A vehicle left between the check above and the save: say which count.
+    if (key === "more_units_than_active") {
+      const [first] = countProblems(
+        now.data,
+        await activeVehicles(supabase, tenant.id, id),
+      );
+      return { errors: { form: first ?? key } };
+    }
+    return { errors: { form: key } };
+  }
   refresh(slug);
   return { ok: true };
 }

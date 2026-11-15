@@ -1,30 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import {
+  startTransition,
+  useActionState,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { useTranslations } from "next-intl";
 import { ChevronDown } from "lucide-react";
 import {
   ActionForm,
-  CheckboxInput,
+  type FormState,
   SelectInput,
   TextArea,
   TextInput,
 } from "@/components/action-form";
 import { transmissions } from "@/lib/fleet";
 import { Field, inputClass } from "@/components/form";
+import { countProblems, typedCount } from "@/lib/listing-settings";
 import type { ListChoice } from "@/lib/model-options";
+import { cn } from "@/lib/utils";
+import { linkModelToPreset, submitModelToCatalog } from "../fleet/actions";
 import {
-  linkModelToPreset,
-  saveListing,
-  submitModelToCatalog,
-} from "../fleet/actions";
-import { changeListingEntry, disconnectListing } from "./actions";
+  changeListingEntry,
+  disconnectListing,
+  saveListingSettings,
+  setListingSwitch,
+} from "./actions";
 
 /**
  * The Moto Mangos panel's forms, in the order they sit on a product's page
- * (owner, 13 Nov 2026): pick your make and model from the list; if it isn't
- * there, send its details for review; and, once a model is selected or
- * approved, the listing switch and settings.
+ * on its Moto Mangos tab (owner, 13 Nov 2026): pick your make and model
+ * from the list; if it isn't there, send its details for review; and, once a
+ * model is selected or approved, the listing switch and settings.
  */
 
 /**
@@ -110,7 +118,7 @@ export function ChooseFromListForm({
 /**
  * For a product already on a Moto Mangos list entry (owner, 13 Nov 2026;
  * owners and managers only): "Change model", the same Make then Model
- * dropdowns and Select button, and "Disconnect", which switches the listing
+ * dropdowns and Connect button, and "Disconnect", which switches the listing
  * off and clears the list entry after a confirmation. Neither touches a
  * booking that was already made: the line above the buttons says how many
  * there are.
@@ -268,75 +276,222 @@ export function ReviewRequest({
 }
 
 /**
- * The listing switch and settings. Usable only once the product is on an
- * approved list entry (a model selected from the list, or a request
- * approved); until then every field is disabled and a line says why.
+ * The on and off switch. It saves by itself the moment it is pressed (no
+ * Save button), and says so. Usable only once the product is on an approved
+ * list entry and not retired; until then it is disabled and the line above
+ * the listing part says why.
  */
-export function ListingForm({
+export function ListingSwitch({
+  slug,
+  id,
+  on,
+  enabled,
+}: {
+  slug: string;
+  id: string;
+  on: boolean;
+  enabled: boolean;
+}) {
+  const t = useTranslations("Fleet.motoMangos");
+  const tErrors = useTranslations("FormErrors");
+  const tCommon = useTranslations("Common");
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    setListingSwitch,
+    {},
+  );
+  // While it saves, the switch shows where it is going.
+  const [target, setTarget] = useState(on);
+  const shown = pending ? target : on;
+  const error = state.errors?.form;
+  return (
+    <form
+      action={action}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        setTarget(!on);
+        startTransition(() => action(data));
+      }}
+      className="space-y-1"
+    >
+      <input type="hidden" name="slug" value={slug} />
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="enabled" value={on ? "off" : "on"} />
+      <div className="flex min-h-11 items-center justify-between gap-4">
+        <span id="listing-switch-label" className="text-sm font-medium">
+          {t("list")}
+        </span>
+        <button
+          type="submit"
+          role="switch"
+          aria-checked={shown}
+          aria-labelledby="listing-switch-label"
+          aria-describedby="listing-switch-state"
+          disabled={!enabled || pending}
+          className={cn(
+            "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border-2 border-transparent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
+            shown ? "bg-primary" : "bg-input",
+          )}
+        >
+          <span
+            aria-hidden
+            className={cn(
+              "inline-block size-7 rounded-full bg-background shadow transition-transform",
+              shown ? "translate-x-6" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
+      <p
+        id="listing-switch-state"
+        role="status"
+        className="text-sm text-muted-foreground"
+      >
+        {pending ? tCommon("saving") : t(on ? "switchOn" : "switchOff")}
+      </p>
+      {error && !pending && (
+        <p role="alert" className="text-sm text-destructive">
+          {tErrors.has(error as "saveFailed")
+            ? tErrors(error as "saveFailed")
+            : tErrors("saveFailed")}
+        </p>
+      )}
+    </form>
+  );
+}
+
+type SettingValues = {
+  instant_units: string;
+  request_units: string;
+  ready_now: string;
+  lead_time_hours: string;
+};
+
+const sameValues = (a: SettingValues, b: SettingValues) =>
+  a.instant_units === b.instant_units &&
+  a.request_units === b.request_units &&
+  a.ready_now === b.ready_now &&
+  a.lead_time_hours === b.lead_time_hours;
+
+/**
+ * Instant units, Request units, Walk-ins and the lead time, saved together
+ * under one Save button. Under the counts, a line worked out from them
+ * ("Offering 3 of 8 bikes for advance booking") and, as soon as a count is
+ * typed too high, the reason; Save waits until it is put right. The page's
+ * values go along as was_*, so only what changed is saved.
+ */
+export function ListingSettingsForm({
   slug,
   id,
   enabled,
+  active,
   values,
 }: {
   slug: string;
   id: string;
   enabled: boolean;
-  values: {
-    listed: boolean;
-    instant_units: string;
-    request_units: string;
-    ready_now: string;
-  };
+  /** The product's active vehicles: what the counts may reach. */
+  active: number;
+  values: SettingValues;
 }) {
   const t = useTranslations("Fleet.motoMangos");
   const tModel = useTranslations("Fleet.model");
+  const tErrors = useTranslations("FormErrors");
+  const [typed, setTyped] = useState(values);
+  // After a save the page sends its new values: start again from those.
+  const [from, setFrom] = useState(values);
+  if (!sameValues(from, values)) {
+    setFrom(values);
+    setTyped(values);
+  }
+  const instant = typedCount(typed.instant_units);
+  const request = typedCount(typed.request_units);
+  const walkIns = typedCount(typed.ready_now);
+  const problems =
+    instant === null || request === null || walkIns === null
+      ? []
+      : countProblems(
+          {
+            instant_units: instant,
+            request_units: request,
+            ready_now: walkIns,
+          },
+          active,
+        );
+  const input = (name: keyof SettingValues) => ({
+    value: typed[name],
+    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+      const value = event.target.value;
+      setTyped((now) => ({ ...now, [name]: value }));
+    },
+  });
+
   const fields = (
     <fieldset disabled={!enabled} className="space-y-4 disabled:opacity-60">
-      <legend className="sr-only">{t("listingTitle")}</legend>
-      <CheckboxInput
-        name="listed"
-        label={t("list")}
-        defaultChecked={values.listed}
-      />
-      {/* "Set bike quantities per booking type", then one line each. */}
-      <p className="text-sm font-medium">{t("quantitiesTitle")}</p>
+      <legend className="mb-3 text-sm font-medium">
+        {t("quantitiesTitle")}
+      </legend>
       <TextInput
         name="instant_units"
         label={tModel("instantUnits")}
         help={t("instantHelp")}
         inputMode="numeric"
-        defaultValue={values.instant_units}
         className="max-w-28"
+        {...input("instant_units")}
       />
       <TextInput
         name="request_units"
         label={tModel("requestUnits")}
         help={t("requestHelp")}
         inputMode="numeric"
-        defaultValue={values.request_units}
         className="max-w-28"
+        {...input("request_units")}
       />
       <TextInput
         name="ready_now"
         label={tModel("readyNow")}
         help={t("walkinsHelp")}
         inputMode="numeric"
-        defaultValue={values.ready_now}
         className="max-w-28"
+        {...input("ready_now")}
+      />
+      {instant !== null && request !== null && (
+        <p data-offering className="text-sm font-medium">
+          {t("offering", { count: instant + request, total: active })}
+        </p>
+      )}
+      {problems.length > 0 && (
+        <ul role="alert" className="space-y-1 text-sm text-destructive">
+          {problems.map((problem) => (
+            <li key={problem}>{tErrors(problem)}</li>
+          ))}
+        </ul>
+      )}
+      <TextInput
+        name="lead_time_hours"
+        label={t("leadTime")}
+        help={t("leadTimeHelp")}
+        inputMode="numeric"
+        maxLength={3}
+        className="max-w-28"
+        {...input("lead_time_hours")}
       />
     </fieldset>
   );
-  if (!enabled)
-    return (
-      <div>
-        <p id="listing-locked" className="mb-3 text-sm font-medium">
-          {t("listingLocked")}
-        </p>
-        <div aria-describedby="listing-locked">{fields}</div>
-      </div>
-    );
+  if (!enabled) return fields;
   return (
-    <ActionForm action={saveListing} hidden={{ slug, id }}>
+    <ActionForm
+      action={saveListingSettings}
+      hidden={{
+        slug,
+        id,
+        was_instant_units: values.instant_units,
+        was_request_units: values.request_units,
+        was_ready_now: values.ready_now,
+        was_lead_time_hours: values.lead_time_hours,
+      }}
+      submitDisabled={problems.length > 0}
+    >
       {fields}
     </ActionForm>
   );

@@ -165,6 +165,7 @@ function listingOf<
     instant_units?: number;
     request_units?: number;
     ready_now?: number;
+    lead_time_hours?: number | null;
   },
 >(listing: T | T[] | null) {
   const row = Array.isArray(listing) ? listing[0] : listing;
@@ -173,6 +174,7 @@ function listingOf<
     instant_units: row?.instant_units ?? 0,
     request_units: row?.request_units ?? 0,
     ready_now: row?.ready_now ?? 0,
+    lead_time_hours: row?.lead_time_hours ?? null,
   };
 }
 
@@ -223,7 +225,7 @@ export async function getModel(tenantId: string, id: string) {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, type, catalog_id, make, model, vehicle_type, cc, transmission, description, bookable_online, buffer_before_minutes, buffer_after_minutes, deposit, min_age, licence_class, categories, catalog_rejected_at, catalog_reject_reason, catalog_approved_at, retired_at, product_listings(enabled, instant_units, request_units, ready_now)",
+      "id, name, type, catalog_id, make, model, vehicle_type, cc, transmission, description, bookable_online, buffer_before_minutes, buffer_after_minutes, deposit, min_age, licence_class, categories, catalog_rejected_at, catalog_reject_reason, catalog_approved_at, retired_at, product_listings(enabled, instant_units, request_units, ready_now, lead_time_hours)",
     )
     .eq("tenant_id", tenantId)
     .eq("id", id)

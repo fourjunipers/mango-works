@@ -459,7 +459,14 @@ export default async function ProductsPage({
                     />
                   </span>
                   <span className={reordering ? cell.reorderMango : cell.mango}>
-                    <MangoStatus listing={manage ? row.listing : null} />
+                    <MangoStatus
+                      listing={manage ? row.listing : null}
+                      href={
+                        reordering
+                          ? undefined
+                          : withBack(`${base}/${row.id}?tab=moto-mangos`, here)
+                      }
+                    />
                   </span>
                   {reordering && (
                     <span className={cell.reorderEnd}>

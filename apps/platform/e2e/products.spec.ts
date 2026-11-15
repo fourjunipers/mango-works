@@ -42,7 +42,7 @@ async function openPcx(page: Page): Promise<string> {
   return new URL(page.url()).pathname.split("/").pop()!;
 }
 
-test("products list: one row per product, filters, and a product's three tabs", async ({
+test("products list: one row per product, filters, and a product's tabs", async ({
   page,
 }, testInfo) => {
   await signIn(page, demo.bsrOwner);
@@ -133,15 +133,17 @@ test("products list: one row per product, filters, and a product's three tabs", 
   await expect(tabs(page).getByRole("link")).toHaveText([
     "Details",
     /^Units\s*\d+$/,
+    "Moto Mangos",
     "History",
   ]);
   await expect(
     tabs(page).getByRole("link", { name: "Details" }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Name")).toHaveValue("Honda PCX 160");
+  // The Moto Mangos panel has its own tab (stage C).
   await expect(
     page.getByRole("region", { name: "Moto Mangos", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   for (const link of await tabs(page).getByRole("link").all())
     expect(
       Math.round((await link.boundingBox())!.height),
@@ -243,11 +245,13 @@ test("Duplicate copies a product's settings into the create form, name ready to 
   await expect(tabs(page).getByRole("link", { name: /^Units/ })).toHaveText(
     /^Units\s*0$/,
   );
+  await page.goto(`${copyUrl}?tab=moto-mangos`);
   await expect(
     page
       .getByRole("region", { name: "Moto Mangos", exact: true })
       .getByLabel("List this product on Moto Mangos"),
   ).toBeDisabled();
+  await page.goto(copyUrl);
   // A copy of the copy carries the buffer over.
   await page.getByRole("link", { name: "Duplicate" }).click();
   await expect(page.getByLabel("Buffer after return (hours)")).toHaveValue("2");

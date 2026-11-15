@@ -744,7 +744,29 @@ The table's guard takes the product's lock as well, so a service-role write is c
 
 **Tests.** `tests/db/product-listings.test.ts`: the vehicle-fields rule (a helmet with a make, and ten other details); every moved rule; the lead time's bounds; what `save_listing` refuses; each role, by the function and by hand on the table; another shop, an outsider and a signed-out visitor; the events; Change model and Disconnect; the lock order (a save waits for the product's row; while the product's row is held, no writer holds a lock on the listing); six races (counts raised while a vehicle is sold, an approval against a retire, the switch against Disconnect, four saves at once, twelve first saves at once, five writers at once). The isolation harness has the table's fixture; `default-grants.test.ts` has its grants, its one policy and its functions. `packages/core/src/listing.test.ts`: 25 tests against the contract's §4.4 and the decisions' examples.
 
-**Not here (PR 2):** the Moto Mangos tab, the lead time field, the "Offering N of M" line, the switch saving at once, the words for `listing_on` and `listing_off`, the Thai review list.
+**Not here (PR 2, built: §5.11):** the Moto Mangos tab, the lead time field, the "Offering N of M" line, the switch saving at once, the words for `listing_on` and `listing_off`, the Thai review list.
+
+### 5.11 Stage C, the screens (built 15 Nov 2026)
+
+PR 2 of stage C: the Moto Mangos tab. No migration; the database is §5.10's.
+
+**The tab.** A product page reads Details, Units, Moto Mangos, History, at `?tab=moto-mangos`. It is there only for the Motorbike kind (any of its categories) and only for owners and managers; Off-road, Car, Boat and Other, general products, and staff, mechanics and drivers have none, and asking for it by address opens the first tab they do have. The panel moved over in its order (decision 19): the logo, "List it on Moto Mangos", the Make then Model picker, "Don't see your bike above?" with the review form, the waiting, approved and rejected states, Change model and Disconnect, then the listing part. Details keeps the product form, Duplicate (in the page header, on every tab) and Delete.
+
+**The listing part.**
+
+- **The switch** is a switch (`role="switch"`), not a checkbox, and saves by itself through `save_listing` with `{"enabled": …}` alone. A line under it says it is on or off and that it saves as soon as it is pressed.
+- **Instant units, Request units, Walk-ins and Lead time (hours)** are saved together under one Save button. The page's values go along as `was_*`, so only what changed is sent (`lib/listing-settings.ts`, `changedSettings`). Lead time is 0 to 720, empty for none, with a help line.
+- **"Offering N of M bikes for advance booking"**: N is instant plus request as typed, M the product's active vehicles. It follows the typing.
+- **The two messages** (the owner's words): "Total units listed on Moto Mangos can not exceed the number of units in your inventory" and "Walk-ins can not exceed the number of units in your inventory". They show as soon as a count is typed too high, and Save waits until it is put right. The server action checks the same against a fresh count of active vehicles before saving, and the database refuses with its one code, `more_units_than_active`, which the action turns into whichever of the two applies.
+- "Listing takes effect when Moto Mangos starts reading from this system" stays under it.
+
+**Links.** The dashboard's "Moto Mangos reviews" lines open the tab. The mango on a Fleet or Products row is a link to the tab (44 px to tap, owners and managers only, not in Reorder mode), keeping `?back=`, so the back link returns to the list it came from. An old link to the panel (`…/products/[id]#moto-mangos`) lands on the tab; one to a place in it (`#choose-from-list`, `#send-for-review`) keeps that place. The browser never sends the part after `#`, so a small script on the Details tab does it (`old-anchor.tsx`).
+
+**History.** `listing_on` and `listing_off` read "switched Moto Mangos on" and "… off"; the listing's own row no longer says "Listed on Moto Mangos: No → Yes", so the switch is said once. A lead time change on its own is one line: "changed lead time from 12 to 24 hours", "set lead time to 12 hours", "removed the lead time (it was 12 hours)". Saved together with a count, it is one of the changes listed under that save's line ("Lead time (hours): (empty) → 12"). **One action, one line:** a retire or a disconnect of a listed product also switches its listing off and zeroes its counts in the same moment; the listing's row and its `listing_off` of that moment are left out, so a retire shows only "Retired" and a disconnect only "disconnected this product from Moto Mangos".
+
+**Wording.** The picker's button "Select" is "Connect" (Change model's too: it is the same picker). The label "Select your make and model from the list" stays. The 16 new or changed texts, and the tab's unchanged ones, are in `docs/platform/thai-review-products.md`.
+
+**Tests.** `e2e/products-stage-c.spec.ts`, at 375 px and 1280 px: the whole tab from not listed through Connect, the switch, the counts and their messages, lead time, Change model, Disconnect and the History's lines; sent for review, rejected, sent again and approved (by merging, so no run leaves an entry on the shared list); no tab for a car, a helmet, staff, a mechanic or a driver; old anchors, the mango and the back link. `fleet.spec.ts`'s Moto Mangos click-through goes through the tab; stage B's Change model and Disconnect test moved into the new file. Unit: `lib/listing-settings.test.ts` and the History reader's cases in `lib/products.test.ts`.
 
 ## 6. The brief and this design side by side
 

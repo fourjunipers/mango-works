@@ -141,7 +141,7 @@ New or changed Thai texts in `apps/platform/messages/th.json` on the branch `pla
 | `Fleet.motoMangos.quantitiesTitle` | Set bike quantities per booking type | กำหนดจำนวนรถตามประเภทการจอง |
 | `Fleet.motoMangos.instantHelp` | Future bookings that receive instant approval | การจองล่วงหน้าที่ได้รับการอนุมัติทันที |
 | `Fleet.motoMangos.requestHelp` | Future bookings that require your approval | การจองล่วงหน้าที่ต้องรอร้านอนุมัติ |
-| `Fleet.motoMangos.walkinsHelp` | Bookings that are ready for immediate pickup today (overrides the booking buffer) | การจองที่พร้อมรับรถได้ทันทีในวันนี้ (ไม่ใช้เวลาเผื่อของการจอง) |
+| `Fleet.motoMangos.walkinsHelp` | Bookings that are ready for immediate pickup today (overrides the lead time) | การจองที่พร้อมรับรถได้ทันทีในวันนี้ (ไม่ใช้เวลาจองล่วงหน้า) |
 | `Fleet.model.readyNow` | Walk-ins | ลูกค้าหน้าร้าน |
 | `Fleet.model.deleteBlocked` | This product still has vehicles. Remove all its vehicles first. | สินค้านี้ยังมีรถอยู่ กรุณานำรถทั้งหมดออกก่อน |
 | `FormErrors.productHasVehicles` | This product still has vehicles. Remove all its vehicles first. | สินค้านี้ยังมีรถอยู่ กรุณานำรถทั้งหมดออกก่อน |
@@ -457,3 +457,75 @@ New texts on the branch `platform/drag-reorder`: the drag handle on each row in 
 | `Lists.drag.movedTo` | {name}: position {position} of {total}. | {name}: ตำแหน่งที่ {position} จาก {total} |
 | `Lists.drag.dropped` | {name} dropped at position {position} of {total}. | วาง {name} ที่ตำแหน่งที่ {position} จาก {total} |
 | `Lists.drag.cancelled` | Move cancelled. {name} is back at position {position} of {total}. | ยกเลิกการย้าย {name} กลับไปที่ตำแหน่งที่ {position} จาก {total} |
+
+## Products, stage C: the Moto Mangos tab (15 Nov 2026)
+
+New or changed texts on the branch `platform/products-stage-c-tab`. The Moto Mangos panel moved from a motorbike's Details tab to its own tab, “Moto Mangos” (the brand name, the same in Thai). The two messages about counts are the owner's sentences; “units in your inventory” is คันในคลังของคุณ (“bikes in your stock”). The switch and “Connect” (เชื่อมต่อ, as in the existing ยกเลิกการเชื่อมต่อ for Disconnect) need a check first. “Lead time” is เวลาจองล่วงหน้า (“time to book ahead”). Thai has no plural, so the plural forms only carry the number.
+
+**New or changed**
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Products.tabs.motoMangos` | Moto Mangos | Moto Mangos |
+| `Fleet.motoMangos.useChosen` | Connect | เชื่อมต่อ |
+| `FormErrors.more_units_than_active` | Total units listed on Moto Mangos can not exceed the number of units in your inventory | จำนวนคันทั้งหมดที่ลงประกาศบน Moto Mangos ต้องไม่เกินจำนวนคันในคลังของคุณ |
+| `FormErrors.more_walk_ins_than_active` | Walk-ins can not exceed the number of units in your inventory | จำนวนลูกค้าหน้าร้านต้องไม่เกินจำนวนคันในคลังของคุณ |
+| `Fleet.motoMangos.switchOn` | On. The switch saves as soon as you press it. | เปิดอยู่ บันทึกทันทีที่กดสวิตช์ |
+| `Fleet.motoMangos.switchOff` | Off. The switch saves as soon as you press it. | ปิดอยู่ บันทึกทันทีที่กดสวิตช์ |
+| `Fleet.motoMangos.offering` | Offering {count} of {total, plural, one {# bike} other {# bikes}} for advance booking | เปิดให้จองล่วงหน้า {count} จาก {total, plural, other {# คัน}} |
+| `Fleet.motoMangos.leadTime` | Lead time (hours) | เวลาจองล่วงหน้า (ชั่วโมง) |
+| `Fleet.motoMangos.leadTimeHelp` | How many hours ahead a booking must be made, from 0 to 720. Leave it empty for none. | ต้องจองล่วงหน้ากี่ชั่วโมงก่อนรับรถ ตั้งแต่ 0 ถึง 720 เว้นว่างไว้หากไม่กำหนด |
+| `FormErrors.leadTimeRange` | Enter whole hours from 0 to 720, or leave it empty. | ใส่จำนวนชั่วโมงเต็มตั้งแต่ 0 ถึง 720 หรือเว้นว่างไว้ |
+| `Products.history.action.listing_on` | {who} switched Moto Mangos on | {who} เปิด Moto Mangos |
+| `Products.history.action.listing_off` | {who} switched Moto Mangos off | {who} ปิด Moto Mangos |
+| `Products.history.action.lead_time_change` | {who} changed lead time from {from} to {to, plural, one {# hour} other {# hours}} | {who} เปลี่ยนเวลาจองล่วงหน้าจาก {from} เป็น {to, plural, other {# ชั่วโมง}} |
+| `Products.history.action.lead_time_set` | {who} set lead time to {to, plural, one {# hour} other {# hours}} | {who} ตั้งเวลาจองล่วงหน้าเป็น {to, plural, other {# ชั่วโมง}} |
+| `Products.history.action.lead_time_clear` | {who} removed the lead time (it was {from, plural, one {# hour} other {# hours}}) | {who} ยกเลิกเวลาจองล่วงหน้า (เดิม {from, plural, other {# ชั่วโมง}}) |
+| `Products.history.field.lead_time_hours` | Lead time (hours) | เวลาจองล่วงหน้า (ชั่วโมง) |
+| `Fleet.motoMangos.walkinsHelp` (changed) | Bookings that are ready for immediate pickup today (overrides the lead time) | การจองที่พร้อมรับรถได้ทันทีในวันนี้ (ไม่ใช้เวลาจองล่วงหน้า) |
+
+**Unchanged, now on the Moto Mangos tab** (listed so the whole tab can be read in one place; the review of these may already be done under stage A or B)
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Fleet.motoMangos.title` | Moto Mangos | Moto Mangos |
+| `Fleet.motoMangos.intro` | An online marketplace where you can list your rental bikes to be seen by renters in your area. | ตลาดออนไลน์ที่ร้านลงประกาศรถเช่าให้ผู้เช่าในพื้นที่ของคุณเห็นได้ |
+| `Fleet.motoMangos.ready` | On the Moto Mangos list as {name}. | อยู่ในรายการของ Moto Mangos ในชื่อ {name} |
+| `Fleet.motoMangos.list` | List this product on Moto Mangos | ลงประกาศสินค้านี้บน Moto Mangos |
+| `Fleet.motoMangos.later` | Listing takes effect when Moto Mangos starts reading from this system. | การลงประกาศจะมีผลเมื่อ Moto Mangos เริ่มอ่านข้อมูลจากระบบนี้ |
+| `Fleet.motoMangos.waiting` | Sent to Moto Mangos. It is waiting for review and goes live once approved; you can keep using the model meanwhile. | ส่งให้ Moto Mangos แล้ว กำลังรอตรวจ และจะขึ้นแสดงเมื่ออนุมัติ ระหว่างนี้ใช้งานรุ่นนี้ต่อได้ |
+| `Fleet.motoMangos.submitTitle` | List it on Moto Mangos | ลงประกาศบน Moto Mangos |
+| `Fleet.motoMangos.submit` | Send for review | ส่งให้ตรวจ |
+| `Fleet.motoMangos.note` | Note for the reviewer | ข้อความถึงผู้ตรวจ |
+| `Fleet.motoMangos.rejectedLinked` | Moto Mangos didn't add this model, so it can't be listed. It is still tied to that request because you have another model of your own with the same make and model, and a shop can't have two. | Moto Mangos ไม่ได้เพิ่มรุ่นนี้ จึงลงประกาศไม่ได้ รุ่นนี้ยังผูกกับคำขอนั้นอยู่ เพราะร้านมีอีกรุ่นของร้านเองที่ยี่ห้อและรุ่นเดียวกัน และร้านหนึ่งมีสองรุ่นซ้ำกันไม่ได้ |
+| `Fleet.motoMangos.rejected` | Moto Mangos reviewed this model on {date} and didn't add it. | Moto Mangos ตรวจรุ่นนี้เมื่อ {date} และไม่ได้เพิ่มเข้ารายการ |
+| `Fleet.motoMangos.rejectReason` | The reviewer's note: | หมายเหตุจากผู้ตรวจ: |
+| `Fleet.motoMangos.rejectNoReason` | The reviewer left no note. You can change the details and send it again. | ผู้ตรวจไม่ได้เขียนหมายเหตุไว้ คุณแก้รายละเอียดแล้วส่งใหม่ได้ |
+| `Fleet.motoMangos.approved` | Moto Mangos added this model to its list on {date}. | Moto Mangos เพิ่มรุ่นนี้เข้ารายการเมื่อ {date} |
+| `Fleet.motoMangos.categoryFirst` | Choose a category for this product on the Details tab, save, and then you can send it to Moto Mangos. | เลือกหมวดหมู่ของสินค้านี้ที่แท็บรายละเอียด บันทึก แล้วจึงส่งให้ Moto Mangos ได้ |
+| `Fleet.motoMangos.submitAgain` | Send for review again | ส่งให้ตรวจอีกครั้ง |
+| `Fleet.motoMangos.nextTitle` | What to do next | ต้องทำอะไรต่อ |
+| `Fleet.motoMangos.nextHelp` | Fix the details and send it for review again, or switch to a model that is already on the list. | แก้ไขรายละเอียดแล้วส่งให้ตรวจอีกครั้ง หรือเปลี่ยนไปใช้รุ่นที่อยู่ในรายการอยู่แล้ว |
+| `Fleet.motoMangos.editAgain` | Edit and send again | แก้ไขแล้วส่งอีกครั้ง |
+| `Fleet.motoMangos.chooseInstead` | Choose a model from the list instead | เลือกรุ่นจากรายการแทน |
+| `Fleet.motoMangos.submitHelp` | Give its make, model, engine size, transmission and year: all five are needed. We review it first because it is new to our list. | ระบุยี่ห้อ รุ่น ขนาดเครื่องยนต์ ระบบเกียร์ และปี ต้องมีครบทั้งห้าอย่าง เราจะตรวจก่อนเพราะยังไม่อยู่ในรายการของเรา |
+| `Fleet.motoMangos.selectFromList` | Select your make and model from the list | เลือกยี่ห้อและรุ่นของคุณจากรายการ |
+| `Fleet.motoMangos.notInList` | Don’t see your bike above? Send us the details and we’ll get it added | ไม่เห็นรถของคุณด้านบน? ส่งรายละเอียดมาให้เรา แล้วเราจะเพิ่มให้ |
+| `Fleet.motoMangos.bikeYear` | Year of your bike | ปีของรถคุณ |
+| `Fleet.motoMangos.bikeYearHelp` | One year, like 2023. | ปีเดียว เช่น 2023 |
+| `Fleet.motoMangos.listingTitle` | Listing | การลงประกาศ |
+| `Fleet.motoMangos.listingLocked` | You can switch this on once a model is selected from the list above, or your request is approved. | เปิดใช้ได้เมื่อเลือกรุ่นจากรายการด้านบนแล้ว หรือเมื่อคำขอของคุณได้รับอนุมัติ |
+| `Fleet.motoMangos.quantitiesTitle` | Set bike quantities per booking type | กำหนดจำนวนรถตามประเภทการจอง |
+| `Fleet.motoMangos.instantHelp` | Future bookings that receive instant approval | การจองล่วงหน้าที่ได้รับการอนุมัติทันที |
+| `Fleet.motoMangos.requestHelp` | Future bookings that require your approval | การจองล่วงหน้าที่ต้องรอร้านอนุมัติ |
+| `Fleet.motoMangos.walkinsHelp` | Bookings that are ready for immediate pickup today (overrides the lead time) | การจองที่พร้อมรับรถได้ทันทีในวันนี้ (ไม่ใช้เวลาจองล่วงหน้า) |
+| `Fleet.motoMangos.changeModel` | Change model | เปลี่ยนรุ่น |
+| `Fleet.motoMangos.changeModelHelp` | Pick the make and model this product should be listed as. Your listing and its quantities stay as they are. | เลือกยี่ห้อและรุ่นที่ต้องการให้สินค้านี้ลงประกาศ การลงประกาศและจำนวนของคุณยังคงเดิม |
+| `Fleet.motoMangos.changeModelLegend` | Select the new make and model | เลือกยี่ห้อและรุ่นใหม่ |
+| `Fleet.motoMangos.disconnect` | Disconnect | ยกเลิกการเชื่อมต่อ |
+| `Fleet.motoMangos.disconnectHelp` | Takes this product off Moto Mangos: the listing is switched off and its place on the list is cleared. | นำสินค้านี้ออกจาก Moto Mangos: ปิดการลงประกาศและล้างรายการที่เชื่อมไว้ |
+| `Fleet.motoMangos.disconnectConfirm` | Disconnect this product from Moto Mangos? Its listing is switched off and its list entry is cleared. Bookings already made stay as they are. | ยกเลิกการเชื่อมต่อสินค้านี้กับ Moto Mangos หรือไม่? การลงประกาศจะถูกปิดและรายการที่เชื่อมไว้จะถูกล้าง การจองที่มีอยู่แล้วยังคงเดิม |
+| `Fleet.motoMangos.upcomingBookings` | {count, plural, one {# upcoming booking on this product’s vehicles stays} other {# upcoming bookings on this product’s vehicles stay}} exactly as booked if you change the model or disconnect. | {count, plural, other {การจองที่กำลังจะมาถึง # รายการของรถในสินค้านี้}}จะยังคงเดิมทุกอย่าง แม้คุณเปลี่ยนรุ่นหรือยกเลิกการเชื่อมต่อ |
+| `Fleet.model.instantUnits` | Instant units | จำนวนคันยืนยันทันที |
+| `Fleet.model.requestUnits` | Request units | จำนวนคันขออนุมัติ |
+| `Fleet.model.readyNow` | Walk-ins | ลูกค้าหน้าร้าน |

@@ -13,6 +13,46 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Products, stage C: the Moto Mangos tab (branch `platform/products-stage-c-tab`, 15 Nov 2026)
+
+PR 2 of stage C, of two. The Moto Mangos panel moves from a motorbike's Details tab to its own tab, with the listing part reworked. The design is `docs/products-redesign.md` §5.11. Platform only; **no migration** (the database is PR 21's). `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **The Moto Mangos tab**, after Units (Details, Units, Moto Mangos, History), at `?tab=moto-mangos`. Motorbikes only, owners and managers only. The panel moved over in its order; Details keeps the product form, Duplicate and Delete.
+- **The listing part:** the switch saves by itself (`save_listing` with the switch alone); Instant units, Request units, Walk-ins and the new **Lead time (hours)** (0 to 720, empty for none, with a help line) are saved under one Save, sending only what changed; "Offering N of M bikes for advance booking" follows the typing; the line that the listing does nothing until Moto Mangos reads from the platform stays.
+- **Wording, as Mark asked:** "Total units listed on Moto Mangos can not exceed the number of units in your inventory"; "Walk-ins can not exceed the number of units in your inventory" (both live on the page, in the server action, and as the mapping of the database's `more_units_than_active`); the picker's "Select" is "Connect"; the label "Select your make and model from the list" stays.
+- **Links:** the dashboard's "Moto Mangos reviews" lines and the mango on Fleet and Products rows open the tab, keeping the way back; old `#moto-mangos` links land on the tab.
+- **History:** "switched Moto Mangos on" and "… off"; "changed lead time from 12 to 24 hours" (and "set …", "removed …"); one line for a retire or a disconnect of a listed product.
+- **Thai:** 16 new or changed texts, plus the tab's 41 unchanged ones for context, in `docs/platform/thai-review-products.md` under "Products, stage C: the Moto Mangos tab".
+
+**Decided here, not specified by the owner** (all in §5.11; say if any should change)
+
+- **The two messages are worked out by the app.** The database refuses both with one code (`more_units_than_active`); a new message key, `more_walk_ins_than_active`, is chosen by comparing the counts with the active vehicles, so no migration was needed. The old message ("Instant plus Request units, and Ready now, can't be more than the model's active vehicles") is gone in both languages.
+- **Save waits while a count is too high** (the button is disabled and the reason shows under the counts), so the message is never shown twice. Without JavaScript the server says the same.
+- **"Connect" on Change model too**, since it is the same picker.
+- **The switch's line** reads "On. The switch saves as soon as you press it." (or "Off. …").
+- **The mango is a link** for owners and managers (the only people who see it), 44 px to tap, not in Reorder mode. It wasn't a link before, and the dashboard linked to the product page, not to `#moto-mangos`: no live link used the anchor, so the old-anchor redirect is for bookmarks and anything typed or pasted.
+- **History, one action, one line:** for a retire or a disconnect, the listing's row and its `listing_off` of the same moment are left out, so the retire reads only "Retired: … → …" and the disconnect only "disconnected this product from Moto Mangos". The switch is said only by `listing_on` and `listing_off`; the listing row's "Listed on Moto Mangos" line is gone (old rows from before stage C still read that way). A lead time saved together with a count is a bullet under that save ("Lead time (hours): 12 → 24"), so one Save is still one line.
+- **"inventory"**: a stage A test kept the word off every screen. Mark's two sentences use it; the test now allows exactly those two.
+- **Approval in the browser test is by merging** into an entry already on the list (as `fleet.spec.ts` does), so runs against staging don't leave new entries on the shared Moto Mangos list.
+- Stage B's "Change model or disconnect" browser test moved into the new spec file, rewritten for the tab.
+- **After PR 20 (dragging) merged (15 Nov 2026):** main merged into this branch. Both list pages take main's drag layout unchanged; the mango is re-added there as a link to the tab, not a link in Reorder mode, and still hidden in Reorder mode on phones (main's `cell.reorderMango`). The Walk-ins help text now reads "Bookings that are ready for immediate pickup today (overrides the lead time)" (owner's wording), in English and Thai (ไม่ใช้เวลาจองล่วงหน้า, the lead time field's own words), in both tests and both rows of the Thai review list. The old sentence is nowhere in the repo.
+- This worktree has its own local database (`Bike_Booking_stage_c_tab`, ports 5832x); the change to `supabase/config.toml` is local only (`git update-index --skip-worktree`), not committed.
+
+**Tests**
+
+- Unit: 219 on the platform (new: `lib/listing-settings.test.ts`, 5; the History reader's listing cases rewritten and two added in `lib/products.test.ts`; the old `listingSchema` test removed), 111 in `@mango/core`, 202 on the marketplace. All passing.
+- Database: 294, all passing locally (none changed; no migration).
+- Browser: `e2e/products-stage-c.spec.ts`, 5 tests at 375 px and 1280 px, all passing locally: the whole tab (Connect, switch, counts, both messages, lead time, Change model, Disconnect, History lines), review rejected then approved, no tab for a car, a helmet, staff, a mechanic or a driver, old anchors with the mango and back link, and screenshots in light and dark. Changed to go through the tab: `fleet.spec.ts`'s Moto Mangos click-through, `products.spec.ts`'s tabs and Duplicate tests; stage B's Change model and Disconnect test moved to the new file. The whole suite ran locally (96 passed, 3 skipped as on `main`); the 7 that failed were the tests still expecting the panel on Details, fixed and re-run green, plus `fleet.spec.ts` "one line per product", which failed only on products a failed run had left behind and passes on clean data.
+- Typecheck and lint pass for every workspace.
+
+**Not built here**
+
+- The shop's minimum notice (`locations.min_notice_hours`): Phase 2.
+- Counting real Moto Mangos bookings against the cap: Phase 3.
+- Staff changing the walk-ins count: a one-word migration in `listing_roles('walk_ins')` when wanted; the tab would then need a staff view.
+
 ## Dragging to reorder (branch `platform/drag-reorder`, 14 Nov 2026)
 
 Fleet and the Products list can be reordered by dragging, in Reorder mode. The design and what was decided is `docs/products-redesign.md` §5.8 ("As built"). Platform only. No migration (`move_product` already takes "before or after any product"). `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
@@ -389,7 +429,7 @@ Still depending on make and model, and left alone (nothing a shop sees):
 Items 3 to 7 of the third round passed. Changed now (no migration and nothing on staging needed changing this round):
 
 - **The Moto Mangos panel shows for motorcycles only**: the kind Motorbike, with any of its categories (Scooter, Touring, Adventure, Sport, Classic, Off-road). It is hidden, not greyed, for the Off-road kind (ATV, UTV, Dirt bike), Car, Boat or jet ski and Other; the product form then takes the page's width. The tip on the create form and the Moto Mangos chip follow the same rule, as before. **No listed product can lose its panel:** a product is listed only on an approved list entry, an entry is always a motorbike, and the database keeps a product's kind equal to its entry's, so a product on the list is always a Motorbike. Checked on staging: 0 products that are not motorbikes are listed or on a list entry, and 0 list entries are not motorbikes. Nothing had to be changed.
-- **Listing texts.** "Set bike quantities per booking type", then three lines, each with its field: Instant units ("Future bookings that receive instant approval"), Request units ("Future bookings that require your approval"), Walk-ins ("Bookings that are ready for immediate pickup today (overrides the booking buffer)"). The old sentence is gone. The field was labelled "Ready for walk-ins now".
+- **Listing texts.** "Set bike quantities per booking type", then three lines, each with its field: Instant units ("Future bookings that receive instant approval"), Request units ("Future bookings that require your approval"), Walk-ins ("Bookings that are ready for immediate pickup today (overrides the lead time)"). The old sentence is gone. The field was labelled "Ready for walk-ins now".
 - **The list picker is two dropdowns**: Make, then Model with the years it covers, the second filtered by the first and disabled until a make is chosen. Its legend is still "Select your make and model from the list"; the button reads "Select". This is the Moto Mangos list only; the rest of the platform still has no make or model.
 - **Delete only, and only when empty.** "Retire product" is gone from the product page. "Delete product" is always there, last on the page. With any vehicle left, whatever its status, it shows a pop-up, "This product still has vehicles. Remove all its vehicles first.", and does nothing. **The database already refused this** and still does: a vehicle points at its product (`units_tenant_id_product_id_type_fkey`), so a delete with any vehicle left fails for everyone, the service role included; the server turns that refusal into the same sentence. No new rule was needed, so no migration change. The retired status stays in the database (`products.retired_at` and its rules), and a product that is already retired still shows its "Retired" note with "Restore product", so it is not stuck.
 - **Fleet lines carry the same tags as the Products list**: Retired, the Moto Mangos chip (owners and managers; motorcycles), and the categories. One shared component draws both.
