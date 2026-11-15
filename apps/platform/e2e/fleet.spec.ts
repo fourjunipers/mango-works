@@ -568,10 +568,10 @@ test("a manager adds a product with a kind and a name, buffers in hours, a bike,
   await expect(nameField).toHaveValue(name);
   await tick(page, "Touring");
   await expect(ticked).toHaveCount(1);
-  await page.getByLabel("Deposit (THB)").fill("5000");
   await page.getByRole("button", { name: "Save product" }).click();
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
-  await expect(page.getByLabel("Deposit (THB)")).toHaveValue("5000.00");
+  // The deposit is on the Pricing tab since stage D5.
+  await expect(page.getByLabel(/^Deposit/)).toHaveCount(0);
   // Saved with a name alone: nothing but its type and category beside it.
   await expect(
     page.getByText("Vehicle · Touring", { exact: true }),
@@ -584,7 +584,7 @@ test("a manager adds a product with a kind and a name, buffers in hours, a bike,
     page
       .getByRole("navigation", { name: "Sections of this product" })
       .getByRole("link"),
-  ).toHaveText(["Details", /^Units/, "Moto Mangos", "History"]);
+  ).toHaveText(["Details", /^Units/, "Pricing", "Moto Mangos", "History"]);
   await expect(panel(page, "Moto Mangos")).toHaveCount(0);
   await tab(page, "Moto Mangos").click();
   await expect(page).toHaveURL(/\?tab=moto-mangos/);

@@ -106,6 +106,7 @@ test("Moto Mangos tab: Connect, the switch, counts and lead time, Change model, 
   await expect(productTabs(page).getByRole("link")).toHaveText([
     "Details",
     /^Units/,
+    "Pricing",
     "Moto Mangos",
     "History",
   ]);

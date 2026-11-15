@@ -81,7 +81,7 @@ test("products list: one row per product, filters, and a product's tabs", async 
   expect(Math.round(pencilBox.width)).toBeGreaterThanOrEqual(44);
   expect(Math.round(pencilBox.height)).toBeGreaterThanOrEqual(44);
   await expect(page.getByRole("link", { name: /^Open / })).toHaveCount(0);
-  await expect(row.getByText(/^\d+ vehicles? in the fleet$/)).toBeVisible();
+  await expect(row.getByText(/^\d+ vehicles? in the fleet/)).toBeVisible();
   // The kind and category tags on a wide screen only (owner, 14 Nov 2026);
   // the Moto Mangos mango, with its name, on both.
   const wide = page.viewportSize()!.width >= 640;
@@ -133,6 +133,7 @@ test("products list: one row per product, filters, and a product's tabs", async 
   await expect(tabs(page).getByRole("link")).toHaveText([
     "Details",
     /^Units\s*\d+$/,
+    "Pricing",
     "Moto Mangos",
     "History",
   ]);
@@ -307,11 +308,17 @@ test("a mechanic and a driver read products and can't change them; staff neither
     const row = productRow(page, "Honda PCX 160");
     await expect(row.getByText(/Moto Mangos$/)).toHaveCount(0);
     await productTitle(page, "Honda PCX 160").click();
-    // Its vehicles, and nothing to set up: no tabs, no form, no history.
+    // Its vehicles, and nothing to set up: no form, no history. Staff also
+    // read its prices (stage D5); a mechanic and a driver have no tabs.
     await expect(
       page.getByRole("heading", { name: "Vehicles of this product" }),
     ).toBeVisible();
-    await expect(tabs(page)).toHaveCount(0);
+    if (who === demo.bsrStaff)
+      await expect(tabs(page).getByRole("link")).toHaveText([
+        /^Units/,
+        "Pricing",
+      ]);
+    else await expect(tabs(page)).toHaveCount(0);
     await expect(page.getByLabel("Name")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Add vehicle" })).toHaveCount(
       0,

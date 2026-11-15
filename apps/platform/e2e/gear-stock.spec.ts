@@ -212,6 +212,7 @@ test("gear counted by quantity: tiles, stepper, Report a problem and Out of serv
   await expect(productTabs(staff.page).getByRole("link")).toHaveText([
     "Details",
     /^Stock\s*21$/,
+    "Pricing",
   ]);
   await expect(staff.page.getByRole("heading", { level: 2 })).toHaveText([
     "Stock",

@@ -147,6 +147,7 @@ test("new product: Vehicle or General; one of each general type; the three list 
   await expect(productTabs(page).getByRole("link")).toHaveText([
     "Details",
     /^Stock\s*20$/,
+    "Pricing",
     "History",
   ]);
   // No Moto Mangos panel, and none of a vehicle's fields.
@@ -166,6 +167,7 @@ test("new product: Vehicle or General; one of each general type; the three list 
   const coverUrl = await addGeneral(page, "bsr", "Service or extra", cover);
   await expect(productTabs(page).getByRole("link")).toHaveText([
     "Details",
+    "Pricing",
     "History",
   ]);
 
