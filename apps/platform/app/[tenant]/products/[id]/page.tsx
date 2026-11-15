@@ -179,7 +179,7 @@ export default async function ProductPage({
               )}
               aria-current={name === tab ? "page" : undefined}
               className={cn(
-                "-mb-px inline-flex min-h-11 shrink-0 items-center border-b-2 px-4 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                "-mb-px inline-flex min-h-11 shrink-0 items-center border-b-2 px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-4",
                 name === tab
                   ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
