@@ -15,13 +15,15 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 ## Products, stage D: pricing, design only (branch `platform/products-stage-d-pricing`, 15 Nov 2026)
 
-**No code and no migration.** The design is `docs/products-redesign.md` §9, written from `main` at `dc4d8ee`. It waits for the owner's review; nothing is built until he gives the go-ahead.
+**No code and no migration.** The design is `docs/products-redesign.md` §9 (second version), written from `main` at `dc4d8ee`. Nothing is built until the owner approves.
 
-- **What it covers:** where prices live (five tables, written only through functions, hidden from mechanics and drivers); the lookup for a product, a length and a date; one pricer, `quote()` in `@mango/core`, as the only code that produces a price; tax per line; how Phase 2 uses it, with minimum notice by channel; the room left for vendor coupons (nothing built); the Booqable import; the Pricing tab, History lines and Thai wording needs; a build order in four small stages (D1 maths, D2 database, D3 tab, D4 settings).
-- **Booqable price templates: multipliers, not fixed amounts**, by Booqable's own help pages; between tiles Booqable charges the next tile up. BSR's own account was **not** seen (Chrome was not signed in), and the API's field names were not confirmed. The importer is designed for multipliers and writes absolute 30-day totals.
-- **Found while reading:** §3.4 rounds an over-30-day total to one minor unit, but the spec, the contract (§4.2) and `priceForDays` round to the whole baht (Q1). The platform design refuses a falling total where the marketplace editor only warns (Q3).
-- **Open for the owner:** 20 questions in §9.12, each with options and a recommendation. Q1 to Q9 change the maths and are needed before D1. Eight things decided in the design without asking are listed in §9.11.
-- `docs/platform/SPEC.md` and `docs/platform/MAPPING.md` are not changed.
+- **Owner's answers (decision 24), from BSR's real Booqable data:** templates are multipliers, with a tile for every day 1 to 31 and a set amount per extra day after; equal neighbouring totals are allowed, a falling one refused; an import keeps Booqable's exact amounts, satang included; only four templates are loaded (300–3000, 350–3500, 400–4000, 500–5400).
+- **Now in stage D, by the owner's seven requirements:** flat fee per period, fixed price and tiered lists (amounts, or multipliers of a base price); quick entry (hourly, daily, weekly, two weeks, three weeks, monthly) with editable filled-in days; seasonal percentage rules on the part of a rental inside a date range; four deposit choices with order and customer overrides; shops' own tax profiles, a default, non-taxable products, prices including or excluding tax as a shop setting; a coupons switch and the pricer's discount step (no coupon creation until Phase 2).
+- **The design:** seven tables written only through functions and hidden from mechanics and drivers; one pricer, `quote()` in `@mango/core`, in a fixed eight-step order; a build order in six small stages (§9.15).
+- **Where the requirements cut across earlier decisions, the spec or the contract:** §9.14 (multipliers against decision 15; the extra-day amount and day 31 against the contract's over-30 rule and `dayPrices[30]`; satang in prices; hourly; deposits against decision 14; pickup-day and return-day rules against the contract's day count).
+- **Still open for the owner:** 15 items in §9.13. Items 1 to 8 change the maths. Item 1 is the full tile data for the four lists: the design has days 1, 7, 14 and 30 only, so nothing can be loaded yet. Item 6 is which pickup-day and return-day rules BSR uses in Booqable, which was not seen.
+- **Not seen by Claude:** BSR's Booqable account (the figures are the owner's reading of it). Booqable's public help pages agree on multipliers and on adjusting only the part of a rental inside a season.
+- `docs/platform/SPEC.md`, `docs/platform/MAPPING.md` and `docs/INTEGRATION.md` are not changed.
 
 ## Products, stage C: the Moto Mangos tab (branch `platform/products-stage-c-tab`, 15 Nov 2026)
 
