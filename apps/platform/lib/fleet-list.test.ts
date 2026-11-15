@@ -467,7 +467,7 @@ describe("no make or model on the platform's screens", () => {
     );
     expect(mm.requestHelp).toBe("Future bookings that require your approval");
     expect(mm.walkinsHelp).toBe(
-      "Bookings that are ready for immediate pickup today (overrides the booking buffer)",
+      "Bookings that are ready for immediate pickup today (overrides the lead time)",
     );
     expect(en.Fleet.model.readyNow).toBe("Walk-ins");
     expect(en.Fleet.model.deleteBlocked).toBe(

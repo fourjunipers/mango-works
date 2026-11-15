@@ -607,7 +607,7 @@ test("a manager adds a product with a kind and a name, buffers in hours, a bike,
     "Set bike quantities per booking type",
     "Future bookings that receive instant approval",
     "Future bookings that require your approval",
-    "Bookings that are ready for immediate pickup today (overrides the booking buffer)",
+    "Bookings that are ready for immediate pickup today (overrides the lead time)",
   ])
     await expect(listing.getByText(text, { exact: true })).toBeVisible();
   await expect(

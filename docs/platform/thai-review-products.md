@@ -141,7 +141,7 @@ New or changed Thai texts in `apps/platform/messages/th.json` on the branch `pla
 | `Fleet.motoMangos.quantitiesTitle` | Set bike quantities per booking type | กำหนดจำนวนรถตามประเภทการจอง |
 | `Fleet.motoMangos.instantHelp` | Future bookings that receive instant approval | การจองล่วงหน้าที่ได้รับการอนุมัติทันที |
 | `Fleet.motoMangos.requestHelp` | Future bookings that require your approval | การจองล่วงหน้าที่ต้องรอร้านอนุมัติ |
-| `Fleet.motoMangos.walkinsHelp` | Bookings that are ready for immediate pickup today (overrides the booking buffer) | การจองที่พร้อมรับรถได้ทันทีในวันนี้ (ไม่ใช้เวลาเผื่อของการจอง) |
+| `Fleet.motoMangos.walkinsHelp` | Bookings that are ready for immediate pickup today (overrides the lead time) | การจองที่พร้อมรับรถได้ทันทีในวันนี้ (ไม่ใช้เวลาจองล่วงหน้า) |
 | `Fleet.model.readyNow` | Walk-ins | ลูกค้าหน้าร้าน |
 | `Fleet.model.deleteBlocked` | This product still has vehicles. Remove all its vehicles first. | สินค้านี้ยังมีรถอยู่ กรุณานำรถทั้งหมดออกก่อน |
 | `FormErrors.productHasVehicles` | This product still has vehicles. Remove all its vehicles first. | สินค้านี้ยังมีรถอยู่ กรุณานำรถทั้งหมดออกก่อน |
@@ -482,6 +482,7 @@ New or changed texts on the branch `platform/products-stage-c-tab`. The Moto Man
 | `Products.history.action.lead_time_set` | {who} set lead time to {to, plural, one {# hour} other {# hours}} | {who} ตั้งเวลาจองล่วงหน้าเป็น {to, plural, other {# ชั่วโมง}} |
 | `Products.history.action.lead_time_clear` | {who} removed the lead time (it was {from, plural, one {# hour} other {# hours}}) | {who} ยกเลิกเวลาจองล่วงหน้า (เดิม {from, plural, other {# ชั่วโมง}}) |
 | `Products.history.field.lead_time_hours` | Lead time (hours) | เวลาจองล่วงหน้า (ชั่วโมง) |
+| `Fleet.motoMangos.walkinsHelp` (changed) | Bookings that are ready for immediate pickup today (overrides the lead time) | การจองที่พร้อมรับรถได้ทันทีในวันนี้ (ไม่ใช้เวลาจองล่วงหน้า) |
 
 **Unchanged, now on the Moto Mangos tab** (listed so the whole tab can be read in one place; the review of these may already be done under stage A or B)
 
@@ -517,7 +518,7 @@ New or changed texts on the branch `platform/products-stage-c-tab`. The Moto Man
 | `Fleet.motoMangos.quantitiesTitle` | Set bike quantities per booking type | กำหนดจำนวนรถตามประเภทการจอง |
 | `Fleet.motoMangos.instantHelp` | Future bookings that receive instant approval | การจองล่วงหน้าที่ได้รับการอนุมัติทันที |
 | `Fleet.motoMangos.requestHelp` | Future bookings that require your approval | การจองล่วงหน้าที่ต้องรอร้านอนุมัติ |
-| `Fleet.motoMangos.walkinsHelp` | Bookings that are ready for immediate pickup today (overrides the booking buffer) | การจองที่พร้อมรับรถได้ทันทีในวันนี้ (ไม่ใช้เวลาเผื่อของการจอง) |
+| `Fleet.motoMangos.walkinsHelp` | Bookings that are ready for immediate pickup today (overrides the lead time) | การจองที่พร้อมรับรถได้ทันทีในวันนี้ (ไม่ใช้เวลาจองล่วงหน้า) |
 | `Fleet.motoMangos.changeModel` | Change model | เปลี่ยนรุ่น |
 | `Fleet.motoMangos.changeModelHelp` | Pick the make and model this product should be listed as. Your listing and its quantities stay as they are. | เลือกยี่ห้อและรุ่นที่ต้องการให้สินค้านี้ลงประกาศ การลงประกาศและจำนวนของคุณยังคงเดิม |
 | `Fleet.motoMangos.changeModelLegend` | Select the new make and model | เลือกยี่ห้อและรุ่นใหม่ |

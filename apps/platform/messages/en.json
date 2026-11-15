@@ -584,7 +584,7 @@
       "quantitiesTitle": "Set bike quantities per booking type",
       "instantHelp": "Future bookings that receive instant approval",
       "requestHelp": "Future bookings that require your approval",
-      "walkinsHelp": "Bookings that are ready for immediate pickup today (overrides the booking buffer)",
+      "walkinsHelp": "Bookings that are ready for immediate pickup today (overrides the lead time)",
       "changeModel": "Change model",
       "changeModelHelp": "Pick the make and model this product should be listed as. Your listing and its quantities stay as they are.",
       "changeModelLegend": "Select the new make and model",
