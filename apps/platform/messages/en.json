@@ -964,7 +964,16 @@
     "reorder": {
       "start": "Reorder",
       "done": "Done",
-      "help": "Move products up or down. Fleet and the Products list share this order."
+      "help": "Select and drag to move anywhere on the list, or use the arrows to move one row at a time"
+    },
+    "drag": {
+      "handle": "Drag to move",
+      "role": "sortable item",
+      "instructions": "Press Space to pick up. Then use the arrow keys to move it, Space to drop it, or Escape to cancel.",
+      "pickedUp": "Picked up {name}. Position {position} of {total}.",
+      "movedTo": "{name}: position {position} of {total}.",
+      "dropped": "{name} dropped at position {position} of {total}.",
+      "cancelled": "Move cancelled. {name} is back at position {position} of {total}."
     },
     "mango": {
       "listed": "On Moto Mangos",
