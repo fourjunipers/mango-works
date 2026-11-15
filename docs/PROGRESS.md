@@ -13,6 +13,57 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Products, stage D3: rental-period maths (branch `platform/products-stage-d3-rental-periods`, 15 Nov 2026)
+
+The third build stage of pricing, of seven (`docs/products-redesign.md` §9.15 and §9.19). **`@mango/core` and docs only: no migration, no screen, nothing in `apps/`.** Phase 3 builds the orders, the screens and the atomic database step; the money for extending, swapping and returning early is worked out here.
+
+**What was built** (pure functions, money as `bigint` minor units)
+
+- **`@mango/core/rental-period`:**
+  - `extensionPrice`: the new period of an extended rental, priced as a continuation: today's price for the whole rental to the new end, less today's price to the current end. With "keep the last period's discount" it also gives where the charged price starts.
+  - `swapAmounts`: at the swap time, the new bike's remainder, the money paid toward the unused part of the old bike, and what each pricing option comes to: remainder of the period (with and without the customer's discount, both shown to staff) and prorated difference.
+  - `settleSwap`: the new period's charge against the money carried over. When the carried money is more (a cheaper bike), the rest is kept as credit, refunded, or left with the shop, by the shop's choice.
+  - `earlyReturn`: a swap to nothing, under the same three choices.
+  - `carryDiscount`: the one discount ratio, the amount charged ÷ the price before the staff discount, after seasons.
+- **`continuationPrice`** in `@mango/core/rental-price`, and **a `quote()` line can carry the rental's original pickup** (`rentalStart`). The new period of an extension or a swap then goes through the one pricer like any line: seasons on its own days only, discounts, and VAT on its own invoice.
+- **The deposit is not in any of it.** The functions take no deposit and return none.
+- **Design:** decision 28 and §9.19 (the discount ratio, prorated difference unscaled, the deposit on a swap shown as a top-up or a release).
+
+**The owner's figures, pinned by tests**
+
+| What | Figure |
+| --- | --- |
+| Swap at the two-week point, ฿3,000 paid | Bike B's remainder ฿1,800, paid remainder ฿1,500, extra **฿300** |
+| The same with ฿2,500 paid against ฿3,000 | Paid remainder ฿1,250; **฿250** keeping the discount, **฿550** without |
+| The swap's own invoice | Pays ฿300 with VAT ฿19.63; ฿250 when the discount is kept |
+| Month 13; a year, a month at a time | **฿3,000**; **฿36,000** |
+| A month extended by 14 days | **฿1,400** (14 × ฿100), not the two-week price |
+| Swap to a cheaper bike (฿3,500 paid, B to A) | −฿300: nothing to pay, and ฿300 kept as credit, refunded, or no charge |
+| The kept ฿300 on the next extension | A ฿3,000 month comes to ฿2,700, VAT on ฿2,700 |
+| Early return on 15 Jan, ฿3,000 paid | ฿1,500 as credit, refund or no charge; ฿1,250 when ฿2,500 was paid |
+| Prorated difference | (3,500 − 3,000) × 17 ÷ 31 = ฿274.19, the same with or without a discount |
+| The deposit | In no swap, settlement, return or extension result; the swap invoice's total and VAT are the same whatever the deposit setting |
+
+**Decided here, not specified by the owner** (say if any should change)
+
+- **A part-used day counts as used.** A swap or return at 15:00 on day 15 has 15 started days used on the old bike, and the new bike's remainder is its period price less its 15-day price.
+- **The unused share comes from the old bike's prices as passed in.** Phase 3 passes the prices the period was billed from (the snapshot the design gives each period), so a later change to the old bike's list does not move the share.
+- **In a later period of a rental, "used" is measured inside that period.** Swapping on day 14 of month 2 uses 14 long-stay days of the old bike (฿1,400 of its ฿3,000), and the new bike's remainder is its two months less its month and 14 days.
+- **On a cheaper bike the carried money first pays for the new period**; only what is left over is credit, refund or no charge.
+- **Under "no charge" the leftover stays with the shop** and is reported as its own figure, so the books can show it.
+- **A period charged more than its price before discount is refused** (a surcharge is not a discount ratio).
+- **Extending a fixed-price or free line costs nothing more**; extending a flat fee costs its own added periods.
+- **The prorated-difference option counts days**, also on a list priced in months.
+
+**Not in this stage:** "no charge" and "manual amount" need no function (0, and what staff type). The swap settings, the atomic swap, credit balances, refunds and credit notes are Phase 3.
+
+**Tests**
+
+- Unit: 284 in `@mango/core` (244 before; 40 new in `rental-period.test.ts`), 202 on the marketplace and 228 on the platform, all passing. Typecheck and lint pass for every workspace.
+- No database or browser tests: nothing they cover changed.
+
+**Next:** D4, the database: the tables of §9.2, RLS, the save functions and the deposit's move. This is the first stage with a migration.
+
 ## Products, stage D2: the pricer (branch `platform/products-stage-d2-pricer`, 15 Nov 2026)
 
 The second build stage of pricing, of seven (`docs/products-redesign.md` §9.15). **`@mango/core` and docs only: no migration, no screen, nothing in `apps/`.** Nothing calls `quote()` yet; the Pricing tab (D5) is the first caller.

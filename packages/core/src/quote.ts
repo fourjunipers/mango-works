@@ -23,6 +23,7 @@
 
 import { divideHalfUp } from "./price-list";
 import {
+  continuationPrice,
   unitPrice,
   type Pricing,
   type RentalSpan,
@@ -73,6 +74,12 @@ export type QuoteLineInput = {
    * the shop's default. Null: not taxable, or the shop charges no tax.
    */
   taxRateBp: number | null;
+  /**
+   * Set on a later period of a rental (an extension, or the new bike after a
+   * swap): the rental's original pickup. `span` is then the new period, and
+   * the line is priced as a continuation (`continuationPrice`).
+   */
+  rentalStart?: Date | null;
   /** True for a vehicle: only vehicles carry a per-product deposit. */
   vehicle: boolean;
   /** The product's own deposit per unit, when it has one. */
@@ -388,7 +395,9 @@ export function quote(input: QuoteInput): Quote {
 
   // Steps 1 to 5: length, unit price, quantity, seasons.
   const lines: QuotedLine[] = input.lines.map((line) => {
-    const unit = unitPrice(line.pricing!, line.span);
+    const unit = line.rentalStart
+      ? continuationPrice(line.pricing!, line.span, line.rentalStart)
+      : unitPrice(line.pricing!, line.span);
     const listPrice = unit.amount * BigInt(line.quantity);
     const starts = chargedPeriodStarts(unit, line.span);
     const seasons =

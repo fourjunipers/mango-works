@@ -74,7 +74,18 @@ export type PriceBasis =
     }
   | { kind: "periods"; period: PricePeriod; count: number }
   | { kind: "fixed" }
-  | { kind: "free" };
+  | { kind: "free" }
+  /**
+   * A later period of a rental (an extension, or the new bike after a swap):
+   * the price of the whole rental to this period's end, less the price of the
+   * rental up to this period's start. See `continuationPrice`.
+   */
+  | {
+      kind: "continuation";
+      rentalStart: Date;
+      whole: UnitPrice;
+      soFar: UnitPrice;
+    };
 
 export type UnitPrice = { amount: bigint; basis: PriceBasis };
 
@@ -195,4 +206,47 @@ export function unitPrice(pricing: Pricing, span: RentalSpan): UnitPrice {
     case "free":
       return { amount: ZERO, basis: { kind: "free" } };
   }
+}
+
+/**
+ * The list price of a later period of a rental, priced as a continuation
+ * (docs/products-redesign.md §9.19; owner decisions, 15 Nov 2026):
+ *
+ *   price of the whole rental, from the original pickup to this period's end
+ * − price of the rental from the original pickup to this period's start
+ *
+ * Both at the prices passed in, which are today's, so a price rise reaches
+ * only the new period and nothing reprices a period already billed. The
+ * rental's clock runs from the original pickup: whole months renew at the
+ * monthly price (month 13 costs one month), and days after the first month
+ * cost the long-stay daily rate (a month extended by 14 days costs 14 of
+ * them, not the two-week price).
+ *
+ * `span` is the new period; `rentalStart` is the original pickup.
+ */
+export function continuationPrice(
+  pricing: Pricing,
+  span: RentalSpan,
+  rentalStart: Date,
+): UnitPrice {
+  if (!(rentalStart.getTime() < span.start.getTime())) {
+    throw new RangeError("A continuation starts after the original pickup");
+  }
+  if (!(span.start.getTime() < span.end.getTime())) {
+    throw new RangeError("The new end must be after the current end");
+  }
+  const whole = unitPrice(pricing, { ...span, start: rentalStart });
+  const soFar = unitPrice(pricing, {
+    ...span,
+    start: rentalStart,
+    end: span.start,
+  });
+  if (whole.amount < soFar.amount) {
+    // A price list never falls as days rise, so this can't happen.
+    throw new RangeError("A longer rental can't cost less than a shorter one");
+  }
+  return {
+    amount: whole.amount - soFar.amount,
+    basis: { kind: "continuation", rentalStart, whole, soFar },
+  };
 }
