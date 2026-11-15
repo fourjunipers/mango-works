@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Plus } from "lucide-react";
-import { BackLink } from "@/components/back-link";
 import { PageHeader } from "@/components/page";
 import { buttonVariants } from "@/components/ui/button";
 import { requireArea } from "@/lib/access";
@@ -18,22 +17,22 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * The shop's shared price lists (docs/products-redesign.md §9.12), with
- * the number of products on each. Owners and managers add, change and
- * delete them; staff read; mechanics and drivers have no prices to see.
- * Stage D6 may move this screen under Settings.
+ * Settings › Price lists (docs/products-redesign.md §9.12): the shop's
+ * shared price lists, with the number of products on each. Owners and
+ * managers only, like the rest of Settings (moved here from Products in
+ * stage D6; the old address redirects). Staff see each product's prices on
+ * its Pricing tab.
  */
 export default async function PriceListsPage({
   params,
   searchParams,
-}: PageProps<"/[tenant]/products/price-lists">) {
+}: PageProps<"/[tenant]/settings/price-lists">) {
   const [{ tenant: slug }, query] = await Promise.all([params, searchParams]);
-  const { membership } = await requireArea(slug, "products");
+  const { membership } = await requireArea(slug, "settings");
   const { tenant, role } = membership;
   if (!canPricing(role, "read")) notFound();
-  const [t, tProducts, locale, lists] = await Promise.all([
+  const [t, locale, lists] = await Promise.all([
     getTranslations("Pricing.lists"),
-    getTranslations("Products"),
     getLocale(),
     getSharedLists(tenant.id),
   ]);
@@ -41,14 +40,13 @@ export default async function PriceListsPage({
 
   return (
     <>
-      <BackLink href={`/${slug}/products`} label={tProducts("title")} />
       <PageHeader
         title={t("title")}
         intro={t("intro")}
         actions={
           edit && (
             <Link
-              href={`/${slug}/products/price-lists/new`}
+              href={`/${slug}/settings/price-lists/new`}
               className={cn(buttonVariants(), "h-11 px-4")}
             >
               <Plus aria-hidden />
@@ -74,7 +72,7 @@ export default async function PriceListsPage({
           {lists.map((list) => (
             <li key={list.id}>
               <Link
-                href={`/${slug}/products/price-lists/${list.id}`}
+                href={`/${slug}/settings/price-lists/${list.id}`}
                 className="flex min-h-11 flex-wrap items-center justify-between gap-2 p-4 hover:bg-muted/40"
               >
                 <span>

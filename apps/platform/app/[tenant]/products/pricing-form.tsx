@@ -240,6 +240,7 @@ export function PricingForm({
                   />
                 ) : (
                   <SharedChoice
+                    canEdit={canEdit}
                     slug={slug}
                     currency={currency}
                     shared={shared}
@@ -710,6 +711,7 @@ export function ListEditor({
 // ----------------------------------------------------------- a shared list
 
 function SharedChoice({
+  canEdit,
   slug,
   currency,
   shared,
@@ -717,6 +719,8 @@ function SharedChoice({
   draft,
   set,
 }: {
+  /** Price lists are in Settings, which staff can't open. */
+  canEdit: boolean;
   slug: string;
   currency: string;
   shared: SharedList[];
@@ -774,14 +778,16 @@ function SharedChoice({
           </select>
         </Field>
       )}
-      <p className="text-sm">
-        <Link
-          href={`/${slug}/products/price-lists`}
-          className="font-medium underline underline-offset-4"
-        >
-          {t("tiered.manageLists")}
-        </Link>
-      </p>
+      {canEdit && (
+        <p className="text-sm">
+          <Link
+            href={`/${slug}/settings/price-lists`}
+            className="font-medium underline underline-offset-4"
+          >
+            {t("tiered.manageLists")}
+          </Link>
+        </p>
+      )}
       {list?.kind === "multipliers" && (
         <MoneyInput
           id="baseAmount"

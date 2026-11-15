@@ -50,6 +50,11 @@ export async function pricingErrorKey(
     pricing_method_not_allowed: "methodNotAllowed",
     deposit_vehicles_only: "depositVehiclesOnly",
     invalid_tax_profile: "invalidTaxProfile",
+    tax_profile_in_use: "taxProfileInUse",
+    tax_profile_is_default: "taxProfileIsDefault",
+    tax_profiles_name_idx: "profileNameExists",
+    deposit_number_required: "depositNumberRequired",
+    invalid_season: "invalidSeason",
     price_templates_name_idx: "listNameExists",
     only_owner_or_manager: "notAllowed",
   };
@@ -74,6 +79,7 @@ async function context(formData: FormData) {
 function refresh(slug: string) {
   revalidatePath(`/${slug}/products`, "layout");
   revalidatePath(`/${slug}/fleet`, "layout");
+  revalidatePath(`/${slug}/settings`, "layout");
 }
 
 /** The shop's rounding step: its own, or the one suggested for its currency. */
@@ -220,7 +226,7 @@ export async function savePriceList(
       : { errors: { form: key } };
   }
   refresh(slug);
-  if (!id) redirect(`/${slug}/products/price-lists/${data}?added=1`);
+  if (!id) redirect(`/${slug}/settings/price-lists/${data}?added=1`);
   return { ok: true };
 }
 
@@ -236,5 +242,5 @@ export async function deletePriceList(
   });
   if (error) return { errors: { form: await pricingErrorKey(error) } };
   refresh(slug);
-  redirect(`/${slug}/products/price-lists?deleted=1`);
+  redirect(`/${slug}/settings/price-lists?deleted=1`);
 }
