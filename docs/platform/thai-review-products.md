@@ -764,3 +764,146 @@ Claude's translations, for Korn or BSR's admin (docs/products-redesign.md §9.12
 | `FormErrors.invalidTaxProfile` | That tax profile is no longer in use. | รายการภาษีนั้นไม่ได้ใช้งานแล้ว |
 | `FormErrors.listNameExists` | The shop already has a price list with this name. | ร้านมีตารางราคาชื่อนี้อยู่แล้ว |
 | `FormErrors.listNotReady` | Fill in daily and monthly, and fix the days marked in red, before saving. | กรอกรายวันและรายเดือน และแก้วันที่เป็นสีแดงก่อนบันทึก |
+
+## Pricing, stage D6: Settings (15 Nov 2026)
+
+Claude's translations, for Korn or BSR's admin (docs/products-redesign.md §9.12): the Settings sections, Pricing and tax, tax profiles, Seasons, and season lines in a product's History. 130 lines. The terms follow §9.12 and stage D5's list above.
+
+- **A term to settle:** "tax profile" is ประเภทภาษี here; two D5 lines say รายการภาษี (`FormErrors.invalidTaxProfile`, `Products.history.pricing.tax.removed`). One word should be chosen for both.
+- **Tax words are not ours to choose:** ราคาของเรารวมภาษีแล้ว ("Our prices include tax"), บวกภาษีเพิ่ม ("Tax is added on top") and ไม่คิดภาษี ("No tax") are to be confirmed by Korn or the shop's accountant as the Revenue Department's wording. The one-tap profile for Thailand is stored with the name "VAT 7%" in every language: it is the shop's data, which the owner can rename.
+- **Seasons:** โลว์ซีซั่น is used as the example name, as shops say it. "20% off" and "20% more" are whole messages (ลด {percent}, เพิ่ม {percent}), never a sign joined to a number.
+- Thai has no plural: a count is one message with the number (`{count, plural, other {สินค้า # รายการ}}`).
+- Names, amounts and dates are never in a translation: `{names}`, `{amount}`, `{from}`, `{to}` are filled in the viewer's format. The browser test checks Pricing and tax and New season in Thai at 375 px.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Settings.nav.label` | Settings sections | หมวดการตั้งค่า |
+| `Settings.nav.shop` | Shop | ร้าน |
+| `Settings.nav.pricing` | Pricing and tax | ราคาและภาษี |
+| `Settings.nav.seasons` | Seasons | ฤดูกาล |
+| `Settings.nav.priceLists` | Price lists | ตารางราคา |
+| `Settings.pricing.title` | Pricing and tax | ราคาและภาษี |
+| `Settings.pricing.intro` | How the shop's prices are filled in, taxed and secured. Each product's own prices are on its Pricing tab. | วิธีกรอกราคา คิดภาษี และเก็บเงินมัดจำของร้าน ราคาของสินค้าแต่ละรายการอยู่ในแท็บราคาของสินค้านั้น |
+| `Settings.pricing.save` | Save pricing settings | บันทึกการตั้งค่าราคา |
+| `Settings.pricing.firstSaveNote` | Saving here for the first time fixes the shop's currency as {currency}. It can't be changed after that. | การบันทึกครั้งแรกที่นี่จะกำหนดสกุลเงินของร้านเป็น {currency} และเปลี่ยนภายหลังไม่ได้ |
+| `Settings.pricing.firstSaveConfirm` | Saving fixes the shop's currency as {currency}, and it can't be changed after that. Save? | การบันทึกจะกำหนดสกุลเงินของร้านเป็น {currency} และเปลี่ยนภายหลังไม่ได้ บันทึกหรือไม่ |
+| `Settings.pricing.rounding.title` | Rounding | การปัดเศษ |
+| `Settings.pricing.rounding.intro` | Quick entry rounds the days it fills in to this step. Prices already saved never change. | การกรอกราคาด่วนจะปัดวันที่เติมให้อัตโนมัติตามขั้นนี้ ราคาที่บันทึกไว้แล้วจะไม่เปลี่ยน |
+| `Settings.pricing.rounding.label` | Rounding step ({currency}) | ขั้นการปัดเศษ ({currency}) |
+| `Settings.pricing.rounding.help` | Blank uses {step}. Changing it only affects days filled in from now on. | เว้นว่างจะใช้ {step} การเปลี่ยนมีผลเฉพาะวันที่เติมให้ตั้งแต่นี้ไป |
+| `Settings.pricing.tax.title` | Tax | ภาษี |
+| `Settings.pricing.tax.intro` | Whether the prices you type include tax, and the tax most products charge. | ราคาที่คุณกรอกรวมภาษีหรือไม่ และภาษีที่สินค้าส่วนใหญ่ใช้ |
+| `Settings.pricing.tax.style` | Prices and tax | ราคาและภาษี |
+| `Settings.pricing.tax.inclusive` | Our prices include tax | ราคาของเรารวมภาษีแล้ว |
+| `Settings.pricing.tax.inclusiveHelp` | The price a customer sees is what they pay; the tax is worked out inside it. | ราคาที่ลูกค้าเห็นคือราคาที่จ่าย ภาษีคิดอยู่ในราคานั้น |
+| `Settings.pricing.tax.exclusive` | Tax is added on top | บวกภาษีเพิ่ม |
+| `Settings.pricing.tax.exclusiveHelp` | The prices you type are before tax; the tax is added to the total. | ราคาที่คุณกรอกเป็นราคาก่อนภาษี ภาษีจะบวกเข้าในยอดรวม |
+| `Settings.pricing.tax.noProfiles` | Add a tax profile below to charge tax. Until then the shop charges no tax. | เพิ่มประเภทภาษีด้านล่างเพื่อคิดภาษี จนกว่าจะเพิ่ม ร้านจะไม่คิดภาษี |
+| `Settings.pricing.tax.default` | Default tax profile | ประเภทภาษีเริ่มต้น |
+| `Settings.pricing.tax.defaultHelp` | Used by every product set to "Shop default". | ใช้กับทุกสินค้าที่ตั้งเป็น "ค่าเริ่มต้นของร้าน" |
+| `Settings.pricing.tax.defaultNone` | No tax | ไม่คิดภาษี |
+| `Settings.pricing.deposit.title` | Deposit | เงินมัดจำ |
+| `Settings.pricing.deposit.intro` | What an order asks as a deposit. Never taxed or discounted. | เงินมัดจำที่เก็บต่อคำสั่งซื้อ ไม่คิดภาษีและไม่มีส่วนลด |
+| `Settings.pricing.deposit.none` | No deposit | ไม่เก็บเงินมัดจำ |
+| `Settings.pricing.deposit.noneHelp` | Orders take no deposit. Deposits saved on vehicles are kept for later. | คำสั่งซื้อไม่เก็บเงินมัดจำ เงินมัดจำที่บันทึกไว้ในรถแต่ละคันจะเก็บไว้ใช้ภายหลัง |
+| `Settings.pricing.deposit.percent_of_order` | A percentage of the order | เป็นเปอร์เซ็นต์ของคำสั่งซื้อ |
+| `Settings.pricing.deposit.percent_of_orderHelp` | Of the order's total after discounts, tax included. | ของยอดรวมหลังหักส่วนลด รวมภาษีแล้ว |
+| `Settings.pricing.deposit.fixed_per_order` | A fixed amount per order | จำนวนคงที่ต่อคำสั่งซื้อ |
+| `Settings.pricing.deposit.fixed_per_orderHelp` | The same amount however many vehicles. | จำนวนเท่ากันไม่ว่าจะเช่ากี่คัน |
+| `Settings.pricing.deposit.per_product` | Per vehicle | ต่อคัน |
+| `Settings.pricing.deposit.per_productHelp` | Each vehicle's own deposit, set on its Pricing tab, times how many. | เงินมัดจำของรถแต่ละคันที่ตั้งในแท็บราคา คูณจำนวนคัน |
+| `Settings.pricing.deposit.percent` | Percentage of the order | เปอร์เซ็นต์ของคำสั่งซื้อ |
+| `Settings.pricing.deposit.percentHelp` | For example 20 or 12.5. | เช่น 20 หรือ 12.5 |
+| `Settings.pricing.deposit.fixedAmount` | Amount per order ({currency}) | จำนวนต่อคำสั่งซื้อ ({currency}) |
+| `Settings.pricing.deposit.fixedAmountHelp` | Taken once per order. | เก็บครั้งเดียวต่อคำสั่งซื้อ |
+| `Settings.pricing.deposit.shopAmount` | Shop amount per vehicle ({currency}) | จำนวนของร้านต่อคัน ({currency}) |
+| `Settings.pricing.deposit.shopAmountHelp` | For a vehicle with no deposit of its own. Blank: none. | สำหรับรถที่ไม่มีเงินมัดจำของตัวเอง เว้นว่าง: ไม่เก็บ |
+| `Settings.pricing.coupons.title` | Coupons | คูปอง |
+| `Settings.pricing.coupons.label` | Accept coupons | รับคูปอง |
+| `Settings.pricing.coupons.later` | You will be able to create coupons in a later update. | คุณจะสร้างคูปองได้ในการอัปเดตครั้งต่อไป |
+| `Settings.pricing.profiles.title` | Tax profiles | ประเภทภาษี |
+| `Settings.pricing.profiles.intro` | A name and a rate for each tax the shop charges. Choose the default above. | ชื่อและอัตราของภาษีแต่ละประเภทที่ร้านเก็บ เลือกค่าเริ่มต้นด้านบน |
+| `Settings.pricing.profiles.none` | No tax profiles yet. | ยังไม่มีประเภทภาษี |
+| `Settings.pricing.profiles.isDefault` | Default | ค่าเริ่มต้น |
+| `Settings.pricing.profiles.unused` | No product names this profile. | ไม่มีสินค้าที่ใช้ประเภทภาษีนี้ |
+| `Settings.pricing.profiles.usedBy` | Named by {count, plural, one {# product} other {# products}}: {names} | ใช้กับ{count, plural, other {สินค้า # รายการ}}: {names} |
+| `Settings.pricing.profiles.edit` | Change name or rate | เปลี่ยนชื่อหรืออัตรา |
+| `Settings.pricing.profiles.save` | Save profile | บันทึกประเภทภาษี |
+| `Settings.pricing.profiles.rateConfirm` | This changes the tax on {count, plural, one {# product} other {# products}}: {names}. Save? | การนี้จะเปลี่ยนภาษีของ{count, plural, other {สินค้า # รายการ}}: {names} บันทึกหรือไม่ |
+| `Settings.pricing.profiles.remove` | Remove | นำออก |
+| `Settings.pricing.profiles.removeConfirm` | Remove {name}? Products can't choose it any more. Old orders keep it. | นำ {name} ออกหรือไม่ สินค้าจะเลือกประเภทนี้ไม่ได้อีก คำสั่งซื้อเดิมยังคงใช้อยู่ |
+| `Settings.pricing.profiles.addUsual` | Add {name} as the default | เพิ่ม {name} เป็นค่าเริ่มต้น |
+| `Settings.pricing.profiles.add` | Add a tax profile | เพิ่มประเภทภาษี |
+| `Settings.pricing.profiles.addSave` | Add profile | เพิ่มประเภทภาษี |
+| `Settings.pricing.profiles.archived` | Removed profiles | ประเภทภาษีที่นำออกแล้ว |
+| `Settings.pricing.profiles.restore` | Bring back | นำกลับมาใช้ |
+| `Settings.pricing.profiles.name` | Name | ชื่อ |
+| `Settings.pricing.profiles.rate` | Rate (%) | อัตรา (%) |
+| `Settings.pricing.profiles.rateHelp` | For example 7. From 0 to 100. | เช่น 7 ตั้งแต่ 0 ถึง 100 |
+| `Settings.seasons.title` | Seasons | ฤดูกาล |
+| `Settings.seasons.intro` | Prices up or down by a percentage over a range of dates, on the part of a rental inside it. | ปรับราคาขึ้นหรือลงเป็นเปอร์เซ็นต์ในช่วงวันที่กำหนด เฉพาะส่วนของการเช่าที่อยู่ในช่วงนั้น |
+| `Settings.seasons.new` | New season | ฤดูกาลใหม่ |
+| `Settings.seasons.deleted` | Season deleted. | ลบฤดูกาลแล้ว |
+| `Settings.seasons.none` | No seasons yet. | ยังไม่มีฤดูกาล |
+| `Settings.seasons.off` | Off | ปิด |
+| `Settings.seasons.yearly` | {from} to {to}, every year | {from} ถึง {to} ทุกปี |
+| `Settings.seasons.once` | {from} to {to} | {from} ถึง {to} |
+| `Settings.seasons.allProducts` | All products | สินค้าทั้งหมด |
+| `Settings.seasons.someProducts` | {count, plural, =0 {No products} one {# product} other {# products}} | {count, plural, =0 {ไม่มีสินค้า} other {สินค้า # รายการ}} |
+| `Settings.seasons.decreaseBy` | {percent} off | ลด {percent} |
+| `Settings.seasons.increaseBy` | {percent} more | เพิ่ม {percent} |
+| `Settings.seasons.newTitle` | New season | ฤดูกาลใหม่ |
+| `Settings.seasons.newIntro` | Name it, choose its dates and how much prices change. | ตั้งชื่อ เลือกวันที่ และกำหนดว่าราคาจะเปลี่ยนเท่าใด |
+| `Settings.seasons.editTitle` | Season | ฤดูกาล |
+| `Settings.seasons.editIntro` | A season changes prices by rental length and flat fees only: never a fixed price, a free item or a deposit. | ฤดูกาลเปลี่ยนเฉพาะราคาตามระยะเวลาเช่าและราคาต่อช่วงเวลา ไม่เปลี่ยนราคาคงที่ สินค้าฟรี หรือเงินมัดจำ |
+| `Settings.seasons.added` | Season saved. | บันทึกฤดูกาลแล้ว |
+| `Settings.seasons.save` | Save season | บันทึกฤดูกาล |
+| `Settings.seasons.create` | Create season | สร้างฤดูกาล |
+| `Settings.seasons.name` | Name | ชื่อ |
+| `Settings.seasons.nameHelp` | For example Low season. | เช่น โลว์ซีซั่น |
+| `Settings.seasons.startsOn` | First day | วันแรก |
+| `Settings.seasons.endsOn` | Last day | วันสุดท้าย |
+| `Settings.seasons.repeatsYearly` | Every year | ทุกปี |
+| `Settings.seasons.repeatsYearlyHelp` | The same days each year; the year is ignored, and a season may run over the new year. | วันเดียวกันทุกปี ไม่นับปี และฤดูกาลข้ามปีใหม่ได้ |
+| `Settings.seasons.change` | Price change | การเปลี่ยนราคา |
+| `Settings.seasons.changeIntro` | Worked out on the list price for the days of a rental inside the season. | คิดจากราคาตามตาราง สำหรับวันของการเช่าที่อยู่ในฤดูกาล |
+| `Settings.seasons.direction` | Direction | ทิศทาง |
+| `Settings.seasons.decrease` | Decrease | ลด |
+| `Settings.seasons.increase` | Increase | เพิ่ม |
+| `Settings.seasons.percent` | Percentage | เปอร์เซ็นต์ |
+| `Settings.seasons.percentHelp` | For example 20 or 12.5. A decrease is below 100%. | เช่น 20 หรือ 12.5 การลดต้องน้อยกว่า 100% |
+| `Settings.seasons.products` | Products | สินค้า |
+| `Settings.seasons.productsIntro` | Which products it changes. | สินค้าที่ฤดูกาลนี้เปลี่ยนราคา |
+| `Settings.seasons.scopeAll` | All products | สินค้าทั้งหมด |
+| `Settings.seasons.scopeChosen` | Chosen products | สินค้าที่เลือก |
+| `Settings.seasons.search` | Search products | ค้นหาสินค้า |
+| `Settings.seasons.retired` | (retired) | (เลิกใช้แล้ว) |
+| `Settings.seasons.active` | Season on | เปิดฤดูกาล |
+| `Settings.seasons.activeHelp` | Switched off, it stays saved and changes no price. | เมื่อปิด ฤดูกาลยังบันทึกไว้และไม่เปลี่ยนราคา |
+| `Settings.seasons.delete` | Delete season | ลบฤดูกาล |
+| `Settings.seasons.deleteConfirm` | Delete this season? This can't be undone. | ลบฤดูกาลนี้หรือไม่ ย้อนกลับไม่ได้ |
+| `Products.history.pricing.line.seasonAdded` | {who} added the season {name}: {change}, {when} | {who} เพิ่มฤดูกาล {name}: {change} {when} |
+| `Products.history.pricing.line.seasonRemoved` | {who} removed the season {name} | {who} นำฤดูกาล {name} ออก |
+| `Products.history.pricing.line.seasonChanged` | {who} changed the season {name} from {from} to {to} | {who} เปลี่ยนฤดูกาล {name} จาก {from} เป็น {to} |
+| `Products.history.pricing.line.seasonDatesChanged` | {who} changed the dates of the season {name} from {from} to {to} | {who} เปลี่ยนวันที่ของฤดูกาล {name} จาก {from} เป็น {to} |
+| `Products.history.pricing.line.seasonRenamed` | {who} renamed the season {from} to {to} | {who} เปลี่ยนชื่อฤดูกาล {from} เป็น {to} |
+| `Products.history.pricing.line.seasonOff` | {who} switched off the season {name} | {who} ปิดฤดูกาล {name} |
+| `Products.history.pricing.line.seasonOn` | {who} switched on the season {name} | {who} เปิดฤดูกาล {name} |
+| `Products.history.pricing.seasonOff` | {percent} off | ลด {percent} |
+| `Products.history.pricing.seasonMore` | {percent} more | เพิ่ม {percent} |
+| `Products.history.pricing.seasonYearly` | {from} to {to}, every year | {from} ถึง {to} ทุกปี |
+| `Products.history.pricing.seasonOnce` | {from} to {to} | {from} ถึง {to} |
+| `Pricing.deposit.change` | Change in Settings | เปลี่ยนในการตั้งค่า |
+| `FormErrors.invalidPercent` | Enter a percentage such as 20 or 12.5. | กรอกเปอร์เซ็นต์ เช่น 20 หรือ 12.5 |
+| `FormErrors.percentZero` | Enter a percentage above 0. | กรอกเปอร์เซ็นต์ที่มากกว่า 0 |
+| `FormErrors.decreaseTooLarge` | A decrease must be below 100%. | การลดต้องน้อยกว่า 100% |
+| `FormErrors.increaseTooLarge` | At most 1,000%. | สูงสุด 1,000% |
+| `FormErrors.seasonEndsBeforeStart` | The last day is before the first. Tick "Every year" for a season over the new year. | วันสุดท้ายอยู่ก่อนวันแรก เลือก "ทุกปี" สำหรับฤดูกาลที่ข้ามปีใหม่ |
+| `FormErrors.seasonNoProducts` | Choose at least one product, or All products. | เลือกสินค้าอย่างน้อยหนึ่งรายการ หรือสินค้าทั้งหมด |
+| `FormErrors.invalidRate` | Enter a rate from 0 to 100. | กรอกอัตราตั้งแต่ 0 ถึง 100 |
+| `FormErrors.taxProfileInUse` | Still named by {count, plural, one {# product} other {# products}}: {names}. Move them to another tax choice on their Pricing tab first. | ยังมี{count, plural, other {สินค้า # รายการ}}ที่ใช้อยู่: {names} ย้ายไปใช้ภาษีแบบอื่นในแท็บราคาของสินค้านั้นก่อน |
+| `FormErrors.taxProfileIsDefault` | This is the shop's default tax profile. Choose another default first. | นี่คือประเภทภาษีเริ่มต้นของร้าน เลือกค่าเริ่มต้นอื่นก่อน |
+| `FormErrors.profileNameExists` | A tax profile with this name already exists. | มีประเภทภาษีชื่อนี้แล้ว |
+| `FormErrors.depositNumberRequired` | Enter the deposit's percentage or amount. | กรอกเปอร์เซ็นต์หรือจำนวนเงินมัดจำ |
+| `FormErrors.invalidSeason` | Check the season's details and try again. | ตรวจสอบรายละเอียดของฤดูกาลแล้วลองอีกครั้ง |
+| `FormErrors.profileAddedNotDefault` | The profile was added but couldn't be made the default. Choose it above and save. | เพิ่มประเภทภาษีแล้ว แต่ตั้งเป็นค่าเริ่มต้นไม่ได้ เลือกด้านบนแล้วบันทึก |

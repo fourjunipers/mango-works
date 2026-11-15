@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { ActionForm, useFieldError } from "@/components/action-form";
 import { Field, inputClass } from "@/components/form";
@@ -407,9 +407,15 @@ function percentText(bp: number, locale: string): string {
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
+  const headingId = useId();
   return (
-    <section className="rounded-lg border bg-card p-4 sm:p-5">
-      <h2 className="mb-4 text-lg font-semibold">{title}</h2>
+    <section
+      aria-labelledby={headingId}
+      className="rounded-lg border bg-card p-4 sm:p-5"
+    >
+      <h2 id={headingId} className="mb-4 text-lg font-semibold">
+        {title}
+      </h2>
       {children}
     </section>
   );

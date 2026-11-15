@@ -1141,6 +1141,16 @@ Shop-level changes (rounding step, deposit choice, tax profiles, the coupons swi
 - **History lines** are whole sentences per language, never pieces joined in code.
 - Six quick-entry labels across at 375 px will not fit in Thai; they stack two to a row, checked in the browser tests in both languages.
 
+**As built in stage D6** (15 Nov 2026; Mark's answers of the same day, and Fable's review of the migration). Where this differs from the text above, this is right.
+
+- **Settings has four sections**, owners and managers only: Shop, Pricing and tax, Seasons, Price lists. **Price lists moved here from Products** (`/settings/price-lists`; the old addresses redirect), so staff no longer open them; staff see each product's prices and the seasons that apply on its Pricing tab.
+- **The deposit choice is the shop's, in Settings.** A shop's first product deposit no longer switches it to "per product". A vehicle's own deposit is asked only while the shop is on "per product"; on any other choice a stored deposit is kept, not charged, and shows again on a switch back. A shop with no settings row works exactly like "none". Check a price uses the shop's choice, as Save does.
+- **The settings row is made by the first Save, never by opening a page.** Any row fixes the shop's currency (as in D4), so the page says so and asks before the first save.
+- **A tax profile in use can't be removed** (migration `20261115000200_platform_tax_profile_in_use`): `save_tax_profile` refuses to archive a profile that any product's pricing names, retired products included (`tax_profile_in_use`), and the shop's default (as before); the refusal names the products. A rename and a rate change are allowed. Lock order: the product, the price list, the tax profile, the pricing row; the archive takes the profile for update and locks no settings or pricing row.
+- **One tap for the country's usual tax profile**: Thailand, "VAT 7%", made the default. No other country is offered one yet (open item 10 (a)).
+- **The rounding step is edited in Settings** and only shapes what quick entry fills in from then on; a saved list reads as stored. The default per currency comes from one table in `@mango/core` (`currency.ts`): THB ฿10 (sample base ฿100); any other currency one major unit (sample base 10).
+- **Season lines in each covered product's History** (added, percentage changed, dates changed, renamed, switched off or on, removed), one save read as one change.
+
 ### 9.13 Questions: decided, and still open
 
 **Decided by Mark** (15 Nov 2026, three rounds; decisions 24 and 25).
