@@ -110,6 +110,32 @@ The fifth build stage of pricing, of seven (`docs/products-redesign.md` §9.12, 
 - No database tests changed: nothing in the database changed.
 - **Not run against staging.** Note for when it is: the deposit test saves BSR's first product deposit, which gives BSR a settings row on "per product", as the D4 test did.
 
+**Review fixes (15 Nov 2026, after the review of PR 29).** No migration.
+
+- **Check a price and a shop with no settings row.** The CI failure at `products-stage-d5.spec.ts:146` was not a clock or a pricing fault: ฿9,000 was the right total (2 × (฿3,000 + 15 × ฿100) for 45 days from 16 Nov). The test's "4,000" was the deposit line, 2 × ฿2,000, which only showed on a database where BSR already had a settings row; on a clean one the preview said ฿0, although saving the first product deposit sets the shop to "per product". The preview now prices the sample the way Save will (`previewInputs` in `lib/pricing-preview.ts`).
+- **The D5 browser test no longer depends on the date or on what an earlier run left.** Every "Check a price" gets a fixed pickup (1 Jan 2027, 10:00), so 45 days is always a month and 14 days; the Total (฿8,800 for two) and the Deposit (฿4,000) are each read from their own row.
+- **A saved list reads as it is stored.** The days that were filled in used to be thrown away on load and filled in again with the rounding step of the day, so after a change of step the grid and Check a price would have shown amounts that are not the ones stored and charged, and any Save would have rewritten the list (on a shared list, repricing every product on it). Now a list read back keeps each filled day's saved value (`ListDraft.stored`); only the days between the boxes on either side of a box the owner changes are filled in again (`withBox`). This holds for a product's own prices and for the shared-list editor.
+- **A save that leaves the prices alone sends no days.** The deposit alone, or a shared list's new name, no longer rewrites the 30 rows (`sameAsSaved`; `save_product_pricing` and `save_price_template` already keep what is not sent).
+- **Amounts read from the tables are strings of digits** (`value::text`, `hourly::text` in the query), as `pricing_inputs()` sends them, never JSON numbers. A shared list's days are read with their list (an embedded read), so the API's 1,000-row limit can't drop a day of the 34th list.
+- **Local set-up.** In a worktree with its own local stack, `supabase/config.toml` (project and ports) and `apps/platform/.env.local` must name the same stack: the database tests reach the database through the container named in `config.toml`, the app through `.env.local`. In this worktree they did not, which is why the database tests failed here and the browser run used a database with leftovers. `fleet.spec.ts`'s "pcx" search passes on a clean database.
+
+- **Tests after the fixes:** 297 unit tests on the platform (11 new), 284 in `@mango/core`, 202 on the marketplace; 342 database tests; the full browser suite on a freshly reset and seeded local database: 119 passed, 5 skipped (each runs at one width only), none failed. A new browser test saves a list in the Saigon demo shop (dong, no decimals), changes the shop's rounding step in the database, and checks that the grid, Check a price and a save of the deposit alone all keep the stored days.
+
+**Follow-ups from the review (not done here)**
+
+1. **One table of per-currency defaults** in place of the two `currency === "THB"` checks (`lib/pricing-form.ts` `suggestedStep`: ฿10; `price-list-form.tsx`: the sample base price of 100). The figures are the design's; a currency check in code is against "Built for any country".
+2. **`parseBase` in `pricing-form.tsx` is a second money parser** with other rules than `parseMinorUnits` ("1 000" saves, but hides the resulting amounts). Use `parseMinorUnits`. Guard the server action's reading of the form: a hand-made draft (a day 31 typed by hand, no `list`) throws instead of returning a form error.
+3. **"A shop's first product deposit sets it to per product" is a second call** (`save_pricing_settings`) after the prices are saved. If it fails, the form shows an error although the prices were saved. One transaction, or say what was saved. Stage D6's Settings screen may remove the need.
+4. Nits:
+   - a season's amount is negated in the component to show "−" (`pricing-form.tsx`, Check a price): the pricer could return the sign and the size;
+   - a season's dates show as ISO text ("2027-04-01"), not in the viewer's format;
+   - `formatMinor` passes a decimal string to `Intl.NumberFormat.format` through a cast: fine on Node 24 and today's browsers, worth a line on the oldest browser supported;
+   - after a save, "Check a price" can still say "saved or not" when what was typed ("300") differs from what is read back ("300.00");
+   - the products on shared lists (`getSharedLists`) are read in one query, so past 1,000 priced products the names under a list would be cut short (the prices would not);
+   - History reads `product_pricing` amounts from the audit rows as JSON numbers (exact below 2^53);
+   - no browser test opens a duplicate's Pricing tab to show it starts empty;
+   - the shared-list editor's "reads as stored" is covered by unit tests only; the browser test uses a product's own list.
+
 **Next:** D6, Settings: pricing and tax (rounding step, tax profiles and the default, include or exclude tax, the deposit choice, the coupons switch) and Seasons; perhaps the price lists screen moved under it.
 
 ## Products, stage D3: rental-period maths (branch `platform/products-stage-d3-rental-periods`, 15 Nov 2026)
