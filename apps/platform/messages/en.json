@@ -302,7 +302,20 @@
     "same_model": "It is already on that one. Choose a different one.",
     "request_pending": "Its request is still waiting for review.",
     "more_walk_ins_than_active": "Walk-ins can not exceed the number of units in your inventory",
-    "leadTimeRange": "Enter whole hours from 0 to 720, or leave it empty."
+    "leadTimeRange": "Enter whole hours from 0 to 720, or leave it empty.",
+    "priceListFalls": "A longer rental can't cost less than a shorter one. Equal prices are fine.",
+    "priceListIncomplete": "A price list needs all 30 days.",
+    "priceListInUse": "This price list is used by a product, so it can't be deleted. Move those products to other prices first.",
+    "priceListKindFixed": "A price list's kind can't be changed.",
+    "priceListRequired": "Choose a price list, or set this product's own prices.",
+    "basePriceRequired": "This list holds multipliers: enter a base price.",
+    "priceRequired": "Enter a price.",
+    "priceZero": "A price can't be 0. To charge nothing, choose Free.",
+    "methodNotAllowed": "This kind of product can't be priced that way.",
+    "depositVehiclesOnly": "Only vehicles have a deposit.",
+    "invalidTaxProfile": "That tax profile is no longer in use.",
+    "listNameExists": "The shop already has a price list with this name.",
+    "listNotReady": "Fill in daily and monthly, and fix the days marked in red, before saving."
   },
   "Fleet": {
     "title": "Fleet",
@@ -391,8 +404,6 @@
       "bufferBefore": "Buffer before pickup (hours)",
       "bufferAfter": "Buffer after return (hours)",
       "bufferHelp": "Decimals are fine: 0.5 is half an hour. Blank uses the shop default (set in Phase 2).",
-      "deposit": "Deposit ({currency})",
-      "depositHelp": "Blank uses the shop default (set in Phase 2).",
       "minAge": "Minimum age",
       "licenceClass": "Licence class",
       "instantUnits": "Instant units",
@@ -596,7 +607,8 @@
       "switchOff": "Off. The switch saves as soon as you press it.",
       "offering": "Offering {count} of {total, plural, one {# bike} other {# bikes}} for advance booking",
       "leadTime": "Lead time (hours)",
-      "leadTimeHelp": "How many hours ahead a booking must be made, from 0 to 720. Leave it empty for none."
+      "leadTimeHelp": "How many hours ahead a booking must be made, from 0 to 720. Leave it empty for none.",
+      "noPrice": "No price by rental length yet: it won't be offered on Moto Mangos. Set one on the Pricing tab."
     },
     "editModel": "Edit product",
     "addUnitRow": "Add vehicle",
@@ -682,7 +694,8 @@
       "units": "Units",
       "history": "History",
       "stock": "Stock",
-      "motoMangos": "Moto Mangos"
+      "motoMangos": "Moto Mangos",
+      "pricing": "Pricing"
     },
     "added": "Product saved. Add its vehicles on the Units tab.",
     "readOnly": "You can view this product but not change it.",
@@ -764,7 +777,72 @@
         "lead_time_hours": "Lead time (hours)"
       },
       "introGeneral": "Who changed what on this product, newest first.",
-      "unlabelled": "without a label"
+      "unlabelled": "without a label",
+      "pricing": {
+        "box": {
+          "daily": "daily",
+          "weekly": "weekly",
+          "twoWeeks": "2-week",
+          "threeWeeks": "3-week",
+          "monthly": "monthly"
+        },
+        "method": {
+          "tiered": "By rental length",
+          "per_period": "Flat fee per period",
+          "fixed": "Fixed price",
+          "free": "Free",
+          "none": "not priced"
+        },
+        "period": {
+          "hour": "per hour",
+          "day": "per day",
+          "week": "per week",
+          "month": "per month"
+        },
+        "tax": {
+          "default": "Shop default",
+          "none": "Not taxable",
+          "removed": "a removed tax profile"
+        },
+        "line": {
+          "methodSet": "{who} set how it is priced: {to}",
+          "methodChanged": "{who} changed how it is priced from {from} to {to}",
+          "firstPrice": "{who} set the price: daily {daily}, weekly {weekly}, 2 weeks {twoWeeks}, 3 weeks {threeWeeks}, monthly {monthly}",
+          "boxChanged": "{who} changed the {box} price from {from} to {to}",
+          "dayChanged": "{who} changed the {days}-day price from {from} to {to}",
+          "daysChanged": "{who} changed the prices of {count, plural, one {# day} other {# days}}",
+          "otherDays": "{count, plural, one {# other day} other {# other days}} changed",
+          "sharedListChanged": "Price list {list} changed (also used by {others, plural, one {# other product} other {# other products}})",
+          "sharedDay": "{days, plural, one {# day} other {# days}}: {from} → {to}",
+          "priceSet": "{who} set the price to {to}",
+          "priceChanged": "{who} changed the price from {from} to {to}",
+          "priceRemoved": "{who} removed the price (it was {from})",
+          "pricePerSet": "{who} set the price to {to} {period}",
+          "pricePerChanged": "{who} changed the price from {from} to {to} {period}",
+          "pricePerRemoved": "{who} removed the price (it was {from} {period})",
+          "periodChanged": "{who} changed the period from {from} to {to}",
+          "ownPrices": "{who} gave it its own prices",
+          "ownPricesFrom": "{who} gave it its own prices (it was on {list})",
+          "movedToList": "{who} moved it to the shared price list {list}",
+          "movedToListBase": "{who} moved it to the shared price list {list} with a base price of {base}",
+          "baseSet": "{who} set the base price to {to}",
+          "baseChanged": "{who} changed the base price from {from} to {to}",
+          "baseRemoved": "{who} removed the base price (it was {from})",
+          "longStaySet": "{who} set the long-stay daily rate to {to}",
+          "longStayChanged": "{who} changed the long-stay daily rate from {from} to {to}",
+          "longStayRemoved": "{who} removed the long-stay daily rate (it was {from})",
+          "hourlySet": "{who} set the hourly price to {to}",
+          "hourlyChanged": "{who} changed the hourly price from {from} to {to}",
+          "hourlyRemoved": "{who} removed the hourly price (it was {from})",
+          "depositSet": "{who} set the deposit to {to}",
+          "depositChanged": "{who} changed the deposit from {from} to {to}",
+          "depositRemoved": "{who} removed the deposit (it was {from})",
+          "replacementSet": "{who} set the replacement value to {to}",
+          "replacementChanged": "{who} changed the replacement value from {from} to {to}",
+          "replacementRemoved": "{who} removed the replacement value (it was {from})",
+          "taxChanged": "{who} changed tax from {from} to {to}"
+        }
+      }
     },
     "duplicate": "Duplicate",
     "tab": {
@@ -906,6 +984,16 @@
       "lostWaiting": "An owner or manager marks it found or removes it from stock.",
       "close": "Close",
       "dateHelp": "For information only. It does not affect stock quantities."
+    },
+    "priceLists": "Price lists",
+    "price": {
+      "perDay": "{amount} / day",
+      "per_hour": "{amount} / hour",
+      "per_day": "{amount} / day",
+      "per_week": "{amount} / week",
+      "per_month": "{amount} / month",
+      "free": "Free",
+      "none": "No price yet"
     }
   },
   "Locations": {
@@ -994,6 +1082,185 @@
       "inReview": "In review for Moto Mangos",
       "needsChanges": "Moto Mangos needs changes",
       "notListed": "Not on Moto Mangos"
+    }
+  },
+  "Pricing": {
+    "save": "Save prices",
+    "readOnly": "You can see these prices but not change them.",
+    "method": {
+      "title": "How it is priced",
+      "tiered": "By rental length",
+      "tieredHelp": "A total for each length from 1 to 30 days; longer rentals by the month.",
+      "per_period": "Flat fee per period",
+      "per_periodHelp": "One amount per hour, day, week or month.",
+      "fixed": "Fixed price",
+      "fixedHelp": "One amount per order, however long.",
+      "free": "Free",
+      "freeHelp": "Shown as included; nothing is charged."
+    },
+    "period": {
+      "hour": "Per hour",
+      "day": "Per day",
+      "week": "Per week",
+      "month": "Per month"
+    },
+    "flat": {
+      "title": "Flat fee",
+      "amount": "Amount ({currency})",
+      "period": "Period",
+      "help": "Every started period is charged. A week is 7 days; a month runs date to date from the pickup."
+    },
+    "fixed": {
+      "title": "Fixed price",
+      "amount": "Price ({currency})",
+      "help": "Charged once per order, whatever the length."
+    },
+    "free": {
+      "title": "Free",
+      "help": "Shown as included on the order. Nothing is charged."
+    },
+    "tiered": {
+      "title": "By rental length",
+      "own": "Set this product's own prices",
+      "ownHelp": "Type up to six prices; the days between fill in.",
+      "shared": "Use a shared price list",
+      "sharedHelp": "One list for several products. Change it once, every product on it follows.",
+      "list": "Price list",
+      "pickList": "Choose a price list",
+      "noLists": "There are no shared price lists yet.",
+      "manageLists": "Manage price lists",
+      "base": "Base price ({currency})",
+      "baseHelp": "This list holds multipliers. Each day's price is this base price × the day's multiplier.",
+      "resulting": "Prices for this product",
+      "longStay": "Long-stay daily rate ({currency})",
+      "longStayHelp": "For each day after a whole month (rentals of 31 days or more). Blank: the monthly price ÷ 30."
+    },
+    "quick": {
+      "title": "Quick price entry",
+      "help": "Daily and monthly are required. The days between fill in in equal steps; you can change any day below.",
+      "helpMultipliers": "Daily and monthly are required. Type multipliers, such as 3 or 1.1666. The days between fill in; you can change any day below.",
+      "hourly": "Hourly",
+      "daily": "Daily (1 day)",
+      "weekly": "Weekly (7 days)",
+      "twoWeeks": "2 weeks (14 days)",
+      "threeWeeks": "3 weeks (21 days)",
+      "monthly": "Monthly (30 days)",
+      "required": "Daily and monthly are both needed.",
+      "requiredMark": "Required",
+      "invalid": "Enter an amount above 0, such as 300 or 300.50.",
+      "invalidMultiplier": "Enter a multiplier above 0, such as 3 or 1.1666.",
+      "sameEveryDay": "Same price every day"
+    },
+    "grid": {
+      "label": "Price for each length",
+      "showAll": "Show all days",
+      "hide": "Hide the days",
+      "day": "{days, plural, one {# day} other {# days}}",
+      "fromBox": "from quick entry",
+      "byHand": "by hand",
+      "filled": "filled in",
+      "reset": "Reset",
+      "fallsTitle": "A longer rental can't cost less",
+      "falls": "{day} days cost less than {before} days. Raise it, or lower the days before it. Equal prices are fine.",
+      "invalidDays": "A day typed by hand isn't a valid price."
+    },
+    "deposit": {
+      "title": "Deposit",
+      "amount": "Deposit ({currency})",
+      "help": "Taken per vehicle on an order. Blank: the shop's amount; 0: no deposit.",
+      "shopAmount": "Blank uses the shop's amount: {amount}. 0: no deposit for this one.",
+      "firstHelp": "Taken per vehicle on an order. The shop's other deposit choices come with its pricing settings.",
+      "none": "The shop takes no deposit.",
+      "percent": "The shop takes {percent} of each order as a deposit.",
+      "fixed": "The shop takes {amount} per order as a deposit."
+    },
+    "tax": {
+      "title": "Tax",
+      "label": "Tax on this product",
+      "default": "Shop default ({name})",
+      "defaultNone": "Shop default (no tax)",
+      "none": "Not taxable"
+    },
+    "replacement": {
+      "title": "Replacement value",
+      "amount": "Replacement value ({currency})",
+      "help": "What a lost or broken item costs the customer."
+    },
+    "seasons": {
+      "title": "Seasons",
+      "off": "{percent} off",
+      "more": "{percent} more",
+      "yearly": "{from} to {to}, every year",
+      "once": "{from} to {to}",
+      "help": "Seasons are set for the whole shop. They change the price for the part of a rental inside them."
+    },
+    "check": {
+      "title": "Check a price",
+      "intro": "Prices a sample rental with these prices.",
+      "introUnsaved": "Prices a sample rental with the prices on screen, saved or not.",
+      "by": "Sample rental by",
+      "by_days": "Number of days",
+      "by_dates": "Dates",
+      "pickup": "Pickup",
+      "return": "Return",
+      "days": "Days",
+      "quantity": "How many",
+      "notPriced": "Fill in the prices to check one.",
+      "cantPrice": "This rental can't be priced. Check the dates and the quantity.",
+      "listPrice": "List price",
+      "season": "Season: {name}",
+      "seasonDays": "{count, plural, one {# day} other {# days}} inside",
+      "vatIncluded": "Includes VAT {rate}",
+      "vatAdded": "VAT {rate}",
+      "total": "Total",
+      "deposit": "Deposit",
+      "depositHelp": "Taken beside the total; never taxed."
+    },
+    "basis": {
+      "hours": "{hours, plural, one {# hour} other {# hours}} at {hourly}",
+      "hoursCapped": "{hours, plural, one {# hour} other {# hours}}, held to the 1-day price",
+      "list": "{days, plural, one {# day} other {# days}} from the price list",
+      "months": "{months, plural, one {# month} other {# months}} and {days, plural, one {# day} other {# days}} at {rate} a day",
+      "underOneMonth": "31 days started: the monthly price",
+      "periods_hour": "{count, plural, one {# hour} other {# hours}}",
+      "periods_day": "{count, plural, one {# day} other {# days}}",
+      "periods_week": "{count, plural, one {# week} other {# weeks}}",
+      "periods_month": "{count, plural, one {# month} other {# months}}",
+      "fixed": "Fixed price",
+      "free": "Free"
+    },
+    "lists": {
+      "title": "Price lists",
+      "intro": "Shared price lists. Each product on a list follows it.",
+      "new": "New price list",
+      "none": "No shared price lists yet.",
+      "deleted": "Price list deleted.",
+      "products": "{count, plural, =0 {No products} one {# product} other {# products}}",
+      "firstDay": "1 day: {amount}",
+      "newTitle": "New price list",
+      "newIntro": "Choose its kind, name it and enter its prices.",
+      "editTitle": "Price list",
+      "editIntro": "A shared price list.",
+      "added": "Price list saved.",
+      "name": "Name",
+      "nameHelp": "For example 300–3000. Names are unique in the shop.",
+      "kind": "What does it hold?",
+      "kindAmounts": "Amounts",
+      "kindAmountsHelp": "The price for each length, in money.",
+      "kindMultipliers": "Multipliers of a base price",
+      "kindMultipliersHelp": "Each product on it sets its own base price, which the list multiplies.",
+      "kindFixed": "A list's kind can't be changed.",
+      "sampleBase": "Sample base price ({currency})",
+      "sampleBaseHelp": "Shows what these multipliers come to at this base price.",
+      "usedBy": "Products on this list",
+      "unused": "No product uses this list yet.",
+      "repriceNote": "Saving changes the prices of {count, plural, one {this product} other {these # products}}:",
+      "repriceConfirm": "Saving changes the prices of {count, plural, one {# product} other {# products}}. Save?",
+      "save": "Save price list",
+      "create": "Create price list",
+      "delete": "Delete price list",
+      "deleteConfirm": "Delete this price list? This can't be undone.",
+      "deleteBlocked": "A list can't be deleted while a product uses it. Move those products to other prices first."
     }
   }
 }

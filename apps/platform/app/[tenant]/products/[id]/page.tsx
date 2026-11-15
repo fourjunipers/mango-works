@@ -19,8 +19,8 @@ import {
 } from "@/lib/fleet-data";
 import { isGeneralType } from "@/lib/general-products";
 import { minutesToHours } from "@/lib/fleet";
-import { moneyInputValue } from "@/lib/money";
 import { backTarget, keptBack, withBack } from "@/lib/product-list";
+import { canPricing } from "@/lib/pricing-permissions";
 import { canManageFleet } from "@/lib/roles";
 import { humanizeKey } from "@/lib/vehicle-kinds";
 import { formatInstant } from "@/lib/shop-time";
@@ -30,6 +30,7 @@ import { DeleteProductButton } from "../delete-product";
 import { GeneralProductPage } from "../general-product";
 import { HistoryTab } from "../history-tab";
 import { MotoMangosTab } from "../moto-mangos-tab";
+import { PricingTab } from "../pricing-tab";
 import { OldAnchor } from "../old-anchor";
 import { ProductForm } from "../product-form";
 
@@ -40,12 +41,13 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const text = (value: number | null) => (value === null ? "" : String(value));
 
-const tabs = ["details", "units", "moto-mangos", "history"] as const;
+const tabs = ["details", "units", "pricing", "moto-mangos", "history"] as const;
 type Tab = (typeof tabs)[number];
 
 const tabLabel = {
   details: "tabs.details",
   units: "tabs.units",
+  pricing: "tabs.pricing",
   "moto-mangos": "tabs.motoMangos",
   history: "tabs.history",
 } as const;
@@ -55,6 +57,8 @@ const tabLabel = {
  * - Details: what it is and its settings, retire and delete (owners and
  *   managers);
  * - Units: its vehicles (everyone);
+ * - Pricing: how it is priced, its deposit and tax, "Check a price"
+ *   (owners and managers edit, staff read), §9.12;
  * - Moto Mangos: its list entry and listing (motorbikes only; owners and
  *   managers), §5.11;
  * - History: who changed what (owners and managers).
@@ -114,9 +118,13 @@ export default async function ProductPage({
   // Details, Moto Mangos and History are for those who set the shop up.
   // Moto Mangos lists motorbikes only (any of their categories).
   const motorbike = model.vehicle_type === "motorbike";
+  // Prices: owners and managers edit, staff read, mechanics and drivers
+  // see none (decision 12).
   const allowed: readonly Tab[] = manage
     ? tabs.filter((name) => name !== "moto-mangos" || motorbike)
-    : ["units"];
+    : canPricing(role, "read")
+      ? ["units", "pricing"]
+      : ["units"];
   const tab: Tab = (allowed as readonly string[]).includes(asked)
     ? (asked as Tab)
     : allowed[0];
@@ -212,7 +220,6 @@ export default async function ProductPage({
             units={units}
             catalog={catalog}
             timezone={tenant.timezone}
-            currency={tenant.currency}
             locale={locale}
           />
         </>
@@ -277,6 +284,16 @@ export default async function ProductPage({
         </div>
       )}
 
+      {tab === "pricing" && (
+        <PricingTab
+          slug={slug}
+          tenant={tenant}
+          role={role}
+          productId={model.id}
+          type="vehicle"
+        />
+      )}
+
       {tab === "moto-mangos" && (
         <MotoMangosTab
           slug={slug}
@@ -296,6 +313,7 @@ export default async function ProductPage({
           units={units.map((unit) => ({ id: unit.id, name: unit.plate }))}
           unitsAre="vehicles"
           timezone={tenant.timezone}
+          currency={tenant.currency}
           locale={locale}
         />
       )}
@@ -316,7 +334,6 @@ async function DetailsTab({
   units,
   catalog,
   timezone,
-  currency,
   locale,
 }: {
   slug: string;
@@ -324,7 +341,6 @@ async function DetailsTab({
   units: { id: string; status: string }[];
   catalog: Catalog;
   timezone: string;
-  currency: string;
   locale: string;
 }) {
   const t = await getTranslations("Fleet.model");
@@ -347,7 +363,6 @@ async function DetailsTab({
           // On a list entry, or waiting on one: its kind is the entry's.
           locked={!own}
           slug={slug}
-          currency={currency}
           values={{
             id: model.id,
             name: model.name,
@@ -355,10 +370,6 @@ async function DetailsTab({
             bookable_online: model.bookable_online,
             buffer_before_hours: minutesToHours(model.buffer_before_minutes),
             buffer_after_hours: minutesToHours(model.buffer_after_minutes),
-            deposit:
-              model.deposit === null
-                ? ""
-                : moneyInputValue(model.deposit, currency),
             min_age: text(model.min_age),
             licence_class: model.licence_class ?? "",
           }}

@@ -25,6 +25,7 @@ import {
   type GearState,
   type GeneralType,
 } from "@/lib/general-products";
+import { canPricing } from "@/lib/pricing-permissions";
 import { canManageFleet, type Role } from "@/lib/roles";
 import { dateInZone, formatInstant } from "@/lib/shop-time";
 import { cn } from "@/lib/utils";
@@ -33,8 +34,9 @@ import { DeleteProductButton } from "./delete-product";
 import { ProblemActions, QuantityStepper, ReportProblem } from "./gear-stock";
 import { GeneralForm, QuantityForm, UnitLabelForm } from "./general-forms";
 import { HistoryTab } from "./history-tab";
+import { PricingTab } from "./pricing-tab";
 
-const tabs = ["details", "stock", "history"] as const;
+const tabs = ["details", "stock", "pricing", "history"] as const;
 type Tab = (typeof tabs)[number];
 
 type GeneralProduct = {
@@ -58,6 +60,7 @@ type StockLines = Awaited<ReturnType<typeof getProductStock>>;
  *   "Report a problem" button and the "Out of service" list. Delete is last.
  * - Stock (everyone): one row per unit with its name or label and a status
  *   chip. Counted gear gets a hint about tracking each unit on its own.
+ * - Pricing (owners and managers edit, staff read), §9.12.
  * - History (owners and managers).
  * Who may do what is in lib/gear-permissions.
  *
@@ -76,7 +79,7 @@ export async function GeneralProductPage({
   backLink,
 }: {
   slug: string;
-  tenant: { id: string; timezone: string };
+  tenant: { id: string; timezone: string; currency: string };
   role: Role;
   product: GeneralProduct;
   /** The tab in the address. */
@@ -90,13 +93,16 @@ export async function GeneralProductPage({
   const manage = canManageFleet(role);
   const type = product.type as GeneralType;
   const stocked = hasStock(type);
+  // Prices (stage D5): owners and managers edit, staff read, mechanics and
+  // drivers see none (decision 12).
+  const prices: Tab[] = canPricing(role, "read") ? ["pricing"] : [];
   const allowed: Tab[] = manage
     ? tabs.filter((tab) => tab !== "stock" || stocked)
     : type === "gear"
-      ? ["details", "stock"]
+      ? ["details", "stock", ...prices]
       : stocked
-        ? ["stock"]
-        : [];
+        ? ["stock", ...prices]
+        : prices;
   const tab: Tab | null = (allowed as string[]).includes(asked)
     ? (asked as Tab)
     : (allowed[0] ?? null);
@@ -234,6 +240,16 @@ export async function GeneralProductPage({
         />
       )}
 
+      {tab === "pricing" && (
+        <PricingTab
+          slug={slug}
+          tenant={tenant}
+          role={role}
+          productId={product.id}
+          type={type}
+        />
+      )}
+
       {tab === "history" && (
         <HistoryTab
           tenantId={tenant.id}
@@ -244,6 +260,7 @@ export async function GeneralProductPage({
           unitsAre="gear"
           trackedGear={tracked}
           timezone={tenant.timezone}
+          currency={tenant.currency}
           locale={locale}
         />
       )}

@@ -239,25 +239,7 @@ export async function getModel(tenantId: string, id: string) {
     ...asVehicle(model),
     marketplace_listed: enabled,
     ...counts,
-    deposit: await getProductDeposit(tenantId, id),
   };
-}
-
-/**
- * A product's own deposit, in minor units. Prices live in their own table
- * since stage D4 (platform.product_pricing), which mechanics and drivers
- * can't read: for them this is null, like a product with none.
- */
-export async function getProductDeposit(tenantId: string, productId: string) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("product_pricing")
-    .select("deposit")
-    .eq("tenant_id", tenantId)
-    .eq("product_id", productId)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.deposit ?? null;
 }
 
 export async function getUnit(tenantId: string, id: string) {

@@ -18,18 +18,17 @@ export type ProductFormValues = {
   /** In hours, as typed ("0.5"); stored in minutes. */
   buffer_before_hours: string;
   buffer_after_hours: string;
-  deposit: string;
   min_age: string;
   licence_class: string;
 };
 
 /**
  * Add or edit a make & model (SPEC › Fleet). What it is comes first (kind,
- * make and model, category); booking modes show once it exists.
+ * make and model, category); booking modes show once it exists. Its prices
+ * and deposit are on the Pricing tab (stage D5).
  */
 export function ProductForm({
   slug,
-  currency,
   values,
   what,
   locked,
@@ -37,7 +36,6 @@ export function ProductForm({
   focusName,
 }: {
   slug: string;
-  currency: string;
   values: ProductFormValues;
   what: WhatValues;
   /** On a Moto Mangos list entry, or waiting on one: its kind is the entry's. */
@@ -116,13 +114,6 @@ export function ProductForm({
           inputMode="decimal"
           maxLength={6}
           defaultValue={values.buffer_after_hours}
-        />
-        <TextInput
-          name="deposit"
-          label={t("deposit", { currency })}
-          help={t("depositHelp")}
-          inputMode="decimal"
-          defaultValue={values.deposit}
         />
         <TextInput
           name="min_age"

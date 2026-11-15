@@ -10,6 +10,7 @@ import {
   getModel,
 } from "@/lib/fleet-data";
 import { splitMakeModel } from "@/lib/known-models";
+import { getPricingInputs } from "@/lib/pricing-data";
 import { catalogChoices } from "@/lib/model-options";
 import { formatInstant } from "@/lib/shop-time";
 import { cn } from "@/lib/utils";
@@ -68,6 +69,12 @@ export async function MotoMangosTab({
       )
     : 0;
   const news = reviewNews(model, new Date());
+  // Open item 9 (a): a listed product with no price by rental length is
+  // never offered on Moto Mangos (from the switch-over, 3M). Said here now.
+  const pricing = await getPricingInputs(tenantId, [model.id]);
+  const noLengthPrice =
+    model.marketplace_listed &&
+    pricing.products[0]?.pricing_method !== "tiered";
   const own = !model.catalog_id;
   const active = units.filter((unit) => unit.status === "active").length;
   const usable = Boolean(approved) && !model.retired_at;
@@ -102,6 +109,15 @@ export async function MotoMangosTab({
       <p className="mt-1 mb-4 text-sm text-muted-foreground">
         {t("motoMangos.intro")}
       </p>
+
+      {noLengthPrice && (
+        <p
+          role="status"
+          className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+        >
+          {t("motoMangos.noPrice")}
+        </p>
+      )}
 
       {/* What Moto Mangos decided about its last request, until it is sent
         again or put on a list entry. */}
