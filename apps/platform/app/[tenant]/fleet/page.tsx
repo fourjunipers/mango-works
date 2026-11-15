@@ -431,7 +431,17 @@ export default async function FleetPage({
                       />
                     </span>
                     <span className={cell.mango}>
-                      <MangoStatus listing={listing} />
+                      <MangoStatus
+                        listing={listing}
+                        href={
+                          reordering
+                            ? undefined
+                            : withBack(
+                                `/${slug}/products/${row.id}?tab=moto-mangos`,
+                                here,
+                              )
+                        }
+                      />
                     </span>
                   </>
                 );

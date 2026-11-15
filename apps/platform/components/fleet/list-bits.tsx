@@ -74,9 +74,12 @@ export function RowTags({ labels }: { labels: string[] }) {
  */
 export async function MangoStatus({
   listing,
+  href,
 }: {
   /** Null: not a motorbike, or not this person's business. */
   listing: ListingStatus | null;
+  /** The product's Moto Mangos tab: the mango opens it. */
+  href?: string;
 }) {
   const mango = mangoFor(listing);
   if (!mango) return null;
@@ -84,7 +87,7 @@ export async function MangoStatus({
   const label = t(mango.label);
   const src = (size: number) =>
     `/brand/moto-mangos-mango-${mango.image}-${size}.png`;
-  return (
+  const picture = (
     <span
       role="img"
       aria-label={label}
@@ -111,6 +114,19 @@ export async function MangoStatus({
         />
       )}
     </span>
+  );
+  if (!href) return picture;
+  // A 44 px target around the 24 px picture; the picture's name is the link's.
+  return (
+    <Link
+      href={href}
+      // ListReturn adds the opened lines to ?back= on a plain click.
+      data-return
+      data-mango-link
+      className="-m-2.5 inline-flex size-11 items-center justify-center rounded-md outline-none hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {picture}
+    </Link>
   );
 }
 
