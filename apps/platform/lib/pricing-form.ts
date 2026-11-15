@@ -512,6 +512,18 @@ export function taxChoice(row: {
   return row.tax_profile_id ?? "default";
 }
 
+/**
+ * Whether a product's own deposit is asked for: a vehicle, in a shop whose
+ * deposit choice (Settings › Pricing and tax) is "per product". With no
+ * settings row the shop takes no deposit, the same as "none".
+ */
+export function asksProductDeposit(
+  type: ProductType,
+  mode: string | null | undefined,
+): boolean {
+  return type === "vehicle" && mode === "per_product";
+}
+
 /** A list's name: trimmed, 1 to 120 characters (as the database holds it). */
 export function listNameError(name: string): string | null {
   const trimmed = name.trim();

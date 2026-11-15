@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { FormState } from "@/components/action-form";
 import {
   MULTIPLIER_STEP,
+  asksProductDeposit,
   computeList,
   daysPayload,
   listNameError,
@@ -147,8 +148,7 @@ export async function saveProductPricing(
   if (!product.data) return notAllowed;
   const type = product.data.type as ProductType;
   const mode = settings.data?.deposit_mode ?? null;
-  const showDeposit =
-    type === "vehicle" && (mode === null || mode === "per_product");
+  const showDeposit = asksProductDeposit(type, mode);
   const result = pricingPayload(draft, {
     type,
     currency: tenant.currency,
@@ -170,15 +170,6 @@ export async function saveProductPricing(
   });
   if (error) return { errors: { form: await pricingErrorKey(error) } };
 
-  const deposit = result.payload.deposit;
-  if (showDeposit && mode === null && deposit && deposit !== "0") {
-    const { error: modeError } = await supabase.rpc("save_pricing_settings", {
-      p_tenant_id: tenant.id,
-      p_settings: { deposit_mode: "per_product" },
-    });
-    if (modeError)
-      return { errors: { form: await pricingErrorKey(modeError) } };
-  }
   refresh(slug);
   return { ok: true };
 }

@@ -8,6 +8,7 @@ import { Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { formatMinor, multiplierText, parseMinorUnits } from "@/lib/money";
 import {
+  asksProductDeposit,
   boxDay,
   boxes,
   computeList,
@@ -30,7 +31,6 @@ import { percentLabel, seasonDates } from "@/lib/seasons";
 import { adjustmentParts } from "@mango/core/season";
 import {
   draftRow,
-  previewInputs,
   previewQuote,
   sampleSpan,
   type SharedList,
@@ -98,8 +98,7 @@ export function PricingForm({
     formatMinor(value, currency, locale);
 
   const isVehicle = type === "vehicle";
-  const showDeposit =
-    isVehicle && (deposit.mode === null || deposit.mode === "per_product");
+  const showDeposit = asksProductDeposit(type, deposit.mode);
   const ctx: PricingContext = {
     type,
     currency,
@@ -271,13 +270,11 @@ export function PricingForm({
                   id="deposit"
                   label={t("deposit.amount", { currency })}
                   help={
-                    deposit.mode === "per_product" && deposit.amount
+                    deposit.amount
                       ? t("deposit.shopAmount", {
                           amount: money(deposit.amount),
                         })
-                      : deposit.mode === null
-                        ? t("deposit.firstHelp")
-                        : t("deposit.help")
+                      : t("deposit.help")
                   }
                   value={draft.deposit}
                   onChange={(value) => set({ deposit: value })}
@@ -293,6 +290,17 @@ export function PricingForm({
                           amount: money(deposit.amount ?? "0"),
                         })
                       : t("deposit.none")}
+                  {canEdit && (
+                    <>
+                      {" "}
+                      <Link
+                        href={`/${slug}/settings/pricing`}
+                        className="underline underline-offset-2"
+                      >
+                        {t("deposit.change")}
+                      </Link>
+                    </>
+                  )}
                 </p>
               )}
             </Card>
@@ -873,7 +881,7 @@ function CheckPrice({
     defaultId: defaultTaxId,
   });
   const result = span
-    ? previewQuote(previewInputs(inputs, draft, ctx), row, {
+    ? previewQuote(inputs, row, {
         ...span,
         quantity: Number(quantity),
         timeZone,

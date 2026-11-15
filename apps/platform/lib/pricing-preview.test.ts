@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  asksProductDeposit,
   emptyBoxes,
   type PricingContext,
   type PricingDraft,
@@ -7,7 +8,6 @@ import {
 import type { PricingInputs } from "./pricing-inputs";
 import {
   draftRow,
-  previewInputs,
   previewQuote,
   priceSummary,
   sampleSpan,
@@ -124,58 +124,67 @@ describe("Check a price: the form priced by quote()", () => {
     expect(quote.deposit.amount).toBe(n(1000000));
   });
 
-  it("a shop with no settings row: the deposit typed is the deposit Save will give", () => {
-    // No pricing settings saved yet: the shop takes no deposit, until the
-    // save of its first product deposit sets it to "per product".
-    const none: PricingInputs = { settings: null, products: [], seasons: [] };
-    const typed = draft({ deposit: "2000" });
-    const row = draftRow("p", typed, ctx, [], tax);
+  describe("the deposit Check a price shows is the one Save gives, in every mode", () => {
     const sample = {
       ...span("2027-01-01T10:00", 45),
       quantity: 2,
       timeZone: zone,
     };
-    const quote = previewQuote(previewInputs(none, typed, ctx), row, sample);
-    expect(quote?.ok).toBe(true);
-    if (!quote?.ok) return;
-    // A month and 14 days: 2 × (฿3,000 + 14 × ฿100), and 2 × ฿2,000.
-    expect(quote.totals.total).toBe(n(880000));
-    expect(quote.deposit.amount).toBe(n(400000));
-    // The settings row's defaults otherwise: tax included, no coupons.
-    expect(previewInputs(none, typed, ctx).settings).toMatchObject({
-      currency: "THB",
-      deposit_mode: "per_product",
-      deposit_amount: null,
-      tax_inclusive: true,
-      coupons_enabled: false,
+    const withMode = (
+      change: Partial<NonNullable<PricingInputs["settings"]>> | null,
+    ): PricingInputs => ({
+      ...inputs,
+      settings: change === null ? null : { ...inputs.settings!, ...change },
     });
-
-    // Nothing typed, or 0 ("no deposit for this one"): Save sets nothing.
-    for (const deposit of ["", "0", "abc"]) {
-      const d = draft({ deposit });
-      expect(previewInputs(none, d, ctx)).toBe(none);
+    // What the tab and the action both do: the field is asked for only on
+    // "per product" (asksProductDeposit), and the row carries it only then.
+    const priced = (shop: PricingInputs, deposit: string) => {
+      const mode = shop.settings?.deposit_mode ?? null;
+      const c = { ...ctx, showDeposit: asksProductDeposit("vehicle", mode) };
       const q = previewQuote(
-        previewInputs(none, d, ctx),
-        draftRow("p", d, ctx, [], tax),
+        shop,
+        draftRow("p", draft({ deposit }), c, [], tax),
         sample,
       );
-      expect(q?.ok && q.deposit.amount).toBe(n(0));
-    }
-    // The deposit is not on the form (not a vehicle): nothing changes.
-    expect(previewInputs(none, typed, { ...ctx, showDeposit: false })).toBe(
-      none,
-    );
-    // A shop that has chosen keeps its choice.
-    expect(previewInputs(inputs, typed, ctx)).toBe(inputs);
-    const fixed: PricingInputs = {
-      ...inputs,
-      settings: {
-        ...inputs.settings!,
-        deposit_mode: "none",
-        deposit_amount: null,
-      },
+      return q?.ok ? q.deposit.amount : null;
     };
-    expect(previewInputs(fixed, typed, ctx)).toBe(fixed);
+
+    it("no settings row: no deposit, whatever was typed before", () => {
+      expect(asksProductDeposit("vehicle", null)).toBe(false);
+      expect(priced(withMode(null), "2000")).toBe(n(0));
+    });
+    it("none: a stored product deposit is kept but not charged", () => {
+      const none = withMode({ deposit_mode: "none", deposit_amount: null });
+      expect(priced(none, "2000")).toBe(n(0));
+    });
+    it("a percentage of the order: of the total after discounts, tax included", () => {
+      const percent = withMode({
+        deposit_mode: "percent_of_order",
+        deposit_percent_bp: 1000,
+        deposit_amount: null,
+      });
+      // 10% of 2 × (฿3,000 + 14 × ฿100) = ฿880.
+      expect(priced(percent, "2000")).toBe(n(88000));
+    });
+    it("a fixed amount per order, however many vehicles", () => {
+      const fixed = withMode({
+        deposit_mode: "fixed_per_order",
+        deposit_amount: "300000",
+      });
+      expect(priced(fixed, "2000")).toBe(n(300000));
+    });
+    it("per product: the vehicle's own, else the shop's amount, 0 for none", () => {
+      const perProduct = withMode({});
+      expect(priced(perProduct, "2500")).toBe(n(500000));
+      expect(priced(perProduct, "")).toBe(n(400000));
+      expect(priced(perProduct, "0")).toBe(n(0));
+      const noShopAmount = withMode({ deposit_amount: null });
+      expect(priced(noShopAmount, "")).toBe(n(0));
+    });
+    it("a general product is never asked for a deposit", () => {
+      expect(asksProductDeposit("gear", "per_product")).toBe(false);
+      expect(asksProductDeposit("service", "per_product")).toBe(false);
+    });
   });
 
   it("a shared multipliers list at this product's base price", () => {

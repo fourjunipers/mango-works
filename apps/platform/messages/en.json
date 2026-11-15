@@ -1169,10 +1169,10 @@
       "amount": "Deposit ({currency})",
       "help": "Taken per vehicle on an order. Blank: the shop's amount; 0: no deposit.",
       "shopAmount": "Blank uses the shop's amount: {amount}. 0: no deposit for this one.",
-      "firstHelp": "Taken per vehicle on an order. The shop's other deposit choices come with its pricing settings.",
       "none": "The shop takes no deposit.",
       "percent": "The shop takes {percent} of each order as a deposit.",
-      "fixed": "The shop takes {amount} per order as a deposit."
+      "fixed": "The shop takes {amount} per order as a deposit.",
+      "change": "Change in Settings"
     },
     "tax": {
       "title": "Tax",
