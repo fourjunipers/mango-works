@@ -13,6 +13,53 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Products, stage D1: price lists and months (branch `platform/products-stage-d1-price-lists`, 15 Nov 2026)
+
+The first build stage of pricing, of seven (`docs/products-redesign.md` §9.15; the design itself is PR 23). **`@mango/core` only: no migration, no screen, nothing in `apps/`.** Nothing calls the new functions yet; D2 (`quote()`) is the first caller.
+
+**What was built** (all pure functions, money as `bigint` minor units, no float, no currency named)
+
+- **`@mango/core/price-list`:** quick entry (hourly, daily, weekly, two weeks, three weeks, monthly) filled to the 30 days of a list at the shop's rounding step, each day marked entered, filled or edited by hand; "same price every day"; what stops a list being saved (30 days, every total above zero, no total lower than the day before, **equal neighbours allowed**); the two kinds of list, amounts and multipliers of a base price (a multiplier is a whole number of ten-thousandths; `base × multiplier` rounds half up to one minor unit).
+- **`@mango/core/rental-price`:** the list price of one unit for one rental, with how it was worked out. Flat fee per started hour, day, week or month; fixed price; free; and by rental length: under 24 hours with an hourly price, every started hour capped at the 1-day total; **30 days or fewer from the list; from 31 days, whole months at the monthly price plus leftover days at the product's long-stay daily rate** (monthly ÷ 30 when the product has none), leftover days never more than one more month.
+- **`@mango/core/rental-days`:** `rentalDays` takes the location's time zone (a day is then 24 hours on the clock there, so a night when the clocks change is one day) and a charge-rules argument that accepts only "no rules" until they are built. New: `rentalHours`, `isUnderOneDay`, `rentalMonths` (date to date from the pickup date; a month without the date uses its last day and the anchor does not drift).
+- **`@mango/core/zoned`:** wall-clock time in any time zone through `Intl`, no fixed offset, no new dependency.
+- **The marketplace's fill is unchanged to the baht.** `fillDays` now does its arithmetic through the platform's function with whole baht and a step of 10; its existing tests pass untouched, and a new test fills every published BSR price set both ways and compares.
+
+**The owner's figures, pinned by tests** (list 300–3000, ฿100 a long-stay day, from 1 Jan 2027)
+
+| Rental | Price |
+| --- | --- |
+| 14 days | The list's two-week price |
+| 1 month + 14 days | ฿4,400: ฿1,400 for the 14 days |
+| 45 days | ฿4,400 |
+| 60 days | ฿6,100 (฿6,000 from 1 Jan 2028, a leap year: two months are then 60 days) |
+| A year, and month 13 | ฿36,000, and ฿3,000 |
+| 28, 29, 30 days from 1 Feb | The list's price for 28, 29, 30 days; never more |
+| 31 days from 1 Feb | ฿3,300 (a month and 3 days) |
+| Satang | 350–3500 at ฿116.66: a month + 14 days = ฿5,133.24. 400–4000 at ฿133.33: ฿5,866.62. ฿100 × 1.1666 = ฿116.66 exactly |
+
+The swap extras (฿300, ฿250, ฿550) are stage D3's.
+
+**Decided here, not specified by the owner** (say if any should change)
+
+- **A 31st day that starts before the first month is complete costs the monthly price.** In a 31-day month, a bike collected 1 Jan 10:00 and returned 31 Jan 12:00 has 31 started days but no whole month yet (that is 1 Feb 10:00). The month rule alone would charge 31 × the long-stay rate, which at a low rate is less than 30 days cost. It is charged the monthly price: not less than 30 days, not more than the month it is about to become.
+- **Days and months are counted on the wall clock at the location** when a time zone is given (the design's §3.1). Without one, `rentalDays` counts 24 elapsed hours as before, which is what the marketplace passes today; the two agree wherever there is no daylight saving.
+- **Hours are elapsed time** (every started 60 minutes), also across a clock change.
+- **A week is 7 started days; a flat-fee month is every started date-to-date month** (1 Jan to 2 Feb is two).
+- **A flat fee per day has no month rule:** 45 days is 45 × the fee. Only "by rental length" has months and a long-stay rate.
+- **The test lists are quick-entry fills, not BSR's real tiles**, which arrive before the last stage. The pinned figures depend only on BSR's 14-day and 30-day totals and extra-day amounts.
+- No `n` literals in the source (the apps compile these files at a lower language target); tests use them.
+
+**Tests**
+
+- Unit: 182 in `@mango/core` (111 before; 71 new in `price-list.test.ts`, `rental-price.test.ts`, `zoned.test.ts` and `rental-days.test.ts`), 202 on the marketplace and 228 on the platform, all passing. Typecheck and lint pass for every workspace.
+- Among the new ones: Honda Click 125i's 30 days worked by hand; every half-up boundary of the step and of a multiplier; a zero-decimal (JPY) and a three-decimal (KWD) currency; the list price for 1, 7 and 27 to 30 days from every start date over two years; the price never falling as days rise, across month ends, a leap year and both New York clock changes.
+- No database or browser tests: nothing they cover changed.
+
+**The two tax questions with Korn** (tax per line; credit notes for swap credits and refunds) do not touch this stage.
+
+**Next:** D2, `quote()`: seasons, the discount step and the coupons switch, tax, deposits.
+
 ## Products, stage D: pricing, design only (branch `platform/products-stage-d-pricing`, 15 Nov 2026)
 
 **No code and no migration on this branch.** The design is `docs/products-redesign.md` §9, written from `main` at `dc4d8ee` and **approved by the owner on 15 Nov 2026 (decision 26)**. The build follows in the stages of §9.15, one PR each, starting with D1 (price lists and months, `@mango/core` only).
@@ -1047,7 +1094,7 @@ Marketplace paths are relative to `apps/marketplace/`. Line numbers are as of th
 | `packages/core/src/money.ts:7-22` | `SATANG_PER_BAHT = 100`, `bahtToSatang`, `satangToBaht`: THB only, not by ISO 4217 exponent | P2 |
 | `packages/core/src/money.ts:25-32` | `formatBaht`: `฿` symbol and `en-US` grouping, not by currency and locale | P2 |
 | `packages/core/src/money.ts:34-37` | `assertWholeBaht`: whole major units only | P2 |
-| `packages/core/src/pricing.ts:13,42,159` | Day tables require whole baht (`assertWholeBaht`) | P2 |
+| `packages/core/src/pricing.ts` | Day tables require whole baht (`assertWholeBaht`) and a ฿10 step. Since stage D1 the arithmetic is the currency-neutral one in `price-list.ts`; only the marketplace's wrapper keeps baht, until 3M | 3M |
 | `packages/core/src/pricing.ts:61,79` | Autofill rounds to the nearest ฿10, a THB-sized step | P2 |
 
 ### apps/marketplace

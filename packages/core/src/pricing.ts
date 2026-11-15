@@ -11,6 +11,7 @@
  */
 
 import { assertWholeBaht } from "./money";
+import { extrapolateToStep, interpolateToStep } from "./price-list";
 
 export const ANCHOR_DAYS = [1, 7, 14, 21, 30] as const;
 export type AnchorDay = (typeof ANCHOR_DAYS)[number];
@@ -57,9 +58,13 @@ function setAnchors(anchors: Anchors): Array<[AnchorDay, number]> {
   return set;
 }
 
+/** The marketplace's rounding step: ฿10, in its whole-baht amounts. */
+const BAHT_STEP = BigInt(10);
+
 /**
  * a + (b − a) × (d − da) ÷ (db − da), rounded to the nearest ฿10 (halves round
- * up). Integer arithmetic only, so there are no floating-point surprises.
+ * up). The arithmetic is the platform's (`price-list.ts`), so both fill the
+ * same way; only the unit (whole baht) and the step (10) are the marketplace's.
  */
 function interpolate(
   da: number,
@@ -68,9 +73,7 @@ function interpolate(
   b: number,
   d: number,
 ): number {
-  const span = db - da;
-  const numerator = a * span + (b - a) * (d - da);
-  return Math.floor((numerator + 5 * span) / (10 * span)) * 10;
+  return Number(interpolateToStep(da, BigInt(a), db, BigInt(b), d, BAHT_STEP));
 }
 
 /**
@@ -79,8 +82,7 @@ function interpolate(
  * rounded to the nearest ฿10 like the rest of the fill.
  */
 function extrapolate(dl: number, last: number, d: number): number {
-  if (dl === 1) return last * d;
-  return Math.floor((last * d + 5 * dl) / (10 * dl)) * 10;
+  return Number(extrapolateToStep(dl, BigInt(last), d, BAHT_STEP));
 }
 
 /**
