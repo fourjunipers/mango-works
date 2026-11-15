@@ -157,6 +157,148 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"price_rule_products": {
+                  Row: {
+                    "product_id": string,"rule_id": string,"tenant_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "product_id": string,"rule_id": string,"tenant_id": string
+                  }
+                  Update: {
+                    "product_id"?: string,"rule_id"?: string,"tenant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "price_rule_products_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "price_rule_products_tenant_id_product_id_fkey"
+      columns: ["tenant_id","product_id"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "price_rule_products_tenant_id_rule_id_fkey"
+      columns: ["tenant_id","rule_id"]
+isOneToOne: false
+      referencedRelation: "price_rules"
+      referencedColumns: ["tenant_id","id"]
+    }
+                  ]
+                },"price_rules": {
+                  Row: {
+                    "active": boolean,"adjust_bp": number,"all_products": boolean,"created_at": string,"ends_on": string,"id": string,"name": string,"repeats_yearly": boolean,"starts_on": string,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"adjust_bp": number,"all_products"?: boolean,"created_at"?: string,"ends_on": string,"id"?: string,"name": string,"repeats_yearly"?: boolean,"starts_on": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"adjust_bp"?: number,"all_products"?: boolean,"created_at"?: string,"ends_on"?: string,"id"?: string,"name"?: string,"repeats_yearly"?: boolean,"starts_on"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "price_rules_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"price_template_days": {
+                  Row: {
+                    "day": number,"source": string,"template_id": string,"tenant_id": string,"value": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "day": number,"source": string,"template_id": string,"tenant_id": string,"value": number
+                  }
+                  Update: {
+                    "day"?: number,"source"?: string,"template_id"?: string,"tenant_id"?: string,"value"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "price_template_days_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "price_template_days_tenant_id_template_id_fkey"
+      columns: ["tenant_id","template_id"]
+isOneToOne: false
+      referencedRelation: "price_templates"
+      referencedColumns: ["tenant_id","id"]
+    }
+                  ]
+                },"price_templates": {
+                  Row: {
+                    "created_at": string,"currency": string,"hourly": number | null,"id": string,"kind": string,"name": string,"product_id": string | null,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"currency": string,"hourly"?: number | null,"id"?: string,"kind": string,"name": string,"product_id"?: string | null,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"currency"?: string,"hourly"?: number | null,"id"?: string,"kind"?: string,"name"?: string,"product_id"?: string | null,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "price_templates_tenant_id_currency_fkey"
+      columns: ["tenant_id","currency"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id","currency"]
+    },{
+      foreignKeyName: "price_templates_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "price_templates_tenant_id_product_id_fkey"
+      columns: ["tenant_id","product_id"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id"]
+    }
+                  ]
+                },"pricing_settings": {
+                  Row: {
+                    "coupons_enabled": boolean,"created_at": string,"currency": string,"default_tax_profile_id": string | null,"deposit_amount": number | null,"deposit_mode": string,"deposit_percent_bp": number | null,"rounding_step": number | null,"tax_inclusive": boolean,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "coupons_enabled"?: boolean,"created_at"?: string,"currency": string,"default_tax_profile_id"?: string | null,"deposit_amount"?: number | null,"deposit_mode"?: string,"deposit_percent_bp"?: number | null,"rounding_step"?: number | null,"tax_inclusive"?: boolean,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "coupons_enabled"?: boolean,"created_at"?: string,"currency"?: string,"default_tax_profile_id"?: string | null,"deposit_amount"?: number | null,"deposit_mode"?: string,"deposit_percent_bp"?: number | null,"rounding_step"?: number | null,"tax_inclusive"?: boolean,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "pricing_settings_tenant_id_currency_fkey"
+      columns: ["tenant_id","currency"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id","currency"]
+    },{
+      foreignKeyName: "pricing_settings_tenant_id_default_tax_profile_id_fkey"
+      columns: ["tenant_id","default_tax_profile_id"]
+isOneToOne: false
+      referencedRelation: "tax_profiles"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "pricing_settings_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: true
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"product_listings": {
                   Row: {
                     "created_at": string,"enabled": boolean,"instant_units": number,"lead_time_hours": number | null,"product_id": string,"product_type": string,"ready_now": number,"ready_updated_at": string | null,"request_units": number,"tenant_id": string,"updated_at": string
@@ -181,6 +323,50 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "products"
       referencedColumns: ["tenant_id","id","type"]
+    }
+                  ]
+                },"product_pricing": {
+                  Row: {
+                    "base_amount": number | null,"created_at": string,"currency": string,"deposit": number | null,"long_stay_day": number | null,"price_amount": number | null,"price_period": string | null,"price_template_id": string | null,"pricing_method": string | null,"product_id": string,"product_type": string,"replacement_price": number | null,"tax_profile_id": string | null,"taxable": boolean,"template_kind": string | null,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "base_amount"?: number | null,"created_at"?: string,"currency": string,"deposit"?: number | null,"long_stay_day"?: number | null,"price_amount"?: number | null,"price_period"?: string | null,"price_template_id"?: string | null,"pricing_method"?: string | null,"product_id": string,"product_type": string,"replacement_price"?: number | null,"tax_profile_id"?: string | null,"taxable"?: boolean,"template_kind"?: string | null,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "base_amount"?: number | null,"created_at"?: string,"currency"?: string,"deposit"?: number | null,"long_stay_day"?: number | null,"price_amount"?: number | null,"price_period"?: string | null,"price_template_id"?: string | null,"pricing_method"?: string | null,"product_id"?: string,"product_type"?: string,"replacement_price"?: number | null,"tax_profile_id"?: string | null,"taxable"?: boolean,"template_kind"?: string | null,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "product_pricing_tenant_id_currency_fkey"
+      columns: ["tenant_id","currency"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id","currency"]
+    },{
+      foreignKeyName: "product_pricing_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "product_pricing_tenant_id_price_template_id_template_kind_fkey"
+      columns: ["tenant_id","price_template_id","template_kind"]
+isOneToOne: false
+      referencedRelation: "price_templates"
+      referencedColumns: ["tenant_id","id","kind"]
+    },{
+      foreignKeyName: "product_pricing_tenant_id_product_id_product_type_fkey"
+      columns: ["tenant_id","product_id","product_type"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id","type"]
+    },{
+      foreignKeyName: "product_pricing_tenant_id_tax_profile_id_fkey"
+      columns: ["tenant_id","tax_profile_id"]
+isOneToOne: false
+      referencedRelation: "tax_profiles"
+      referencedColumns: ["tenant_id","id"]
     }
                   ]
                 },"product_year_bands": {
@@ -211,23 +397,17 @@ isOneToOne: false
                   ]
                 },"products": {
                   Row: {
-                    "bookable_online": boolean,"buffer_after_minutes": number | null,"buffer_before_minutes": number | null,"catalog_approved_at": string | null,"catalog_id": string | null,"catalog_reject_reason": string | null,"catalog_rejected_at": string | null,"categories": (string)[],"cc": number | null,"created_at": string,"deposit": number | null,"deposit_currency": string | null,"description": string | null,"id": string,"licence_class": string | null,"make": string | null,"min_age": number | null,"model": string | null,"name": string,"photos": (string)[],"retired_at": string | null,"sort_position": number | null,"tenant_id": string,"tracking": string,"transmission": Database["public"]['Enums']["transmission"] | null,"type": string,"updated_at": string,"vehicle_type": string | null
+                    "bookable_online": boolean,"buffer_after_minutes": number | null,"buffer_before_minutes": number | null,"catalog_approved_at": string | null,"catalog_id": string | null,"catalog_reject_reason": string | null,"catalog_rejected_at": string | null,"categories": (string)[],"cc": number | null,"created_at": string,"description": string | null,"id": string,"licence_class": string | null,"make": string | null,"min_age": number | null,"model": string | null,"name": string,"photos": (string)[],"retired_at": string | null,"sort_position": number | null,"tenant_id": string,"tracking": string,"transmission": Database["public"]['Enums']["transmission"] | null,"type": string,"updated_at": string,"vehicle_type": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"deposit"?: number | null,"deposit_currency"?: string | null,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"model"?: string | null,"name": string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id": string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
+                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"model"?: string | null,"name": string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id": string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
                   }
                   Update: {
-                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"deposit"?: number | null,"deposit_currency"?: string | null,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"model"?: string | null,"name"?: string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id"?: string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
+                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"model"?: string | null,"name"?: string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id"?: string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
                   }
                   Relationships: [
                     {
-      foreignKeyName: "products_tenant_id_deposit_currency_fkey"
-      columns: ["tenant_id","deposit_currency"]
-isOneToOne: false
-      referencedRelation: "tenants"
-      referencedColumns: ["id","currency"]
-    },{
       foreignKeyName: "products_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
@@ -265,6 +445,26 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "products"
       referencedColumns: ["tenant_id","id","type"]
+    }
+                  ]
+                },"tax_profiles": {
+                  Row: {
+                    "archived_at": string | null,"created_at": string,"id": string,"name": string,"rate_bp": number,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "archived_at"?: string | null,"created_at"?: string,"id"?: string,"name": string,"rate_bp": number,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "archived_at"?: string | null,"created_at"?: string,"id"?: string,"name"?: string,"rate_bp"?: number,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "tax_profiles_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
     }
                   ]
                 },"tenants": {
@@ -452,6 +652,9 @@ isOneToOne: false
 "currency_locked":
 { Args: { "p_tenant_id": string }; Returns: boolean
                            },
+"delete_price_template":
+{ Args: { "p_template_id": string }; Returns: undefined
+                           },
 "disconnect_listing":
 { Args: { "p_product_id": string }; Returns: Json
                            },
@@ -481,6 +684,9 @@ isOneToOne: false
               "anon_usage": boolean,"default_grantees": (string)[]
             }[]
                            },
+"pricing_inputs":
+{ Args: { "p_product_ids": (string)[],"p_tenant_id": string }; Returns: Json
+                           },
 "product_stock":
 { Args: { "p_tenant_id": string }; Returns: {
               "available": number,"in_repair": number,"in_stock": number,"location_id": string,"lost": number,"product_id": string
@@ -506,6 +712,21 @@ isOneToOne: false
                            },
 "save_listing":
 { Args: { "p_product_id": string,"p_settings": Json }; Returns: Json
+                           },
+"save_price_rule":
+{ Args: { "p_rule": Json,"p_tenant_id": string }; Returns: string
+                           },
+"save_price_template":
+{ Args: { "p_template": Json,"p_tenant_id": string }; Returns: string
+                           },
+"save_pricing_settings":
+{ Args: { "p_settings": Json,"p_tenant_id": string }; Returns: Json
+                           },
+"save_product_pricing":
+{ Args: { "p_product_id": string,"p_settings": Json }; Returns: Json
+                           },
+"save_tax_profile":
+{ Args: { "p_profile": Json,"p_tenant_id": string }; Returns: string
                            },
 "set_member_role":
 { Args: { "p_membership_id": string,"p_role": Database["platform"]['Enums']["platform_role"] }; Returns: undefined

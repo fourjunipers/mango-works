@@ -610,55 +610,63 @@ describe("money", () => {
   });
 
   it("a deposit locks it too, and amounts are whole minor units", async () => {
-    const withDeposit = await service
-      .from("products")
-      .insert({
-        tenant_id: shop.id,
-        catalog_id: catalogId,
-        ...modelSpec,
-        name: "Deposit",
-        deposit: 200_000,
-        deposit_currency: "THB",
-      })
-      .select("deposit")
-      .single();
-    expect(withDeposit.data).toEqual({ deposit: 200_000 });
+    // The deposit lives in platform.product_pricing since stage D4, written
+    // through platform.save_product_pricing().
+    const product = async (name: string) => {
+      const { data, error } = await service
+        .from("products")
+        .insert({
+          tenant_id: shop.id,
+          catalog_id: catalogId,
+          ...modelSpec,
+          name,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return data.id;
+    };
+    const setDeposit = (id: string, deposit: unknown) =>
+      shop.members.owner.db.rpc("save_product_pricing", {
+        p_product_id: id,
+        p_settings: { deposit } as never,
+      });
+    const stored = async (id: string) =>
+      (
+        await service
+          .from("product_pricing")
+          .select("deposit, currency")
+          .eq("product_id", id)
+          .single()
+      ).data;
+
+    const withDeposit = await product("Deposit");
+    expect((await setDeposit(withDeposit, 200_000)).error).toBeNull();
+    // It is stored with the shop's currency, never one that was sent.
+    expect(await stored(withDeposit)).toEqual({
+      deposit: 200_000,
+      currency: "THB",
+    });
     const change = await service
       .from("tenants")
       .update({ currency: "USD" })
       .eq("id", shop.id);
     expect(change.error?.message).toBe("currency_locked");
-    const noCurrency = await service.from("products").insert({
+    // A row in another currency than the shop's is refused by the key.
+    const wrongCurrency = await service.from("product_pricing").insert({
       tenant_id: shop.id,
-      catalog_id: catalogId,
-      ...modelSpec,
-      name: "No currency",
+      product_id: await product("Wrong currency"),
+      product_type: "vehicle",
+      currency: "USD",
       deposit: 100,
     });
-    expect(noCurrency.error?.code).toBe("23514");
-    const fraction = await service.from("products").insert({
-      tenant_id: shop.id,
-      catalog_id: catalogId,
-      ...modelSpec,
-      name: "Fraction",
-      deposit: 100.5 as number,
-      deposit_currency: "THB",
-    });
-    expect(fraction.error).not.toBeNull();
+    expect(wrongCurrency.error?.code).toBe("23503");
+    const fraction = await setDeposit(await product("Fraction"), 100.5);
+    expect(fraction.error?.message).toBe("invalid_pricing");
     // Far past 32 bits: bigint.
-    const big = await service
-      .from("products")
-      .insert({
-        tenant_id: shop.id,
-        catalog_id: catalogId,
-        ...modelSpec,
-        name: "Big",
-        deposit: 9_000_000_000_000,
-        deposit_currency: "THB",
-      })
-      .select("deposit")
-      .single();
-    expect(big.data).toEqual({ deposit: 9_000_000_000_000 });
+    const big = await product("Big");
+    expect((await setDeposit(big, 9_000_000_000_000)).error).toBeNull();
+    expect((await stored(big))?.deposit).toBe(9_000_000_000_000);
   });
 });
 

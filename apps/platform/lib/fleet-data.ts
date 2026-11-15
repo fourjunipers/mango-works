@@ -225,7 +225,7 @@ export async function getModel(tenantId: string, id: string) {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, type, catalog_id, make, model, vehicle_type, cc, transmission, description, bookable_online, buffer_before_minutes, buffer_after_minutes, deposit, min_age, licence_class, categories, catalog_rejected_at, catalog_reject_reason, catalog_approved_at, retired_at, product_listings(enabled, instant_units, request_units, ready_now, lead_time_hours)",
+      "id, name, type, catalog_id, make, model, vehicle_type, cc, transmission, description, bookable_online, buffer_before_minutes, buffer_after_minutes, min_age, licence_class, categories, catalog_rejected_at, catalog_reject_reason, catalog_approved_at, retired_at, product_listings(enabled, instant_units, request_units, ready_now, lead_time_hours)",
     )
     .eq("tenant_id", tenantId)
     .eq("id", id)
@@ -235,7 +235,29 @@ export async function getModel(tenantId: string, id: string) {
   if (!data) return null;
   const { product_listings: listing, ...model } = data;
   const { enabled, ...counts } = listingOf(listing);
-  return { ...asVehicle(model), marketplace_listed: enabled, ...counts };
+  return {
+    ...asVehicle(model),
+    marketplace_listed: enabled,
+    ...counts,
+    deposit: await getProductDeposit(tenantId, id),
+  };
+}
+
+/**
+ * A product's own deposit, in minor units. Prices live in their own table
+ * since stage D4 (platform.product_pricing), which mechanics and drivers
+ * can't read: for them this is null, like a product with none.
+ */
+export async function getProductDeposit(tenantId: string, productId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("product_pricing")
+    .select("deposit")
+    .eq("tenant_id", tenantId)
+    .eq("product_id", productId)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.deposit ?? null;
 }
 
 export async function getUnit(tenantId: string, id: string) {
@@ -385,8 +407,9 @@ export async function getProductHistory(
       .from("audit_events")
       .select(columns)
       .eq("tenant_id", tenantId)
-      // Its Moto Mangos listing's rows are part of the product's story.
-      .in("entity", ["products", "product_listings"])
+      // Its Moto Mangos listing's rows and its pricing's are part of the
+      // product's story.
+      .in("entity", ["products", "product_listings", "product_pricing"])
       .eq("entity_id", productId)
       .order("at", { ascending: false })
       .limit(limit),

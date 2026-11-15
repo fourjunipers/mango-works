@@ -13,8 +13,12 @@
 
 export const LIST_DAYS = 30;
 
-/** A multiplier is a whole number of ten-thousandths: 1.1666 is 11666. */
-export const MULTIPLIER_SCALE = BigInt(10000);
+/**
+ * A multiplier is a whole number of millionths: 1.1666 is 1166600. Six
+ * decimal places (owner, 15 Nov 2026): BSR's Booqable lists need four, and
+ * six leaves room.
+ */
+export const MULTIPLIER_SCALE = BigInt(1000000);
 
 const ZERO = BigInt(0);
 const TWO = BigInt(2);
@@ -242,9 +246,9 @@ export type PriceList =
     }
   | {
       kind: "multipliers";
-      /** Multipliers for 1 to 30 days, in ten-thousandths. */
+      /** Multipliers for 1 to 30 days, in millionths. */
       days: readonly bigint[];
-      /** The hourly multiplier, in ten-thousandths. */
+      /** The hourly multiplier, in millionths. */
       hourly?: bigint | null;
     };
 

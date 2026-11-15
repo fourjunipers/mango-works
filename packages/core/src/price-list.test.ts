@@ -275,24 +275,32 @@ describe("listProblems", () => {
 
 describe("multipliers of a base price", () => {
   it("keeps Booqable's satang exactly (฿100 × 1.1666 = ฿116.66)", () => {
-    expect(applyMultiplier(thb("100"), 11666n)).toBe(thb("116.66"));
-    expect(applyMultiplier(thb("100"), 13333n)).toBe(thb("133.33"));
-    expect(applyMultiplier(thb("100"), 18000n)).toBe(thb("180"));
-    expect(applyMultiplier(thb("100"), 10000n)).toBe(thb("100"));
+    expect(applyMultiplier(thb("100"), 1166600n)).toBe(thb("116.66"));
+    expect(applyMultiplier(thb("100"), 1333300n)).toBe(thb("133.33"));
+    expect(applyMultiplier(thb("100"), 1800000n)).toBe(thb("180"));
+    expect(applyMultiplier(thb("100"), 1000000n)).toBe(thb("100"));
   });
 
   it("rounds half up to one minor unit", () => {
-    expect(applyMultiplier(3n, 5000n)).toBe(2n); // 1.5
-    expect(applyMultiplier(1n, 14999n)).toBe(1n); // 1.4999
-    expect(applyMultiplier(1n, 15000n)).toBe(2n); // 1.5
-    expect(applyMultiplier(10001n, 11666n)).toBe(11667n); // 11,667.1666
-    expect(applyMultiplier(thb("110"), 11666n)).toBe(thb("128.33")); // 128.326
+    expect(applyMultiplier(3n, 500000n)).toBe(2n); // 1.5
+    expect(applyMultiplier(1n, 1499999n)).toBe(1n); // 1.499999
+    expect(applyMultiplier(1n, 1500000n)).toBe(2n); // 1.5
+    expect(applyMultiplier(10001n, 1166600n)).toBe(11667n); // 11,667.1666
+    expect(applyMultiplier(thb("110"), 1166600n)).toBe(thb("128.33")); // 128.326
+    // Six decimal places: ฿100 × 1.166666 = 116.6666 → ฿116.67;
+    // × 1.166649 = 116.6649 → ฿116.66.
+    expect(applyMultiplier(thb("100"), 1166666n)).toBe(thb("116.67"));
+    expect(applyMultiplier(thb("100"), 1166649n)).toBe(thb("116.66"));
+    expect(applyMultiplier(thb("100"), 1166650n)).toBe(thb("116.67"));
   });
 
-  // With a base of ฿100.00, a multiplier in ten-thousandths is the total in
+  // With a base of ฿100.00, a multiplier in millionths is 100 × the total in
   // satang: ×3.0000 is 30,000, and ฿300.00 is 30,000 satang.
   const amounts = totals(entryOf([350, 1500, 2500, 3000, 3500]));
-  const multipliers = { kind: "multipliers" as const, days: amounts };
+  const multipliers = {
+    kind: "multipliers" as const,
+    days: amounts.map((satang) => satang * 100n),
+  };
 
   it("gives the same totals as an amounts list at a base of ฿100", () => {
     expect(resolvePriceList(multipliers, thb("100")).days).toEqual(amounts);
@@ -311,7 +319,7 @@ describe("multipliers of a base price", () => {
 
   it("resolves an hourly multiplier, and none stays none", () => {
     expect(
-      resolvePriceList({ ...multipliers, hourly: 8000n }, thb("100")).hourly,
+      resolvePriceList({ ...multipliers, hourly: 800000n }, thb("100")).hourly,
     ).toBe(thb("80"));
     expect(resolvePriceList(multipliers, thb("100")).hourly).toBeNull();
   });
@@ -329,7 +337,7 @@ describe("multipliers of a base price", () => {
     // A base so small that a day rounds to nothing.
     expect(() =>
       resolvePriceList(
-        { kind: "multipliers", days: Array(30).fill(4999n) },
+        { kind: "multipliers", days: Array(30).fill(499999n) },
         1n,
       ),
     ).toThrow(/not_positive/);

@@ -35,6 +35,10 @@ type Fixture = TestTenant & {
   renewalId: string;
   /** An item for sale, for the stock ledger. */
   itemId: string;
+  /** Pricing (stage D4): a shared price list, a tax profile and a season. */
+  templateId: string;
+  taxProfileId: string;
+  ruleId: string;
 };
 
 let a: Fixture;
@@ -183,6 +187,77 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
       lead_time_hours: 12,
     }),
   );
+  // Pricing (stage D4): a tax profile, the shop's settings, a shared price
+  // list with its 30 days, the model priced from it, and a season naming it.
+  const taxProfile = ok(
+    await service
+      .from("tax_profiles")
+      .insert({ tenant_id: tenant.id, name: "Fixture VAT", rate_bp: 700 })
+      .select("id")
+      .single(),
+  )!;
+  ok(
+    await service.from("pricing_settings").insert({
+      tenant_id: tenant.id,
+      currency: tenant.currency,
+      default_tax_profile_id: taxProfile.id,
+    }),
+  );
+  const template = ok(
+    await service
+      .from("price_templates")
+      .insert({
+        tenant_id: tenant.id,
+        name: "Fixture list",
+        currency: tenant.currency,
+        kind: "amounts",
+      })
+      .select("id")
+      .single(),
+  )!;
+  ok(
+    await service.from("price_template_days").insert(
+      Array.from({ length: 30 }, (_, i) => ({
+        tenant_id: tenant.id,
+        template_id: template.id,
+        day: i + 1,
+        value: 1000 * (i + 1),
+        source: "manual",
+      })),
+    ),
+  );
+  ok(
+    await service.from("product_pricing").insert({
+      tenant_id: tenant.id,
+      product_id: model.id,
+      product_type: "vehicle",
+      currency: tenant.currency,
+      pricing_method: "tiered",
+      price_template_id: template.id,
+      template_kind: "amounts",
+      deposit: 100,
+    }),
+  );
+  const rule = ok(
+    await service
+      .from("price_rules")
+      .insert({
+        tenant_id: tenant.id,
+        name: "Fixture season",
+        starts_on: "2027-04-01",
+        ends_on: "2027-09-30",
+        adjust_bp: -2000,
+      })
+      .select("id")
+      .single(),
+  )!;
+  ok(
+    await service.from("price_rule_products").insert({
+      tenant_id: tenant.id,
+      rule_id: rule.id,
+      product_id: model.id,
+    }),
+  );
   // audit_events: written by the triggers on the rows above.
   return {
     ...tenant,
@@ -190,6 +265,9 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
     unitId: unit.id,
     renewalId: renewal.id,
     itemId: item.id,
+    templateId: template.id,
+    taxProfileId: taxProfile.id,
+    ruleId: rule.id,
   };
 }
 
@@ -285,6 +363,41 @@ const payloads: Record<string, (t: Fixture, userId: string) => Row> = {
     product_id: t.itemId,
     lead_time_hours: 1,
   }),
+  tax_profiles: (t) => ({ tenant_id: t.id, name: "Forged", rate_bp: 700 }),
+  pricing_settings: (t) => ({ tenant_id: t.id, currency: t.currency }),
+  price_templates: (t) => ({
+    tenant_id: t.id,
+    name: "Forged",
+    currency: t.currency,
+    kind: "amounts",
+  }),
+  price_template_days: (t) => ({
+    tenant_id: t.id,
+    template_id: t.templateId,
+    day: 1,
+    value: 1,
+    source: "manual",
+  }),
+  product_pricing: (t) => ({
+    tenant_id: t.id,
+    product_id: t.itemId,
+    product_type: "sale_item",
+    currency: t.currency,
+    pricing_method: "fixed",
+    price_amount: 1,
+  }),
+  price_rules: (t) => ({
+    tenant_id: t.id,
+    name: "Forged",
+    starts_on: "2027-01-01",
+    ends_on: "2027-01-31",
+    adjust_bp: -5000,
+  }),
+  price_rule_products: (t) => ({
+    tenant_id: t.id,
+    rule_id: t.ruleId,
+    product_id: t.itemId,
+  }),
   audit_events: (t) => ({
     tenant_id: t.id,
     entity: "units",
@@ -310,6 +423,13 @@ const changes: Record<string, Row> = {
   notification_outbox: { status: "cancelled" },
   stock_movements: { note: "Hijacked" },
   product_listings: { lead_time_hours: 99 },
+  tax_profiles: { rate_bp: 0 },
+  pricing_settings: { coupons_enabled: true },
+  price_templates: { name: "Hijacked" },
+  price_template_days: { value: 1 },
+  product_pricing: { deposit: 0 },
+  price_rules: { adjust_bp: -9999 },
+  price_rule_products: { rule_id: "00000000-0000-4000-8000-000000000000" },
   audit_events: { action: "hijacked" },
 };
 
@@ -364,10 +484,17 @@ describe("every tenant table", () => {
       "locations",
       "memberships",
       "notification_outbox",
+      "price_rule_products",
+      "price_rules",
+      "price_template_days",
+      "price_templates",
+      "pricing_settings",
       "product_listings",
+      "product_pricing",
       "product_year_bands",
       "products",
       "stock_movements",
+      "tax_profiles",
       "tenants",
       "unit_blocks",
       "unit_financials",
@@ -645,13 +772,59 @@ describe("a row can't point at another tenant's parent (service role, so this is
   });
 
   it("money → the tenant's own currency", async () => {
-    await refused("products", {
+    // The fixture shops use VND. Every table that holds an amount is keyed
+    // to the shop's own currency.
+    await refused("price_templates", {
       tenant_id: a.id,
-      catalog_id: catalogId,
-      ...modelSpec,
       name: "Wrong currency",
-      deposit: 100,
-      deposit_currency: "USD",
+      currency: "USD",
+      kind: "amounts",
+    });
+    await refused("product_pricing", {
+      tenant_id: a.id,
+      product_id: a.itemId,
+      product_type: "sale_item",
+      currency: "USD",
+    });
+  });
+
+  it("pricing → the shop's own price list, tax profile, season and products", async () => {
+    await refused("product_pricing", {
+      tenant_id: a.id,
+      product_id: a.itemId,
+      product_type: "sale_item",
+      currency: a.currency,
+      tax_profile_id: b.taxProfileId,
+    });
+    await refused("product_pricing", {
+      tenant_id: a.id,
+      product_id: b.itemId,
+      product_type: "sale_item",
+      currency: a.currency,
+    });
+    await refused("price_templates", {
+      tenant_id: a.id,
+      name: "Another shop's product",
+      currency: a.currency,
+      kind: "amounts",
+      product_id: b.modelId,
+    });
+    await refused("price_rule_products", {
+      tenant_id: a.id,
+      rule_id: b.ruleId,
+      product_id: a.modelId,
+    });
+    await refused("price_rule_products", {
+      tenant_id: a.id,
+      rule_id: a.ruleId,
+      product_id: b.modelId,
+    });
+    // A pricing row can't claim a type its product doesn't have.
+    await refused("product_pricing", {
+      tenant_id: a.id,
+      product_id: a.itemId,
+      product_type: "vehicle",
+      currency: a.currency,
     });
   });
 });

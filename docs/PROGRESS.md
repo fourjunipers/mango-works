@@ -13,6 +13,52 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
+
+The fourth build stage of pricing, of seven (`docs/products-redesign.md` §9.2, "As built in stage D4"; decision 29). **The first with a migration.** Nothing on any screen changes in this stage. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**Applied locally only.** The migration is not on staging and not on live. By the owner's instruction it goes to staging at the same time as the merge, and to live only from `main`, by the runbook. Staging stays at 58 of 58 and live at 53 of 53 until then; this makes 59.
+
+**What changed**
+
+- **One new migration, `20261115000100_platform_product_pricing`.** No earlier migration is touched.
+  - Seven tables: `pricing_settings`, `tax_profiles`, `price_templates`, `price_template_days`, `product_pricing`, `price_rules`, `price_rule_products`. RLS on; grants written on purpose (`service_role` too). Owners, managers and staff read; mechanics and drivers get no row; nobody signed in writes them directly.
+  - The save functions, each checking the caller with `platform_private.pricing_roles()`: `save_pricing_settings`, `save_tax_profile`, `save_price_template`, `delete_price_template`, `save_product_pricing`, `save_price_rule`.
+  - `platform.pricing_inputs()`: the one read that feeds `quote()`. It runs as the caller and does no arithmetic.
+  - Ways of pricing per product type as a check; a list kept complete (30 days, never lower than the day before, equal allowed) whoever writes it; composite tenant keys on every parent; `updated_at` and audit.
+  - **The deposit moved** from `products` to `product_pricing`; the two columns are dropped and `products_general_fields_check` is put back without them. A shop with deposits on products is set to "per product"; every other shop has no settings row ("none").
+  - The currency lock (`tenants_lock_currency`, `currency_locked`) counts any pricing row, price list or settings row. The only two functions whose bodies named the deposit (found in the database, not by reading migrations).
+- **`@mango/core`:** multipliers are millionths (six decimal places) where they were ten-thousandths.
+- **The app, as little as possible:** the deposit is still typed on the vehicle form and now saved through `save_product_pricing` (`saveDeposit` in `app/[tenant]/fleet/actions.ts`); `lib/fleet-data.ts` reads it from `product_pricing`; the History reads a product's pricing rows as its own, saying only the deposit until the Pricing tab words the rest. New: `lib/pricing-inputs.ts` (the database's rows to `quote()`'s input), `lib/pricing-permissions.ts` (the app's copy of who may read and write prices), and `@mango/core` as a dependency of the platform app.
+- **The guard against a second pricing path:** a lint rule in `apps/platform/eslint.config.mjs` refuses multiplying, dividing or taking a remainder of anything named as money; `lib/one-pricer.test.ts` tests the rule; a database test holds that no pricing function multiplies, divides or rounds; another prices real rows through `pricing_inputs`, the adapter and `quote()`.
+- **Types regenerated** (`packages/db/src/database.types.ts`). `docs/platform/MAPPING.md`: the deposit and price-table targets.
+
+**Decided here, not specified by the owner** (all in §9.2 "As built"; say if any should change)
+
+- **A product's own prices are saved with the product** (`save_product_pricing` with `own_list`), not through `save_price_template`, which is for shared lists only. This is what keeps the lock order: the product's row, then the list's, then the pricing row.
+- **The 30 days of a list and a season's product links are audited as one named event each** (`template_change`, `price_rule_change`), not row by row: the design said `audit_row` on all seven tables, which would write thirty rows for one save. The other five tables are audited row by row.
+- **`rounding_step` may be empty** (not chosen yet). The migration can't know a currency's sensible step, and the root rules forbid a constant; the app suggests one when a shop first sets prices.
+- **A shop's settings row is made on the first save**, and no row means no tax, no deposit and coupons off.
+- **A list's kind can't be changed once made; a tax profile is archived, never deleted; a season can be switched off or deleted.**
+- **Until the shop's settings have a screen (stage D6), a shop that enters its first product deposit is set to "per product"**, which is how every deposit worked before this stage. Without this, a deposit typed after the migration would do nothing until D6.
+- **Creating a product with a deposit is two steps** (the product, then its pricing). If the second fails the product just made is taken back, so the form can be sent again.
+- **The lint rule covers `apps/platform` only.** The marketplace keeps its whole-baht pricing until 3M.
+- **A settings row alone locks a shop's currency**, since its rounding step and deposit amount are in that currency. So does a price list with no product on it.
+- **This worktree has its own local database** (`Bike_Booking_stage_d4`, ports 5932x). The change to `supabase/config.toml` is local only (`git update-index --skip-worktree`), not committed.
+
+**The data move, on a local copy** (reset to the migration before, three shops added by hand, then this migration): 7 products, 4 with a deposit (฿2,000 and ฿5,000 in THB; ¥0 and ¥9,007,199,254,740,993 in JPY), one shop with none. After: 4 pricing rows, each with the same amount and currency, no other row; the two shops with deposits on "per product", the third with no settings row; product and audit counts unchanged.
+
+**Tests**
+
+- Database: 342 on the platform, all passing locally (294 before; 47 new in `product-pricing.test.ts`, 1 new in `tenant-isolation.test.ts`). Four older tests were changed in how they reach the deposit (`fleet.test.ts`, `products.test.ts`, `products-stage-b.test.ts`, `tenant-isolation.test.ts`); what they assert is the same, except that "a general product stores no deposit" is now `deposit_vehicles_only` from the function and `product_pricing_deposit_vehicle_check` from the table. The isolation harness has a fixture row, a forged row and a change to try for each of the seven tables.
+- `product-pricing.test.ts` holds: the role table (database and app compared); reads by role, by another shop, a stranger and a signed-out visitor; no direct writes, the owner included; every save function and what it refuses; ways of pricing per type, by the function and by the table; own and shared lists; six-decimal multipliers; equal neighbours allowed and a fall refused, by the function and by hand; the audit rows and named events with who did it; `pricing_inputs` by role, and a month priced through it at ฿3,000 with VAT ฿196.26; grants, RLS and search paths; no arithmetic in any pricing function; the currency lock; the lock order (a save waits for the product's row; while it is held no writer holds a lock on a pricing row or a list); five races (two saves of one list, twelve first saves of one product's pricing, a product moved to a list being deleted, twelve first saves of a shop's settings, a season saved while its product is deleted).
+- Unit: 244 on the platform (228 before: `lib/pricing-inputs.test.ts`, 12; `lib/one-pricer.test.ts`, 4), 284 in `@mango/core`, 202 on the marketplace. All passing. Typecheck and lint pass for every workspace.
+- Browser: `e2e/products-stage-d4.spec.ts` (a vehicle's deposit typed, kept, in the History, cleared), at 375 px and 1280 px. It and the two older product specs (`products.spec.ts`, `products-stage-b.spec.ts`) pass locally run one at a time: 15 passed, 1 skipped as on `main`. Run in parallel on this machine, beside five other local database stacks, seven timed out on page loads; none did one at a time. The rest of the browser suite was left to CI.
+
+**For Phase 3, noted:** an invoice must keep its own copy of each rate, profile name and tax style it was worked out with; `pricing_inputs` gives today's.
+
+**Next:** D5, the Pricing tab: the tab, "Check a price", the Products list's price column, History lines and the Thai review list. The deposit field moves there from the vehicle form.
+
 ## Products, stage D3: rental-period maths (branch `platform/products-stage-d3-rental-periods`, 15 Nov 2026)
 
 The third build stage of pricing, of seven (`docs/products-redesign.md` §9.15 and §9.19). **`@mango/core` and docs only: no migration, no screen, nothing in `apps/`.** Phase 3 builds the orders, the screens and the atomic database step; the money for extending, swapping and returning early is worked out here.

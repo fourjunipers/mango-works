@@ -61,7 +61,7 @@ One tenant per shop, plus one location flagged `is_default`.
 | `shop_members.shop_id`, `user_id`, `created_at` | `memberships.tenant_id`, `user_id`, `created_at` | 0 | |
 | `shop_members.role` (owner, staff) | `memberships.role` | 0 | owner → owner; staff → staff |
 | `shop_invites.*` | Not mapped | — | Unused invites expire. Team invites are rebuilt before Gate A |
-| `shop_policies.deposit_amount` | `tenants.default_deposit` (bigint minor units) | 2 | |
+| `shop_policies.deposit_amount` | `pricing_settings.deposit_amount` (bigint minor units), with `deposit_mode = 'per_product'` | D4 | The shop's amount for a vehicle with no deposit of its own. Was planned as `tenants.default_deposit` |
 | `shop_policies.deposit_methods` | `tenants.deposit_methods` | 2 | |
 | `shop_policies` (all other columns: helmets, helmet types, gloves, jacket, rain gear, phone holder, USB charger, top box, side panniers, usage area, km limit, medical cover, passport, licence, minimum age, experience, notes) | `tenants.inclusions_default` (JSON, same field names as `apps/marketplace/lib/inclusions.ts`) | 2 | `usage_area` values are Thailand-specific today; they become per-market options at 3M |
 | `delivery_zones.max_km`, `fee` | `delivery_bands.max_km`, `price` | 8 | Fee ×100 for THB |
@@ -104,7 +104,7 @@ A legacy row is a shop's listing of one catalog entry with a quantity. On the pl
 | `ready_today_on` | Dropped | — | `ready_now > 0` means the same |
 | `ready_today_updated_at` | `product_listings.ready_updated_at` | 1a | Set by the database when a walk-ins count above zero is saved |
 | `buffer_before_h`, `buffer_after_h` | `products.buffer_before_minutes`, `buffer_after_minutes` | 1a | ×60. Null = shop default |
-| `deposit_amount` | `products.deposit` (bigint minor units) | 1a | ×100 for THB. Null = shop default |
+| `deposit_amount` | `product_pricing.deposit` (bigint minor units; `products.deposit` until stage D4, 15 Nov 2026) | 1a | ×100 for THB. Null = the shop's amount. Used when the shop's deposit choice is "per product" (`pricing_settings.deposit_mode`), which a shop mapped at 3M is set to |
 | `min_days_booking`, `min_days_walkin` | `products.min_days_advance`, `min_days_walkin` | 2 | Null = location default |
 | `notice_h` | `product_listings.lead_time_hours` | C (column), 3M (data) | **The rule changes.** Today a model's notice replaces the shop's (`coalesce(m.notice_h, s.notice_h)`), so a model can have a shorter notice than its shop. On the platform the stricter of the two applies (owner, 13 and 14 Nov 2026; `@mango/core` `noticeHours`). A legacy model with a shorter notice than its shop takes the shop's at 3M, so it can drop out of a search it is in today. **3M's before-and-after search check must expect this**: list those models first and tell the owner |
 | `flagged_for_review` | Marketplace-owned approval record | 3M | |
@@ -141,7 +141,7 @@ Legacy says "N units of this model are out until a date". The platform blocks sp
 
 | Legacy table | Target | Phase |
 | --- | --- | --- |
-| `price_days` (`bike_model_id`, `day`, `total`, `is_anchor`, `is_manual`) | `price_structures` in total-price-table mode: 30 totals in minor units, anchor and manual flags kept | 2 |
+| `price_days` (`bike_model_id`, `day`, `total`, `is_anchor`, `is_manual`) | `price_templates` (the product's own list, kind `amounts`) + `price_template_days`: 30 totals in minor units, `source` anchor, filled or manual; `product_pricing.pricing_method = 'tiered'` | D4 (tables), 3M (data) |
 | `bookings`, `booking_events` | `orders` (channel = marketplace) + order lines + unit blocks; events → `audit_events` | 3M |
 | `reviews` | Stays marketplace-owned. `shop_id` already equals the tenant ID; `bike_model_id` already equals the model ID | — |
 | `profiles`, `stations`, `ranking_settings` | Stay marketplace-owned, unchanged | — |
