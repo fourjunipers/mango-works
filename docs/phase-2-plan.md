@@ -4,7 +4,7 @@
 
 Read for this: `docs/platform/SPEC.md` (Build plan, Phase 2, "Products redesign and pricing (as built)", Review decisions), `docs/products-redesign.md` (§2, §3.5, §9, decisions 1 to 29), `docs/PROGRESS.md` (stages D1 to D7 and the pricing follow-ups, and "Before Phase 2"), `docs/INTEGRATION.md`, `docs/platform/MAPPING.md`, and the code and migrations they describe.
 
-Where this says "recommended", it is a proposal. §10 lists every question for Mark; nothing in it is to be built from a guess. §11 lists what this plan decided without asking.
+**Approved by Mark, 16 Nov 2026.** He accepted all 17 recommendations of §10 and everything in §11, with three additions (to Q5, Q11 and Q14), written in below. Where a section still says "recommended" or names a question, read it as decided as §10 records. No build stage has started.
 
 ## Summary
 
@@ -20,7 +20,7 @@ Where this says "recommended", it is a proposal. §10 lists every question for M
 | Phase 2 item (spec and accept list) | Already built | Still to build |
 | --- | --- | --- |
 | Price structures | Price lists (amounts, multipliers), quick entry, flat fee, fixed, free, month rule, long-stay rate: D1, D4, D5 | Nothing |
-| Rules (season, weekend) | Season date ranges, up or down, all or chosen products: D2, D4, D6 | Weekday rules are not built and not asked for since. §10 Q14 |
+| Rules (season, weekend) | Season date ranges, up or down, all or chosen products: D2, D4, D6 | Nothing. Weekday and weekend rules are not built (decided, Q14); stage 11 takes "weekend" out of the spec's accept line |
 | VAT | Tax profiles, inclusive or on top, once per invoice and rate: D2, D4, D6 | The line's share of the invoice VAT, for the snapshot (§5.4) |
 | Deposits | Four shop modes, per-vehicle amounts, order and customer overrides as pricer inputs: D2, D6 | Nothing in the pricer. The override columns come with orders (3) and customers (3 and 4) |
 | `quote()` | Steps 1 to 3 and 5 to 8; continuation, swap and early-return maths: D2, D3 | Step 4, included quantity (§5.2); the snapshot (§5.4) |
@@ -62,6 +62,7 @@ The review decision gives every reserved booking a real unit block at once. So t
 - **Stock is decided in SQL**, inside the transaction that holds the locks. It is counting rows, not money.
 - **Bookable** (opening hours, closures, notice, cut-off, minimum days) **and price** are decided in `@mango/core` on the server, before `reserve()` is called. These do not race: no other booking can change a shop's opening hours.
 - Online callers never reach `reserve()` directly: it is called with the service role by the server (the booking page in Phase 8, `marketplace_api` at 3M) after the rules pass. Staff call it as themselves.
+- **One server entry point for online channels** (Mark, 16 Nov 2026). A single server-only module, `bookOnline()` in `apps/platform/lib`, is the only code that calls `reserve()` for the channels `booking_page`, `marketplace` and `api`. It calls `offer()` first, which runs `bookable()`, and goes on to `reserve()` only when the answer is bookable and available. Stage 3 builds it and the test that proves no booking-page or marketplace path can reach `reserve()` without passing `bookable()` (§9.1).
 - So there is one implementation of each rule, not an SQL copy and a TypeScript copy to keep equal. (Q5.)
 
 ### 2.4 Discounts are decided before the pricer
@@ -313,6 +314,7 @@ Every setting is the vendor's. Nothing is preset.
 
 - A **percentage** coupon is taken on each eligible line's price after seasons.
 - A **fixed** coupon is an amount off the eligible lines together, shared out over them in proportion to the satang (the pricer's existing split), so each tax-rate group loses its exact share. It never takes more than those lines come to; the rest of it is not carried anywhere.
+- **A coupon never reduces the deposit, and the total can't go below zero** (Mark, 16 Nov 2026). A fixed coupon larger than its lines takes them to zero and no further; a per-vehicle or fixed-per-order deposit is the same with or without the coupon, and no coupon amount is ever set against a deposit. (A percentage-of-order deposit is still a percentage of the total after discounts, as decided in stage D: the coupon changes the total it is taken on, never the deposit itself.) Both are tests in stage 7.
 - "Which products" means which lines it applies to: all, or the chosen products. A coupon for chosen scooters does not reduce the helmets beside them.
 - One coupon per booking.
 
@@ -437,15 +439,15 @@ One PR each, riskiest first. Each stage ends with typecheck, lint, unit, databas
 | --- | --- | --- | --- | --- |
 | 1 | **Booking core** | `reservations`, `reserve()`, `cancel_reservation()`, `free_units()`, best-fit pick, the guard's lock order, `booking_roles`. Staff path and online path. No overbooking, no holds, no cap yet | 1 | The locks are where a mistake double-books a bike. Everything later is re-created on top of this |
 | 2 | **Shortage, holds and the availability read** | Overbooking and the shortage rule; holds, confirm and expiry; `assign_units`; the overdue rule; `availability()` | 2 | The second-riskiest: it changes what "free" means |
-| 3 | **Booking rules and `offer()`** | The rule columns and `booking_inputs()`; `booking-rules` and `offer()` in `@mango/core`; the Moto Mangos cap inside `reserve()`; `time.ts` and `money.ts` made generic behind their old names | 3 | Time zones and daylight saving. Wrong answers here refuse real bookings |
+| 3 | **Booking rules and `offer()`** | The rule columns and `booking_inputs()`; `booking-rules` and `offer()` in `@mango/core`; the one server entry point for online channels, `bookOnline()`, with its test (§2.3); the Moto Mangos cap inside `reserve()`; `time.ts` and `money.ts` made generic behind their old names | 3 | Time zones and daylight saving. Wrong answers here refuse real bookings |
 | 4 | **Pricer: included quantity and the snapshot** (`@mango/core` only) | Step 4; `snapshotQuote` and `readSnapshot`; the line's tax share; the Phase 3 column list confirmed | None | Fixes the shape Phase 3 depends on before more is built on it |
 | 5 | **Extras: database** | `product_extras`, `save_product_extras`, `pricing_inputs` with extras, the adapter in `lib/pricing-inputs.ts` | 4 | |
 | 6 | **Extras: screens** | The Extras tab, Settings › Extras, History lines, Check a price with extras | None | |
-| 7 | **Coupons: the rules** (`@mango/core` only) | `decideDiscounts`: every coupon setting, the returning-customer discount, stacking and "the larger one" | None | Money rules as pure functions with tests, before any table |
+| 7 | **Coupons: the rules** (`@mango/core` only) | `decideDiscounts`: every coupon setting, the returning-customer discount, stacking and "the larger one"; tests that a coupon never reduces the deposit and the total never goes below zero | None | Money rules as pure functions with tests, before any table |
 | 8 | **Coupons: database** | The three tables, the settings columns, `save_coupon`, `coupon_inputs`, redemption inside `reserve()`, giving a use back | 5 | The last change to `reserve()` |
 | 9 | **Coupons: screens** | Settings › Coupons, the returning-customer card, Check a price with a code | None | |
 | 10 | **Review follow-ups** | §3.8 | 6 | Small and independent; can move earlier if a stage is waiting on Mark |
-| 11 | **Check availability and price, Booking rules, wrap-up** | The read-only New order screen, Settings › Booking rules, bookings on the unit page, the Moto Mangos notice line, the demo seed, the accept suite and click-through list, root `CLAUDE.md` lock order, PROGRESS; staging on Mark's word | None | Puts every earlier stage on a screen Mark can try on his phone |
+| 11 | **Check availability and price, Booking rules, wrap-up** | The read-only New order screen, Settings › Booking rules, bookings on the unit page, the Moto Mangos notice line, the demo seed, the accept suite and click-through list, root `CLAUDE.md` lock order, PROGRESS; the spec's Phase 2 accept line updated (drop "weekend" and "both pricing modes", §12); staging on Mark's word | None | Puts every earlier stage on a screen Mark can try on his phone |
 
 Stages 4 and 7 touch no database and can be reviewed while an earlier database stage waits for an answer. Not in Phase 2: orders, customers, payments, the order editor, check-out, charge rules (after Phase 3, before 3M), `marketplace_api`, the booking page, weekday rules, re-packing.
 
@@ -454,12 +456,15 @@ Stages 4 and 7 touch no database and can be reviewed while an earlier database s
 ### 9.1 Unit (`@mango/core` and `apps/platform/lib`)
 
 - **A named accept suite**, `phase-2-accept.test.ts`, one block per accept line, so the list can be read off the test names:
-  - 50 or more pricing tests: list prices at every length, seasons, VAT included and on top, each deposit mode, extras, each coupon kind, the returning-customer discount. Weekend rules only if Q14 says to build them.
+  - 50 or more pricing tests: list prices at every length, seasons, VAT included and on top, each deposit mode, extras, each coupon kind, the returning-customer discount. No weekend rules: they are not built (Q14).
   - **Totals never fall as days rise:** for every length from 1 hour to 400 days and every start date over two years, across month ends, a leap year and both clock changes, with a season, an extra with included units, a percentage coupon, a fixed coupon and the returning-customer discount each in play. One known edge to settle in the test, not paper over: a season that covers only the later days of a longer rental and lowers them can make the longer rental cheaper; that is the season doing its job, and the property is asserted on the list price and on each discount step separately.
   - **A daylight-saving tenant** (America/New_York): days and months across both clock changes; a season that starts on the clock-change day; notice, cut-off and opening hours on the short and the long day; a hold that expires across the change.
   - **A zero-decimal tenant** (VND or JPY): a percentage coupon, a fixed coupon split over three lines, a season, VAT both ways and the snapshot, with no fraction anywhere.
 - **Step 4:** included quantity with one and several vehicles, more included than taken, an extra priced each way, a free service, a line with no parent unchanged, every D2 and D3 pinned figure unchanged.
 - **`decideDiscounts`:** each refusal reason; the code compared in any case and spacing; valid-from and valid-to at the shop's midnight on either side, in a daylight-saving zone; pickup range; minimum days and spend at the boundary; chosen products; channels; the last use; stacking allowed and not; the larger of the two; the switch off.
+- **A coupon and the deposit (stage 7):** in each of the four deposit modes, a per-vehicle and a fixed-per-order deposit are the same amount with and without a coupon, percentage or fixed; no discount line is ever set against the deposit; a percentage-of-order deposit moves only because the total it is a percentage of moved.
+- **The total never goes below zero (stage 7):** a fixed coupon larger than its lines, alone and stacked with the returning-customer discount and a staff discount, on one line and split over several, in a two-decimal and a zero-decimal currency: every line amount, every tax base and the total are zero or more, and VAT is never negative.
+- **Online channels can't skip `bookable()` (stage 3):** `bookOnline()` asked for a closed day, too little notice or too short a rental answers the reason and `reserve()` is never called (asserted on a spy and on an unchanged database); a static test over `apps/` fails if any file but `bookOnline()`'s names `reserve` with an online channel, or imports the service-role booking call; and the database test that a signed-out visitor and a signed-in Moto Mangos customer can't execute `reserve()` at all (§9.2).
 - **The snapshot:** the tests listed in §5.4.
 - **`bookable` and `offer`:** every reason, each channel's notice rule, the stricter of shop and listing both ways round, closures that repeat over New Year, "Ride today" skipping notice, a product with no price answering "can't be priced" and never zero.
 - **The wrappers:** `time.ts` and `money.ts` give the marketplace the same answers as before, to the baht and the minute.
@@ -496,7 +501,15 @@ Stages 4 and 7 touch no database and can be reviewed while an earlier database s
 
 ## 10. Questions for Mark
 
-Each has a recommendation. The stage that needs the answer is named; stages 1 and 2 wait only on Q1 to Q4 and Q6.
+**Answered, 16 Nov 2026: Mark accepts every recommendation below, and all of §11.** Three come with an addition:
+
+| # | Addition |
+| --- | --- |
+| **Q5** | Online channels reach `reserve()` only through one server entry point that calls `offer()` first. Stage 3 adds a test proving no booking-page or marketplace path can call `reserve()` without passing `bookable()` (§2.3, §9.1) |
+| **Q11** | A coupon never reduces the deposit, and the total can't go below zero. Both are tests in stage 7 (§5.3, §9.1) |
+| **Q14** | Weekday and weekend rules are not built. Stage 11 updates the spec's Phase 2 accept line: drop "weekend" and "both pricing modes" (§8, §12) |
+
+The table is kept as it was asked; the "Recommended" column is now the decision.
 
 | # | Question | Options | Recommended | Needed by |
 | --- | --- | --- | --- | --- |
@@ -518,7 +531,7 @@ Each has a recommendation. The stage that needs the answer is named; stages 1 an
 | **16** | **Extras limits for staff** | `max_quantity` binds online only, or staff too | **Online only** | Stage 5 |
 | **17** | **Staging** | Each migration to staging as its PR merges (as D4 and D6), or all six together at the end | **As each merges**, on your word each time, with the read-only counts before and after | Stage 1 |
 
-## 11. Decided in this plan without asking (say if any is wrong)
+## 11. Decided in this plan without asking (accepted by Mark, 16 Nov 2026)
 
 - `reserve()` is all or nothing: one line that can't be booked refuses the whole call.
 - A hold and a reservation use the same blocks; confirming changes the kind, not the row.
@@ -539,7 +552,7 @@ Each has a recommendation. The stage that needs the answer is named; stages 1 an
 
 ## 12. Doc edits this plan will need (owner keeps the spec)
 
-- `docs/platform/SPEC.md`: Data model (`allocations` → `reservations` and `unit_blocks`; `extras` → `product_extras`; `coupons` with its tables; the booking-rule columns on locations); Phase 2's accept line ("both pricing modes" and "weekend"); the snapshot's field list under Pricing.
+- `docs/platform/SPEC.md`: **Phase 2's accept line, changed in stage 11 on Mark's instruction** (drop "weekend" from the pricing tests and "in both pricing modes" from the never-falls check). The rest stays the owner's to work in: Data model (`allocations` → `reservations` and `unit_blocks`; `extras` → `product_extras`; `coupons` with its tables; the booking-rule columns on locations); the snapshot's field list under Pricing.
 - Root `CLAUDE.md`: the lock order of §4, once stage 1 merges. `apps/platform/CLAUDE.md` still says the constraint is "on allocations/downtime".
 - `docs/INTEGRATION.md`, at 3M, not now: free units by assigned unit (§4.3), the stricter notice (§4.6), extras availability, `discount` in `getQuote` from coupons.
 - `docs/platform/MAPPING.md`: `shop_extras` → gear and service products plus `product_extras`; promotions as §5.3; the booking-rule columns marked built; inclusions and deposit methods moved to their later phases if Q13 is accepted.
