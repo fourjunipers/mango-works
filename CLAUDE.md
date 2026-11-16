@@ -42,7 +42,8 @@ npm workspaces, one `package-lock.json` at the root. Run `npm install` at the ro
 ## Branches, commits and migrations
 
 - Branches carry the app: `platform/phase-N-name`, `marketplace/phase-N-name` (repo-wide work: a plain descriptive name, e.g. `restructure-monorepo`).
-- Small commits, one logical change each. Work on branches; merge to `main` in batches (each Netlify production deploy costs credits).
+- Small commits, one logical change each. Work on branches and merge to `main` through a PR.
+- **Production publishes from the `release` branch, not from `main`.** A merge to `main` makes a branch deploy, which is free. `main` is merged into `release` only when Mark says "publish": never on your own, and never as part of merging a PR. (Database migrations are a separate matter: see Environments.)
 - Migrations live only in `supabase/migrations`. Never edit an applied migration and never change the database by hand.
 - New tables get no access by default (live, local and CI alike). A migration that creates a table grants on purpose, to `service_role` too; a new function starts with `revoke all on function ... from public, anon`. `apps/platform/tests/db/default-grants.test.ts` fails otherwise.
 - Migration names carry the owner: `<timestamp>_platform_<what>.sql` or `<timestamp>_marketplace_<what>.sql`. The 27 migrations from before Step R keep their names.
