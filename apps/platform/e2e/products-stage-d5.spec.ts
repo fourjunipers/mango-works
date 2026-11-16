@@ -5,7 +5,8 @@
  * deposit (moved here from the vehicle form), "Check a price", saving,
  * a reload, the History; shared price lists (create, use with a base price,
  * delete refused while in use); the ways of pricing each type is offered;
- * who sees what (owner edits, staff reads, a mechanic has no tab); Thai on
+ * who sees what (owner edits, staff reads, a mechanic has no tab); a
+ * duplicate that starts with no prices; Thai on
  * a phone. Phone and desktop widths. (A saved list read back as stored after
  * the rounding step changes is in products-stage-d6.spec.ts, with Settings.)
  *
@@ -337,6 +338,60 @@ test("a shared price list: made, used with a base price, delete refused while in
   page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Delete price list" }).click();
   await expect(page.getByText("Price list deleted.")).toBeVisible();
+});
+
+test("a duplicate starts with no prices: its Pricing tab is empty and the original keeps its own", async ({
+  page,
+}) => {
+  const name = `Priced Boat ${stamp()}`;
+  const copyName = `${name} copy`;
+  await signIn(page, demo.bsrOwner);
+  const address = await addBoat(page, name);
+  let copyAddress = "";
+  try {
+    await page.goto(`${address}?tab=pricing`);
+    await page.getByRole("radio", { name: /^Flat fee per period/ }).check();
+    await page.getByLabel("Amount (THB)").fill("250");
+    await save(page);
+
+    await page.goto(address);
+    await page.getByRole("link", { name: "Duplicate" }).click();
+    // The form fills the name in and focuses it; typed over once it has.
+    await expect(page.getByLabel("Product name")).toHaveValue(name);
+    await expect(page.getByLabel("Product name")).toBeFocused();
+    await page.getByLabel("Product name").fill(copyName);
+    await page.getByRole("button", { name: "Save product" }).click();
+    await expect(
+      page.getByRole("heading", { name: copyName, level: 1 }),
+    ).toBeVisible();
+    copyAddress = page.url().split("?")[0];
+    expect(copyAddress).not.toBe(address);
+
+    // The copy: no way of pricing chosen, no amount, nothing to check.
+    await page.goto(`${copyAddress}?tab=pricing`);
+    await expect(
+      page.getByRole("button", { name: "Save prices" }),
+    ).toBeVisible();
+    for (const way of [/^By rental length/, /^Flat fee per period/])
+      await expect(page.getByRole("radio", { name: way })).not.toBeChecked();
+    await expect(page.getByLabel("Amount (THB)")).toHaveCount(0);
+    await expect(checkPrice(page)).toContainText(
+      "Fill in the prices to check one.",
+    );
+    // And it has no price on the Products list.
+    await page.goto(`/bsr/products?q=${encodeURIComponent(copyName)}`);
+    await expect(
+      page.getByRole("link", { name: copyName }).first(),
+    ).toBeVisible();
+    await expect(page.getByText(/250 \/ week/)).toHaveCount(0);
+
+    // The original still has its price.
+    await page.goto(`${address}?tab=pricing`);
+    await expect(page.getByLabel("Amount (THB)")).toHaveValue("250.00");
+  } finally {
+    if (copyAddress) await deleteProduct(page, copyAddress);
+    await deleteProduct(page, address);
+  }
 });
 
 test("general products get only their ways of pricing; a free service on the list", async ({

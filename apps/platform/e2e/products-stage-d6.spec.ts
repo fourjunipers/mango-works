@@ -7,8 +7,10 @@
  * removed, and the refusal names the product), the default and tax added on
  * top; the rounding step changed on screen while saved prices stay as
  * stored; a season shown on the product it covers, in Check a price and in
- * its History; the first save's warning that it fixes the currency; Thai on
- * a phone. Phone and desktop widths.
+ * its History; the first save's warning that it fixes the currency, on
+ * Settings, on a product's Pricing tab and on a new price list; a shared
+ * list read as stored in its editor after the step changes; Thai on a
+ * phone. Phone and desktop widths.
  *
  * Runs against local Supabase or a deploy preview on staging, again and
  * again. Whatever a test creates it removes. BSR's pricing settings are
@@ -20,6 +22,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 import { demo, signIn } from "./helpers";
 import {
   chooseDeposit,
+  currencyFixedBy,
   ownerClient,
   readSettings,
   withShopSettings,
@@ -514,29 +517,180 @@ test("a season: made for one product, on its Pricing tab, in Check a price and i
   });
 });
 
-test("the first save warns that it fixes the shop's currency, and saves nothing if declined", async ({
+test("a shared price list reads as stored in its editor after the rounding step changes, and a new name alone leaves its days", async ({
   page,
 }, testInfo) => {
-  // Read only: big-fleet's settings are never saved (no row is made there).
-  test.skip(testInfo.project.name !== "desktop", "one width is enough");
-  await signIn(page, demo.bigOwner);
-  await page.goto("/big-fleet/settings/pricing");
-  const note = page.getByText(
-    /Saving here for the first time fixes the shop's currency/,
-  );
-  test.skip(
-    !(await note.count()),
-    "this shop's currency is already fixed or it has settings",
-  );
-  let asked = "";
-  page.once("dialog", (dialog) => {
-    asked = dialog.message();
-    void dialog.dismiss();
+  const isPhone = testInfo.project.name === "phone";
+  const listName = `Stored list ${stamp()}`;
+  await signIn(page, demo.bsrOwner);
+  await withShopSettings(demo.bsrOwner, "bsr", async () => {
+    const { db, tenantId } = await ownerClient(demo.bsrOwner, "bsr");
+    // BSR's currency is fixed already: a new list asks nothing first.
+    await page.goto("/bsr/settings/price-lists/new");
+    await expect(page.getByText(/fixes the shop's currency/)).toHaveCount(0);
+    await page.getByLabel("Name", { exact: true }).fill(listName);
+    await page.getByRole("radio", { name: /^Amounts/ }).check();
+    await page.getByLabel("Daily (1 day)").fill("300");
+    await page.getByLabel("Weekly (7 days)").fill("1400");
+    await page.getByLabel("Monthly (30 days)").fill("3000");
+    await page.getByRole("button", { name: "Create price list" }).click();
+    await expect(page.getByText("Price list saved.")).toBeVisible();
+    const listAddress = page.url().split("?")[0];
+    const listId = listAddress.split("/").pop()!;
+    try {
+      /** The list's 30 days as the database holds them (read as the owner). */
+      const storedDays = async () => {
+        const { data, error } = await db
+          .from("price_templates")
+          .select("name, price_template_days(day, value::text, source)")
+          .eq("id", listId)
+          .single();
+        if (error) throw error;
+        return {
+          name: data.name as string,
+          days: [
+            ...(data.price_template_days as {
+              day: number;
+              value: string;
+              source: string;
+            }[]),
+          ].sort((a, b) => a.day - b.day),
+        };
+      };
+      const before = (await storedDays()).days;
+      expect(before).toHaveLength(30);
+      expect(before[0]).toEqual({ day: 1, value: "30000", source: "anchor" });
+
+      // A step the list was not filled with: ฿20 (or ฿40 if ฿20 is the step).
+      const step = (await readSettings(db, tenantId))?.rounding_step;
+      const newStep = step === "2000" ? "40" : "20";
+      await page.goto("/bsr/settings/pricing");
+      await page.getByLabel("Rounding step (THB)").fill(newStep);
+      await page.getByRole("button", { name: "Save pricing settings" }).click();
+      await expect(
+        page.getByText("Saved", { exact: true }).first(),
+      ).toBeVisible();
+      expect((await readSettings(db, tenantId))?.rounding_step).toBe(
+        `${newStep}00`,
+      );
+
+      // The editor shows every day as stored, not a new fill.
+      const showDays = async () => {
+        if (isPhone)
+          await page.getByRole("button", { name: "Show all days" }).click();
+      };
+      const shown = (value: string) =>
+        `${value.slice(0, -2)}.${value.slice(-2)}`;
+      await page.goto(listAddress);
+      await showDays();
+      for (const d of before)
+        await expect(page.locator(`#day-${d.day}`)).toHaveValue(shown(d.value));
+
+      // A new name alone: saved, and the list's days are as they were.
+      await page.getByLabel("Name", { exact: true }).fill(`${listName} B`);
+      await page.getByRole("button", { name: "Save price list" }).click();
+      await expect(
+        page.getByText("Saved", { exact: true }).first(),
+      ).toBeVisible();
+      const after = await storedDays();
+      expect(after.name).toBe(`${listName} B`);
+      expect(after.days).toEqual(before);
+
+      // A box changed: the days around it are filled in again, to the new step.
+      await page.reload();
+      await showDays();
+      await page.getByLabel("Weekly (7 days)").fill("1500");
+      await expect(page.locator("#day-7")).toHaveValue("1500.00");
+      await expect(page.locator("#day-3")).not.toHaveValue(
+        shown(before[2].value),
+      );
+    } finally {
+      await page.goto(listAddress);
+      page.once("dialog", (dialog) => void dialog.accept());
+      await page.getByRole("button", { name: "Delete price list" }).click();
+      await expect(page.getByText("Price list deleted.")).toBeVisible();
+    }
   });
-  await page.getByRole("button", { name: "Save pricing settings" }).click();
-  await expect.poll(() => asked).toMatch(/fixes the shop's currency/);
+});
+
+test("the first save warns that it fixes the shop's currency, on Settings, a product's prices and a new price list, and saves nothing if declined", async ({
+  page,
+}, testInfo) => {
+  // Read only: nothing is ever saved in big-fleet (every question is declined).
+  test.skip(testInfo.project.name !== "desktop", "one width is enough");
+  const { db, tenantId } = await ownerClient(demo.bigOwner, "big-fleet");
+  // Decided from the database, not from the page: where the currency is
+  // still open, a missing note fails the test instead of skipping it.
+  const fixedBy = await currencyFixedBy(db, tenantId);
+  if (fixedBy !== null) {
+    const reason = `big-fleet's currency is already fixed (${fixedBy}), so no screen warns. This runs in full only where big-fleet has saved nothing priced: a clean database, as in CI`;
+    console.log(`Skipped "${testInfo.title}": ${reason}.`);
+    test.skip(true, reason);
+  }
+  // The shop's own currency, whatever it is (big-fleet is not in baht).
+  const { data: shop, error: shopError } = await db
+    .from("tenants")
+    .select("currency")
+    .eq("id", tenantId)
+    .single();
+  if (shopError) throw shopError;
+  const currency = shop.currency as string;
+  const note = page.getByRole("note").filter({
+    hasText: `Saving here for the first time fixes the shop's currency as ${currency}.`,
+  });
+  /** Presses `button`, declines the question, and returns what was asked. */
+  const declined = async (button: string) => {
+    let asked = "";
+    page.once("dialog", (dialog) => {
+      asked = dialog.message();
+      void dialog.dismiss();
+    });
+    await page.getByRole("button", { name: button }).click();
+    await expect
+      .poll(() => asked)
+      .toContain(`fixes the shop's currency as ${currency},`);
+  };
+  await signIn(page, demo.bigOwner);
+
+  // Settings › Pricing and tax.
+  await page.goto("/big-fleet/settings/pricing");
+  await expect(note).toBeVisible();
+  await declined("Save pricing settings");
   await page.reload();
   await expect(note).toBeVisible();
+
+  // A product's first price.
+  const { data: product, error } = await db
+    .from("products")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .limit(1)
+    .single();
+  if (error) throw error;
+  await page.goto(`/big-fleet/products/${product.id}?tab=pricing`);
+  await expect(note).toBeVisible();
+  await page.getByRole("radio", { name: /^Flat fee per period/ }).check();
+  await page.getByLabel(`Amount (${currency})`).fill("250");
+  await declined("Save prices");
+  await expect(page.getByText("Saved", { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(note).toBeVisible();
+  await expect(
+    page.getByRole("radio", { name: /^Flat fee per period/ }),
+  ).not.toBeChecked();
+
+  // The shop's first price list.
+  await page.goto("/big-fleet/settings/price-lists/new");
+  await expect(note).toBeVisible();
+  await page.getByLabel("Name", { exact: true }).fill(`Declined ${stamp()}`);
+  await page.getByRole("radio", { name: /^Amounts/ }).check();
+  await page.getByLabel("Daily (1 day)").fill("300");
+  await page.getByLabel("Monthly (30 days)").fill("3000");
+  await declined("Create price list");
+  await expect(page).toHaveURL(/\/big-fleet\/settings\/price-lists\/new$/);
+
+  // Nothing was saved: the currency is as open as it was.
+  expect(await currencyFixedBy(db, tenantId)).toBeNull();
 });
 
 test("in Thai: Pricing and tax and Seasons fit a phone", async ({
