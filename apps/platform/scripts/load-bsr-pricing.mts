@@ -127,6 +127,41 @@ const scooters = [
   "Kawasaki Z250SL",
 ];
 
+/**
+ * Where BSR's product on staging has another name than the owner's (Mark,
+ * 16 Nov 2026). The scooter keeps its own place in the turn of lists.
+ */
+const productNames: Record<string, string> = {
+  Fazzio: "Yamaha Fazzio",
+  "Honda ADV160": "Honda ADV 160 (2025-2026)",
+  "Honda PCX": "Honda PCX 160",
+  "Honda Scoopy": "Honda Scoopy (New Gen)",
+  "Yamaha Aerox": "Yamaha Aerox 155 (2nd Gen)",
+};
+
+/**
+ * Not products in BSR on staging, and skipped on purpose (Mark, 16 Nov
+ * 2026): never created here. A load on live must look for them. One that
+ * turns up later is priced like the rest.
+ */
+const notOnStaging = new Set([
+  "Benelli Leoncino 250",
+  "Benelli TNT135",
+  "GPX 250",
+  "Honda Click 125",
+  "Honda Click 150",
+  "Honda Lead",
+  "Honda Zoomer-X",
+  "Ryuka Infinity 250",
+  "Yamaha Freego",
+  "Yamaha Grand Filano",
+  "Yamaha GT",
+  "Yamaha Mio 115",
+  "Yamaha Qbix",
+  "Yamaha TTX",
+  "Kawasaki Z250SL",
+]);
+
 /** An amount as written above, in minor units. */
 function minor(text: string): bigint {
   const value = parseMinorUnits(text, CURRENCY);
@@ -221,9 +256,10 @@ async function main() {
   const matched: { name: string; product: Product; index: number }[] = [];
   const missing: { name: string; index: number; near: string[] }[] = [];
   scooters.forEach((name, index) => {
-    const found = products.filter((product) => same(product.name, name));
+    const wanted = productNames[name] ?? name;
+    const found = products.filter((product) => same(product.name, wanted));
     if (found.length > 1)
-      fail(`BSR has ${found.length} products named ${name}`);
+      fail(`BSR has ${found.length} products named ${wanted}`);
     if (found.length === 1) matched.push({ name, product: found[0], index });
     else
       missing.push({
@@ -243,12 +279,14 @@ async function main() {
     `\nProducts: ${matched.length} of ${scooters.length} found by name`,
   );
   for (const { name, index } of matched)
-    console.log(`  ${name.padEnd(22)} ${listFor(index).name}`);
+    console.log(
+      `  ${name.padEnd(22)} ${listFor(index).name}${productNames[name] ? `   as ${productNames[name]}` : ""}`,
+    );
   if (missing.length > 0) {
     console.log(`Not in BSR on staging (${missing.length}), left alone:`);
     for (const { name, index, near } of missing)
       console.log(
-        `  ${name.padEnd(22)} ${listFor(index).name}${near.length ? `   similar: ${near.join("; ")}` : ""}`,
+        `  ${name.padEnd(22)} ${listFor(index).name}${notOnStaging.has(name) ? "   skipped" : "   NOT EXPECTED"}${near.length ? `   similar: ${near.join("; ")}` : ""}`,
       );
   }
 
@@ -365,12 +403,15 @@ async function main() {
       `${name}: not on ${list.name} with its long-stay rate and deposit`,
     );
   }
-  check(
-    matched.length === scooters.length,
-    `${scooters.length - matched.length} of the ${scooters.length} scooters are not products in BSR`,
-  );
+  // A scooter with no product is a fault unless it is one skipped on purpose.
+  const unexpected = missing.filter(({ name }) => !notOnStaging.has(name));
+  for (const { name } of unexpected)
+    check(
+      false,
+      `${name}: not a product in BSR, and not one skipped on purpose`,
+    );
   console.log(
-    `  2. products on the right list, long-stay rate and ${baht(deposit)} deposit: ${right} of ${scooters.length}${right === scooters.length ? " pass" : " FAIL"}`,
+    `  2. products on the right list, long-stay rate and ${baht(deposit)} deposit: ${right} of ${scooters.length} (${missing.length - unexpected.length} skipped on purpose, ${unexpected.length} missing)${right === matched.length && unexpected.length === 0 ? " pass" : " FAIL"}`,
   );
 
   // 3. No product names an archived tax profile (the whole shop).
