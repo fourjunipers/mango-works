@@ -8,8 +8,8 @@
  *    rental (or anything else offer() refuses), bookOnline() answers the
  *    reason and reserve() is never called. tests/db/booking-rules.test.ts
  *    holds the same against a real database that is left unchanged.
- * 2. A static test over both apps: no file but lib/book-online.ts can be a
- *    path to reserve() for an online channel. The detector is tried on
+ * 2. A static test over both apps: no file but lib/book-online.ts, in either app
+ *    or in packages/, can be a path to reserve() for an online channel. The detector is tried on
  *    made-up files first, so it is known to catch what it is there to catch.
  *
  * The third leg is in the database: reserve() refuses an online channel
@@ -389,6 +389,13 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
       expect(s.calls).toEqual([]);
     }
     const s = spy();
+    // "Ride today" is Moto Mangos' alone: the shop's page and the API can't
+    // use it to skip their notice.
+    for (const channel of ["booking_page", "api"] as const) {
+      await expect(
+        bookOnline(asked({ channel, mode: "now" }), { db: s.db }),
+      ).rejects.toThrow(RangeError);
+    }
     await expect(
       bookOnline(asked({ mode: "staff" as never }), { db: s.db }),
     ).rejects.toThrow(RangeError);
@@ -402,6 +409,33 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
 describe("bookOnline(): what reserve() answers", () => {
   const book = (reserve: Reply) =>
     bookOnline(asked(), { db: spy({ reserve }).db, now: () => now });
+
+  it("a statement the API ended while reserve() waited (57014) is try_again too; from a read it is an error", async () => {
+    expect(
+      await book({
+        data: null,
+        error: {
+          code: "57014",
+          message: "canceling statement due to statement timeout",
+        },
+      }),
+    ).toEqual({ ok: false, reason: "try_again", line: null });
+    // Only from reserve(): a read that timed out says nothing about a booking.
+    const s = spy();
+    const slowRead: OnlineDb = {
+      rpc: (fn, args) =>
+        fn === "pricing_inputs"
+          ? Promise.resolve({
+              data: null,
+              error: { code: "57014", message: "statement timeout" },
+            })
+          : s.db.rpc(fn, args),
+    };
+    await expect(
+      bookOnline(asked(), { db: slowRead, now: () => now }),
+    ).rejects.toMatchObject({ code: "57014" });
+    expect(s.reserved()).toBe(false);
+  });
 
   it("a lock that could not be had in time (55P03, lock_timeout) is try_again, the same as a broken deadlock", async () => {
     expect(
@@ -486,6 +520,10 @@ function pathsRoundBookOnline(files: Map<string, string>): string[] {
     if (path.startsWith("apps/marketplace/")) {
       found.push(`${path}: the marketplace calls reserve()`);
     }
+    // Shared code is imported by both apps: a call there is a path for each.
+    if (path.startsWith("packages/")) {
+      found.push(`${path}: a shared package calls reserve()`);
+    }
     if (SERVICE_ROLE.test(source)) {
       found.push(`${path}: calls reserve() with the service role`);
     }
@@ -568,6 +606,7 @@ function sourceFiles(): Map<string, string> {
     }
   };
   walk(join(root, "apps"));
+  walk(join(root, "packages"));
   return files;
 }
 
@@ -623,6 +662,15 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
     ).toEqual([
       "apps/marketplace/app/api/checkout/route.ts: the marketplace calls reserve()",
     ]);
+    // A shared package, by any client.
+    expect(
+      pathsRoundBookOnline(
+        withFile(
+          "packages/db/src/booking.ts",
+          `export const book = (db, r) => db.rpc("reserve", r);`,
+        ),
+      ),
+    ).toEqual(["packages/db/src/booking.ts: a shared package calls reserve()"]);
     // The service role's client handed to a file that calls reserve().
     const handed = withFile(
       "apps/platform/lib/staff-book.ts",
@@ -669,9 +717,21 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
     // The walk found the apps: hundreds of files, the entry point among them.
     expect(files.size).toBeGreaterThan(200);
     expect(files.has(ENTRY)).toBe(true);
-    expect(
-      [...files.keys()].some((path) => path.startsWith("apps/marketplace/")),
-    ).toBe(true);
+    for (const part of [
+      "apps/marketplace/",
+      "apps/platform/",
+      "packages/core/",
+      "packages/db/",
+      "packages/config/",
+    ]) {
+      expect(
+        [...files.keys()].some((path) => path.startsWith(part)),
+        part,
+      ).toBe(true);
+    }
+    // The service role's client is made in a shared package, which is why
+    // the walk goes there.
+    expect(files.has("packages/db/src/admin.ts")).toBe(true);
     expect(pathsRoundBookOnline(files)).toEqual([]);
     // And today it is the only file that calls reserve() at all.
     expect(

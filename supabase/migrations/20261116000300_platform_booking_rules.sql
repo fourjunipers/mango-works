@@ -15,9 +15,12 @@
 --  3. platform.save_booking_rules(): owners and managers. The first writer
 --     of allow_overbooking, hold_minutes and the shop's default buffers.
 --  4. platform.booking_inputs(): one read of everything the rules need.
---  5. platform.reserve() re-created: the shop's default buffers, and the
---     Moto Mangos cap check under the listing's row.
+--  5. platform.reserve() re-created: the shop's default buffers, the Moto
+--     Mangos cap check under the listing's row, "Ride today" for Moto Mangos
+--     alone, and its own lock timeout.
 --  6. platform.availability() re-created: the shop's default buffers.
+--  7. platform.confirm_hold() re-created: a Moto Mangos hold is confirmed
+--     under its listing's row, and its expiry judged once it holds it.
 --
 -- The database still checks stock only. Opening hours, closures, notice,
 -- the cut-off and minimum days are decided once, in @mango/core
@@ -542,6 +545,17 @@ grant execute on function platform.booking_inputs(uuid, uuid, uuid[])
 --     Gear and services booked with the vehicle have no listing and no cap.
 --     A refusal writes nothing.
 --
+--   * mode 'now' ("Ride today") is Moto Mangos' alone: on any other channel
+--     it is invalid_request. It skips the cap, and in @mango/core the
+--     notice, so no other channel may call itself that;
+--   * its own lock timeout, 6 seconds for any one lock. The API ends a
+--     statement after 8 seconds (57014), which tells the caller nothing; a
+--     wait that runs out first raises 55P03 (lock_not_available), which
+--     bookOnline() answers as try_again. It is not caught here: nothing was
+--     written and the caller may send the booking again. Several waits can
+--     still add up to the 8 seconds, so bookOnline() reads 57014 from this
+--     function the same way.
+--
 -- Two new answers: { ok: false, reason: 'not_listed' | 'cap_reached', line }.
 -- The request and the answer are otherwise unchanged.
 
@@ -550,6 +564,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
+set lock_timeout = '6s'
 as $$
 declare
   c_attempts constant integer := 3;
@@ -647,6 +662,10 @@ begin
   end if;
   -- A request-mode booking holds no unit until the shop accepts it (3M).
   if (v_online and v_mode not in ('instant', 'now')) or (not v_online and v_mode <> 'staff') then
+    raise exception 'invalid_request' using errcode = '22023';
+  end if;
+  -- "Ride today" is Moto Mangos' alone.
+  if v_mode = 'now' and v_channel <> 'marketplace' then
     raise exception 'invalid_request' using errcode = '22023';
   end if;
 
@@ -1219,3 +1238,142 @@ $$;
 
 revoke all on function platform.availability(uuid, jsonb) from public, anon;
 grant execute on function platform.availability(uuid, jsonb) to authenticated, service_role;
+
+-- 7. confirm_hold() -----------------------------------------------------------------------------
+-- As it stood (20261116000200), plus, for a Moto Mangos hold only: the
+-- products' rows (for share) and then their listings' rows (for no key
+-- update), in product-id order, before the reservations' rows; and the
+-- hold's expiry is judged at the moment the listing's row is held.
+--
+-- Why. A hold counts against the cap until it runs out. A confirm that began
+-- just before the expiry was judged by its own start time, so it could still
+-- be in flight when a new booking, begun just after, no longer counted the
+-- hold: the booking took the place, the confirm kept it, and the cap was
+-- passed by one. Now both stand at the listing's row. If the confirm holds
+-- it first and is in time, the booking counts a confirmed reservation. If
+-- the booking holds it first, the confirm judges the expiry afterwards, by
+-- the clock, and answers hold_expired.
+--
+-- Every other hold is judged by the call's start time, as before.
+
+create or replace function platform.confirm_hold(p_tenant_id uuid, p_booking_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_service boolean := (select auth.role()) is not distinct from 'service_role';
+  v_staff boolean;
+  v_online boolean;
+  v_ids uuid[];
+  v_product_ids uuid[];
+  v_location_ids uuid[];
+  v_held uuid[];
+  -- A Moto Mangos hold, and the moment its expiry is judged at.
+  v_marketplace boolean;
+  v_now timestamptz := now();
+begin
+  v_staff := platform_private.has_role(p_tenant_id, platform_private.booking_roles('confirm'));
+  if not v_service and not v_staff then
+    return jsonb_build_object('ok', false, 'reason', 'not_allowed');
+  end if;
+  if p_booking_id is null then
+    raise exception 'invalid_request' using errcode = '22023';
+  end if;
+
+  -- Not found, or another shop's: the same answer.
+  select array_agg(r.id), array_agg(r.product_id), array_agg(r.location_id),
+    bool_or(r.channel in ('booking_page', 'marketplace', 'api')),
+    bool_or(r.channel = 'marketplace')
+  into v_ids, v_product_ids, v_location_ids, v_online, v_marketplace
+  from platform.reservations r
+  where r.tenant_id = p_tenant_id and r.booking_id = p_booking_id;
+  if v_ids is null then
+    return jsonb_build_object('ok', false, 'reason', 'not_found');
+  end if;
+  -- Online holds are the server's; the counter's are a member's.
+  if (v_online and not v_service) or (not v_online and not v_staff) then
+    return jsonb_build_object('ok', false, 'reason', 'not_allowed');
+  end if;
+
+  -- Product locks, then unit locks, then rows.
+  perform platform_private.lock_products_stock(v_product_ids, v_location_ids);
+  -- A unit moved meanwhile (move_unit): a row names another product or
+  -- place now, or the booking has a new row. Not the right locks.
+  if exists (
+    select 1 from platform.reservations r
+    where r.tenant_id = p_tenant_id and r.booking_id = p_booking_id
+      and not exists (
+        select 1 from unnest(v_ids, v_product_ids, v_location_ids) t(id, product_id, location_id)
+        where t.id = r.id and t.product_id = r.product_id and t.location_id = r.location_id
+      )
+  ) then
+    return jsonb_build_object('ok', false, 'reason', 'try_again');
+  end if;
+  perform platform_private.lock_units(array(
+    select b.unit_id from platform.unit_blocks b where b.reservation_id = any (v_ids)
+  ));
+  -- A Moto Mangos hold: the products' rows, then their listings' rows, as
+  -- reserve() takes them, before any reservation row. The cap is counted
+  -- under the listing's row, so a confirm and a new booking take turns
+  -- there; and the hold's expiry is judged at the moment the row is held,
+  -- not when this call began. Whichever of the two holds the row first, the
+  -- other then sees what it did.
+  if v_marketplace then
+    perform 1 from platform.products p
+    where p.id = any (v_product_ids)
+    order by p.id
+    for share;
+    perform 1 from platform.product_listings l
+    where l.product_id = any (v_product_ids)
+    order by l.product_id
+    for no key update;
+    v_now := clock_timestamp();
+  end if;
+  perform 1 from platform.reservations r
+  where r.id = any (v_ids)
+  order by r.id
+  for update;
+
+  -- Under the locks: the sweep or a booking may have released it meanwhile.
+  if exists (
+    select 1 from platform.reservations r
+    where r.id = any (v_ids)
+      and (r.state = 'expired' or (r.state = 'held' and r.hold_expires_at <= v_now))
+  ) then
+    return jsonb_build_object('ok', false, 'reason', 'hold_expired');
+  end if;
+
+  select coalesce(array_agg(r.id order by r.id), '{}') into v_held
+  from platform.reservations r
+  where r.id = any (v_ids) and r.state = 'held';
+
+  if cardinality(v_held) = 0 then
+    if not exists (
+      select 1 from platform.reservations r where r.id = any (v_ids) and r.state = 'reserved'
+    ) then
+      return jsonb_build_object('ok', false, 'reason', 'not_held');
+    end if;
+  else
+    update platform.unit_blocks b set kind = 'allocation'
+    where b.reservation_id = any (v_held);
+    update platform.reservations r
+    set state = 'reserved', hold_expires_at = null
+    where r.id = any (v_held);
+
+    perform platform_private.audit(
+      p_tenant_id, 'bookings', p_booking_id::text, 'confirm', null,
+      jsonb_build_object('reservation_ids', to_jsonb(v_held)));
+  end if;
+
+  return jsonb_build_object(
+    'ok', true, 'booking_id', p_booking_id, 'reservation_ids', to_jsonb(v_held));
+exception
+  when deadlock_detected then
+    return jsonb_build_object('ok', false, 'reason', 'try_again');
+end;
+$$;
+
+revoke all on function platform.confirm_hold(uuid, uuid) from public, anon;
+grant execute on function platform.confirm_hold(uuid, uuid) to authenticated, service_role;

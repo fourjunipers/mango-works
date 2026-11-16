@@ -42,7 +42,7 @@ export type OnlineBookingRequest = {
   channel: OnlineChannel;
   /**
    * "instant": an advance booking. "now": a Moto Mangos "Ride today"
-   * walk-in. A booking the listing would take only by request is refused
+   * walk-in, for that channel only and for a pickup that is now. A booking the listing would take only by request is refused
    * (`request_only`) until 3M builds request mode.
    */
   mode: "instant" | "now";
@@ -103,8 +103,14 @@ export type OnlineDeps = {
   now?: () => Date;
 };
 
-/** Postgres: a lock was not available in time (lock_timeout, or NOWAIT). */
-const LOCK_NOT_AVAILABLE = "55P03";
+/**
+ * Postgres codes from reserve() that mean "nothing was written, send it
+ * again". 55P03: a lock was not available in time; reserve() has its own
+ * lock timeout (6 s), shorter than the API's statement timeout (8 s), so
+ * this is the one that normally arrives. 57014: the statement timeout
+ * itself, when several shorter waits added up to it.
+ */
+const TRY_AGAIN_CODES = ["55P03", "57014"];
 
 type ReserveAnswer =
   | {
@@ -137,6 +143,10 @@ export async function bookOnline(
   }
   if (request.mode !== "instant" && request.mode !== "now") {
     throw new RangeError("bookOnline() books instant or Ride today");
+  }
+  // "Ride today" skips the notice and the cap: it is Moto Mangos' alone.
+  if (request.mode === "now" && request.channel !== "marketplace") {
+    throw new RangeError("Ride today is a Moto Mangos booking");
   }
   if (request.lines.length === 0) throw new RangeError("No lines to book");
 
@@ -224,9 +234,10 @@ export async function bookOnline(
     },
   });
   if (error) {
-    // A lock that could not be had in time is the same to the caller as a
-    // deadlock Postgres broke: nothing was written, send it again.
-    if (error.code === LOCK_NOT_AVAILABLE) {
+    // A lock that could not be had in time, or a statement the API ended
+    // while it waited, is the same to the caller as a deadlock Postgres
+    // broke: nothing was written, send it again.
+    if (error.code && TRY_AGAIN_CODES.includes(error.code)) {
       return { ok: false, reason: "try_again", line: null };
     }
     throw Object.assign(new Error(error.message), { code: error.code });

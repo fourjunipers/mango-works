@@ -1420,6 +1420,147 @@ describe("the Moto Mangos cap inside reserve()", () => {
   }, 60_000);
 });
 
+describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its expiry judged once it holds it", () => {
+  const window = { starts_at: at(1), ends_at: at(3) };
+  const confirmSql = (booking: string) =>
+    `select 'confirm: ' || coalesce(platform.confirm_hold('${shop.id}', '${booking}') ->> 'reason', 'ok');`;
+  const setExpiry = async (booking: string, ms: number) => {
+    const expires = new Date(Date.now() + ms);
+    await service
+      .from("reservations")
+      .update({ hold_expires_at: expires.toISOString() })
+      .eq("booking_id", booking)
+      .throwOnError();
+    return expires;
+  };
+  const past = async (moment: Date) => {
+    while (Date.now() < moment.getTime() + 250)
+      await new Promise((r) => setTimeout(r, 50));
+  };
+
+  it("a confirm that began before the expiry and reaches the row after it is refused, by the clock; a hold of the shop's own page is still judged by when the call began", async () => {
+    const bike = await listedVehicle(3, { instant: 1 });
+    const mm = booked(
+      await mmBook([{ product_id: bike.id, ...window }], { hold: true }),
+    );
+    const page = booked(
+      await pageBook([{ product_id: bike.id, ...window }], { hold: true }),
+    );
+    // Clear of the minute's sweep, which would release both holds itself.
+    while (new Date().getSeconds() > 50 || new Date().getSeconds() < 2)
+      await new Promise((r) => setTimeout(r, 200));
+    await setExpiry(mm.booking_id, 1_500);
+    await setExpiry(page.booking_id, 1_500);
+    // One call each, begun now, that gets to its work three seconds on.
+    const late = (booking: string) =>
+      sqlBackground(`
+        begin;
+        ${asServer}
+        select now();
+        select pg_sleep(3);
+        ${confirmSql(booking)}
+        commit;
+      `);
+    const [mmAnswer, pageAnswer] = await Promise.all([
+      late(mm.booking_id),
+      late(page.booking_id),
+    ]);
+    expect(mmAnswer.failed).toBe("");
+    expect(mmAnswer.out).toContain("confirm: hold_expired");
+    expect(pageAnswer.failed).toBe("");
+    expect(pageAnswer.out).toContain("confirm: ok");
+    const states = (await reservationsOf(bike.id)).map(
+      (r) => `${r.channel} ${r.state}`,
+    );
+    expect(states.sort()).toEqual([
+      "booking_page reserved",
+      "marketplace held",
+    ]);
+  }, 60_000);
+
+  it("a confirm in flight at the expiry instant: a new booking begun after the expiry waits at the listing's row, then counts the confirmed hold and is refused; the cap is not passed", async () => {
+    const bike = await listedVehicle(3, { instant: 1 });
+    // The new booking is for another place of the same shop: it shares no
+    // product lock with the confirm, only the listing.
+    const second = await branch(shop, "Asia/Bangkok");
+    await addUnits(bike.id, 2, shop, second);
+    const hold = booked(
+      await mmBook([{ product_id: bike.id, ...window }], { hold: true }),
+    );
+    const before = deadlocks();
+    const expires = await setExpiry(hold.booking_id, 2_000);
+    const marker = `confirm-in-flight-${tag}`;
+    // The confirm is in time, and not yet saved when the hold's time is up.
+    const holder = sqlBackground(`
+      begin;
+      ${asServer}
+      ${confirmSql(hold.booking_id)}
+      select pg_sleep(5) /* ${marker} */;
+      commit;
+    `);
+    await holding(marker);
+    await past(expires);
+    // To this booking the hold has run out: it does not count it.
+    const call = mmBook([
+      { product_id: bike.id, location_id: second, ...window },
+    ]);
+    const seen = await until(`
+      select 'waiting for a row'
+      from pg_locks w
+      join pg_stat_activity a on a.pid = w.pid
+      where w.locktype in ('transactionid', 'tuple') and not w.granted
+        and a.query like '%reserve%' and a.query not like '%${marker}%'
+        and a.pid <> pg_backend_pid()
+      limit 1;
+    `);
+    expect(seen).toBe("waiting for a row");
+    const held = await holder;
+    expect(held.failed).toBe("");
+    expect(held.out).toContain("confirm: ok");
+    const result = await call;
+    expect(result.data).toEqual({ ok: false, reason: "cap_reached", line: 0 });
+    noDeadlock([result]);
+    expect(deadlocks()).toBe(before);
+    expect(
+      (await reservationsOf(bike.id)).map((r) => `${r.mode} ${r.state}`),
+    ).toEqual(["instant reserved"]);
+    expect(await blockCount(bike.id)).toBe(1);
+  }, 60_000);
+
+  it("the other way round: the new booking is first, and the confirm that waited for it is refused", async () => {
+    const bike = await listedVehicle(3, { instant: 1 });
+    const hold = booked(
+      await mmBook([{ product_id: bike.id, ...window }], { hold: true }),
+    );
+    const expires = await setExpiry(hold.booking_id, 300);
+    await past(expires);
+    const marker = `booking-in-flight-${tag}`;
+    const body = JSON.stringify(
+      request(shop, "marketplace", "instant", [
+        { product_id: bike.id, ...window },
+      ]).p_request,
+    );
+    const holder = sqlBackground(`
+      begin;
+      ${asServer}
+      select 'booking: ' || (platform.reserve('${shop.id}', '${body}'::jsonb) ->> 'ok');
+      select pg_sleep(3) /* ${marker} */;
+      commit;
+    `);
+    await holding(marker);
+    const confirmed = await service.rpc("confirm_hold", {
+      p_tenant_id: shop.id,
+      p_booking_id: hold.booking_id,
+    });
+    expect((await holder).out).toContain("booking: true");
+    expect(confirmed.data).toMatchObject({ ok: false, reason: "hold_expired" });
+    expect((await reservationsOf(bike.id)).map((r) => r.state).sort()).toEqual([
+      "expired",
+      "reserved",
+    ]);
+  }, 60_000);
+});
+
 describe("races for the cap's last place", () => {
   it(`two online bookings for the cap's last place, at one place: exactly one success and one cap_reached, ${ROUNDS} rounds a shop`, async () => {
     for (const [where, tenant] of everyShop()) {
@@ -1544,8 +1685,64 @@ describe("races for the cap's last place", () => {
     }
   }, 240_000);
 
+  it(`a hold confirmed at the very moment it runs out, against a new booking for the cap's last place: never both, ${ROUNDS} rounds a shop`, async () => {
+    for (const [where, tenant] of everyShop()) {
+      const bike = await listedVehicle(4, { instant: 1 }, tenant);
+      // The booking is for a second place, so that only the listing's row
+      // stands between it and the confirm.
+      const second = await branch(
+        tenant,
+        tenant === newYork ? "America/Los_Angeles" : "Asia/Bangkok",
+      );
+      await addUnits(bike.id, 2, tenant, second);
+      for (let round = 0; round < ROUNDS; round++) {
+        const line = {
+          product_id: bike.id,
+          starts_at: at(round * 3),
+          ends_at: at(round * 3 + 2),
+        };
+        const hold = booked(await mmBook([line], { tenant, hold: true }));
+        const expires = new Date(Date.now() + 400);
+        await service
+          .from("reservations")
+          .update({ hold_expires_at: expires.toISOString() })
+          .eq("booking_id", hold.booking_id)
+          .throwOnError();
+        // Both sent so that they arrive around the expiry, a little either
+        // side of it from round to round.
+        const wait = expires.getTime() - Date.now() - 60 + (round % 5) * 25;
+        await new Promise((r) => setTimeout(r, Math.max(wait, 0)));
+        const [confirmed, booking] = await Promise.all([
+          Promise.resolve(
+            service.rpc("confirm_hold", {
+              p_tenant_id: tenant.id,
+              p_booking_id: hold.booking_id,
+            }),
+          ) as Promise<Result>,
+          mmBook([{ ...line, location_id: second }], { tenant }),
+        ]);
+        raceRounds++;
+        noDeadlock([confirmed, booking]);
+        const pair = `${outcome(confirmed)} / ${outcome(booking)}`;
+        expect(
+          [
+            "ok / cap_reached",
+            "hold_expired / ok",
+            "hold_expired / cap_reached",
+          ],
+          `${where} round ${round}`,
+        ).toContain(pair);
+      }
+      // Over all the rounds: never more reserved than rounds.
+      const reserved = (await reservationsOf(bike.id)).filter(
+        (r) => r.state === "reserved",
+      );
+      expect(reserved.length, where).toBeLessThanOrEqual(ROUNDS);
+    }
+  }, 240_000);
+
   it("no deadlock was detected by Postgres anywhere in this file's races", () => {
-    expect(raceRounds).toBe(ROUNDS * 3 * 4);
+    expect(raceRounds).toBe(ROUNDS * 3 * 5);
     expect(deadlocks()).toBe(deadlocksBefore);
   });
 });
@@ -1797,73 +1994,188 @@ describe("bookOnline(): the one server entry point, against the database", () =>
       .throwOnError();
   }, 60_000);
 
-  it("a lock that can't be had in time: reserve() raises 55P03 as it is, and bookOnline() answers try_again with nothing written", async () => {
+  it("a lock that can't be had in time, through the API: reserve() gives up after its own 6 seconds with 55P03, before the API's 8-second limit, and bookOnline() answers try_again with nothing written", async () => {
     const single = await vehicle(1, { tenant });
     await priceByDay(single.id, 10_000, tenant);
     const marker = `lock-timeout-${tag}`;
-    // Someone holds this product's lock (a booking in flight, say).
+    // Someone holds this product's lock for longer than anyone should wait.
     const holder = sqlBackground(`
       begin;
       select platform_private.lock_products_stock(
         array['${single.id}']::uuid[], array['${tenant.locationId}']::uuid[]);
-      select pg_sleep(4) /* ${marker} */;
+      select pg_sleep(9) /* ${marker} */;
       commit;
     `);
     await holding(marker);
-    // The server's client, with a lock timeout on its reserve() call: the
-    // reads go through the API as always.
-    const impatient: OnlineDb = {
-      rpc(fn, args) {
-        if (fn !== "reserve") return server.rpc(fn, args);
-        const run = sql(`
-          \\set VERBOSITY verbose
-          begin;
-          ${asServer}
-          set local lock_timeout = '300ms';
-          select platform.reserve('${args.p_tenant_id}', '${JSON.stringify(args.p_request)}'::jsonb);
-          commit;
-        `);
-        const code = /ERROR:\s+([0-9A-Z]{5}):\s*(.*)/.exec(run.failed);
-        return Promise.resolve(
-          code
-            ? { data: null, error: { code: code[1], message: code[2] } }
-            : {
-                data: JSON.parse(
-                  run.out
-                    .split("\n")
-                    .filter((l) => l.startsWith('{"ok"'))
-                    .pop()!,
-                ),
-                error: null,
-              },
-        );
-      },
-    };
     const before = written(tenant);
     const lines = [
       { productId: single.id, start: pickup(82), end: pickup(84), quantity: 1 },
     ];
-    // What the database itself says, uncaught by reserve().
-    const raw = await impatient.rpc("reserve", {
-      p_tenant_id: tenant.id,
-      p_request: request(tenant, "booking_page", "instant", [
-        { product_id: single.id, starts_at: pickup(82), ends_at: pickup(84) },
-      ]).p_request,
-    });
+    const started = Date.now();
+    // The same call twice, at once, both through the API as the server:
+    // what the database itself says, and what the entry point makes of it.
+    const [raw, answer] = await Promise.all([
+      service.rpc(
+        "reserve",
+        request(tenant, "booking_page", "instant", [
+          { product_id: single.id, starts_at: pickup(82), ends_at: pickup(84) },
+        ]),
+      ),
+      bookOnline(ask(lines), { db: server, now }),
+    ]);
+    const waited = Date.now() - started;
+    // lock_not_available, not the statement timeout (57014).
     expect(raw.error?.code).toBe("55P03");
     expect(raw.error?.message).toMatch(/lock timeout/);
-    // And what the entry point makes of it.
-    expect(await bookOnline(ask(lines), { db: impatient, now })).toEqual({
-      ok: false,
-      reason: "try_again",
-      line: null,
-    });
+    expect(answer).toEqual({ ok: false, reason: "try_again", line: null });
+    // After reserve()'s 6 seconds, and before the API's 8.
+    expect(waited).toBeGreaterThan(5_500);
+    expect(waited).toBeLessThan(8_000);
     expect(written(tenant)).toBe(before);
     expect((await holder).failed).toBe("");
     // Sent again once the lock is free, it goes through.
-    expect((await bookOnline(ask(lines), { db: impatient, now })).ok).toBe(
-      true,
+    expect((await bookOnline(ask(lines), { db: server, now })).ok).toBe(true);
+  }, 60_000);
+
+  it("Ride today through the entry point: Moto Mangos only, and only for a pickup that is now; reserve() itself refuses the mode on any other channel", async () => {
+    const listed = await listedVehicle(3, { instant: 1 }, tenant);
+    await priceByDay(listed.id, 20_000, tenant);
+    await service
+      .from("product_listings")
+      .update({ lead_time_hours: 72 })
+      .eq("product_id", listed.id)
+      .throwOnError();
+    // A customer at the shop on Tuesday 6 January 2032 at 11:00.
+    const atTheShop = () => pickup(5);
+    const ride = (
+      start: Date,
+      end: Date,
+      over: Partial<OnlineBookingRequest> = {},
+    ) =>
+      bookOnline(
+        ask([{ productId: listed.id, start, end, quantity: 1 }], {
+          channel: "marketplace",
+          mode: "now",
+          ...over,
+        }),
+        { db: server, now: atTheShop },
+      );
+    // The cap's one place is taken by an advance booking for the same days.
+    booked(
+      await mmBook(
+        [{ product_id: listed.id, starts_at: pickup(5), ends_at: pickup(7) }],
+        { tenant },
+      ),
     );
+    const before = written(tenant);
+    // A "walk-in" for next week: it used to skip the 72 hours and the cap.
+    expect(await ride(pickup(12), pickup(14))).toEqual({
+      ok: false,
+      reason: "not_now",
+      line: 0,
+    });
+    // Later today.
+    expect(await ride(pickup(5, 8), pickup(7))).toEqual({
+      ok: false,
+      reason: "not_now",
+      line: 0,
+    });
+    // The shop's own page and the API can't use the mode at all.
+    for (const channel of ["booking_page", "api"] as const) {
+      await expect(ride(pickup(5), pickup(7), { channel })).rejects.toThrow(
+        RangeError,
+      );
+      const direct = await service.rpc(
+        "reserve",
+        request(tenant, channel, "now", [
+          { product_id: listed.id, starts_at: pickup(5), ends_at: pickup(7) },
+        ]),
+      );
+      expect(direct.error?.message, channel).toBe("invalid_request");
+      expect(direct.error?.code, channel).toBe("22023");
+    }
+    expect(written(tenant)).toBe(before);
+    // A real walk-in, ten minutes from now, with the cap full: rides away.
+    const tenMinutes = new Date(pickup(5).getTime() + 10 * 60_000);
+    const answer = await ride(tenMinutes, pickup(7));
+    expect(answer.ok && answer.mode).toBe("now");
+    expect((await reservationsOf(listed.id)).map((r) => r.mode).sort()).toEqual(
+      ["instant", "now"],
+    );
+  }, 60_000);
+
+  it("a location with no opening hours saved can't be booked online, on any online channel; staff book it as before", async () => {
+    // Saigon has saved no hours.
+    expect(
+      (
+        await service
+          .from("location_hours")
+          .select("weekday")
+          .eq("location_id", saigon.locationId)
+      ).data,
+    ).toEqual([]);
+    const scooter = await listedVehicle(2, { instant: 2 }, saigon);
+    await priceByDay(scooter.id, 150_000, saigon);
+    const before = written(saigon);
+    for (const channel of ["booking_page", "marketplace", "api"] as const) {
+      expect(
+        await bookOnline(
+          {
+            tenantId: saigon.id,
+            locationId: saigon.locationId,
+            channel,
+            mode: "instant",
+            lines: [
+              {
+                productId: scooter.id,
+                start: at(30, 4),
+                end: at(32, 4),
+                quantity: 1,
+              },
+            ],
+          },
+          { db: server, now },
+        ),
+        channel,
+      ).toEqual({ ok: false, reason: "outside_hours", line: 0 });
+    }
+    expect(written(saigon)).toBe(before);
+    // The counter is not bound by it.
+    booked(
+      await staffBook(
+        "staff",
+        [{ product_id: scooter.id, starts_at: at(30, 4), ends_at: at(32, 4) }],
+        { tenant: saigon },
+      ),
+    );
+    // With hours saved, the same online booking goes through.
+    await service
+      .from("location_hours")
+      .insert(everyDay("08:00", "20:00", saigon))
+      .throwOnError();
+    const answer = await bookOnline(
+      {
+        tenantId: saigon.id,
+        locationId: saigon.locationId,
+        channel: "booking_page",
+        mode: "instant",
+        lines: [
+          {
+            productId: scooter.id,
+            start: at(30, 4),
+            end: at(32, 4),
+            quantity: 1,
+          },
+        ],
+      },
+      { db: server, now },
+    );
+    expect(answer.ok).toBe(true);
+    await service
+      .from("location_hours")
+      .delete()
+      .eq("location_id", saigon.locationId)
+      .throwOnError();
   }, 60_000);
 
   it("nobody but the server books an online channel: a signed-out visitor and a signed-in Moto Mangos customer can't run reserve() for any shop; a member can't use an online channel", async () => {

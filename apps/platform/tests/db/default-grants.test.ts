@@ -531,7 +531,7 @@ describe("booking core: reservations and its functions", () => {
       'free_units false search_path=""',
       'json_time false search_path=""',
       'lock_products_stock false search_path=""',
-      'reserve true search_path=""',
+      'reserve true search_path="",lock_timeout=6s',
       'unit_blocks_guard true search_path=""',
     ]);
   });
@@ -692,7 +692,7 @@ describe("booking rules: the stage 3 functions and columns", () => {
       // The rules' read: every member, and the server; as its caller, under RLS.
       'platform.booking_inputs false true true false | false search_path=""',
       // Re-created in stage 3, grants restated.
-      'platform.reserve false true true false | true search_path=""',
+      'platform.reserve false true true false | true search_path="",lock_timeout=6s',
       // Owners and managers (checked inside). Not the server's.
       'platform.save_booking_rules false true false false | true search_path=""',
       'platform_private.booking_roles false true true false | false search_path=""',
