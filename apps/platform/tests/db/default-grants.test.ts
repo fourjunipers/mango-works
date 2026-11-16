@@ -504,11 +504,12 @@ describe("booking core: reservations and its functions", () => {
       // name, anon, authenticated, service_role, PUBLIC
       "platform.cancel_reservation false true true false",
       "platform.reserve false true true false",
-      // Read by the reservations policy, and by the availability read.
-      "platform_private.booking_roles false true false false",
-      "platform_private.free_units false true false false",
+      // Read by the reservations policy, and by the availability read,
+      // which runs as its caller: a member, or the server (stage 2).
+      "platform_private.booking_roles false true true false",
+      "platform_private.free_units false true true false",
+      "platform_private.json_time false true true false",
       // Called only inside the booking functions, as their owner.
-      "platform_private.json_time false false false false",
       "platform_private.lock_products_stock false false false false",
       // A trigger function: nobody calls it.
       "platform_private.unit_blocks_guard false false false false",
@@ -532,6 +533,88 @@ describe("booking core: reservations and its functions", () => {
       'lock_products_stock false search_path=""',
       'reserve true search_path=""',
       'unit_blocks_guard true search_path=""',
+    ]);
+  });
+});
+
+/**
+ * Phase 2, stage 2 (20261116000200): holds, the shortage rule, the
+ * availability read and the sweep. No new table; two columns on tenants.
+ */
+describe("availability: the stage 2 functions and the shop's two settings", () => {
+  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || has_function_privilege('service_role', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+        || ' | ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in (
+          'confirm_hold', 'assign_units', 'availability', 'release_expired_holds',
+          'expire_holds', 'hold_expiry', 'shortage_demand', 'marketplace_peaks',
+          'units_busy_on_delete', 'json_uuid')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
+      // Staff's alone: the server never names units.
+      'platform.assign_units false true false false | true search_path=""',
+      // The read runs as its caller, under RLS.
+      'platform.availability false true true false | false search_path=""',
+      'platform.confirm_hold false true true false | true search_path=""',
+      // The sweep: the server's and the job's.
+      'platform.release_expired_holds false false true false | true search_path=""',
+      // Called only inside the booking functions, as their owner.
+      'platform_private.expire_holds false false false false | true search_path=""',
+      'platform_private.hold_expiry false false false false | false search_path=""',
+      // What the read calls as its caller.
+      'platform_private.json_uuid false true true false | false search_path=""',
+      'platform_private.marketplace_peaks false true true false | false search_path=""',
+      'platform_private.release_expired_holds false false false false | true search_path=""',
+      'platform_private.shortage_demand false true true false | false search_path=""',
+      // A trigger function: nobody calls it.
+      'platform_private.units_busy_on_delete false false false false | false search_path=""',
+    ]);
+  });
+
+  it("the server may look into platform_private for the read; signed-out visitors may not", () => {
+    expect(
+      lines(`
+        select has_schema_privilege('service_role', 'platform_private', 'usage')::text
+          || ' ' || has_schema_privilege('anon', 'platform_private', 'usage')::text;
+      `),
+    ).toEqual(["true false"]);
+  });
+
+  it("no signed-in person can write allow_overbooking or hold_minutes yet", () => {
+    const rows = lines(`
+      select string_agg(a.attname, ',' order by a.attname)
+      from pg_attribute a
+      where a.attrelid = 'platform.tenants'::regclass and a.attnum > 0
+        and not a.attisdropped
+        and has_column_privilege('authenticated', a.attrelid, a.attnum, 'update');
+    `);
+    expect(rows).toEqual([
+      "country,currency,distance_unit,locale,name,renewal_digest_day,renewal_reminder_days",
+    ]);
+  });
+
+  it("the block audit is three triggers with a condition each, and a unit delete has its trigger", () => {
+    const rows = lines(`
+      select tgname || ' ' || (pg_get_triggerdef(oid) like '%WHEN%')::text
+      from pg_trigger
+      where tgrelid in ('platform.units'::regclass, 'platform.unit_blocks'::regclass)
+        and not tgisinternal and (tgname like 'unit_blocks_audit%' or tgname like '%busy%')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      "unit_blocks_audit_delete true",
+      "unit_blocks_audit_insert true",
+      "unit_blocks_audit_update true",
+      "units_busy_on_delete false",
     ]);
   });
 });

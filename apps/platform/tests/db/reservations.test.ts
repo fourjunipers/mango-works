@@ -267,8 +267,18 @@ const outcome = (result: Result) => {
 };
 
 /** Waits until another session is running a statement carrying `marker`. */
-async function holding(marker: string) {
+async function holding(
+  marker: string,
+  session?: Promise<{ out: string; failed: string }>,
+) {
+  // If the session that should be holding ends first, say why at once.
+  let ended: { out: string; failed: string } | undefined;
+  void session?.then((result) => (ended = result));
   for (let i = 0; i < 100; i++) {
+    if (ended)
+      throw new Error(
+        `The session ended before ${marker}: ${ended.failed || ended.out}`,
+      );
     const { out } = sql(
       `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
     );
@@ -627,7 +637,9 @@ describe("who may book", () => {
     // The helpers behind them are not the public's to call.
     for (const call of [
       `select platform_private.lock_products_stock(array['${bike.id}']::uuid[], array['${shop.locationId}']::uuid[])`,
-      `select platform_private.json_time('{}'::jsonb, 'a', 'x')`,
+      `select platform_private.hold_expiry(now(), 15)`,
+      `select platform_private.expire_holds('${shop.id}', array['${bike.id}']::uuid[], array['${shop.locationId}']::uuid[], now())`,
+      `select platform_private.release_expired_holds()`,
     ]) {
       expect(sqlAs(shop.members.owner.id, `${call};`).failed).toMatch(
         /permission denied/,
@@ -702,10 +714,13 @@ describe("reserve(): what a booking writes", () => {
         after: {
           channel: "walk_in",
           mode: "staff",
+          hold: false,
+          hold_expires_at: null,
           lines: [
             {
               reservation_id: rows[0].id,
               unit_ids: answer.lines[0].unit_ids,
+              shortage: 0,
               product_id: bike.id,
               location_id: shop.locationId,
               starts_at: expect.any(String),
@@ -990,7 +1005,7 @@ describe("reserve(): what a booking writes", () => {
     const bad: [string, unknown][] = [
       ["not an object", []],
       ["no lines", { ...base.p_request, lines: [] }],
-      ["an unknown key", { ...base.p_request, hold: true }],
+      ["an unknown key", { ...base.p_request, coupon: "TEN" }],
       ["an unknown channel", { ...base.p_request, channel: "fax" }],
       [
         "a member booking in an online mode",
@@ -1411,6 +1426,12 @@ describe("cancel_reservation()", () => {
         actor: null,
         after: {
           reservation_ids: answer.lines.map((l) => l.reservation_id).sort(),
+          lines: [...answer.lines]
+            .sort((x, y) => x.reservation_id.localeCompare(y.reservation_id))
+            .map((l) => ({
+              reservation_id: l.reservation_id,
+              unit_ids: l.unit_ids,
+            })),
         },
       },
     ]);
@@ -2030,17 +2051,22 @@ describe("lock order", () => {
       const call = onlineBook([
         { product_id: bike.id, starts_at: at(1), ends_at: at(2) },
       ]);
-      // It waits for the delete, on the unit's row, having locked no row
-      // and written nothing (no transaction id yet): it holds nothing the
-      // delete could come to wait for. Before the unit rows were locked
-      // first, it went on to lock the product's row here.
+      // It waits for the delete, having locked no row and written nothing
+      // (no transaction id yet): it holds nothing the delete could come to
+      // wait for. Since 20261116000200 a unit delete takes the unit's lock
+      // (without waiting for it), so the booking now meets the delete one
+      // step earlier, at the unit's lock, where stage 1 met it at the
+      // unit's row.
       const seen = await until(`
-        select 'waiting for the delete, nothing locked or written: ' || (w.backend_xid is null)
-        from pg_stat_activity w
-        join pg_locks l on l.pid = w.pid and not l.granted and l.locktype = 'transactionid'
-        join pg_stat_activity d on d.backend_xid = l.transactionid
-        where w.query like '%reserve%' and d.query like '%${deleteMarker}%'
-          and w.pid <> pg_backend_pid()
+        select 'waiting for the delete, nothing locked or written: ' || (a.backend_xid is null)
+        from pg_locks w
+        join pg_stat_activity a on a.pid = w.pid
+        join pg_locks h on h.locktype = 'advisory' and h.classid = w.classid
+          and h.objid = w.objid and h.granted
+        join pg_stat_activity d on d.pid = h.pid
+        where w.locktype = 'advisory' and w.classid = x'1a01'::int and not w.granted
+          and w.objid::bigint = (hashtext('${picked}')::bigint & 4294967295)
+          and a.query like '%reserve%' and d.query like '%${deleteMarker}%'
         limit 1;
       `);
       expect(seen, `${units} units`).toBe(
@@ -2081,6 +2107,202 @@ describe("lock order", () => {
       expect(remaining!.map((u) => u.id)).toEqual(left);
     }
   }, 120_000);
+});
+
+/** A background session that acts as a signed-in member, or as the server. */
+const actingAs = (userId: string | null) =>
+  userId
+    ? `select set_config('request.jwt.claims', '${JSON.stringify({ sub: userId, role: "authenticated" })}', true); set local role authenticated;`
+    : `select set_config('request.jwt.claims', '{"role":"service_role"}', true); set local role service_role;`;
+
+/** A whole booking made in a background session and held there, not yet saved. */
+function bookingHeld(
+  userId: string | null,
+  call: ReturnType<typeof request>,
+  marker: string,
+) {
+  return sqlBackground(`
+    begin;
+    ${actingAs(userId)}
+    select platform.reserve('${call.p_tenant_id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
+    select pg_sleep(3) /* ${marker} */;
+    commit;
+  `);
+}
+
+describe("one side held in place, the other seen waiting", () => {
+  it("the named-unit race: while a booking that names the unit is not yet saved, a second one waits for the product's lock with no unit lock, then is refused", async () => {
+    const line = (bike: { id: string }) => ({
+      product_id: bike.id,
+      starts_at: at(1),
+      ends_at: at(2),
+    });
+    const cases: {
+      what: string;
+      first: (bike: {
+        id: string;
+        units: string[];
+      }) => [string | null, ReturnType<typeof request>];
+      second: (bike: { id: string; units: string[] }) => Promise<Result>;
+      refusal: string;
+    }[] = [
+      {
+        what: "staff naming the unit, then staff naming the same unit",
+        first: (bike) => [
+          shop.members.staff.id,
+          request(shop, "walk_in", "staff", [
+            { ...line(bike), unit_ids: bike.units },
+          ]),
+        ],
+        second: (bike) =>
+          staffBook("owner", [{ ...line(bike), unit_ids: bike.units }]),
+        refusal: "unit_taken",
+      },
+      {
+        what: "staff naming the unit, then an online booking naming none",
+        first: (bike) => [
+          shop.members.staff.id,
+          request(shop, "phone", "staff", [
+            { ...line(bike), unit_ids: bike.units },
+          ]),
+        ],
+        second: (bike) => onlineBook([line(bike)]),
+        refusal: "unavailable",
+      },
+      {
+        what: "an online booking naming none, then staff naming the unit",
+        first: (bike) => [
+          null,
+          request(shop, "booking_page", "instant", [line(bike)]),
+        ],
+        second: (bike) =>
+          staffBook("staff", [{ ...line(bike), unit_ids: bike.units }]),
+        refusal: "unit_taken",
+      },
+    ];
+    for (const [index, c] of cases.entries()) {
+      const bike = await vehicle(1);
+      const marker = `named-held-${tag}-${index}`;
+      const [user, call] = c.first(bike);
+      const first = bookingHeld(user, call, marker);
+      await holding(marker, first);
+      const second = c.second(bike);
+      // One statement, so both are read at the same moment.
+      const seen = await until(`
+        select 'waiting, unit locks: ' || (
+          select count(*) from pg_locks u
+          where u.pid = w.pid and u.locktype = 'advisory' and u.classid = x'1a01'::int
+        )
+        from pg_locks w
+        where w.locktype = 'advisory' and w.classid = x'1a02'::int and not w.granted
+        limit 1;
+      `);
+      expect(seen, c.what).toBe("waiting, unit locks: 0");
+      const saved = await first;
+      expect(saved.failed, c.what).toBe("");
+      expect(saved.out, c.what).toContain("true");
+      const result = await second;
+      noDeadlock([result]);
+      expect(result.data, c.what).toEqual({
+        ok: false,
+        reason: c.refusal,
+        line: 0,
+      });
+      expect(await reservationsOf(bike.id), c.what).toHaveLength(1);
+      expect(await blocksOf(bike.id), c.what).toHaveLength(1);
+    }
+  }, 90_000);
+
+  for (const status of ["sold", "retired", "lost"] as const) {
+    it(`the unit being ${status}, not yet saved: the booking that picked it waits for the unit's lock with its product lock in hand, reads again, and is refused`, async () => {
+      const bike = await vehicle(1);
+      const marker = `leaving-${status}-${tag}`;
+      const leaving = sqlBackground(`
+        begin;
+        update platform.units set status = '${status}' where id = '${bike.units[0]}';
+        select pg_sleep(3) /* ${marker} */;
+        commit;
+      `);
+      await holding(marker, leaving);
+      // The booking still sees the unit in use, and picks it.
+      const call = onlineBook([
+        { product_id: bike.id, starts_at: at(1), ends_at: at(2) },
+      ]);
+      const seen = await until(`
+        select 'waiting for the unit, product locks: ' || (
+          select count(*) from pg_locks g
+          where g.pid = w.pid and g.locktype = 'advisory' and g.granted
+            and g.classid = x'1a02'::int
+        )
+        from pg_locks w
+        where w.locktype = 'advisory' and w.classid = x'1a01'::int and not w.granted
+          and w.objid::bigint = (hashtext('${bike.units[0]}')::bigint & 4294967295)
+        limit 1;
+      `);
+      expect(seen).toBe("waiting for the unit, product locks: 1");
+      expect((await leaving).failed).toBe("");
+      const result = await call;
+      noDeadlock([result]);
+      expect(result.data).toEqual({
+        ok: false,
+        reason: "unavailable",
+        line: 0,
+      });
+      const { data: unit } = await service
+        .from("units")
+        .select("status")
+        .eq("id", bike.units[0])
+        .single();
+      expect(unit!.status).toBe(status);
+      expect(await blocksOf(bike.id)).toEqual([]);
+      expect(await reservationsOf(bike.id)).toEqual([]);
+    }, 60_000);
+
+    it(`a booking written, not yet saved: marking its unit ${status} waits for the unit's lock, then is refused because the unit is booked`, async () => {
+      const bike = await vehicle(1);
+      const marker = `booked-before-${status}-${tag}`;
+      const booking = bookingHeld(
+        null,
+        request(shop, "booking_page", "instant", [
+          { product_id: bike.id, starts_at: at(1), ends_at: at(2) },
+        ]),
+        marker,
+      );
+      await holding(marker, booking);
+      const leaving = Promise.resolve(
+        db("owner")
+          .from("units")
+          .update({ status })
+          .eq("id", bike.units[0])
+          .select("status"),
+      );
+      // It has the unit's row (no key column changes, so the booking's own
+      // lock on that row does not stop it) and waits for the unit's lock.
+      const seen = await until(`
+        select 'waiting for the unit lock held by the booking: ' || (h.pid is not null)
+        from pg_locks w
+        left join pg_locks h on h.locktype = 'advisory' and h.classid = w.classid
+          and h.objid = w.objid and h.granted
+        where w.locktype = 'advisory' and w.classid = x'1a01'::int and not w.granted
+          and w.objid::bigint = (hashtext('${bike.units[0]}')::bigint & 4294967295)
+        limit 1;
+      `);
+      expect(seen).toBe("waiting for the unit lock held by the booking: true");
+      const saved = await booking;
+      expect(saved.failed).toBe("");
+      expect(saved.out).toContain("true");
+      const left = await leaving;
+      noDeadlock([left]);
+      expect(left.error?.message).toBe("unit_has_future_blocks");
+      const { data: unit } = await service
+        .from("units")
+        .select("status")
+        .eq("id", bike.units[0])
+        .single();
+      expect(unit!.status).toBe("active");
+      expect(await blocksOf(bike.id)).toHaveLength(1);
+    }, 60_000);
+  }
 });
 
 /** The places every race runs in. */
