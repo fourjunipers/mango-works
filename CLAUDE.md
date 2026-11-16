@@ -55,7 +55,11 @@ Every function or trigger that takes more than one lock takes them in this order
 2. **Unit advisory locks** (namespace `1a01`), sorted by the lock's own key, through `platform_private.lock_units()`. By key (`hashtext` of the id), never by UUID.
 3. **Rows**, always after the advisory locks: unit rows in id order, then the product's row, then its listing's row, in product-id order; then `reservations`; then `unit_blocks`. Unit rows come first because deleting a unit takes no advisory lock: it locks the unit's row, then the product's.
 
-A booking reads prices before its transaction and never locks a pricing row, a price list or a tax profile. Stock is taken only through `platform.reserve()` and its siblings; nothing else writes an allocation or a hold.
+A booking reads prices before its transaction and never locks a pricing row, a price list or a tax profile. Stock is taken only through `platform.reserve()` and its siblings (`confirm_hold`, `cancel_reservation`, `assign_units`, the hold sweep); nothing else writes an allocation or a hold.
+
+- **Releasing a hold that has run out** only deletes blocks, in the rows phase, under the product lock that every writer of that reservation's blocks holds. It takes no unit lock: a second batch of unit locks, or a block row deleted before the unit rows are locked, would each open a cycle.
+- **Deleting a unit** takes the unit's lock without waiting (a `before delete` trigger): if anything holds it, the delete fails with `unit_busy` and can be sent again. It must never wait there, because Postgres locks the row before the trigger runs, and row-then-lock is the opposite of this order. A function that deletes units takes their locks first with `lock_units()`.
+- **Which unit changes take the unit lock:** a block written or moved, and a unit sold, retired or marked lost (each checks the unit's blocks, so it must see them settled). A unit put into repair or back, or moved to another product or place, takes none: it checks nothing a booking writes, and it changes no key column, so it can neither be refused by a booking nor wait for one. If a rule is ever added that reads a unit's blocks on such a change, it takes the lock with it.
 
 ## Environments
 

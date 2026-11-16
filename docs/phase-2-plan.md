@@ -227,7 +227,10 @@ Who takes what:
 | `reserve()` | All lines, sorted | The picked units, sorted | Product, listing (online), coupon, then inserts |
 | `confirm_hold`, `cancel_reservation`, `assign_units` | The booking's products, sorted | Its units (and the new ones), sorted | Coupon (cancel), reservations, blocks |
 | Gear stock functions (stage B, the rework) | One product | Its units, sorted | Unchanged |
-| A downtime write, a unit status change | None | One unit, by the trigger | Unchanged. One lock can't form a cycle |
+| A downtime write; a unit sold, retired or marked lost | None | One unit, by the trigger | Unchanged. One lock can't form a cycle |
+| A unit put into repair or back to active; a unit moved to another product or place | None | None | The unit's row (no key column, so a booking's key-share lock on it does not conflict), then the product's row. Decided in stage 2: it checks nothing a booking writes, so the lock would change no outcome (PROGRESS, stage 2) |
+| Deleting a unit | None | One unit, **without waiting** (`unit_busy` if it is held) | The unit's row first (Postgres locks it before the trigger runs), which is why it can't wait for the lock; then the product's row |
+| The hold sweep (`release_expired_holds`, and inside `reserve()` and `assign_units()`) | The holds' products, sorted | None | Reservations, then blocks (deletes only), in the rows phase |
 | A vehicle leaving (`units_clamp_product_counts`) | None | One unit | Product row, then listing row: unchanged |
 | `save_coupon` | None | None | The coupon's row, then its product links in product-id order |
 | `save_product_extras` | None | None | The vehicle product's row, then its extra links in extra-id order |
