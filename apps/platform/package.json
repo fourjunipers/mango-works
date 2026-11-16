@@ -15,7 +15,8 @@
     "test:db": "vitest run --config vitest.db.config.mts",
     "test:e2e": "playwright test",
     "seed": "node --import ./scripts/ts-resolve.mjs --env-file-if-exists=.env.local scripts/seed.mts",
-    "seed:staging": "node --import ./scripts/ts-resolve.mjs --env-file-if-exists=.env.local scripts/seed.mts --staging"
+    "seed:staging": "node --import ./scripts/ts-resolve.mjs --env-file-if-exists=.env.local scripts/seed.mts --staging",
+    "load:bsr-pricing": "node --import ./scripts/ts-resolve.mjs --env-file-if-exists=.env.local scripts/load-bsr-pricing.mts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
