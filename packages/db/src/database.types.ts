@@ -721,7 +721,7 @@ isOneToOne: false
 { Args: { "p_current_order"?: (string)[],"p_place": string,"p_product_id": string,"p_target_id": string }; Returns: undefined
                            },
 "move_unit":
-{ Args: { "p_expected_bookings"?: number,"p_expected_updated_at"?: string,"p_location_id": string,"p_product_id": string,"p_tenant_id": string,"p_unit_id": string }; Returns: Json
+{ Args: { "p_details"?: Json,"p_expected_bookings"?: number,"p_expected_updated_at"?: string,"p_location_id": string,"p_product_id": string,"p_tenant_id": string,"p_unit_id": string }; Returns: Json
                            },
 "platform_exposure_report":
 { Args: Record<PropertyKey, never>; Returns: {

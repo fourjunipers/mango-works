@@ -121,6 +121,8 @@ test("a booked vehicle moved to another product: the form says how many bookings
     bookings.push(await book(3));
     await page.reload();
     await choose();
+    // Another field in the same save: one call writes both, or neither.
+    await details.getByLabel("Colour").fill("Blue");
     page.once("dialog", (dialog) => {
       asked = dialog.message();
       void dialog.accept();
@@ -135,10 +137,10 @@ test("a booked vehicle moved to another product: the form says how many bookings
     await expect.poll(bookedOn).toEqual(["to", "to"]);
     const { data: moved } = await db
       .from("units")
-      .select("product_id")
+      .select("product_id, colour")
       .eq("id", unitId)
       .single();
-    expect(moved!.product_id).toBe(toId);
+    expect(moved).toEqual({ product_id: toId, colour: "Blue" });
     await page.reload();
     await expect(page.getByRole("link", { name: to })).toBeVisible();
 

@@ -27,6 +27,8 @@
 -- 13. platform.move_unit(), and platform_private.units_guard() re-created: a
 --     unit that has bookings changes its product or place only through the
 --     function, which moves the bookings with it.
+-- 14. PUBLIC loses execute on the older platform_private functions (with 7,
+--     where the service role is let into that schema).
 --
 -- Re-created functions are their bodies from the database
 -- (pg_get_functiondef) with the changes named above each, and their grants
@@ -244,7 +246,9 @@ revoke all on function platform_private.hold_expiry(timestamptz, integer)
 -- Releases the holds that had run out at p_now on the given (product, place)
 -- pairs: their blocks are deleted and their rows say 'expired'. The caller
 -- holds the product locks of those pairs, and is past every other lock it
--- will take. One 'expire' event per booking. Answers how many rows.
+-- will take. One 'expire' event for each booking it releases rows of: a
+-- booking whose rows are on different products can be released in two
+-- calls, and then has two, each naming its rows. Answers how many rows.
 -- p_tenant_id null: every shop (the job).
 --
 -- A hold is on these pairs when its reservation names one, or when one of
@@ -331,8 +335,42 @@ revoke all on function platform_private.expire_holds(uuid, uuid[], uuid[], times
 
 -- availability() runs as whoever calls it, and the server calls it with the
 -- service role for the online channels. So the service role may look into
--- this schema (each function in it is still granted one by one), and both
--- callers may use the two parsers, which only read their argument.
+-- this schema, and both callers may use the two parsers, which only read
+-- their argument.
+--
+-- Until now the schema itself kept the service role out, so it did not
+-- matter that fourteen older functions here were executable by PUBLIC (the
+-- trigger functions and the first helpers, from before "revoke all from
+-- public" was the rule). With the schema open they would all be the service
+-- role's to call. PUBLIC loses them. Signed-in members keep, by their own
+-- grants, the ones policies and functions call as them; nobody calls a
+-- trigger function. What the service role can execute here is exactly what
+-- is granted to it by name, and a test lists it.
+revoke execute on function
+  platform_private.audit_row(),
+  platform_private.audit(uuid, text, text, text, jsonb, jsonb),
+  platform_private.can_use_catalog(uuid, uuid),
+  platform_private.check_timezone(),
+  platform_private.is_platform_admin(),
+  platform_private.locations_keep_default(),
+  platform_private.my_role(uuid),
+  platform_private.my_tenant_ids(platform.platform_role[]),
+  platform_private.norm(text),
+  platform_private.products_guard(),
+  platform_private.set_updated_at(),
+  platform_private.tenants_lock_currency(),
+  platform_private.tenants_need_location(),
+  platform_private.units_clamp_product_counts()
+from public;
+grant execute on function
+  platform_private.audit(uuid, text, text, text, jsonb, jsonb),
+  platform_private.can_use_catalog(uuid, uuid),
+  platform_private.is_platform_admin(),
+  platform_private.my_role(uuid),
+  platform_private.my_tenant_ids(platform.platform_role[]),
+  platform_private.norm(text)
+to authenticated;
+
 grant usage on schema platform_private to service_role;
 grant execute on function platform_private.json_uuid(jsonb, text, text)
   to authenticated, service_role;
@@ -901,6 +939,24 @@ begin
 
   -- Product locks, then unit locks, then rows.
   perform platform_private.lock_products_stock(v_product_ids, v_location_ids);
+  -- The locks were chosen from what the rows named a moment ago. If a unit
+  -- was moved meanwhile (move_unit) a row names another product or place
+  -- now, or the booking has a new row: these are not the right locks.
+  if exists (
+    select 1 from platform.reservations r
+    where r.tenant_id = p_tenant_id
+      and (
+        r.booking_id = p_booking_id
+        or r.id = p_reservation_id
+        or r.parent_id = p_reservation_id
+      )
+      and not exists (
+        select 1 from unnest(v_ids, v_product_ids, v_location_ids) t(id, product_id, location_id)
+        where t.id = r.id and t.product_id = r.product_id and t.location_id = r.location_id
+      )
+  ) then
+    return jsonb_build_object('ok', false, 'reason', 'try_again');
+  end if;
   perform platform_private.lock_units(array(
     select b.unit_id from platform.unit_blocks b where b.reservation_id = any (v_ids)
   ));
@@ -1013,6 +1069,18 @@ begin
 
   -- Product locks, then unit locks, then rows.
   perform platform_private.lock_products_stock(v_product_ids, v_location_ids);
+  -- A unit moved meanwhile (move_unit): a row names another product or
+  -- place now, or the booking has a new row. Not the right locks.
+  if exists (
+    select 1 from platform.reservations r
+    where r.tenant_id = p_tenant_id and r.booking_id = p_booking_id
+      and not exists (
+        select 1 from unnest(v_ids, v_product_ids, v_location_ids) t(id, product_id, location_id)
+        where t.id = r.id and t.product_id = r.product_id and t.location_id = r.location_id
+      )
+  ) then
+    return jsonb_build_object('ok', false, 'reason', 'try_again');
+  end if;
   perform platform_private.lock_units(array(
     select b.unit_id from platform.unit_blocks b where b.reservation_id = any (v_ids)
   ));
@@ -1104,6 +1172,8 @@ declare
   v_attempt integer;
   v_done boolean := false;
   v_after uuid[];
+  v_locked_product uuid;
+  v_locked_location uuid;
 begin
   if not platform_private.has_role(p_tenant_id, platform_private.booking_roles('assign')) then
     return jsonb_build_object('ok', false, 'reason', 'not_allowed');
@@ -1148,13 +1218,20 @@ begin
   end if;
 
   -- 1. The product-and-location lock.
+  v_locked_product := v_r.product_id;
+  v_locked_location := v_r.location_id;
   perform platform_private.lock_products_stock(
-    array[v_r.product_id], array[v_r.location_id]);
+    array[v_locked_product], array[v_locked_location]);
 
   for v_attempt in 1..c_attempts loop
     begin
       -- Under the product lock nothing else writes this reservation.
       select * into v_r from platform.reservations r where r.id = p_reservation_id;
+      -- Its unit was moved meanwhile (move_unit): it is another product's
+      -- or place's row now, and this is not its lock.
+      if v_r.product_id <> v_locked_product or v_r.location_id <> v_locked_location then
+        return jsonb_build_object('ok', false, 'reason', 'try_again');
+      end if;
       if v_r.state not in ('held', 'reserved')
         or (v_r.state = 'held' and v_r.hold_expires_at <= now())
       then
@@ -1680,6 +1757,23 @@ revoke all on function platform_private.units_guard() from public, anon, authent
 -- is, where it goes and whatever its bookings name, sorted once; the unit's
 -- lock; then rows: the unit, the two products, the reservations, the blocks.
 --
+-- Two places where it must not wait in the usual way:
+--   * the unit's row is taken without waiting. A direct update of a unit
+--     (its status, its product) locks the row first and the unit's lock
+--     second, in the unit's guard; this function holds the lock by then. If
+--     it waited for the row, each would wait for the other. It asks once
+--     and answers try_again.
+--   * the products' rows are taken "for no key update", the strength the
+--     unit's own update needs at the end (the trigger that keeps a listing's
+--     counts within the fleet). Taken "for share" first, two moves of units
+--     of one product at two places would each hold share and each wait to
+--     raise it.
+--
+-- p_details: the rest of the vehicle's Details form (plate, plate_pending,
+-- frame_number, engine_number, colour, model_year, notes,
+-- current_odometer_km), written by the same update that moves the unit, so
+-- the form's save is one call: all of it or none of it.
+--
 -- p_expected_bookings: how many upcoming bookings the person was warned
 -- about. If the unit has a different number now, nothing moves
 -- (bookings_changed) and the screen asks again.
@@ -1687,7 +1781,8 @@ revoke all on function platform_private.units_guard() from public, anon, authent
 --
 -- Answers { "ok": true, "unit_id", "bookings", "reservation_ids",
 -- "updated_at" } or { "ok": false, "reason" } with reason not_allowed,
--- bookings_changed, stale or try_again. A request our own code could not
+-- bookings_changed, stale or try_again (someone is changing the unit, or
+-- one of its bookings, at this moment). A request our own code could not
 -- have sent raises invalid_request, unit_not_found, product_not_found or
 -- location_not_found; another shop's is answered like one that does not
 -- exist. Owner and manager, as for every other change to a unit's details;
@@ -1699,7 +1794,8 @@ create function platform.move_unit(
   p_product_id uuid,
   p_location_id uuid,
   p_expected_bookings integer default null,
-  p_expected_updated_at timestamptz default null
+  p_expected_updated_at timestamptz default null,
+  p_details jsonb default null
 )
 returns jsonb
 language plpgsql
@@ -1707,6 +1803,7 @@ security definer
 set search_path = ''
 as $$
 declare
+  v_key text;
   v_unit platform.units%rowtype;
   v_from_product uuid;
   v_from_location uuid;
@@ -1727,6 +1824,19 @@ begin
   end if;
   if p_unit_id is null or p_product_id is null or p_location_id is null then
     raise exception 'invalid_request' using errcode = '22023';
+  end if;
+  if p_details is not null then
+    if jsonb_typeof(p_details) <> 'object' then
+      raise exception 'invalid_request' using errcode = '22023';
+    end if;
+    for v_key in select jsonb_object_keys(p_details) loop
+      if v_key not in (
+        'plate', 'plate_pending', 'frame_number', 'engine_number', 'colour',
+        'model_year', 'notes', 'current_odometer_km'
+      ) then
+        raise exception 'invalid_request' using errcode = '22023';
+      end if;
+    end loop;
   end if;
 
   -- Not found, or another shop's: the same answer.
@@ -1775,12 +1885,19 @@ begin
   -- 2. The unit's lock.
   perform platform_private.lock_units(array[p_unit_id]);
 
-  -- 3. Rows: the unit, then the products in id order.
-  select * into v_unit
-  from platform.units u
-  where u.id = p_unit_id
-  for no key update;
-  if not found then
+  -- 3. Rows: the unit, without waiting, then the products in id order.
+  begin
+    select * into v_unit
+    from platform.units u
+    where u.id = p_unit_id
+    for no key update nowait;
+  exception
+    when lock_not_available then
+      return jsonb_build_object('ok', false, 'reason', 'try_again');
+  end;
+  if v_unit.id is null or not exists (
+    select 1 from platform.units u where u.id = p_unit_id
+  ) then
     raise exception 'unit_not_found' using errcode = 'P0001';
   end if;
   if p_expected_updated_at is not null and v_unit.updated_at <> p_expected_updated_at then
@@ -1792,7 +1909,7 @@ begin
   perform 1 from platform.products p
   where p.id in (v_from_product, p_product_id)
   order by p.id
-  for share;
+  for no key update;
   if not exists (
     select 1 from platform.products p
     where p.id = p_product_id and p.tenant_id = p_tenant_id and p.retired_at is null
@@ -1836,10 +1953,15 @@ begin
       'ok', false, 'reason', 'bookings_changed', 'bookings', v_bookings);
   end if;
 
+  -- Where it already is: no booking moves, and with no details to save
+  -- there is nothing to write.
   if v_from_product = p_product_id and v_from_location = p_location_id then
-    return jsonb_build_object(
-      'ok', true, 'unit_id', p_unit_id, 'bookings', 0,
-      'reservation_ids', '[]'::jsonb, 'updated_at', v_unit.updated_at);
+    v_bookings := 0;
+    if p_details is null or p_details = '{}'::jsonb then
+      return jsonb_build_object(
+        'ok', true, 'unit_id', p_unit_id, 'bookings', 0,
+        'reservation_ids', '[]'::jsonb, 'updated_at', v_unit.updated_at);
+    end if;
   end if;
 
   -- The reservations follow, in id order.
@@ -1884,9 +2006,25 @@ begin
     v_moved := v_moved || v_new_id;
   end loop;
 
-  -- The unit itself. Its guard finds every booking already where it is going.
+  -- The unit itself, with the rest of the form in the same statement. Its
+  -- guard finds every booking already where it is going. Anything this
+  -- refuses (a plate another vehicle has, say) undoes the whole call.
   update platform.units u
-  set product_id = p_product_id, location_id = p_location_id
+  set product_id = p_product_id,
+    location_id = p_location_id,
+    plate = case when p_details ? 'plate' then p_details ->> 'plate' else u.plate end,
+    plate_pending = case when p_details ? 'plate_pending'
+      then (p_details ->> 'plate_pending')::boolean else u.plate_pending end,
+    frame_number = case when p_details ? 'frame_number'
+      then p_details ->> 'frame_number' else u.frame_number end,
+    engine_number = case when p_details ? 'engine_number'
+      then p_details ->> 'engine_number' else u.engine_number end,
+    colour = case when p_details ? 'colour' then p_details ->> 'colour' else u.colour end,
+    model_year = case when p_details ? 'model_year'
+      then (p_details ->> 'model_year')::integer else u.model_year end,
+    notes = case when p_details ? 'notes' then p_details ->> 'notes' else u.notes end,
+    current_odometer_km = case when p_details ? 'current_odometer_km'
+      then (p_details ->> 'current_odometer_km')::numeric else u.current_odometer_km end
   where u.id = p_unit_id
   returning u.updated_at into v_updated_at;
 
@@ -1921,7 +2059,9 @@ exception
 end;
 $$;
 
-revoke all on function platform.move_unit(uuid, uuid, uuid, uuid, integer, timestamptz)
+revoke all on function
+  platform.move_unit(uuid, uuid, uuid, uuid, integer, timestamptz, jsonb)
   from public, anon;
-grant execute on function platform.move_unit(uuid, uuid, uuid, uuid, integer, timestamptz)
+grant execute on function
+  platform.move_unit(uuid, uuid, uuid, uuid, integer, timestamptz, jsonb)
   to authenticated, service_role;

@@ -412,6 +412,25 @@ const deadlocks = () =>
       .pop(),
   );
 
+/**
+ * The session whose statement carries `needle` (a function's name) is
+ * waiting for a product lock; with how many unit locks in hand. Keyed to
+ * that session, so another one that happens to wait at the same moment (the
+ * minute's sweep, say) is not mistaken for it.
+ */
+const waitingForProductLock = (needle: string) =>
+  until(`
+    select 'waiting, unit locks: ' || (
+      select count(*) from pg_locks u
+      where u.pid = w.pid and u.locktype = 'advisory' and u.classid = x'1a01'::int
+    )
+    from pg_locks w
+    join pg_stat_activity a on a.pid = w.pid
+    where w.locktype = 'advisory' and w.classid = x'1a02'::int and not w.granted
+      and a.query like '%${needle}%' and a.pid <> pg_backend_pid()
+    limit 1;
+  `);
+
 const everyShop = (): [string, TestTenant][] => [
   ["Bangkok", shop],
   ["New York", newYork],
@@ -1465,16 +1484,9 @@ describe("assign_units()", () => {
     `);
     await holding(marker);
     const call = assign(db("staff", saigon), saigon, id);
-    const seen = await until(`
-      select 'waiting, unit locks: ' || (
-        select count(*) from pg_locks u
-        where u.pid = w.pid and u.locktype = 'advisory' and u.classid = x'1a01'::int
-      )
-      from pg_locks w
-      where w.locktype = 'advisory' and w.classid = x'1a02'::int and not w.granted
-      limit 1;
-    `);
-    expect(seen).toBe("waiting, unit locks: 0");
+    expect(await waitingForProductLock("assign_units")).toBe(
+      "waiting, unit locks: 0",
+    );
     expect((await holder).failed).toBe("");
     expect((await call).data).toMatchObject({ ok: true, added: [third] });
   }, 60_000);
@@ -2854,17 +2866,20 @@ const actingAs = (userId: string | null) =>
     ? `select set_config('request.jwt.claims', '${JSON.stringify({ sub: userId, role: "authenticated" })}', true); set local role authenticated;`
     : `select set_config('request.jwt.claims', '{"role":"service_role"}', true); set local role service_role;`;
 
-/** Waiting for a product lock, with how many unit locks in hand. */
-const waitingForProductLock = () =>
-  until(`
-    select 'waiting, unit locks: ' || (
-      select count(*) from pg_locks u
-      where u.pid = w.pid and u.locktype = 'advisory' and u.classid = x'1a01'::int
-    )
-    from pg_locks w
-    where w.locktype = 'advisory' and w.classid = x'1a02'::int and not w.granted
-    limit 1;
-  `);
+/** A second place in a shop. */
+async function branchOf(tenant: TestTenant) {
+  const { data, error } = await service
+    .from("locations")
+    .insert({
+      tenant_id: tenant.id,
+      name: name("Branch"),
+      timezone: "Asia/Bangkok",
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
 
 describe("moving a unit that has bookings: the bookings move with it", () => {
   it("to another product: both products' counts and Moto Mangos figures before and after; the rows, blocks and one event per booking", async () => {
@@ -3518,7 +3533,9 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     `);
     await holding(marker);
     const moving = move(db("owner"), shop, unit, { product: b.id });
-    expect(await waitingForProductLock()).toBe("waiting, unit locks: 0");
+    expect(await waitingForProductLock("move_unit")).toBe(
+      "waiting, unit locks: 0",
+    );
     const saved = await booking;
     expect(saved.failed).toBe("");
     expect(saved.out).toContain("true");
@@ -3556,7 +3573,9 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     `);
     await holding(marker);
     const moving = move(db("manager"), shop, unit, { product: b.id });
-    expect(await waitingForProductLock()).toBe("waiting, unit locks: 0");
+    expect(await waitingForProductLock("move_unit")).toBe(
+      "waiting, unit locks: 0",
+    );
     expect((await booking).failed).toBe("");
     const moved = await moving;
     noDeadlock([moved]);
@@ -3587,7 +3606,7 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
           ends_at: at(2),
         },
       ]);
-      expect(await waitingForProductLock(), side).toBe(
+      expect(await waitingForProductLock("reserve"), side).toBe(
         "waiting, unit locks: 0",
       );
       const saved = await moving;
@@ -3650,6 +3669,290 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     expect(await held(a.id)).toBe("reserved | allocation");
     await agree([a.id, b.id]);
   }, 60_000);
+
+  it("someone changing the unit directly holds its row and waits for its lock, which the move then gets: the move does not wait for the row, it answers try_again; no deadlock", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(0);
+    const [unit] = a.units;
+    const before = deadlocks();
+    const unitLock = `w.locktype = 'advisory' and w.classid = x'1a01'::int
+      and w.objid::bigint = (hashtext('${unit}')::bigint & 4294967295)`;
+
+    // Session 1 holds the unit's lock (a downtime being written, say).
+    const marker = `holds-unit-lock-${tag}`;
+    const holder = sqlBackground(`
+      begin;
+      select platform_private.lock_units(array['${unit}']::uuid[]);
+      select pg_sleep(4) /* ${marker} */;
+      commit;
+    `);
+    await holding(marker);
+    // Session 2, the move: it has its product locks and queues for the
+    // unit's lock.
+    const moving = move(db("owner"), shop, unit, { product: b.id });
+    await until(`
+      select 'queued' from pg_locks w join pg_stat_activity a on a.pid = w.pid
+      where ${unitLock} and not w.granted and a.query like '%move_unit%'
+      limit 1;
+    `);
+    // Session 3, a direct change that reads the unit's blocks (retiring it):
+    // it locks the unit's row, then queues for the unit's lock behind the
+    // move.
+    const direct = Promise.resolve(
+      db("manager")
+        .from("units")
+        .update({ status: "retired" })
+        .eq("id", unit)
+        .select("status"),
+    );
+    expect(
+      await until(`
+        select count(*)::text from pg_locks w
+        where ${unitLock} and not w.granted
+        having count(*) = 2;
+      `),
+    ).toBe("2");
+
+    // Session 1 lets go. The move gets the lock and finds the row held by
+    // the session that now waits for that lock. Waiting there would be a
+    // deadlock; it asks once and steps back.
+    expect((await holder).failed).toBe("");
+    const moved = await moving;
+    expect(moved.error).toBeNull();
+    expect(moved.data).toEqual({ ok: false, reason: "try_again" });
+    const retired = await direct;
+    expect(retired.error).toBeNull();
+    expect(retired.data).toEqual([{ status: "retired" }]);
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(deadlocks()).toBe(before);
+    const { data: after } = await service
+      .from("units")
+      .select("product_id, status")
+      .eq("id", unit)
+      .single();
+    expect(after).toEqual({ product_id: a.id, status: "retired" });
+  }, 60_000);
+
+  it("two moves of units of one product at two places: the second waits for the product's row, it does not hold it half-locked; both go through", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(0);
+    const there = await branchOf(shop);
+    const [here] = a.units;
+    const [other] = await addUnits(a.id, 1, shop, there);
+    const before = deadlocks();
+    // The first move, written and not yet saved: the unit at the main place.
+    const marker = `first-move-${tag}`;
+    const first = sqlBackground(`
+      begin;
+      ${actingAs(shop.members.owner.id)}
+      select platform.move_unit('${shop.id}', '${here}', '${b.id}', '${shop.locationId}') ->> 'ok';
+      select pg_sleep(3) /* ${marker} */;
+      commit;
+    `);
+    await holding(marker);
+    // The second: the unit at the branch. Other product-and-place locks, so
+    // nothing stops it until the product's own row.
+    const second = move(db("manager"), shop, other, {
+      product: b.id,
+      location: there,
+    });
+    const seen = await until(`
+      select 'waiting for a row, product locks: ' || (
+        select count(*) from pg_locks g
+        where g.pid = a.pid and g.locktype = 'advisory' and g.granted
+          and g.classid = x'1a02'::int
+      )
+      from pg_stat_activity a
+      join pg_locks w on w.pid = a.pid and not w.granted
+        and w.locktype in ('transactionid', 'tuple')
+      where a.query like '%move_unit%' and a.query not like '%${marker}%'
+        and a.pid <> pg_backend_pid()
+      limit 1;
+    `);
+    expect(seen).toBe("waiting for a row, product locks: 2");
+    const saved = await first;
+    expect(saved.failed).toBe("");
+    expect(saved.out).toContain("true");
+    const result = await second;
+    noDeadlock([result]);
+    expect(result.data).toMatchObject({ ok: true });
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(deadlocks()).toBe(before);
+    expect(await counts(a.id, at(1), at(2))).toBe("0 / 0 / 0 / 0");
+  }, 60_000);
+
+  it(`two moves of units of one product at two places, at the same instant: both go through, no deadlock, ${ROUNDS} rounds a shop`, async () => {
+    for (const [where, tenant] of everyShop()) {
+      const there = await branchOf(tenant);
+      for (let round = 0; round < ROUNDS; round++) {
+        const a = await listedVehicle(1, tenant);
+        const b = await vehicle(0, { tenant });
+        const [here] = a.units;
+        const [other] = await addUnits(a.id, 1, tenant, there);
+        booked(
+          await onlineBook(
+            [{ product_id: a.id, starts_at: at(1), ends_at: at(2) }],
+            { tenant },
+          ),
+        );
+        const results = await Promise.all([
+          move(db("owner", tenant), tenant, here, { product: b.id }),
+          move(db("manager", tenant), tenant, other, {
+            product: b.id,
+            location: there,
+          }),
+        ]);
+        raceRounds++;
+        noDeadlock(results);
+        expect(
+          results.map((r) => outcome(r)),
+          `${where}, round ${round}`,
+        ).toEqual(["ok", "ok"]);
+        await agree([a.id, b.id]);
+      }
+    }
+  }, 300_000);
+
+  it("a cancel, a confirm and an assign that chose their lock before a move changed the row's product: each waits, reads again under the lock, and answers try_again; sent again, it works", async () => {
+    for (const what of ["cancel", "confirm", "assign"] as const) {
+      const a = await vehicle(1);
+      const b = await vehicle(1);
+      const [unit] = a.units;
+      const one = booked(
+        await staffBook(
+          "staff",
+          [{ product_id: a.id, starts_at: at(1), ends_at: at(2) }],
+          { hold: what === "confirm" },
+        ),
+      );
+      const id = one.lines[0].reservation_id;
+      const call = () =>
+        what === "cancel"
+          ? cancel(db("staff"), shop, one.booking_id)
+          : what === "confirm"
+            ? confirm(db("staff"), shop, one.booking_id)
+            : assign(db("staff"), shop, id);
+      const needle = {
+        cancel: "cancel_reservation",
+        confirm: "confirm_hold",
+        assign: "assign_units",
+      }[what];
+
+      // The move, written and not yet saved: the row still reads product A
+      // to everyone else, and A's lock is held.
+      const marker = `move-before-${what}-${tag}`;
+      const moving = sqlBackground(`
+        begin;
+        ${actingAs(shop.members.owner.id)}
+        select platform.move_unit('${shop.id}', '${unit}', '${b.id}', '${shop.locationId}') ->> 'ok';
+        select pg_sleep(3) /* ${marker} */;
+        commit;
+      `);
+      await holding(marker);
+      const early = call();
+      expect(await waitingForProductLock(needle), what).toBe(
+        "waiting, unit locks: 0",
+      );
+      const saved = await moving;
+      expect(saved.failed).toBe("");
+      expect(saved.out).toContain("true");
+      // It got A's lock; the row is B's now.
+      const answer = await early;
+      expect(answer.error).toBeNull();
+      expect(answer.data, what).toEqual({ ok: false, reason: "try_again" });
+      expect(await held(b.id), what).toBe(
+        what === "confirm" ? "held | hold" : "reserved | allocation",
+      );
+
+      expect(outcome(await call()), what).toBe("ok");
+      expect(await held(b.id), what).toBe(
+        what === "cancel" ? "cancelled | " : "reserved | allocation",
+      );
+      await agree([a.id, b.id]);
+    }
+  }, 120_000);
+
+  it("the rest of the Details form is saved by the same call: all of it with the move, or none of it", async () => {
+    const a = await vehicle(2);
+    const b = await vehicle(0);
+    const [unit, other] = a.units;
+    booked(
+      await staffBook("staff", [
+        {
+          product_id: a.id,
+          starts_at: at(1),
+          ends_at: at(2),
+          unit_ids: [unit],
+        },
+      ]),
+    );
+    const { data: taken } = await service
+      .from("units")
+      .select("plate")
+      .eq("id", other)
+      .single();
+    const details = (plate: string) => ({
+      p_tenant_id: shop.id,
+      p_unit_id: unit,
+      p_product_id: b.id,
+      p_location_id: shop.locationId,
+      p_details: {
+        plate,
+        plate_pending: false,
+        frame_number: "FRAME-1",
+        engine_number: null,
+        colour: "Green",
+        model_year: 2024,
+        notes: "Moved",
+        current_odometer_km: 1234.5,
+      },
+    });
+    // A plate another vehicle has: the whole call is undone, the move too.
+    const clash = await db("owner").rpc("move_unit", details(taken!.plate!));
+    expect(clash.data).toBeNull();
+    expect(clash.error?.message).toMatch(/units_plate_idx/);
+    expect(await held(a.id)).toBe("reserved | allocation");
+    expect(await reservationsOf(b.id)).toEqual([]);
+    const { data: untouched } = await service
+      .from("units")
+      .select("product_id, colour, notes")
+      .eq("id", unit)
+      .single();
+    expect(untouched).toEqual({ product_id: a.id, colour: null, notes: null });
+
+    const plate = `AV-${tag}-MOVED`;
+    const done = await db("owner").rpc("move_unit", details(plate));
+    expect(done.error).toBeNull();
+    expect(done.data).toMatchObject({ ok: true, bookings: 1 });
+    const { data: saved } = await service
+      .from("units")
+      .select(
+        "product_id, plate, plate_pending, frame_number, engine_number, colour, model_year, notes, current_odometer_km",
+      )
+      .eq("id", unit)
+      .single();
+    expect(saved).toEqual({
+      product_id: b.id,
+      plate,
+      plate_pending: false,
+      frame_number: "FRAME-1",
+      engine_number: null,
+      colour: "Green",
+      model_year: 2024,
+      notes: "Moved",
+      current_odometer_km: 1234.5,
+    });
+    expect(await held(b.id)).toBe("reserved | allocation");
+
+    // Only the form's own fields: anything else is not this function's.
+    for (const extra of [{ status: "sold" }, { tenant_id: newYork.id }, []]) {
+      const { error } = await db("owner").rpc("move_unit", {
+        ...details(plate),
+        p_details: extra as never,
+      });
+      expect(error?.message, JSON.stringify(extra)).toBe("invalid_request");
+    }
+  });
 
   it(`a move racing bookings of both products and the sweep: every booking ends on the product its unit is on, ${ROUNDS} rounds a shop`, async () => {
     for (const [where, tenant] of everyShop()) {

@@ -584,6 +584,48 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
     ]);
   });
 
+  it("what the service role can execute in platform_private is exactly this list, each granted to it by name; PUBLIC can execute nothing there", () => {
+    const rows = lines(`
+      select p.oid::regprocedure::text
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'platform_private'
+        and has_function_privilege('service_role', p.oid, 'execute')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // The availability read, which runs as its caller.
+      "platform_private.booking_roles(text)",
+      "platform_private.free_units(uuid,uuid,tstzrange)",
+      "platform_private.json_time(jsonb,text,text)",
+      "platform_private.json_uuid(jsonb,text,text)",
+      "platform_private.marketplace_peaks(uuid,tstzrange)",
+      // In an index on units and products, so every writer evaluates it.
+      "platform_private.norm(text)",
+      // Behind platform.queue_renewal_notifications(), since Phase 1a.
+      "platform_private.queue_renewal_notifications(timestamp with time zone)",
+      "platform_private.shortage_demand(uuid,uuid,tstzrange)",
+    ]);
+    expect(
+      lines(`
+        select count(*)::text
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'platform_private'
+          and coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null);
+      `),
+    ).toEqual(["0"]);
+    // Every one of them was granted to the service role by name.
+    expect(
+      lines(`
+        select count(*)::text
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'platform_private'
+          and has_function_privilege('service_role', p.oid, 'execute')
+          and not coalesce((select bool_or(a.grantee = 'service_role'::regrole)
+            from aclexplode(p.proacl) a), false);
+      `),
+    ).toEqual(["0"]);
+  });
+
   it("the server may look into platform_private for the read; signed-out visitors may not", () => {
     expect(
       lines(`

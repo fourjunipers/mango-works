@@ -1816,7 +1816,9 @@ describe("lock order", () => {
         where u.pid = w.pid and u.locktype = 'advisory' and u.classid = x'1a01'::int
       )
       from pg_locks w
+      join pg_stat_activity a on a.pid = w.pid
       where w.locktype = 'advisory' and w.classid = x'1a02'::int and not w.granted
+        and a.query like '%reserve%' and a.pid <> pg_backend_pid()
       limit 1;
     `);
     expect(seen).toBe("waiting, unit locks: 0");
@@ -2016,6 +2018,54 @@ describe("lock order", () => {
     expect(result.data).toEqual({ ok: false, reason: "unavailable", line: 0 });
     expect(await written()).toEqual(before);
   }, 60_000);
+  it("the picked unit's row is locked before the product's row: with the unit's row held by someone, the booking waits there and the product's row is still free", async () => {
+    const bike = await vehicle(1);
+    // Session 1 holds the unit's row and nothing else (no unit lock): a
+    // delete or a key change that has got that far.
+    const marker = `holds-unit-row-${tag}`;
+    const holder = sqlBackground(`
+      begin;
+      select 1 from platform.units where id = '${bike.units[0]}' for update;
+      select pg_sleep(4) /* ${marker} */;
+      commit;
+    `);
+    await holding(marker);
+    // Session 2, the booking: it picks the unit, takes its lock, and stops
+    // at its row.
+    const call = onlineBook([
+      { product_id: bike.id, starts_at: at(1), ends_at: at(2) },
+    ]);
+    const seen = await until(`
+      select 'waiting for a row, unit locks: ' || (
+        select count(*) from pg_locks g
+        where g.pid = a.pid and g.locktype = 'advisory' and g.granted
+          and g.classid = x'1a01'::int
+      )
+      from pg_stat_activity a
+      join pg_locks w on w.pid = a.pid and not w.granted
+        and w.locktype in ('transactionid', 'tuple')
+      where a.query like '%reserve%' and a.pid <> pg_backend_pid()
+      limit 1;
+    `);
+    expect(seen).toBe("waiting for a row, unit locks: 1");
+    // Session 3 takes the product's row without waiting. It can: the
+    // booking has not locked it yet. A booking that locked the product's
+    // row first and met the unit's row at its block insert would be holding
+    // it here, and this would fail with "could not obtain lock".
+    const third = sql(`
+      begin;
+      select 'got the product row' from platform.products
+      where id = '${bike.id}' for update nowait;
+      commit;
+    `);
+    expect(third.failed).toBe("");
+    expect(third.out).toContain("got the product row");
+    expect((await holder).failed).toBe("");
+    const result = await call;
+    noDeadlock([result]);
+    expect(outcome(result)).toBe("ok");
+  }, 60_000);
+
   it("a unit being deleted, stalled behind someone's edit of its product, against a booking that picked that unit: no deadlock, and the booking takes another unit or is refused", async () => {
     for (const units of [2, 1]) {
       const bike = await vehicle(units);
@@ -2194,7 +2244,10 @@ describe("one side held in place, the other seen waiting", () => {
           where u.pid = w.pid and u.locktype = 'advisory' and u.classid = x'1a01'::int
         )
         from pg_locks w
+        join pg_stat_activity a on a.pid = w.pid
         where w.locktype = 'advisory' and w.classid = x'1a02'::int and not w.granted
+          and a.query like '%reserve%' and a.query not like '%${marker}%'
+          and a.pid <> pg_backend_pid()
         limit 1;
       `);
       expect(seen, c.what).toBe("waiting, unit locks: 0");
