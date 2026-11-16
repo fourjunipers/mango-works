@@ -140,7 +140,7 @@ The fifth build stage of pricing, of seven (`docs/products-redesign.md` §9.12, 
 
 ## Products, stage D6: Settings (branch `platform/products-stage-d6-settings`, 15 Nov 2026)
 
-The sixth build stage of pricing, of seven (`docs/products-redesign.md` §9.12, §9.15, and "As built in stage D6" there). **One migration**, reviewed by Fable before it was written. Not on staging or live: staging stays at 59 of 59, live at 53 of 53. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The sixth build stage of pricing, of seven (`docs/products-redesign.md` §9.12, §9.15, and "As built in stage D6" there). **One migration**, reviewed by Fable before it was written. On staging since 16 Nov 2026 (60 of 60); not on live, which stays at 53 of 53 (see "On staging" below). `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
 
 **What changed**
 
@@ -195,7 +195,8 @@ select
 | --- | --- | --- | --- | --- |
 | Local, this worktree (reset and seeded) | 15 Nov 2026, before the browser run | 0 | 0 | 0 |
 | Local, this worktree | 15 Nov 2026, after the full browser run | 0 | 0 | 0 |
-| Staging | Not run: nothing pushed in this stage | | | |
+| Staging | 16 Nov 2026, before the push | 0 | 0 | 0 |
+| Staging | 16 Nov 2026, after the push and the D6 browser run | 0 | 0 | 0 |
 | Live | Not run: D4 to D6 are not on live | | | |
 
 **Tests**
@@ -206,6 +207,17 @@ select
 - Read-only counts after the browser run, locally: 0, 0, 0. What the run left: BSR has a settings row on the defaults and the archived "E2E VAT" profile; Saigon and big-fleet have no settings row.
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_stage_d6` on ports 6032x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack.
+
+**On staging since 16 Nov 2026; not on live.** Staging records 60 of 60. Live stays at 53 of 53 and gets this with the six before it only from `main`, by the runbook.
+
+- **Read-only counts first**, in a read-only transaction on staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`): pricing rows that name an archived tax profile 0, defaults that name one 0, shops with a product deposit but no settings row 0. Staging then had no settings row, no tax profile and no pricing row at all, and 59 migrations on record (newest `20261115000100`).
+- **Pushed** on the owner's instruction on 16 Nov 2026 at 00:15 UTC (07:15 in Bangkok), from `main` at `1146bb1` (PR 30 merged), with `supabase db push --db-url`. The dry run before it listed exactly one pending migration, `20261115000200_platform_tax_profile_in_use.sql`.
+- **After, read-only:** staging records 60 migrations, newest `20261115000200`. The three functions are the new ones (`save_tax_profile` holds the `tax_profile_in_use` refusal; `save_product_pricing` and `save_pricing_settings` take the profile for share), each still security definer, open to a signed-in member and closed to a signed-out visitor.
+- **Live was only read** (the CLI's migration list for the linked project, `mfaqydyoweerlqsgwnay`): 53 migrations, newest `20261112100000`; `20261115000200` is not there.
+- **Browser tests against staging**, `products-stage-d6.spec.ts` on `https://mango-works-platform.netlify.app` (main's deployment, with stage D6): 11 passed, 3 skipped, none failed, in 8.1 minutes. Skipped: the Thai check at desktop width and the first-save warning at phone width (each runs at one width), and **the first-save warning at desktop width too**, because on staging the big-fleet shop's currency is already fixed, so the note it looks for is not shown. That warning is therefore checked by CI's clean database only, not on staging.
+- **BSR's settings were put back.** After the run BSR has one settings row on the defaults: rounding step not chosen, prices include tax, no default profile, no deposit, coupons off. It had no row before; since stage D6 a row on the defaults works exactly like no row. Also left, as the runbook says: one archived tax profile in BSR, "E2E VAT" (7%). Nothing else: no test product, no pricing row, no price list and no season remain, and Saigon and big-fleet have no settings row. The three counts are 0, 0, 0 again.
+- **Signing in to staging:** the main checkout's `apps/platform/.env.local` holds two `DEMO_PASSWORD` lines. Staging takes the first; a run that used the second was refused at the login page (one read-only test, nothing written). The API client in `e2e/shop-settings.ts` also needs staging's own `NEXT_PUBLIC_SUPABASE_URL` and anon key in the environment for a run against staging; `.env.local` has the URL (`STAGING_SUPABASE_URL`) but not the anon key, which was read from the project's API keys for this run and written nowhere.
+- **Not run against staging:** the rest of the browser suite, the D5 spec included. CI ran all of it on a clean local database.
 
 **Next:** D7, BSR's four lists, once Mark has supplied the amounts, base prices and the list for each product (with the tax-profile check and the explicit deposit choice above).
 
