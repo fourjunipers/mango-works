@@ -296,6 +296,49 @@ export async function saveUnit(
     redirect(`/${slug}/fleet/units/${data.id}`);
   }
 
+  // Another product or another place goes through platform.move_unit(),
+  // which takes the bike's upcoming bookings with it under the booking
+  // locks and writes the rest of this form in the same call: all of it or
+  // none of it. It refuses an old form (stale), and a bike whose bookings
+  // are not the ones the person was just warned about (bookings_changed).
+  const { data: current } = await supabase
+    .from("units")
+    .select("product_id, location_id")
+    .eq("tenant_id", tenant.id)
+    .eq("id", id)
+    .maybeSingle();
+  if (!current) return { errors: { form: "saveFailed" } };
+  if (
+    current.product_id !== modelId ||
+    current.location_id !== parsed.data.location_id
+  ) {
+    const warned = field(formData, "upcoming_bookings");
+    const { location_id, ...details } = parsed.data;
+    const { data: moved, error: moveError } = await supabase.rpc("move_unit", {
+      p_tenant_id: tenant.id,
+      p_unit_id: id,
+      p_product_id: modelId,
+      p_location_id: location_id,
+      p_expected_bookings: /^\d+$/.test(warned) ? Number(warned) : undefined,
+      p_expected_updated_at: field(formData, "updated_at"),
+      p_details: { ...details, current_odometer_km: odometer ?? 0 },
+    });
+    if (moveError) return unitError(moveError);
+    const answer = moved as { ok: boolean; reason?: string };
+    if (!answer.ok) {
+      if (answer.reason === "not_allowed") return notAllowed;
+      const key =
+        answer.reason === "stale"
+          ? "staleUnit"
+          : answer.reason === "bookings_changed"
+            ? "bookingsChanged"
+            : "saveFailed";
+      return { errors: { form: key } };
+    }
+    refresh(slug);
+    return { ok: true };
+  }
+
   const { data, error } = await supabase
     .from("units")
     .update({

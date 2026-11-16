@@ -3,7 +3,7 @@ import type { Role } from "./roles";
 /**
  * Who may do what with bookings (docs/phase-2-plan.md §6): everyone in a
  * shop sees reservations (dates, product, units; no money); owners, managers
- * and staff make and cancel them.
+ * and staff make, confirm, cancel and re-assign them.
  *
  * The one place in the app: every screen and every server action asks
  * canBooking(). It mirrors platform_private.booking_roles() in the database,
@@ -15,7 +15,13 @@ import type { Role } from "./roles";
  * permissions, this table becomes the default and canBooking() reads the
  * shop's choices first; nothing that calls it has to change.
  */
-export const bookingActions = ["read", "reserve", "cancel"] as const;
+export const bookingActions = [
+  "read",
+  "reserve",
+  "cancel",
+  "confirm",
+  "assign",
+] as const;
 export type BookingAction = (typeof bookingActions)[number];
 
 const allowed: Record<BookingAction, readonly Role[]> = {
@@ -25,6 +31,10 @@ const allowed: Record<BookingAction, readonly Role[]> = {
   reserve: ["owner", "manager", "staff"],
   /** Cancel a reservation. */
   cancel: ["owner", "manager", "staff"],
+  /** Turn a hold made at the counter or on the phone into a reservation. */
+  confirm: ["owner", "manager", "staff"],
+  /** Name a reservation's units, move it to other units, fill a shortage. */
+  assign: ["owner", "manager", "staff"],
 };
 
 export function bookingRoles(action: BookingAction): readonly Role[] {

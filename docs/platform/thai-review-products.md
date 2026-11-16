@@ -907,3 +907,7 @@ Claude's translations, for Korn or BSR's admin (docs/products-redesign.md §9.12
 | `FormErrors.depositNumberRequired` | Enter the deposit's percentage or amount. | กรอกเปอร์เซ็นต์หรือจำนวนเงินมัดจำ |
 | `FormErrors.invalidSeason` | Check the season's details and try again. | ตรวจสอบรายละเอียดของฤดูกาลแล้วลองอีกครั้ง |
 | `FormErrors.profileAddedNotDefault` | The profile was added but couldn't be made the default. Choose it above and save. | เพิ่มประเภทภาษีแล้ว แต่ตั้งเป็นค่าเริ่มต้นไม่ได้ เลือกด้านบนแล้วบันทึก |
+| `FormErrors.unit_busy` | Someone is saving a booking or a block on this one right now. Please try again. | มีคนกำลังบันทึกการจองหรือบล็อกของรายการนี้อยู่ โปรดลองอีกครั้ง |
+| `Fleet.unit.moveBookingsConfirm` | This vehicle has an upcoming booking. It will move with it to {destination}. / This vehicle has # upcoming bookings. They will move with it to {destination}. | {count, plural, other {รถคันนี้มีการจองที่กำลังจะมาถึง # รายการ การจองจะย้ายตามรถไปที่ {destination}}} |
+| `FormErrors.unit_has_bookings` | This vehicle has upcoming bookings. Change its product or location on its Details form, which moves the bookings with it. | รถคันนี้มีการจองที่กำลังจะมาถึง เปลี่ยนสินค้าหรือสาขาในฟอร์มรายละเอียดของรถ ซึ่งจะย้ายการจองตามไปด้วย |
+| `FormErrors.bookingsChanged` | This vehicle's bookings changed while this form was open. Reload the page to see them, then make your change again. | การจองของรถคันนี้เปลี่ยนไปขณะที่ฟอร์มนี้เปิดอยู่ โหลดหน้านี้ใหม่เพื่อดูข้อมูลล่าสุด แล้วแก้ไขอีกครั้ง |

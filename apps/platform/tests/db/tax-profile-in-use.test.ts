@@ -167,7 +167,11 @@ describe("a tax profile in use", () => {
     await db("owner")
       .rpc("save_tax_profile", {
         p_tenant_id: shop.id,
-        p_profile: { id: profile, rate_bp: 1000, name: `VAT10 ${tag}` } as never,
+        p_profile: {
+          id: profile,
+          rate_bp: 1000,
+          name: `VAT10 ${tag}`,
+        } as never,
       })
       .throwOnError();
     const row = await service
@@ -190,7 +194,11 @@ describe("a tax profile in use", () => {
     expect(failed).toBe("");
     const renamed = await db("owner").rpc("save_tax_profile", {
       p_tenant_id: shop.id,
-      p_profile: { id: profile, name: `Old VAT ${tag}`, archived: true } as never,
+      p_profile: {
+        id: profile,
+        name: `Old VAT ${tag}`,
+        archived: true,
+      } as never,
     });
     expect(renamed.error).toBeNull();
     // Unarchiving and archiving again is the move from null to set: refused.
@@ -311,14 +319,15 @@ describe("lock order: the product, the price list, the tax profile, the pricing 
       commit;
     `);
     await holding(marker);
-    const saving = db("manager").rpc("save_product_pricing", {
-      p_product_id: product,
-      p_settings: {
-        pricing_method: "tiered",
-        price_template_id: list,
-        tax_profile_id: profile,
-      } as never,
-    })
+    const saving = db("manager")
+      .rpc("save_product_pricing", {
+        p_product_id: product,
+        p_settings: {
+          pricing_method: "tiered",
+          price_template_id: list,
+          tax_profile_id: profile,
+        } as never,
+      })
       // A query builder sends nothing until it is awaited: start it now.
       .then((result) => result);
     // The holder keeps the profile for 5 s; the save reaches it well inside.

@@ -7,9 +7,16 @@ import {
 import { roles } from "./roles";
 
 describe("who may do what with bookings", () => {
-  it("everyone in the shop reads; owners, managers and staff book and cancel", () => {
+  it("everyone in the shop reads; owners, managers and staff book, confirm, cancel and re-assign", () => {
     expect(bookingRoles("read")).toEqual(roles);
-    for (const action of ["reserve", "cancel"] as const) {
+    expect([...bookingActions].sort()).toEqual([
+      "assign",
+      "cancel",
+      "confirm",
+      "read",
+      "reserve",
+    ]);
+    for (const action of ["reserve", "cancel", "confirm", "assign"] as const) {
       expect(bookingRoles(action), action).toEqual([
         "owner",
         "manager",

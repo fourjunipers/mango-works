@@ -1149,7 +1149,12 @@ describe("seasons", () => {
     await saveRule("owner", { id, active: false }).throwOnError();
     await saveRule("owner", { id, delete: true }).throwOnError();
     expect(
-      (await service.from("price_rules").select("id").eq("id", id as string)).data,
+      (
+        await service
+          .from("price_rules")
+          .select("id")
+          .eq("id", id as string)
+      ).data,
     ).toEqual([]);
   });
 
@@ -1441,7 +1446,9 @@ describe("pricing_inputs: the one read that feeds quote()", () => {
       ]),
     );
     // Bike ฿3,000 + 14 × ฿100 = ฿4,400; helmets 2 × ฿107; cover 3 × ฿200.
-    expect(long.ok && long.totals.total).toBe(BigInt(440000) + BigInt(21400) + BigInt(60000));
+    expect(long.ok && long.totals.total).toBe(
+      BigInt(440000) + BigInt(21400) + BigInt(60000),
+    );
     expect(long.ok && long.taxGroups.map((g) => [g.rateBp, g.base])).toEqual([
       [0, BigInt(60000)],
       [700, BigInt(440000)],
@@ -1604,7 +1611,9 @@ describe("the database stores and checks; it does not calculate", () => {
       'platform.save_tax_profile false true false true search_path=""',
       // Helpers and trigger functions: nobody calls them.
       'platform_private.check_template_days false false false false search_path=""',
-      'platform_private.json_uuid false false false false search_path=""',
+      // Since 20261116000200 the availability read, which runs as its
+      // caller, parses its request with it.
+      'platform_private.json_uuid false true false false search_path=""',
       'platform_private.json_whole false false false false search_path=""',
       'platform_private.price_template_days_complete false false false true search_path=""',
       // The policies ask it, as the member.
