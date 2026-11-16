@@ -240,6 +240,11 @@ test("tax profiles: one in use can't be removed and the refusal names the produc
       .getByRole("listitem")
       .filter({ hasText: profile })
       .getByRole("button", { name: "Bring back" });
+    // count() reads the page as it is and does not wait. The section's last
+    // element is there only once the whole list is, removed profiles
+    // included; without this the check could run on the loading screen, find
+    // nothing, and leave a removed profile removed.
+    await expect(profiles.getByText("Add a tax profile")).toBeVisible();
     if (await removed.count()) {
       await removed.click();
       await expect(
