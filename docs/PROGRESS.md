@@ -15,7 +15,7 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 ## Phase 2: plan only (branch `docs/phase-2-plan`, 16 Nov 2026)
 
-**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). Stages 1 and 2 are built (below).
+**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). Stages 1 to 3 are built (below).
 
 - **Already built by stage D:** price lists, seasons, VAT, deposits and `quote()` steps 1 to 3 and 5 to 8.
 - **Still to build:** the booking function (`reserve()`) with product locks, then unit locks sorted by their hash key, and a best-fit pick; the availability read; overbooking and the shortage rule; holds; booking rules (notice, cut-off, minimum days); `product_extras` and the pricer's included-quantity step; coupons and the returning-customer discount; the quote snapshot.
@@ -170,8 +170,6 @@ The second build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2 to §
 7. **The "seen waiting for a product lock" checks are keyed to the session under test** (by the function it is running), in both test files.
 8. **Docs:** downtime added to the run-out-hold known issue; the two things a move leaves behind (below); the `expire` event comment; a root `CLAUDE.md` line on the two guards locking the row before the unit lock.
 
-The review comment itself is not on PR 37 (only Netlify's two are); these are the eight items as the owner relayed them.
-
 **Where this differs from the plan or the brief, or decides what they left open** (say if any should change)
 
 1. **The unit-delete trigger asks for the lock once and never waits.** A waiting lock there is a deadlock every time, not a fix: Postgres locks the unit's row before a `before delete` trigger runs, so the delete would hold the row and wait for the lock while a booking holds the lock and waits for the row. Tried on a scratch table before building: Postgres reported the deadlock. So when anything holds the unit's lock at that moment the delete is refused with `unit_busy` (`55P03`) and can be sent again; the app says "Someone is saving a booking or a block on this one right now. Please try again." A delete of several units in one statement can no longer cross a booking: it is refused at once, or it waits on a row holding nothing the booking still needs. The stock functions that delete units hold these locks already.
@@ -219,6 +217,98 @@ The review comment itself is not on PR 37 (only Netlify's two are); these are th
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s2` on ports 6232x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Every other local stack was stopped (not removed).
 
 **Next:** stage 3, booking rules and `offer()` (migration 3): the rule columns, `save_booking_rules()`, `booking_inputs()`, `bookOnline()` with its test, and the Moto Mangos cap inside `reserve()`. Carried to it from the review of PR 36: `bookOnline()` treats `55P03` (`lock_timeout`) the same as `try_again`.
+
+## Phase 2, stage 3: booking rules and `offer()` (branch `platform/phase-2-stage-3-booking-rules`, 16 Nov 2026)
+
+The third build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.3, §2.6, §3.6, §4, §8; the owner's answers in §10, Q5 with its addition). **No screen changes: database, `@mango/core` and one server module.** Applied locally only; **not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **One new migration, `20261116000300_platform_booking_rules`.** No earlier migration is touched. Functions that existed are re-created from their bodies in the database (`pg_get_functiondef`, compared line by line with stage 2's text first: identical) with the changes listed, and their grants restated.
+  - **The rule columns**, all empty to start ("not set" is no rule), each with its range held by the table: `locations.min_notice_hours` (0 to 720), `booking_cutoff_minutes` (0 to 1440), `min_days_advance` and `min_days_walkin` (1 to 365); `products.min_days_advance` and `min_days_walkin` (vehicles only; empty is the location's); `tenants.buffer_before_minutes` and `buffer_after_minutes` (the shop's default, 0 to 10080 like a product's).
+  - **`platform.save_booking_rules(p_tenant_id, p_rules)`**: owners and managers. **The first writer of `allow_overbooking`, `hold_minutes` and the shop's default buffers**, which no signed-in person can write directly; also a location's four rules and a vehicle's minimum days. Only what is named changes, null clears a rule, all or nothing. Not the server's (revoked from the service role).
+  - **`platform.booking_inputs(p_tenant_id, p_location_id, p_product_ids)`**: one read of everything the rules need: the location's time zone, hours, closures and rules; the shop's settings; each product's buffers in force, minimum days and listing. As its caller under RLS; every member, and the server.
+  - **`platform.reserve()` re-created**: the shop's default buffers widen a vehicle that has none of its own; and **the Moto Mangos cap** (below).
+  - **`platform.availability()` re-created**: the shop's default buffers, exactly as `reserve()` widens.
+  - **`platform_private.booking_roles()`** gains `rules`; `apps/platform/lib/booking-permissions.ts` is its copy.
+- **`@mango/core`**
+  - **`booking-rules.ts`**: `bookable(rules, start, end, how, now)` answers `ok` or `outside_hours`, `too_short`, `too_soon`, in the location's time zone with no fixed offset; `offer(inputs, availability, pricing, request)` composes bookable, then available (with the Moto Mangos cap and mode), then `quote()`, so no caller gets a price for something it can't book. A product with no price answers `cant_be_priced` and carries no price at all, never zero.
+  - **`time.ts` and `money.ts` are thin wrappers.** The rules are generic in `zoned.ts` (`fromWallClock`, `zonedDateTime`, `zonedParts`, `startOfZonedDay`, `addZonedDays`, `formatZoned`) and `currency.ts` (`toMinorUnits`, `fromMinorUnits`, `formatWholeAmount`, `currencyExponent`). The old names pass `Asia/Bangkok` and THB. The fixed UTC+7 arithmetic is gone.
+  - `listing.ts`: `listingOfferFromPeaks()`, the same offer rule from the counts the availability read already takes, for one or several vehicles.
+- **`apps/platform/lib/book-online.ts`: `bookOnline()`, the one server entry point for online channels.** It reads `booking_inputs`, `availability` and `pricing_inputs`, asks `offer()`, and calls `reserve()` only when the answer is bookable, available and priced. `lib/booking-inputs.ts` turns the rows into the rules' input and decides nothing. Nothing calls `bookOnline()` yet: Phase 8's booking page and 3M's `marketplace_api` will.
+- **Root `CLAUDE.md`**: the sentence on a unit delete against a mechanic editing a downtime block, and a line on the listing's row. **`docs/phase-2-plan.md` §4**: item 3 says how the listing's row is taken. Types regenerated.
+
+**The Moto Mangos cap inside `reserve()`** (channel `marketplace`)
+
+- In the rows phase, after the products' rows: the listings' rows of the booking's products, in product-id order, `for no key update`. Under it, for each vehicle line:
+  - a listing that is off or missing answers **`not_listed`**;
+  - an advance booking (mode `instant`) must fit the units to offer (`instant_units + request_units`) **and** the Instant units, counting the Moto Mangos advance bookings that hold a vehicle in the window (`marketplace_peaks`, stage 2) and the call's own earlier lines: else **`cap_reached`**;
+  - "Ride today" (mode `now`) is not counted and not refused by the cap.
+- Gear and services booked with the vehicle have no listing and no cap. A refusal writes nothing.
+- **Why the row lock is not `for share`:** the cap is per product, the advisory locks are per product and place. Two Moto Mangos bookings of one product for two places share no advisory lock, so with a shared row lock both would count the cap before either wrote. The listing's row makes them take turns. Tested held in place (the second booking is seen waiting for a row with its own product lock and unit lock in hand, then answers `cap_reached`) and as a race.
+
+**The three items carried in**
+
+1. **`bookOnline()` treats `55P03` (`lock_timeout`) the same as `try_again`.** `reserve()` does not catch it (tested: with another session holding the product's lock and a 300 ms lock timeout, the database raises `55P03` as it is); `bookOnline()` answers `{ok: false, reason: "try_again"}` with nothing written, and the same request goes through once the lock is free.
+2. **No booking-page or marketplace path reaches `reserve()` without passing `bookable()`**, in three legs:
+   - on a spy (`lib/book-online.test.ts`): a closed day, too little notice, too short a rental, nothing free, no price, not listed, the cap, request-only: each answers its reason and `reserve()` is never called;
+   - on the database (`tests/db/booking-rules.test.ts`): the same refusals leave reservations, blocks and audit rows unchanged, counted before and after;
+   - a static test over both apps: no file but `lib/book-online.ts` calls `reserve()` with the service role or names an online channel beside the call; the marketplace never calls it; no file with the service role imports a file that calls it; and the entry point itself calls `offer()` before its one `reserve()`. The detector is run on made-up files first (each way round is caught; a signed-in counter booking passes).
+   - and in the database, as before: a signed-out visitor can't execute `reserve()`, a signed-in Moto Mangos customer is answered `not_allowed`, and so is a member of the shop naming an online channel.
+3. **Docs from the re-check of PR 37:** the "review is not on PR 37" line is gone; root `CLAUDE.md` has the sentence on the unit delete and the downtime block.
+
+**Where this differs from the plan or the brief, or decides what they left open** (say if any should change)
+
+1. **A new refusal, `not_listed`**, in `reserve()` and in `offer()`: a Moto Mangos booking of a vehicle whose listing is off or missing, in any mode. The plan's step 5 reads "on a listed product" and names no answer for one that is not.
+2. **The listing's row is taken `for no key update`, not `for share`** (plan §4), and all the products' rows come before any listing's row. Reason above.
+3. **`reserve()` checks the cap for mode `instant` only, and it must fit the Instant units too.** A booking the listing would take only by request is refused there (`cap_reached`): request mode is 3M's. `offer()` does answer `request` as the mode; `bookOnline()` then answers **`request_only`** and does not call `reserve()`.
+4. **`bookable()`'s fourth argument is `{channel, mode}`**, not the channel alone: "Ride today" is a mode of the Moto Mangos channel. **`offer()` takes `quote()`'s input** for the same lines as its pricing argument and throws if the two differ.
+5. **The cut-off binds "Ride today" only** (contract §4.5): the location must be open now, and now must be no later than the cut-off before that day's closing. It is real minutes before the closing instant, so it is right through a night when the clocks change. A booking-page pickup later today is bound by the notice, not the cut-off.
+6. **Which minimum days:** the walk-in minimum for "Ride today" and for the counter (`walk_in`); the advance minimum for the phone and every online advance booking.
+7. **Staff are answered by `bookable()` but not bound by it.** Hours, closures and minimum days are checked for a staff channel (so Phase 3's screen can say why); notice is not. Nothing enforces it: staff call `reserve()` as themselves.
+8. **The `api` channel is treated as the shop's own page** (the shop's notice only).
+9. **An online advance booking can't start in the past**, with no notice set at all: it answers `too_soon`.
+10. **A location that has saved no opening hours has no hours rule**; one that has saved some is closed on a weekday it left out. Two of the three demo shops have no hours.
+11. **When several rules refuse, the answer is the first of: hours and closures, minimum days, notice.**
+12. **`save_booking_rules()` writes a vehicle's minimum days as well as the shop's and the locations' rules** (the plan's §6 table), answers `not_a_vehicle` for gear or a service, and is not the service role's.
+13. **The shop's default buffers apply side by side:** a vehicle with its own "before" and no "after" gets the shop's "after". Vehicles only.
+14. **`bookOnline()` books one place per booking**, modes `instant` and `now`, and takes its database client and its clock as optional arguments so it can be tested. Under Vitest the `server-only` marker package is aliased to an empty file (`tests/server-only-stub.ts`).
+15. **The static test reads `app/`, `components/` and `lib/` and the root files of both apps.** `scripts/` and tests are left out: the seed is run by hand with the service role, and stage 11's demo reservations will come from it.
+16. **Extras are priced as lines of their own in `offer()`** until stage 4 builds the included quantity. "Ride today" does not read or lower the listing's ready count (3M).
+17. **The best-fit pick is still written twice** (`reserve()`, `assign_units()`): the brief asked for minimal diffs, so stage 2's suggestion to fold them was not taken.
+18. **`docs/platform/MAPPING.md` is not changed** (the plan's §12 lists it; the columns are built as it names them).
+
+**Tests**
+
+- **Unit: 357 in `@mango/core`** (290 before), **363 on the platform** (347 before), **202 on the marketplace** (unchanged). Typecheck and lint pass for every workspace, the one-pricer (money) rule included.
+  - `booking-rules.test.ts` (44): every `bookable()` reason, with each place it can come from (pickup, return, now, the cut-off, a closure, a weekday left out); each channel's notice rule (Moto Mangos advance takes the stricter of shop and listing, both ways round; "Ride today" none; the booking page and the API the shop's; staff none); which minimum days apply to which channel; `offer()` in order (rules, stock, price), the cap and mode, "Ride today" past a full cap, gear with a scooter, and a product with no price answering `cant_be_priced` with no price in the answer, beside a free product that is priced at nothing.
+  - **New York across both clock changes of 2026** (8 March, 1 November), every instant written in UTC so the test does not lean on the code under test: the same UTC time inside the hours one day and outside the next; the skipped hour and the hour that happens twice; a closed date that is 23 and 25 hours long; the cut-off at 16:00 on the shop's clock on both days, and as real minutes through the night of each change; 10:00 to 10:00 as one rental day over 23 and over 25 hours; 24 hours of notice not met by the same clock time after a 23-hour day. **And in Bangkok:** the Bangkok weekday against the UTC one, Songkran every year by the Bangkok date, the cut-off from each day's own closing time, both minimums.
+  - `wrappers.test.ts` (10): each old name beside the code as it stood before (kept in the test as the reference), over some 8,900 instants from 2019 to 2035, every day of eight years at four times, and 40 amounts either side of zero with the ones that must throw: **the same answer every time, to the minute and to the baht.** `zoned-calendar.test.ts` (10): the generic functions in New York on both change days and in other zones.
+  - `lib/book-online.test.ts` (15): the spy tests and the static test of item 2 above; `55P03`.
+- **Database: 550 on the platform, all passing on a freshly reset local database** (509 before). New: `booking-rules.test.ts` (39) and 2 in `default-grants.test.ts`. Three stage 1 and 2 scenes were changed because they booked an unlisted vehicle through the Moto Mangos channel, which is now refused on purpose: the "online against online" race uses `api` for its second channel, one cross-shop scene lists its vehicle, and "who may book" expects `not_listed` there.
+  - `save_booking_rules()`: every one of the five roles; another shop's five roles, a stranger, a signed-out visitor and the server; another shop's location or vehicle answered exactly like a made-up id, and left unchanged; 27 things it refuses; all or nothing; the audit rows; overbooking switched on through it and then used.
+  - `booking_inputs()`: the whole answer pinned; every role, the server, and who is refused; cross-shop answers beside made-up ids.
+  - The shop's default buffers in `reserve()` and in the read, side by side with a product's own; a later change moves no block.
+  - The cap: not listed, off, full, by quantity, across two lines, with a hold and after it runs out, after a cancel, across two places, with gear, and never for "Ride today" or the shop's own channels.
+  - `bookOnline()` against the database: each refusal leaves reservations, blocks and audit rows unchanged; the New York shop's own clock decides on the day the clocks go forward (2032); the real `55P03`.
+- **Races: 120 rounds in this stage** (10 a shop in Bangkok THB, New York USD and Saigon VND, four races): two online bookings for the cap's last place at one place; the same at two places, where the bookings share no product lock; six at once for a cap of two; and a booking against the owner switching the listing off and a manager saving the scooter's rules. **Every round gave exactly the successes the cap allows.** With stage 1's 603 and stage 2's 270: **993 rounds.** **No deadlock:** no call answered `40P01` or `try_again`, and Postgres' own count of detected deadlocks did not move in any of the three files.
+- **The lock was checked both ways.** With the listing's row taken `for share` instead (put into the local database by hand, then restored), the held-in-place test and the two-place race both fail: both bookings succeed and the cap is passed in round 0.
+- **The migration on a seeded copy of `main`'s database** (reset to 62 migrations, the three demo shops seeded, then this one): 3 shops, 4 locations, 16 products, 170 units and 263 audit rows before and after, with the same checksums over products, units, locations and tenants (the new columns left out); no block, reservation, pricing row or listing either side. Every shop reads overbooking off, 15 minutes and no default buffer; no location has a rule.
+- **Browser:** the full suite on that database, 375 px and 1280 px, two workers: 142 tests, **135 passed, 7 skipped, 0 failed**, the same as stage 2. No new browser test: nothing on a screen changed.
+
+**Known issues and follow-ups**
+
+- **A location's rules and a vehicle's minimum days can also be written directly** by an owner or a manager, as every other column of those two tables can (their policies); the ranges are held by the tables. The shop's four settings can't: `save_booking_rules()` only.
+- **Nothing on a screen saves a rule or calls `bookOnline()` yet.** Settings › Booking rules is stage 11; the booking page is Phase 8; `marketplace_api` is 3M.
+- **`offer()` reads without a lock.** Stock and the cap can change between its read and `reserve()`, which has the last word: the caller then gets `unavailable` or `cap_reached` from `reserve()` instead.
+- **Request mode** still needs its own state and migration before Moto Mangos books through the platform (carried to 3M from PR 36).
+- A race test shows a race is closed for the timings it hit.
+
+**Before this goes to staging** (the owner's word each time, plan Q17): nothing to count first. The migration adds nullable columns with no default and re-creates two functions; migrations `20261116000100` and `20261116000200` must be there in their merged form. Afterwards: every location and product reads empty rules, every shop reads empty default buffers, and counts of products, units, blocks and audit rows are unchanged.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s3` on ports 6332x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Stage 2's stack was stopped (not removed).
+
+**Next:** stage 4, the pricer's included quantity and the quote snapshot (`@mango/core` only, no migration).
 
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 
@@ -1732,16 +1822,10 @@ Marketplace paths are relative to `apps/marketplace/`. Line numbers are as of th
 
 | File:line | What | Target |
 | --- | --- | --- |
-| `packages/core/src/time.ts:12` | `BANGKOK_TIME_ZONE = "Asia/Bangkok"` | P2 |
-| `packages/core/src/time.ts:16` | `BANGKOK_OFFSET_MS = 7 h`: fixed UTC+7 arithmetic, no DST support | P2 |
-| `packages/core/src/time.ts:35-83` | `toBangkok`, `bangkokDateString`, `bangkokWeekday`, `startOfBangkokDay`, `bangkokDateTime`: Bangkok-only, no time-zone argument | P2 |
-| `packages/core/src/time.ts:86-93` | `addDays` / `addHours` assume no DST ("exact, since Bangkok has no DST") | P2 |
-| `packages/core/src/time.ts:100-108` | `formatBangkok`: `en-GB` format in Asia/Bangkok, not the viewer's locale | P2 |
-| `packages/core/src/availability.ts:57` | Repair back-on dates compared as Bangkok calendar days | P2 |
-| `packages/core/src/availability.ts:75` | "Bangkok midnight = 17:00 UTC the day before" boundary | P2 |
-| `packages/core/src/money.ts:7-22` | `SATANG_PER_BAHT = 100`, `bahtToSatang`, `satangToBaht`: THB only, not by ISO 4217 exponent | P2 |
-| `packages/core/src/money.ts:25-32` | `formatBaht`: `฿` symbol and `en-US` grouping, not by currency and locale | P2 |
-| `packages/core/src/money.ts:34-37` | `assertWholeBaht`: whole major units only | P2 |
+| `packages/core/src/time.ts` | **Done in Phase 2, stage 3.** The rules are generic in `zoned.ts` (a time-zone argument, no fixed offset, daylight saving handled). `time.ts` keeps the marketplace's names (`toBangkok`, `bangkokDateTime`, `addDays`, `formatBangkok` and the rest) as thin wrappers that pass `Asia/Bangkok`; the fixed UTC+7 arithmetic is gone. The wrappers go when the marketplace gets markets | 3M |
+| `packages/core/src/availability.ts:57` | Repair back-on dates compared as Bangkok calendar days. Stays with the pool rule, which is retired at 3M (phase-2-plan §2.6) | 3M |
+| `packages/core/src/availability.ts:75` | "Bangkok midnight = 17:00 UTC the day before" boundary. The same | 3M |
+| `packages/core/src/money.ts` | **Done in Phase 2, stage 3.** The rules are generic in `currency.ts` (`toMinorUnits`, `fromMinorUnits`, `formatWholeAmount`, by the currency's ISO 4217 exponent and the viewer's locale). `money.ts` keeps `bahtToSatang`, `satangToBaht`, `formatBaht` and `assertWholeBaht` as thin wrappers that pass THB, until the marketplace's money moves to minor units | 3M |
 | `packages/core/src/pricing.ts` | Day tables require whole baht (`assertWholeBaht`) and a ฿10 step. Since stage D1 the arithmetic is the currency-neutral one in `price-list.ts`; only the marketplace's wrapper keeps baht, until 3M | 3M |
 | `packages/core/src/pricing.ts:61,79` | Autofill rounds to the nearest ฿10, a THB-sized step | P2 |
 
