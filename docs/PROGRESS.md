@@ -243,7 +243,7 @@ Why then: `main`'s deployment (`mango-works-platform.netlify.app`) has run stage
 
 ## Phase 2, stage 3: booking rules and `offer()` (branch `platform/phase-2-stage-3-booking-rules`, 16 Nov 2026)
 
-The third build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.3, §2.6, §3.6, §4, §8; the owner's answers in §10, Q5 with its addition). **No screen changes: database, `@mango/core` and one server module.** Applied locally only; **not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The third build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.3, §2.6, §3.6, §4, §8; the owner's answers in §10, Q5 with its addition). **No screen changes: database, `@mango/core` and one server module.** **On staging since 16 Nov 2026** (63 of 63; see "On staging" below); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
 
 **What changed**
 
@@ -354,6 +354,25 @@ This replaces items 5 and 10 of the list above where they differ, and adds a rea
 - A race test shows a race is closed for the timings it hit.
 
 **Before this goes to staging** (the owner's word each time, plan Q17): nothing to count first. The migration adds nullable columns with no default and re-creates two functions; migrations `20261116000100` and `20261116000200` must be there in their merged form. Afterwards: every location and product reads empty rules, every shop reads empty default buffers, and counts of products, units, blocks and audit rows are unchanged.
+
+**On staging since 16 Nov 2026; not on live.** The migration (`20261116000300_platform_booking_rules`) was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 15:15 UTC, from `main` at `9749bf4`, with `npx supabase db push --db-url` (never `--linked`). Staging records 63 of 63. Live was not touched.
+
+- **Read-only checks first**, in one read-only transaction; all four passed:
+  1. 62 migrations on record, newest `20261116000200`; `20261116000300` absent, and none that sorts after it.
+  2. The migration re-creates four functions that existed, not two. Each had `main`'s body as of `65cc20f` (just before PR 38 merged), by MD5 of the stored source against the body in `20261116000200`, the last migration that wrote each: `reserve` `3a3a1865…`, `confirm_hold` `be90036c…`, `availability` `c62fd4ec…`, `booking_roles` `6a2a6bd5…`. The three new functions (`save_booking_rules`, `booking_inputs`, `json_int_between`) did not exist.
+  3. None of the eight rule columns existed (four on `locations`, two on `products`, two on `tenants`), nor the check `products_min_days_vehicle_check`.
+  4. Counts taken of every `platform` table (below).
+- **The dry run** listed exactly this one migration. The push applied it in about eight seconds.
+- **After, read-only:**
+  - 63 migrations on record, newest `20261116000300`.
+  - Every rule column is empty: 4 locations, 32 products and 3 shops, no value in any of the eight.
+  - All three shops (`big-fleet`, `bsr`, `saigon-scooters`) read overbooking off, a hold of 15 minutes and no default buffers.
+  - `save_booking_rules()` can be executed by `authenticated` only: not by the service role, `anon` or PUBLIC.
+  - The four re-created functions now have this migration's bodies, by MD5 against `main`: `reserve` `d38413ff…`, `confirm_hold` `744aefe0…`, `availability` `ce99cff2…`, `booking_roles` `51a20ff2…`.
+  - Both cron jobs are still active: `platform-renewal-notifications` (`7 * * * *`) and `platform-release-expired-holds` (`* * * * *`). The second ran at 15:15 and 15:16 UTC, either side of the push, and succeeded both times.
+- **Counts, the same before and after:** 32 products, 205 units, 21 blocks, 0 reservations, 3,415 audit rows, 13 pricing rows (5 price lists with 150 days, 1 settings row), 3 shops, 4 locations; every other `platform` table the same too. The same checksums before and after over products, locations and shops with the new columns left out, and over units, blocks, pricing rows, price lists and their days, and the settings row.
+- **Two of the three demo shops have no opening hours on staging, so they can't be booked online until hours are saved.** `big-fleet` (2 locations) and `saigon-scooters` (1 location) have no row in `location_hours`; `bsr` has all seven days. A location with no hours saved answers `outside_hours` on every online channel (decision 10 above); staff bookings are unaffected.
+- **Not run against staging:** the browser suite. CI ran all of it on a clean local database.
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s3` on ports 6332x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Stage 2's stack was stopped (not removed).
 
