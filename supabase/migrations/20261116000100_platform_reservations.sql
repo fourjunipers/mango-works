@@ -27,7 +27,8 @@
 -- Lock order, for every writer (§4):
 --   1. product-and-location advisory locks (namespace 1a02), sorted by key;
 --   2. unit advisory locks (namespace 1a01), sorted by key;
---   3. rows: the product's row (for share), in product-id order, then
+--   3. rows: the picked units' rows (for key share), in id order, then
+--      the product's row (for share), in product-id order, then
 --      reservations, then unit_blocks.
 --
 -- The stock functions that ask "does a booking hold this unit" were read
@@ -607,6 +608,18 @@ begin
 
       -- The unit locks of every line together, in key order.
       perform platform_private.lock_units(v_pick_unit);
+
+      -- Then the picked units' rows, in id order, before any other row
+      -- lock. Deleting a unit takes no advisory lock: it locks the unit's
+      -- row and then the product's. A booking that held the product's row
+      -- first and met the unit's row at its block insert could wait on such
+      -- a delete while the delete waits on it. Here the booking holds no
+      -- row lock yet, so it only waits; a unit deleted meanwhile is gone
+      -- from the read below, and the booking picks again without it.
+      perform 1 from platform.units u
+      where u.id = any (v_pick_unit)
+      order by u.id
+      for key share;
 
       -- Under the locks: is each one still free?
       for v_i in 1..v_count loop

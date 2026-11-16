@@ -1995,6 +1995,92 @@ describe("lock order", () => {
     expect(result.data).toEqual({ ok: false, reason: "unavailable", line: 0 });
     expect(await written()).toEqual(before);
   }, 60_000);
+  it("a unit being deleted, stalled behind someone's edit of its product, against a booking that picked that unit: no deadlock, and the booking takes another unit or is refused", async () => {
+    for (const units of [2, 1]) {
+      const bike = await vehicle(units);
+      // No block on either unit, so the pick goes by the lower lock key.
+      const picked = sql(
+        `select id from platform.units where product_id = '${bike.id}' order by hashtext(id::text), id limit 1;`,
+      ).out;
+      const before = deadlocks();
+
+      // Session 1: someone is editing the product and has not saved yet.
+      const editMarker = `edit-product-${tag}-${units}`;
+      const editor = sqlBackground(`
+        begin;
+        update platform.products set description = 'Being edited' where id = '${bike.id}';
+        select pg_sleep(5) /* ${editMarker} */;
+        commit;
+      `);
+      await holding(editMarker);
+      // Session 2: the unit is deleted. Its row is gone (not yet for
+      // anyone else), and the delete now waits for the product's row,
+      // which a unit leaving always locks.
+      const deleteMarker = `delete-unit-${tag}-${units}`;
+      const deleter = sqlBackground(
+        `delete from platform.units where id = '${picked}' /* ${deleteMarker} */;`,
+      );
+      await until(`
+        select 'waiting' from pg_stat_activity
+        where wait_event_type = 'Lock' and query like '%${deleteMarker}%'
+          and pid <> pg_backend_pid()
+        limit 1;
+      `);
+      // Session 3: a booking, which picks that unit: it can still see it.
+      const call = onlineBook([
+        { product_id: bike.id, starts_at: at(1), ends_at: at(2) },
+      ]);
+      // It waits for the delete, on the unit's row, having locked no row
+      // and written nothing (no transaction id yet): it holds nothing the
+      // delete could come to wait for. Before the unit rows were locked
+      // first, it went on to lock the product's row here.
+      const seen = await until(`
+        select 'waiting for the delete, nothing locked or written: ' || (w.backend_xid is null)
+        from pg_stat_activity w
+        join pg_locks l on l.pid = w.pid and not l.granted and l.locktype = 'transactionid'
+        join pg_stat_activity d on d.backend_xid = l.transactionid
+        where w.query like '%reserve%' and d.query like '%${deleteMarker}%'
+          and w.pid <> pg_backend_pid()
+        limit 1;
+      `);
+      expect(seen, `${units} units`).toBe(
+        "waiting for the delete, nothing locked or written: true",
+      );
+
+      const [edited, deleted, result] = await Promise.all([
+        editor,
+        deleter,
+        call,
+      ]);
+      expect(edited.failed).toBe("");
+      // The delete went through: the booking never stood in its way.
+      expect(deleted.failed).toBe("");
+      noDeadlock([result]);
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(deadlocks(), `${units} units`).toBe(before);
+
+      const left = bike.units.filter((u) => u !== picked);
+      if (units === 2) {
+        // It read again once the unit was gone, and took the other one.
+        expect(outcome(result)).toBe("ok");
+        expect(
+          (result.data as Extract<Answer, { ok: true }>).lines[0].unit_ids,
+        ).toEqual(left);
+      } else {
+        expect(result.data).toEqual({
+          ok: false,
+          reason: "unavailable",
+          line: 0,
+        });
+        expect(await reservationsOf(bike.id)).toEqual([]);
+      }
+      const { data: remaining } = await service
+        .from("units")
+        .select("id")
+        .eq("product_id", bike.id);
+      expect(remaining!.map((u) => u.id)).toEqual(left);
+    }
+  }, 120_000);
 });
 
 /** The places every race runs in. */
@@ -2243,9 +2329,9 @@ describe("more races, in every shop", () => {
   }, 180_000);
 
   it("a booking against a downtime written on the unit it picks: one of the two, never both", async () => {
-    let bookings = 0;
     for (const [where, tenant] of everyShop()) {
       const bike = await vehicle(1, { tenant });
+      let bookings = 0;
       for (let round = 0; round < 15; round++) {
         const window = [at(round * 2), at(round * 2 + 1)] as const;
         const [booked, down] = await Promise.all([
@@ -2288,6 +2374,19 @@ describe("more races, in every shop", () => {
         ).toContain(pair);
         if (pair.startsWith("ok")) bookings++;
       }
+      // What the database holds is what the answers said: an allocation
+      // for every booking that answered ok, a downtime for every other
+      // round, and no reservation without its block.
+      const kinds = (await blocksOf(bike.id)).map((b) => b.kind);
+      expect(
+        kinds.filter((k) => k === "allocation"),
+        `${where}: bookings that answered ok`,
+      ).toHaveLength(bookings);
+      expect(
+        kinds.filter((k) => k === "downtime"),
+        `${where}: downtime that was saved`,
+      ).toHaveLength(15 - bookings);
+      expect(await reservationsOf(bike.id), where).toHaveLength(bookings);
       // One block a round, whoever won.
       const { count } = await service
         .from("unit_blocks")
@@ -2298,7 +2397,6 @@ describe("more races, in every shop", () => {
         (await blocksOf(bike.id)).filter((b) => b.kind === "allocation").length,
       );
     }
-    expect(bookings).toBeGreaterThanOrEqual(0);
   }, 180_000);
 
   it("a booking against its unit being sold, retired or marked lost: the unit is booked or gone, never both", async () => {
