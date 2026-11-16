@@ -53,7 +53,7 @@ Every function or trigger that takes more than one lock takes them in this order
 
 1. **Product-and-location advisory locks** (namespace `1a02`), sorted by the lock's own key: `platform_private.lock_product_stock()` for one product, `lock_products_stock()` for several.
 2. **Unit advisory locks** (namespace `1a01`), sorted by the lock's own key, through `platform_private.lock_units()`. By key (`hashtext` of the id), never by UUID.
-3. **Rows**, always after the advisory locks: the product's row, then its listing's row, in product-id order; then `reservations`; then `unit_blocks`.
+3. **Rows**, always after the advisory locks: unit rows in id order, then the product's row, then its listing's row, in product-id order; then `reservations`; then `unit_blocks`. Unit rows come first because deleting a unit takes no advisory lock: it locks the unit's row, then the product's.
 
 A booking reads prices before its transaction and never locks a pricing row, a price list or a tax profile. Stock is taken only through `platform.reserve()` and its siblings; nothing else writes an allocation or a hold.
 

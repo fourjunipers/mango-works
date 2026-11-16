@@ -70,20 +70,42 @@ So `reserve()` is built as the plan designed it (pick, lock the picked units in 
 
 **Tests**
 
-- Database: 417 on the platform, all passing on a freshly reset local database (353 before). New: `reservations.test.ts` (59 tests) and 5 in `default-grants.test.ts`. The isolation harness has a fixture row, a forged row and a change to try for `reservations`. Eight older tests that wrote an "allocation" by hand now make its reservation first (`allocationFor` in `tests/db/helpers.ts`); what they assert is the same.
+- Database: 418 on the platform, all passing on a freshly reset local database (353 before). New: `reservations.test.ts` (60 tests, the unit-delete test added after the review) and 5 in `default-grants.test.ts`. The isolation harness has a fixture row, a forged row and a change to try for `reservations`. Eight older tests that wrote an "allocation" by hand now make its reservation first (`allocationFor` in `tests/db/helpers.ts`); what they assert is the same.
 - **The accept races, 20 rounds each, in each of three shops** (Bangkok THB, New York USD with daylight saving, Saigon VND): staff against staff, online against online, staff against online, staff naming the unit against staff naming none, staff naming the unit against online, both naming the same unit. **360 rounds, every one with exactly one success**, the loser answered `unavailable` or `unit_taken`, and after each set the product has exactly two reservations, two blocks and two audit events a round.
 - More races, in all three shops: twelve bookings for the last helmet (15 rounds); two bookings each wanting 2 of the same 3 helmets (30); two two-product bookings naming the products in opposite orders (45); a booking against a downtime on the unit it picks (45); against its unit being sold, retired or marked lost (54); against the quantity being lowered or a problem report (24); a cancel against a new booking (30). **603 race rounds in all.**
 - **No deadlock on any path:** no call answered `40P01` or `try_again`, and Postgres' own count of detected deadlocks for the database (`pg_stat_database.deadlocks`) is the same after the file as before it.
 - Also held: a booking overlapping downtime is refused by the pick (`unavailable`), by name (`unit_taken`) and by the constraint when written by hand as the service role; all or nothing with the blocked line first, in the middle and last, on both paths; every one of the five roles through both functions and by hand on both tables; another shop's five roles, a stranger and a signed-out visitor; cross-tenant refusals for `reserve`, `cancel_reservation` and `free_units`, each beside the same call with a made-up id; buffers; best fit; the lock order (a second booking waits on the product lock with no unit lock in hand; `lock_products_stock` takes keys in order; the guard's two unit locks in key order, which fails against the old body; a unit taken between the pick and its lock is left out and the booking picks again).
 - Unit: 347 on the platform (345 before; `lib/booking-permissions.test.ts`, 2), 290 in `@mango/core`, 202 on the marketplace. Typecheck and lint pass for every workspace, the one-pricer (money) rule included.
 - **The migration on a seeded copy of `main`'s database** (reset to the 60 migrations of `main`, the three demo shops seeded, then this migration): 3 shops, 16 products, 170 units and 263 audit rows before and after, with the same checksums over the products and the units. The demo seed has no blocks and no prices, so nothing had to move; D7's BSR prices are on staging only and were not loaded here.
-- Browser: the full suite on the seeded local database with this migration applied, 375 px and 1280 px, two workers: 140 tests, 131 passed, 7 skipped (each runs at one width only), 2 failed, both in `products-stage-d6.spec.ts` at desktop width ("tax profiles: one in use can't be removed" and "the rounding step changed in Settings"). Each ran out its six minutes in the part that takes turns on the shop's settings; the same two passed at phone width in that run. Run again on their own, one at a time, all four passed in 6 to 12 seconds each. No app code changed in this stage; earlier stages saw the same kind of timeout on this machine. No new browser test: nothing on a screen changed.
+- Browser: the full suite on a freshly reset and seeded local database, 375 px and 1280 px, two workers, run twice (before and after the review fix): 140 tests, 131 passed, 7 skipped, 2 failed, the same two both times, in `products-stage-d6.spec.ts` at desktop width ("tax profiles: one in use can't be removed" and "the rounding step changed in Settings"). CI passes all of them. The tax-profile one was traced: at phone width the test removes its "E2E VAT" profile at the end; the desktop run that follows looks for "Bring back" with `count()`, which does not wait for the page, finds nothing, never brings the profile back, and then waits its whole six minutes for a "Tax on this product" option that is not there. So it is a race in the test itself (a known issue below), not in this stage: no app code changed and the migration does not touch tax profiles. The second failure sits behind the first in the same settings queue. No new browser test: nothing on a screen changed.
+
+**After the review of PR 36 (16 Nov 2026).** Two things fixed before merge, in the same PR. The migration had not left this machine, so it was edited in place.
+
+- **A booking could deadlock with a unit being deleted.** Deleting a unit takes no advisory lock: it locks the unit's row, then the product's row (the count-clamping trigger). `reserve()` locked the product's row first and met the unit's row only at its block insert, the other way round. Now, right after `lock_units()` and before it reads again, it locks the picked units' rows `for key share` in id order. It holds no row lock at that point, so behind a delete it only waits; the unit is then gone from the read, and the booking picks again. The lock order in the root `CLAUDE.md` and in the migration's header says "unit rows, then the product's row".
+- **The test:** three sessions. Someone's unsaved edit of the product; a unit delete that has removed the unit's row and waits for the product's row behind that edit; a booking that picks that unit. The booking is seen waiting for the delete with nothing locked or written, the delete goes through, no deadlock is counted, and the booking takes the other unit (two units) or answers `unavailable` (one unit). Against the function as first pushed, the test fails: the booking never waits on the unit.
+- **An assertion that could not fail** (`bookings >= 0` in the downtime race) is replaced: per shop, the allocations in the database equal the bookings that answered ok, the downtime rows equal the other rounds, and there is no reservation without its block.
+
+**Carried to stage 2** (from the review)
+
+- Provably-waiting versions of the named-unit race and of the sold, retired or lost race: one side held in place and seen waiting, as the lock-order tests do, not only fired at the same instant.
+- Drop the row-level audit rows for allocation and hold blocks (keep them for downtime, and for reservations), and add the unit ids to the `cancel` event.
+- After an exclusion violation in `reserve()`, add the unit to `v_exclude` so the next attempt can't pick it again.
+- Correct the "A downtime write, a unit status change" row of the plan's §4 table: a change between active and maintenance takes no unit lock (only selling, retiring and marking lost do).
+
+**Carried to stage 3** (from the review)
+
+- `bookOnline()` treats `55P03` (`lock_timeout`) the same as `try_again`.
+
+**Carried to 3M** (from the review)
+
+- Request mode needs its own state and its own migration before Moto Mangos books through the platform. `reserve()` refuses it until then.
 
 **Before this goes to staging** (the owner's word each time, plan Q17): the migration adds a check that every allocation and hold has a reservation. Nothing could write either kind before this stage, so there should be none; the read-only count before the push must show 0 rows of `unit_blocks` with `kind` in (`allocation`, `hold`), or the migration stops there and changes nothing.
 
 **Known issues and follow-ups**
 
 - A product that has ever been reserved can't be deleted (the reservation's key to it), as a unit that has ever been booked can't. For a service this is new: the app should offer "retire" there when Phase 3 makes real bookings.
+- `e2e/products-stage-d6.spec.ts`, the tax-profile test: its "Bring back" check uses `count()` without waiting for the list, so the second width of a local run can miss a removed profile and time out. Not touched here; it needs a waiting check (CI's retries hide it).
 - A race test shows a race is closed for the timings it hit.
 - Nothing on a screen calls `reserve()` yet. Stage 3 builds the one server entry point for online channels; Phase 3 the staff screens.
 
