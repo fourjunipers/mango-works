@@ -531,7 +531,7 @@ describe("booking core: reservations and its functions", () => {
       'free_units false search_path=""',
       'json_time false search_path=""',
       'lock_products_stock false search_path=""',
-      'reserve true search_path=""',
+      'reserve true search_path="",lock_timeout=6s',
       'unit_blocks_guard true search_path=""',
     ]);
   });
@@ -635,7 +635,7 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
     ).toEqual(["true false"]);
   });
 
-  it("no signed-in person can write allow_overbooking or hold_minutes yet", () => {
+  it("no signed-in person can write allow_overbooking, hold_minutes or the default buffers directly (save_booking_rules() is the way, since stage 3)", () => {
     const rows = lines(`
       select string_agg(a.attname, ',' order by a.attname)
       from pg_attribute a
@@ -661,6 +661,79 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
       "unit_blocks_audit_insert true",
       "unit_blocks_audit_update true",
       "units_busy_on_delete false",
+    ]);
+  });
+});
+
+/**
+ * Phase 2, stage 3 (20261116000300): booking rules and the Moto Mangos cap.
+ * No new table; rule columns on locations, products and tenants.
+ */
+describe("booking rules: the stage 3 functions and columns", () => {
+  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || has_function_privilege('service_role', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+        || ' | ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in (
+          'save_booking_rules', 'booking_inputs', 'json_int_between',
+          'booking_roles', 'reserve', 'availability')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
+      // Re-created in stage 3, grants restated: the read runs as its caller.
+      'platform.availability false true true false | false search_path=""',
+      // The rules' read: every member, and the server; as its caller, under RLS.
+      'platform.booking_inputs false true true false | false search_path=""',
+      // Re-created in stage 3, grants restated.
+      'platform.reserve false true true false | true search_path="",lock_timeout=6s',
+      // Owners and managers (checked inside). Not the server's.
+      'platform.save_booking_rules false true false false | true search_path=""',
+      'platform_private.booking_roles false true true false | false search_path=""',
+      // Called only inside save_booking_rules(), as its owner.
+      'platform_private.json_int_between false false false false | false search_path=""',
+    ]);
+  });
+
+  it("the new columns are readable as their tables are, and not by signed-out visitors", () => {
+    const rows = lines(`
+      select c.relname || '.' || a.attname || ' '
+        || has_column_privilege('anon', a.attrelid, a.attnum, 'select') || ' '
+        || has_column_privilege('authenticated', a.attrelid, a.attnum, 'select') || ' '
+        || has_column_privilege('authenticated', a.attrelid, a.attnum, 'update')
+      from pg_attribute a join pg_class c on c.oid = a.attrelid
+      where a.attrelid in (
+          'platform.tenants'::regclass, 'platform.locations'::regclass,
+          'platform.products'::regclass)
+        and a.attname in (
+          'min_notice_hours', 'booking_cutoff_minutes', 'min_days_advance',
+          'min_days_walkin', 'buffer_before_minutes', 'buffer_after_minutes',
+          'allow_overbooking', 'hold_minutes')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // column, anon reads, a signed-in person reads, a signed-in person writes
+      // A location's and a product's rows are written under their own
+      // policies (owners and managers), as every other column of theirs is.
+      "locations.booking_cutoff_minutes false true true",
+      "locations.min_days_advance false true true",
+      "locations.min_days_walkin false true true",
+      "locations.min_notice_hours false true true",
+      "products.buffer_after_minutes false true true",
+      "products.buffer_before_minutes false true true",
+      "products.min_days_advance false true true",
+      "products.min_days_walkin false true true",
+      // The shop's own settings: through save_booking_rules() only.
+      "tenants.allow_overbooking false true false",
+      "tenants.buffer_after_minutes false true false",
+      "tenants.buffer_before_minutes false true false",
+      "tenants.hold_minutes false true false",
     ]);
   });
 });

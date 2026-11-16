@@ -287,6 +287,15 @@ Since 16 Nov 2026 BSR on staging has four shared price lists ("300–3000", "350
 - `STAGING_ANON_KEY` is the staging project's anon key (Project Settings › API). It is a public key, kept in `apps/platform/.env.local` like the others and never committed.
 - `apps/platform/.env.local` must hold **one** `DEMO_PASSWORD` line. A second, stale one was removed from the main checkout on 16 Nov 2026; staging takes the one that is left.
 
+## Publishing: production comes from the `release` branch
+
+Since 16 Nov 2026 both Netlify sites publish production from the **`release`** branch, not from `main`.
+
+- **A merge to `main` makes a branch deploy.** Branch deploys and deploy previews are free; nothing a customer sees changes.
+- **`main` is merged into `release` only when Mark says "publish".** That merge is the production deploy, and the one that costs credits. Nobody else starts it, and no session does it as part of merging a PR.
+- **This is about the sites' code only.** Migrations reach live as [How migrations reach live](#how-migrations-reach-live) says: by hand, only from `main`, on Mark's word. A migration that the published code needs must be on live before `release` is moved past the commit that needs it.
+- Not checked in Netlify itself (no Netlify access from the repo): the production branch setting of each site is under Site configuration › Build & deploy › Branches and deploy contexts.
+
 ## Netlify environment variables
 
 Site `mango-works-platform`. The app needs:

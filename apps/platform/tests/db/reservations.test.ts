@@ -594,16 +594,17 @@ describe("who may book", () => {
         channel,
         mode,
       );
-      expect(outcome(ok), channel).toBe("ok");
+      // Since stage 3 a Moto Mangos booking needs the vehicle's listing
+      // switched on. The server is let through to that check (it is not
+      // answered not_allowed); tests/db/booking-rules.test.ts books a
+      // listed vehicle through this channel.
+      expect(outcome(ok), channel).toBe(
+        channel === "marketplace" ? "not_listed" : "ok",
+      );
     }
     expect(
       (await reservationsOf(bike.id)).map((r) => `${r.channel} ${r.mode}`),
-    ).toEqual([
-      "phone staff",
-      "booking_page instant",
-      "marketplace now",
-      "api instant",
-    ]);
+    ).toEqual(["phone staff", "booking_page instant", "api instant"]);
   });
 
   it("a signed-in person with no membership is refused; a signed-out visitor can't call either function", async () => {
@@ -2459,7 +2460,7 @@ describe("races for the last unit: exactly one booking wins, nothing is half-wri
           "online v online",
           (line) => [
             onlineBook([line], t, "booking_page"),
-            onlineBook([line], t, "marketplace"),
+            onlineBook([line], t, "api"),
           ],
           ["unavailable"],
         );

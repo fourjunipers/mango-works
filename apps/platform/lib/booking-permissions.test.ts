@@ -15,6 +15,7 @@ describe("who may do what with bookings", () => {
       "confirm",
       "read",
       "reserve",
+      "rules",
     ]);
     for (const action of ["reserve", "cancel", "confirm", "assign"] as const) {
       expect(bookingRoles(action), action).toEqual([
@@ -23,6 +24,11 @@ describe("who may do what with bookings", () => {
         "staff",
       ]);
     }
+  });
+
+  it("only owners and managers set the booking rules", () => {
+    expect(bookingRoles("rules")).toEqual(["owner", "manager"]);
+    expect(canBooking("staff", "rules")).toBe(false);
   });
 
   it("canBooking answers from the same table", () => {

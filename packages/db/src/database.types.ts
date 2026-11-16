@@ -85,14 +85,14 @@ isOneToOne: false
                   ]
                 },"locations": {
                   Row: {
-                    "address": string | null,"created_at": string,"email": string | null,"geo": unknown,"google_place_id": string | null,"id": string,"is_default": boolean,"line_id": string | null,"maps_url": string | null,"market_id": string | null,"name": string,"phone": string | null,"tenant_id": string,"timezone": string,"updated_at": string,"whatsapp": string | null
+                    "address": string | null,"booking_cutoff_minutes": number | null,"created_at": string,"email": string | null,"geo": unknown,"google_place_id": string | null,"id": string,"is_default": boolean,"line_id": string | null,"maps_url": string | null,"market_id": string | null,"min_days_advance": number | null,"min_days_walkin": number | null,"min_notice_hours": number | null,"name": string,"phone": string | null,"tenant_id": string,"timezone": string,"updated_at": string,"whatsapp": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "address"?: string | null,"created_at"?: string,"email"?: string | null,"geo"?: unknown,"google_place_id"?: string | null,"id"?: string,"is_default"?: boolean,"line_id"?: string | null,"maps_url"?: string | null,"market_id"?: string | null,"name": string,"phone"?: string | null,"tenant_id": string,"timezone": string,"updated_at"?: string,"whatsapp"?: string | null
+                    "address"?: string | null,"booking_cutoff_minutes"?: number | null,"created_at"?: string,"email"?: string | null,"geo"?: unknown,"google_place_id"?: string | null,"id"?: string,"is_default"?: boolean,"line_id"?: string | null,"maps_url"?: string | null,"market_id"?: string | null,"min_days_advance"?: number | null,"min_days_walkin"?: number | null,"min_notice_hours"?: number | null,"name": string,"phone"?: string | null,"tenant_id": string,"timezone": string,"updated_at"?: string,"whatsapp"?: string | null
                   }
                   Update: {
-                    "address"?: string | null,"created_at"?: string,"email"?: string | null,"geo"?: unknown,"google_place_id"?: string | null,"id"?: string,"is_default"?: boolean,"line_id"?: string | null,"maps_url"?: string | null,"market_id"?: string | null,"name"?: string,"phone"?: string | null,"tenant_id"?: string,"timezone"?: string,"updated_at"?: string,"whatsapp"?: string | null
+                    "address"?: string | null,"booking_cutoff_minutes"?: number | null,"created_at"?: string,"email"?: string | null,"geo"?: unknown,"google_place_id"?: string | null,"id"?: string,"is_default"?: boolean,"line_id"?: string | null,"maps_url"?: string | null,"market_id"?: string | null,"min_days_advance"?: number | null,"min_days_walkin"?: number | null,"min_notice_hours"?: number | null,"name"?: string,"phone"?: string | null,"tenant_id"?: string,"timezone"?: string,"updated_at"?: string,"whatsapp"?: string | null
                   }
                   Relationships: [
                     {
@@ -397,14 +397,14 @@ isOneToOne: false
                   ]
                 },"products": {
                   Row: {
-                    "bookable_online": boolean,"buffer_after_minutes": number | null,"buffer_before_minutes": number | null,"catalog_approved_at": string | null,"catalog_id": string | null,"catalog_reject_reason": string | null,"catalog_rejected_at": string | null,"categories": (string)[],"cc": number | null,"created_at": string,"description": string | null,"id": string,"licence_class": string | null,"make": string | null,"min_age": number | null,"model": string | null,"name": string,"photos": (string)[],"retired_at": string | null,"sort_position": number | null,"tenant_id": string,"tracking": string,"transmission": Database["public"]['Enums']["transmission"] | null,"type": string,"updated_at": string,"vehicle_type": string | null
+                    "bookable_online": boolean,"buffer_after_minutes": number | null,"buffer_before_minutes": number | null,"catalog_approved_at": string | null,"catalog_id": string | null,"catalog_reject_reason": string | null,"catalog_rejected_at": string | null,"categories": (string)[],"cc": number | null,"created_at": string,"description": string | null,"id": string,"licence_class": string | null,"make": string | null,"min_age": number | null,"min_days_advance": number | null,"min_days_walkin": number | null,"model": string | null,"name": string,"photos": (string)[],"retired_at": string | null,"sort_position": number | null,"tenant_id": string,"tracking": string,"transmission": Database["public"]['Enums']["transmission"] | null,"type": string,"updated_at": string,"vehicle_type": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"model"?: string | null,"name": string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id": string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
+                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"min_days_advance"?: number | null,"min_days_walkin"?: number | null,"model"?: string | null,"name": string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id": string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
                   }
                   Update: {
-                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"model"?: string | null,"name"?: string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id"?: string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
+                    "bookable_online"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"catalog_approved_at"?: string | null,"catalog_id"?: string | null,"catalog_reject_reason"?: string | null,"catalog_rejected_at"?: string | null,"categories"?: (string)[],"cc"?: number | null,"created_at"?: string,"description"?: string | null,"id"?: string,"licence_class"?: string | null,"make"?: string | null,"min_age"?: number | null,"min_days_advance"?: number | null,"min_days_walkin"?: number | null,"model"?: string | null,"name"?: string,"photos"?: (string)[],"retired_at"?: string | null,"sort_position"?: number | null,"tenant_id"?: string,"tracking"?: string,"transmission"?: Database["public"]['Enums']["transmission"] | null,"type"?: string,"updated_at"?: string,"vehicle_type"?: string | null
                   }
                   Relationships: [
                     {
@@ -507,14 +507,14 @@ isOneToOne: false
                   ]
                 },"tenants": {
                   Row: {
-                    "allow_overbooking": boolean,"country": string,"created_at": string,"currency": string,"distance_unit": string,"hold_minutes": number,"id": string,"locale": string,"name": string,"renewal_digest_day": number | null,"renewal_reminder_days": (number)[],"slug": string,"updated_at": string
+                    "allow_overbooking": boolean,"buffer_after_minutes": number | null,"buffer_before_minutes": number | null,"country": string,"created_at": string,"currency": string,"distance_unit": string,"hold_minutes": number,"id": string,"locale": string,"name": string,"renewal_digest_day": number | null,"renewal_reminder_days": (number)[],"slug": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "allow_overbooking"?: boolean,"country": string,"created_at"?: string,"currency": string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale": string,"name": string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug": string,"updated_at"?: string
+                    "allow_overbooking"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"country": string,"created_at"?: string,"currency": string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale": string,"name": string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug": string,"updated_at"?: string
                   }
                   Update: {
-                    "allow_overbooking"?: boolean,"country"?: string,"created_at"?: string,"currency"?: string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale"?: string,"name"?: string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug"?: string,"updated_at"?: string
+                    "allow_overbooking"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"country"?: string,"created_at"?: string,"currency"?: string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale"?: string,"name"?: string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     
@@ -685,6 +685,9 @@ isOneToOne: false
 "availability":
 { Args: { "p_items": Json,"p_tenant_id": string }; Returns: Json
                            },
+"booking_inputs":
+{ Args: { "p_location_id": string,"p_product_ids": (string)[],"p_tenant_id": string }; Returns: Json
+                           },
 "cancel_reservation":
 { Args: { "p_booking_id"?: string,"p_reservation_id"?: string,"p_tenant_id": string }; Returns: Json
                            },
@@ -774,6 +777,9 @@ isOneToOne: false
                            },
 "review_catalog_request":
 { Args: { "p_approve": boolean,"p_catalog_id": string,"p_merge_into"?: string,"p_notes"?: string,"p_year_from"?: number,"p_year_to"?: number }; Returns: Json
+                           },
+"save_booking_rules":
+{ Args: { "p_rules": Json,"p_tenant_id": string }; Returns: Json
                            },
 "save_listing":
 { Args: { "p_product_id": string,"p_settings": Json }; Returns: Json
