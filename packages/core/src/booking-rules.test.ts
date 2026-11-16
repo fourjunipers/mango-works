@@ -136,14 +136,14 @@ describe("bookable(): every reason", () => {
     ).toEqual({ ok: false, reason: "outside_hours", at: "return" });
   });
 
-  it("a location that has saved no hours has no hours rule, but its closures still count", () => {
+  it("for staff, a location that has saved no hours has no hours rule, but its closures still count", () => {
     const noHours = rules({ hours: [] });
     const threeAm = utc("2026-06-15T07:00");
-    expect(
-      bookable(noHours, threeAm, wednesday10, bookingPage, longAgo),
-    ).toEqual({
-      ok: true,
-    });
+    for (const how of [counter, phone]) {
+      expect(bookable(noHours, threeAm, wednesday10, how, longAgo)).toEqual({
+        ok: true,
+      });
+    }
     const closed = rules({
       hours: [],
       closures: [
@@ -154,9 +154,51 @@ describe("bookable(): every reason", () => {
         },
       ],
     });
+    expect(bookable(closed, threeAm, wednesday10, counter, longAgo)).toEqual({
+      ok: false,
+      reason: "outside_hours",
+      at: "pickup",
+    });
+  });
+
+  it("online, a location that has saved no hours can't be booked at all: outside_hours, on every online channel and at any time of day", () => {
+    const noHours = rules({ hours: [] });
+    for (const how of [bookingPage, api, motoMangos, motoMangosRequest]) {
+      for (const pickup of [monday10, utc("2026-06-15T07:00")]) {
+        expect(
+          bookable(noHours, pickup, wednesday10, how, longAgo),
+          how.channel,
+        ).toEqual({ ok: false, reason: "outside_hours", at: "no_hours" });
+      }
+    }
     expect(
-      reason(bookable(closed, threeAm, wednesday10, bookingPage, longAgo)),
+      bookable(noHours, monday10, wednesday10, rideToday, monday10),
+    ).toEqual({ ok: false, reason: "outside_hours", at: "no_hours" });
+    // It comes before every other rule.
+    const strict = rules({
+      hours: [],
+      minNoticeHours: 720,
+      minDaysAdvance: 30,
+    });
+    expect(
+      reason(bookable(strict, monday10, wednesday10, bookingPage, monday10)),
     ).toBe("outside_hours");
+    // One weekday saved is hours saved: the other days are closed, not unknown.
+    const mondays = rules({
+      hours: [{ weekday: 1, open: "09:00", close: "18:00" }],
+    });
+    expect(
+      bookable(
+        mondays,
+        monday10,
+        utc("2026-06-22T14:00"),
+        bookingPage,
+        longAgo,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      bookable(mondays, monday10, wednesday10, bookingPage, longAgo),
+    ).toEqual({ ok: false, reason: "outside_hours", at: "return" });
   });
 
   it("outside_hours: a closure on the pickup date or on the return date", () => {
@@ -349,6 +391,122 @@ describe("notice, channel by channel", () => {
   });
 });
 
+/**
+ * "Ride today" skips the notice and the Moto Mangos cap. So it must be what
+ * it says: a Moto Mangos booking for a pickup that is now. Five probes after
+ * the review of PR 38; each was answered "ok" before.
+ */
+describe("Ride today is for Moto Mangos alone, and for a pickup that is now", () => {
+  const strict = rules({ minNoticeHours: 48, leadTimeHours: 72 });
+  const nextMonday10 = utc("2026-06-22T14:00");
+  const nextWednesday10 = utc("2026-06-24T14:00");
+  const minutes = (instant: Date, n: number) =>
+    new Date(instant.getTime() + n * 60_000);
+
+  it("probe 1: the shop's own booking page can't call a booking Ride today to skip its notice", () => {
+    expect(() =>
+      bookable(
+        strict,
+        monday10,
+        wednesday10,
+        { channel: "booking_page", mode: "now" },
+        plus(monday10, -1),
+      ),
+    ).toThrow(RangeError);
+    // As itself it is bound by the notice.
+    expect(
+      reason(
+        bookable(
+          strict,
+          monday10,
+          wednesday10,
+          bookingPage,
+          plus(monday10, -1),
+        ),
+      ),
+    ).toBe("too_soon");
+  });
+
+  it("probe 2: nor can the API, nor a staff channel; and no online channel books in mode staff", () => {
+    for (const how of [
+      { channel: "api", mode: "now" },
+      { channel: "walk_in", mode: "now" },
+      { channel: "phone", mode: "now" },
+      { channel: "walk_in", mode: "instant" },
+      { channel: "phone", mode: "request" },
+      { channel: "booking_page", mode: "staff" },
+      { channel: "marketplace", mode: "staff" },
+      { channel: "api", mode: "staff" },
+    ] as BookingHow[]) {
+      expect(
+        () => bookable(strict, monday10, wednesday10, how, monday10),
+        how.channel + " " + how.mode,
+      ).toThrow(RangeError);
+    }
+  });
+
+  it("probe 3: Moto Mangos Ride today for a pickup next week is not_now, where it used to skip 72 hours of lead time", () => {
+    // Made at the shop on Monday at 10:00, for the Monday after.
+    expect(
+      bookable(strict, nextMonday10, nextWednesday10, rideToday, monday10),
+    ).toEqual({
+      ok: false,
+      reason: "not_now",
+      earliest: minutes(monday10, -15),
+      latest: minutes(monday10, 15),
+    });
+    // The same booking as what it is, an advance booking, is fine.
+    expect(
+      bookable(strict, nextMonday10, nextWednesday10, motoMangos, monday10),
+    ).toEqual({ ok: true });
+    // And an advance booking for an hour from now is too soon.
+    expect(
+      reason(
+        bookable(strict, plus(monday10, 1), wednesday10, motoMangos, monday10),
+      ),
+    ).toBe("too_soon");
+  });
+
+  it("probe 4: nor for later today, nor for a pickup that has long begun: 15 minutes either side of now, to the minute", () => {
+    const ride = (pickup: Date) =>
+      reason(bookable(strict, pickup, wednesday10, rideToday, monday10));
+    expect(ride(plus(monday10, 4))).toBe("not_now");
+    expect(ride(minutes(monday10, 16))).toBe("not_now");
+    expect(ride(minutes(monday10, 15))).toBe("ok");
+    expect(ride(monday10)).toBe("ok");
+    expect(ride(minutes(monday10, -15))).toBe("ok");
+    expect(ride(minutes(monday10, -16))).toBe("not_now");
+    // 16 minutes before opening, the pickup a minute before: now is outside the hours.
+    const early = utc("2026-06-15T12:44");
+    expect(
+      bookable(strict, utc("2026-06-15T12:59"), wednesday10, rideToday, early),
+    ).toEqual({ ok: false, reason: "outside_hours", at: "now" });
+  });
+
+  it("probe 5: through offer(), with the cap full: a real walk-in is offered, a walk-in for next week is not, and the shop's page can't ask at all", () => {
+    const full = listed({ held: 3, instant: 2, request: 1 });
+    const ask = (how: BookingHow, start: Date, end: Date) =>
+      offer(
+        ...scene([{ id: "a", start, end }], {
+          how,
+          now: monday10,
+          marketplace: [full],
+        }),
+      );
+    expect(refusal(ask(rideToday, monday10, wednesday10))).toBe("ok");
+    expect(refusal(ask(rideToday, nextMonday10, nextWednesday10))).toBe(
+      "not_now @ a",
+    );
+    // As an advance booking it meets the cap.
+    expect(refusal(ask(motoMangos, nextMonday10, nextWednesday10))).toBe(
+      "cap_reached @ a",
+    );
+    expect(() =>
+      ask({ channel: "booking_page", mode: "now" }, monday10, wednesday10),
+    ).toThrow(RangeError);
+  });
+});
+
 describe("minimum days, channel by channel", () => {
   const twoKinds = rules({ minDaysAdvance: 3, minDaysWalkin: 1 });
 
@@ -365,7 +523,9 @@ describe("minimum days, channel by channel", () => {
       reason(
         bookable(twoKinds, monday10, wednesday10, how, plus(monday10, -1)),
       );
-    expect(answer(rideToday)).toBe("ok");
+    expect(
+      reason(bookable(twoKinds, monday10, wednesday10, rideToday, monday10)),
+    ).toBe("ok");
     expect(answer(counter)).toBe("ok");
     expect(answer(phone)).toBe("too_short");
     expect(answer(bookingPage)).toBe("too_short");
@@ -473,7 +633,7 @@ describe("New York, across both clock changes: no fixed offset", () => {
         november,
         utc("2026-11-02T04:30"),
         utc("2026-11-04T15:00"),
-        bookingPage,
+        counter,
         longAgo,
       ),
     ).toEqual({ ok: false, reason: "outside_hours", at: "pickup" });

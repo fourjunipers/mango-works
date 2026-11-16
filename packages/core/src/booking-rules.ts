@@ -90,17 +90,33 @@ export type BookingRules = {
   minDaysWalkin: number | null;
 };
 
-/** The contract's reasons (docs/INTEGRATION.md §3.12). */
-export type BookableReason = "outside_hours" | "too_short" | "too_soon";
+/**
+ * The contract's reasons (docs/INTEGRATION.md §3.12), and one more:
+ * "not_now", a "Ride today" booking whose pickup is not now.
+ */
+export type BookableReason =
+  "outside_hours" | "too_short" | "too_soon" | "not_now";
+
+/**
+ * "Ride today" is for riding away now (docs/INTEGRATION.md §4.5, "from
+ * now"). The pickup may be this many minutes either side of the moment the
+ * booking is made: time to fill in a form, and for the request to arrive.
+ */
+export const RIDE_TODAY_GRACE_MINUTES = 15;
 
 export type Bookable =
   | { ok: true }
   | {
       ok: false;
       reason: "outside_hours";
-      /** What fell outside: the pickup, the return, or (Ride today) now. */
-      at: "pickup" | "return" | "now" | "cutoff";
+      /**
+       * What fell outside: the pickup, the return, or (Ride today) now or
+       * the cut-off. "no_hours": an online booking at a location that has
+       * saved no opening hours.
+       */
+      at: "pickup" | "return" | "now" | "cutoff" | "no_hours";
     }
+  | { ok: false; reason: "not_now"; earliest: Date; latest: Date }
   | { ok: false; reason: "too_short"; days: number; minDays: number }
   | { ok: false; reason: "too_soon"; earliestPickup: Date };
 
@@ -173,6 +189,24 @@ const isStaffChannel = (channel: BookingChannel) =>
   channel === "walk_in" || channel === "phone";
 
 /**
+ * Throws unless the channel and the mode go together: staff channels book
+ * in mode "staff" only; online channels in "instant", "request" or, for
+ * Moto Mangos alone, "now".
+ */
+export function assertHow(how: BookingHow): void {
+  const ok = isStaffChannel(how.channel)
+    ? how.mode === "staff"
+    : how.mode === "instant" ||
+      how.mode === "request" ||
+      (how.mode === "now" && how.channel === "marketplace");
+  if (!ok) {
+    throw new RangeError(
+      `A ${how.channel} booking can't be made in mode ${how.mode}`,
+    );
+  }
+}
+
+/**
  * Hours of notice a booking needs, or null where notice does not apply
  * (docs/products-redesign.md §9.10):
  *
@@ -210,11 +244,21 @@ export function minDaysFor(
  *
  * - The pickup and the return must each fall inside the location's hours
  *   and on no closure date.
- * - "Ride today": the location must also be open now, and now must be no
- *   later than the cut-off before closing.
+ * - Online channels need the hours to be known: a location that has saved
+ *   no opening hours can't be booked online at all ("outside_hours", at
+ *   "no_hours"). For staff, no hours saved is no hours rule.
+ * - "Ride today" is a Moto Mangos booking for a pickup that is now, give or
+ *   take RIDE_TODAY_GRACE_MINUTES: any other pickup answers "not_now". The
+ *   location must also be open now, and now must be no later than the
+ *   cut-off before closing.
  * - Minimum days are rental days on the location's clock.
  * - An online advance booking's pickup must be at least the notice after
  *   now (so never in the past). Staff, and "Ride today", have no notice.
+ *
+ * A channel and a mode that don't go together are a programming error and
+ * throw: staff channels book in mode "staff" and online channels never do,
+ * and mode "now" is Moto Mangos' alone. Without that, any channel could
+ * skip its notice by calling itself "Ride today".
  */
 export function bookable(
   rules: BookingRules,
@@ -227,7 +271,22 @@ export function bookable(
     throw new RangeError("The return must be after the pickup");
   }
 
+  assertHow(how);
+
+  if (isOnlineChannel(how.channel) && rules.hours.length === 0) {
+    return { ok: false, reason: "outside_hours", at: "no_hours" };
+  }
+
   if (how.mode === "now") {
+    const grace = RIDE_TODAY_GRACE_MINUTES * MINUTE_MS;
+    if (Math.abs(start.getTime() - now.getTime()) > grace) {
+      return {
+        ok: false,
+        reason: "not_now",
+        earliest: new Date(now.getTime() - grace),
+        latest: new Date(now.getTime() + grace),
+      };
+    }
     if (!isOpenAt(rules, now)) {
       return { ok: false, reason: "outside_hours", at: "now" };
     }
