@@ -26,7 +26,7 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 ## Phase 2, stage 1: the booking core (branch `platform/phase-2-stage-1-booking-core`, 16 Nov 2026)
 
-The first build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.1, §3.1 to §3.4, §4, §8). **Database only: nothing on any screen changes.** Applied locally only; **not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The first build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.1, §3.1 to §3.4, §4, §8). **Database only: nothing on any screen changes.** **On staging since 16 Nov 2026** (pushed with stage 2's; see "On staging" under stage 2); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
 
 **The first test, before anything else: a rolled-back sub-transaction does give back its transaction-level advisory locks** (Postgres 17.11, the local stack). One session inside one open transaction; a second session trying each lock while it is still open:
 
@@ -115,7 +115,7 @@ So `reserve()` is built as the plan designed it (pick, lock the picked units in 
 
 ## Phase 2, stage 2: shortage, holds and the availability read (branch `platform/phase-2-stage-2-availability`, 16 Nov 2026)
 
-The second build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2 to §3.5, §4, §8). **Database only, apart from one thing on a screen: the vehicle's Details form warns before a booked vehicle is moved.** Applied locally only; **not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The second build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2 to §3.5, §4, §8). **Database only, apart from one thing on a screen: the vehicle's Details form warns before a booked vehicle is moved.** **On staging since 16 Nov 2026** (62 of 62; see "On staging" below); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
 
 **What changed**
 
@@ -214,13 +214,36 @@ The second build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2 to §
 
 **Before this goes to staging** (the owner's word each time, plan Q17): nothing to count first. The migration adds two columns with defaults and no check on existing rows; staging has no allocation, hold or reservation.
 
+**On staging since 16 Nov 2026; not on live.** Stage 1's and stage 2's migrations (`20261116000100_platform_reservations`, `20261116000200_platform_availability`) were pushed together to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 12:29 UTC, from `main` at `65cc20f`, with `npx supabase db push --db-url` (never `--linked`). Staging records 62 of 62. Live was not touched.
+
+Why then: `main`'s deployment (`mango-works-platform.netlify.app`) has run stage 2's code since PR 37 merged, and its vehicle form calls `move_unit()`. Staging did not have the function, so changing a vehicle's product or location failed there until this push.
+
+- **Read-only checks first**, in one read-only transaction; all six passed:
+  1. 60 migrations on record, newest `20261115000200`, neither of the two, and none that sorts after them. The CLI's migration list showed the same: 60 matching the repo, the two not yet on staging.
+  2. `unit_blocks` rows of kind allocation or hold: 0 (all 21 blocks are downtime).
+  3. The trigger `unit_blocks_audit` existed under that name. None of the 16 new function names existed in `platform` or `platform_private`; no `reservations` table, no `reservation_id`, `allow_overbooking` or `hold_minutes` column.
+  4. The two functions that existed and are re-created had `main`'s bodies, by MD5 of the stored source against the body in the last migration that wrote each: `unit_blocks_guard` `8269353f…` (from `20261113000300`), `units_guard` `51474742…` (from `20261114000100`). The other re-created functions (`booking_roles`, `free_units`, `reserve`, `cancel_reservation`) are made by the first of the two migrations, so they had no body on staging to compare.
+  5. `pg_cron` 1.6.4 is on, with one job: `platform-renewal-notifications` (`7 * * * *`, active).
+  6. `authenticator`: `session_preload_libraries=supautils, safeupdate`, `statement_timeout=8s`, `lock_timeout=8s`. Also `authenticated` `statement_timeout=8s`, `anon` `statement_timeout=3s`, `service_role` none.
+- **The dry run** listed exactly the two migrations. The push applied both in about five seconds.
+- **After, read-only:**
+  - 62 migrations on record, newest `20261116000200`.
+  - All three shops (`big-fleet`, `bsr`, `saigon-scooters`) read overbooking off and a hold of 15 minutes.
+  - Two cron jobs, both active: `platform-renewal-notifications` and `platform-release-expired-holds` (`* * * * *`). The new job's first three runs (12:30 to 12:32 UTC) all succeeded.
+  - The service role's execute list in `platform_private` is the expected eight, the same as `default-grants.test.ts`: `booking_roles`, `free_units`, `json_time`, `json_uuid`, `marketplace_peaks`, `norm`, `queue_renewal_notifications`, `shortage_demand`. The service role has usage on the schema; PUBLIC can execute nothing there.
+  - The one audit trigger on `unit_blocks` is now three (insert, update, delete); `units_busy_on_delete` is on `units`; all 17 new functions exist.
+- **Counts, the same before and after:** 32 products, 205 units, 21 blocks, 3,413 audit rows, 13 pricing rows (5 price lists with 150 days, 1 settings row), 3 shops; every other `platform` table the same too. The same checksums before and after over products, units, pricing rows, price lists and their days, the settings row, and over blocks and shops with the new columns left out. `reservations` is new and empty.
+- **On the deployed site**, as BSR's demo owner (`mango-works-platform.netlify.app`, `main`'s deployment): the test vehicle `E2E-MWBPU6LZ7871` was moved from Honda PCX 160 to Honda NX500 and saved (12:31:27 UTC), then moved back and saved (12:31:59 UTC). Both showed "Saved". The vehicle's row is as it was apart from its updated time (same checksum). The vehicle had no blocks, so no booking moved with it and the warning was not shown; `unit-move.spec.ts` covers that case and was not run against staging.
+- **Left on staging:** two audit rows for those two moves (3,415 in all), and the vehicle's new updated time.
+- **Not run against staging:** the browser suite. CI ran all of it on a clean local database.
+
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s2` on ports 6232x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Every other local stack was stopped (not removed).
 
 **Next:** stage 3, booking rules and `offer()` (migration 3): the rule columns, `save_booking_rules()`, `booking_inputs()`, `bookOnline()` with its test, and the Moto Mangos cap inside `reserve()`. Carried to it from the review of PR 36: `bookOnline()` treats `55P03` (`lock_timeout`) the same as `try_again`.
 
 ## Phase 2, stage 3: booking rules and `offer()` (branch `platform/phase-2-stage-3-booking-rules`, 16 Nov 2026)
 
-The third build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.3, §2.6, §3.6, §4, §8; the owner's answers in §10, Q5 with its addition). **No screen changes: database, `@mango/core` and one server module.** Applied locally only; **not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The third build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.3, §2.6, §3.6, §4, §8; the owner's answers in §10, Q5 with its addition). **No screen changes: database, `@mango/core` and one server module.** **On staging since 16 Nov 2026** (63 of 63; see "On staging" below); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
 
 **What changed**
 
@@ -331,6 +354,25 @@ This replaces items 5 and 10 of the list above where they differ, and adds a rea
 - A race test shows a race is closed for the timings it hit.
 
 **Before this goes to staging** (the owner's word each time, plan Q17): nothing to count first. The migration adds nullable columns with no default and re-creates two functions; migrations `20261116000100` and `20261116000200` must be there in their merged form. Afterwards: every location and product reads empty rules, every shop reads empty default buffers, and counts of products, units, blocks and audit rows are unchanged.
+
+**On staging since 16 Nov 2026; not on live.** The migration (`20261116000300_platform_booking_rules`) was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 15:15 UTC, from `main` at `9749bf4`, with `npx supabase db push --db-url` (never `--linked`). Staging records 63 of 63. Live was not touched.
+
+- **Read-only checks first**, in one read-only transaction; all four passed:
+  1. 62 migrations on record, newest `20261116000200`; `20261116000300` absent, and none that sorts after it.
+  2. The migration re-creates four functions that existed, not two. Each had `main`'s body as of `65cc20f` (just before PR 38 merged), by MD5 of the stored source against the body in `20261116000200`, the last migration that wrote each: `reserve` `3a3a1865…`, `confirm_hold` `be90036c…`, `availability` `c62fd4ec…`, `booking_roles` `6a2a6bd5…`. The three new functions (`save_booking_rules`, `booking_inputs`, `json_int_between`) did not exist.
+  3. None of the eight rule columns existed (four on `locations`, two on `products`, two on `tenants`), nor the check `products_min_days_vehicle_check`.
+  4. Counts taken of every `platform` table (below).
+- **The dry run** listed exactly this one migration. The push applied it in about eight seconds.
+- **After, read-only:**
+  - 63 migrations on record, newest `20261116000300`.
+  - Every rule column is empty: 4 locations, 32 products and 3 shops, no value in any of the eight.
+  - All three shops (`big-fleet`, `bsr`, `saigon-scooters`) read overbooking off, a hold of 15 minutes and no default buffers.
+  - `save_booking_rules()` can be executed by `authenticated` only: not by the service role, `anon` or PUBLIC.
+  - The four re-created functions now have this migration's bodies, by MD5 against `main`: `reserve` `d38413ff…`, `confirm_hold` `744aefe0…`, `availability` `ce99cff2…`, `booking_roles` `51a20ff2…`.
+  - Both cron jobs are still active: `platform-renewal-notifications` (`7 * * * *`) and `platform-release-expired-holds` (`* * * * *`). The second ran at 15:15 and 15:16 UTC, either side of the push, and succeeded both times.
+- **Counts, the same before and after:** 32 products, 205 units, 21 blocks, 0 reservations, 3,415 audit rows, 13 pricing rows (5 price lists with 150 days, 1 settings row), 3 shops, 4 locations; every other `platform` table the same too. The same checksums before and after over products, locations and shops with the new columns left out, and over units, blocks, pricing rows, price lists and their days, and the settings row.
+- **Two of the three demo shops have no opening hours on staging, so they can't be booked online until hours are saved.** `big-fleet` (2 locations) and `saigon-scooters` (1 location) have no row in `location_hours`; `bsr` has all seven days. A location with no hours saved answers `outside_hours` on every online channel (decision 10 above); staff bookings are unaffected.
+- **Not run against staging:** the browser suite. CI ran all of it on a clean local database.
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s3` on ports 6332x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Stage 2's stack was stopped (not removed).
 
