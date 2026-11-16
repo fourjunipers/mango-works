@@ -907,3 +907,4 @@ Claude's translations, for Korn or BSR's admin (docs/products-redesign.md §9.12
 | `FormErrors.depositNumberRequired` | Enter the deposit's percentage or amount. | กรอกเปอร์เซ็นต์หรือจำนวนเงินมัดจำ |
 | `FormErrors.invalidSeason` | Check the season's details and try again. | ตรวจสอบรายละเอียดของฤดูกาลแล้วลองอีกครั้ง |
 | `FormErrors.profileAddedNotDefault` | The profile was added but couldn't be made the default. Choose it above and save. | เพิ่มประเภทภาษีแล้ว แต่ตั้งเป็นค่าเริ่มต้นไม่ได้ เลือกด้านบนแล้วบันทึก |
+| `FormErrors.unit_busy` | Someone is saving a booking or a block on this one right now. Please try again. | มีคนกำลังบันทึกการจองหรือบล็อกของรายการนี้อยู่ โปรดลองอีกครั้ง |

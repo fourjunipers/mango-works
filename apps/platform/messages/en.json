@@ -373,6 +373,7 @@
     "blockOverlap": "This vehicle is already blocked for part of that time. Pick other times, or end the other block first.",
     "unit_has_future_blocks": "This vehicle still has a block that ends in the future. End or remove it first.",
     "unit_not_in_fleet": "This vehicle has been sold or retired, so it can't be blocked.",
+    "unit_busy": "Someone is saving a booking or a block on this one right now. Please try again.",
     "more_units_than_active": "Total units listed on Moto Mangos can not exceed the number of units in your inventory",
     "catalog_entry_not_usable": "Choose a catalog entry from the list.",
     "only_owner_or_manager": "Only an owner or manager can change that.",

@@ -395,6 +395,9 @@ export function dbErrorKey(
   for (const known of [
     "unit_has_future_blocks",
     "unit_not_in_fleet",
+    // A unit can't be deleted at the very moment a booking or a block is
+    // being written on it (20261116000200): nothing is wrong, send it again.
+    "unit_busy",
     "more_units_than_active",
     "catalog_entry_not_usable",
     "not_listable",

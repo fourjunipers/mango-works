@@ -507,14 +507,14 @@ isOneToOne: false
                   ]
                 },"tenants": {
                   Row: {
-                    "country": string,"created_at": string,"currency": string,"distance_unit": string,"id": string,"locale": string,"name": string,"renewal_digest_day": number | null,"renewal_reminder_days": (number)[],"slug": string,"updated_at": string
+                    "allow_overbooking": boolean,"country": string,"created_at": string,"currency": string,"distance_unit": string,"hold_minutes": number,"id": string,"locale": string,"name": string,"renewal_digest_day": number | null,"renewal_reminder_days": (number)[],"slug": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "country": string,"created_at"?: string,"currency": string,"distance_unit"?: string,"id"?: string,"locale": string,"name": string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug": string,"updated_at"?: string
+                    "allow_overbooking"?: boolean,"country": string,"created_at"?: string,"currency": string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale": string,"name": string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug": string,"updated_at"?: string
                   }
                   Update: {
-                    "country"?: string,"created_at"?: string,"currency"?: string,"distance_unit"?: string,"id"?: string,"locale"?: string,"name"?: string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug"?: string,"updated_at"?: string
+                    "allow_overbooking"?: boolean,"country"?: string,"created_at"?: string,"currency"?: string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale"?: string,"name"?: string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     
@@ -679,7 +679,13 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "cancel_reservation":
+            "assign_units":
+{ Args: { "p_reservation_id": string,"p_tenant_id": string,"p_unit_ids"?: (string)[] }; Returns: Json
+                           },
+"availability":
+{ Args: { "p_items": Json,"p_tenant_id": string }; Returns: Json
+                           },
+"cancel_reservation":
 { Args: { "p_booking_id"?: string,"p_reservation_id"?: string,"p_tenant_id": string }; Returns: Json
                            },
 "catalog_requests":
@@ -689,6 +695,9 @@ isOneToOne: false
                            },
 "change_listing_entry":
 { Args: { "p_catalog_id": string,"p_product_id": string }; Returns: Json
+                           },
+"confirm_hold":
+{ Args: { "p_booking_id": string,"p_tenant_id": string }; Returns: Json
                            },
 "create_general_product":
 { Args: { "p_description"?: string,"p_name": string,"p_quantities"?: Json,"p_tenant_id": string,"p_track_units"?: boolean,"p_type": string }; Returns: string
@@ -741,6 +750,9 @@ isOneToOne: false
                            },
 "queue_renewal_notifications":
 { Args: { "p_now"?: string }; Returns: number
+                           },
+"release_expired_holds":
+{ Args: Record<PropertyKey, never>; Returns: number
                            },
 "remove_member":
 { Args: { "p_membership_id": string }; Returns: undefined
