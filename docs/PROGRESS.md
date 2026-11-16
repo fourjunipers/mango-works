@@ -15,7 +15,7 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 ## Phase 2: plan only (branch `docs/phase-2-plan`, 16 Nov 2026)
 
-**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). No build stage has started.
+**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). Stage 1 is built (below).
 
 - **Already built by stage D:** price lists, seasons, VAT, deposits and `quote()` steps 1 to 3 and 5 to 8.
 - **Still to build:** the booking function (`reserve()`) with product locks, then unit locks sorted by their hash key, and a best-fit pick; the availability read; overbooking and the shortage rule; holds; booking rules (notice, cut-off, minimum days); `product_extras` and the pricer's included-quantity step; coupons and the returning-customer discount; the quote snapshot.
@@ -23,6 +23,95 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 - **Found while reading, to fix in stage 1:** `unit_blocks_guard` orders two unit locks by UUID where `lock_units()` orders by hash key. Nothing crosses today (only a hand-edited downtime row moves a block between units).
 - **Not in any migration yet, though the spec lists them:** `allow_overbooking`, and the notice, cut-off and minimum-days columns.
 - `docs/platform/SPEC.md`, `docs/INTEGRATION.md` and `docs/platform/MAPPING.md` are not changed; the plan's §12 lists what each will need.
+
+## Phase 2, stage 1: the booking core (branch `platform/phase-2-stage-1-booking-core`, 16 Nov 2026)
+
+The first build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.1, §3.1 to §3.4, §4, §8). **Database only: nothing on any screen changes.** Applied locally only; **not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**The first test, before anything else: a rolled-back sub-transaction does give back its transaction-level advisory locks** (Postgres 17.11, the local stack). One session inside one open transaction; a second session trying each lock while it is still open:
+
+- taken inside a savepoint that was rolled back: **free**;
+- taken inside a PL/pgSQL block that raised: **free**;
+- taken before the savepoint, and taken again inside it: **still held**;
+- taken inside a PL/pgSQL block that finished: **still held**.
+
+So `reserve()` is built as the plan designed it (pick, lock the picked units in key order, read again, undo and pick again), and the fallback (lock every candidate unit before picking) is not used. It is the first test of `tests/db/reservations.test.ts` and runs in CI.
+
+**What changed**
+
+- **One new migration, `20261116000100_platform_reservations`.** No earlier migration is touched.
+  - **`platform.reservations`**: N units of one product at one place for one window, with a booking id shared by the rows of one call, a parent row for an extra, the window widened by the buffers in force, channel, mode and state. No money, no customer. Every member reads; nobody signed in writes it directly; grants written on purpose (`service_role` too); `updated_at` and audit.
+  - **`unit_blocks.reservation_id`**: an allocation or a hold must belong to a reservation, downtime and a transfer to none (`unit_blocks_reservation_check`).
+  - **`unit_blocks.created_by` is set in the database** from `auth.uid()` on insert (in the block guard) and can't be changed afterwards: a signed-in person may now update a block's unit, period and note only (column grants). Empty for the service role.
+  - **`unit_blocks_guard` re-created** from its body in the database (`pg_get_functiondef`): a block moved between two units takes both locks through `lock_units()`, so in key order, where it took them in UUID order. The only other change is the `created_by` line.
+  - **`platform_private.booking_roles()`**, mirrored by `apps/platform/lib/booking-permissions.ts`; a database test compares the two.
+  - **`platform_private.lock_products_stock()`**: every (product, place) pair of a booking, sorted once by the same key `lock_product_stock()` uses.
+  - **`platform_private.free_units()`**: active units of a product at a place with no block of any kind overlapping the widened window.
+  - **`platform.reserve(p_tenant_id, p_request)`**: staff (`walk_in`, `phone`, a signed-in owner, manager or staff member) and online (`booking_page`, `marketplace`, `api`, the service role) through the same function and the same locks. Named units for staff; best fit otherwise. All lines or none. One `reserve` audit event per booking.
+  - **`platform.cancel_reservation(p_tenant_id, p_booking_id | p_reservation_id)`**: blocks that have not started are deleted, one that has is ended now; one `cancel` audit event.
+- **The stock functions that ask "does a booking hold this unit"** (`set_stock_quantity`, `report_gear_problem`, `resolve_unit_problem`, `product_stock`, `gear_unit_state`, `upcoming_bookings`, `units_guard`, `units_clear_downtime`) were read from the database against the new column. Each asks by a block's kind or period, so none changed.
+- **Root `CLAUDE.md`** has the lock order (plan §4, §12). Types regenerated (`packages/db/src/database.types.ts`).
+
+**Where this differs from the plan, or decides what it left open** (say if any should change)
+
+1. **`unit_blocks.reservation_id` is "no action", not "on delete restrict".** Both stop a reservation being deleted from under its block. `restrict` would also stop a whole tenant being deleted in one statement (it refuses before the blocks are gone); "no action" checks at the end of the statement, as every other composite key here does.
+2. **Two kinds of answer.** A refusal the caller can meet in normal use is `{ok: false, reason}`: `not_allowed`, `unavailable`, `unit_taken`. A request our own code could not have sent raises an error instead: `invalid_request`, `product_not_found`, `location_not_found`, `unit_not_found`, `not_reservable` (an item for sale). The plan listed only the first kind. Another shop's product, place or unit raises exactly what a made-up id raises.
+3. **One reason more than the plan's list: `try_again`**, for the plan's "Postgres detects a deadlock and cancels one side; answered as a clean refusal the caller may retry once". No test has ever produced it.
+4. **`cancel_reservation` has its own reasons**: `not_found` (also another shop's), `not_cancellable` (a row already `out` or `returned`). Cancelling again answers `ok` with nothing cancelled. Cancelling one row by its id cancels the extras that came with it.
+5. **Unit locks are taken once for the whole booking, not line by line** (the plan's step 4 reads "for each line"). Every line is picked first, then all picked units are locked together in key order, then every line is read again. Line by line, a two-line booking could hold a unit of its first line while waiting for one of its second, out of key order.
+6. **A request-mode booking is refused for now** (`invalid_request`): the plan's §11 says it holds no unit until the shop accepts it, and that state is not written in Phase 2. Online modes accepted: `instant`, `now`. Staff: `staff`.
+7. **An extra's parent is the index of an earlier vehicle line** in the same request (`"parent": 0`). An extra is gear or a service; a vehicle can't be one.
+8. **Units can be named only where a unit is a thing with a name**: a vehicle, or gear tracked unit by unit; one id per unit wanted. Naming a unit of counted gear is `invalid_request`.
+9. **Two lines for the same product in one call never share a unit while their windows overlap**; lines that don't overlap can.
+10. **`free_units()` has rules 1 and 2 of plan §3.3.** Rule 3 (a unit still out past its end) is stage 2's, as the plan's migration table has it.
+11. **The service role may cancel any booking of the shop it names**, as the plan's table says ("Owner, manager, staff; service role"), not only online ones.
+12. **The trigger function `unit_blocks_guard` lost its default execute grant** (revoked from `public`, `anon` and `authenticated`), like every later trigger function. Nobody could call a trigger function anyway.
+13. **A reservation's rows are audited row by row and the booking once** (`reserve`, `cancel`), and each block still writes its own audit row as before. A five-helmet booking is seven audit rows. Say if the row-level ones should go.
+
+**Tests**
+
+- Database: 418 on the platform, all passing on a freshly reset local database (353 before). New: `reservations.test.ts` (60 tests, the unit-delete test added after the review) and 5 in `default-grants.test.ts`. The isolation harness has a fixture row, a forged row and a change to try for `reservations`. Eight older tests that wrote an "allocation" by hand now make its reservation first (`allocationFor` in `tests/db/helpers.ts`); what they assert is the same.
+- **The accept races, 20 rounds each, in each of three shops** (Bangkok THB, New York USD with daylight saving, Saigon VND): staff against staff, online against online, staff against online, staff naming the unit against staff naming none, staff naming the unit against online, both naming the same unit. **360 rounds, every one with exactly one success**, the loser answered `unavailable` or `unit_taken`, and after each set the product has exactly two reservations, two blocks and two audit events a round.
+- More races, in all three shops: twelve bookings for the last helmet (15 rounds); two bookings each wanting 2 of the same 3 helmets (30); two two-product bookings naming the products in opposite orders (45); a booking against a downtime on the unit it picks (45); against its unit being sold, retired or marked lost (54); against the quantity being lowered or a problem report (24); a cancel against a new booking (30). **603 race rounds in all.**
+- **No deadlock on any path:** no call answered `40P01` or `try_again`, and Postgres' own count of detected deadlocks for the database (`pg_stat_database.deadlocks`) is the same after the file as before it.
+- Also held: a booking overlapping downtime is refused by the pick (`unavailable`), by name (`unit_taken`) and by the constraint when written by hand as the service role; all or nothing with the blocked line first, in the middle and last, on both paths; every one of the five roles through both functions and by hand on both tables; another shop's five roles, a stranger and a signed-out visitor; cross-tenant refusals for `reserve`, `cancel_reservation` and `free_units`, each beside the same call with a made-up id; buffers; best fit; the lock order (a second booking waits on the product lock with no unit lock in hand; `lock_products_stock` takes keys in order; the guard's two unit locks in key order, which fails against the old body; a unit taken between the pick and its lock is left out and the booking picks again).
+- Unit: 347 on the platform (345 before; `lib/booking-permissions.test.ts`, 2), 290 in `@mango/core`, 202 on the marketplace. Typecheck and lint pass for every workspace, the one-pricer (money) rule included.
+- **The migration on a seeded copy of `main`'s database** (reset to the 60 migrations of `main`, the three demo shops seeded, then this migration): 3 shops, 16 products, 170 units and 263 audit rows before and after, with the same checksums over the products and the units. The demo seed has no blocks and no prices, so nothing had to move; D7's BSR prices are on staging only and were not loaded here.
+- Browser: the full suite on a freshly reset and seeded local database, 375 px and 1280 px, two workers, run twice (before and after the review fix): 140 tests, 131 passed, 7 skipped, 2 failed, the same two both times, in `products-stage-d6.spec.ts` at desktop width ("tax profiles: one in use can't be removed" and "the rounding step changed in Settings"). CI passes all of them. The tax-profile one was traced: at phone width the test removes its "E2E VAT" profile at the end; the desktop run that follows looks for "Bring back" with `count()`, which does not wait for the page, finds nothing, never brings the profile back, and then waits its whole six minutes for a "Tax on this product" option that is not there. So it is a race in the test itself (a known issue below), not in this stage: no app code changed and the migration does not touch tax profiles. The second failure sits behind the first in the same settings queue. No new browser test: nothing on a screen changed.
+
+**After the review of PR 36 (16 Nov 2026).** Two things fixed before merge, in the same PR. The migration had not left this machine, so it was edited in place.
+
+- **A booking could deadlock with a unit being deleted.** Deleting a unit takes no advisory lock: it locks the unit's row, then the product's row (the count-clamping trigger). `reserve()` locked the product's row first and met the unit's row only at its block insert, the other way round. Now, right after `lock_units()` and before it reads again, it locks the picked units' rows `for key share` in id order. It holds no row lock at that point, so behind a delete it only waits; the unit is then gone from the read, and the booking picks again. The lock order in the root `CLAUDE.md` and in the migration's header says "unit rows, then the product's row".
+- **The test:** three sessions. Someone's unsaved edit of the product; a unit delete that has removed the unit's row and waits for the product's row behind that edit; a booking that picks that unit. The booking is seen waiting for the delete with nothing locked or written, the delete goes through, no deadlock is counted, and the booking takes the other unit (two units) or answers `unavailable` (one unit). Against the function as first pushed, the test fails: the booking never waits on the unit.
+- **An assertion that could not fail** (`bookings >= 0` in the downtime race) is replaced: per shop, the allocations in the database equal the bookings that answered ok, the downtime rows equal the other rounds, and there is no reservation without its block.
+
+**Carried to stage 2** (from the review)
+
+- Provably-waiting versions of the named-unit race and of the sold, retired or lost race: one side held in place and seen waiting, as the lock-order tests do, not only fired at the same instant.
+- Drop the row-level audit rows for allocation and hold blocks (keep them for downtime, and for reservations), and add the unit ids to the `cancel` event.
+- After an exclusion violation in `reserve()`, add the unit to `v_exclude` so the next attempt can't pick it again.
+- Correct the "A downtime write, a unit status change" row of the plan's §4 table: a change between active and maintenance takes no unit lock (only selling, retiring and marking lost do).
+
+**Carried to stage 3** (from the review)
+
+- `bookOnline()` treats `55P03` (`lock_timeout`) the same as `try_again`.
+
+**Carried to 3M** (from the review)
+
+- Request mode needs its own state and its own migration before Moto Mangos books through the platform. `reserve()` refuses it until then.
+
+**Before this goes to staging** (the owner's word each time, plan Q17): the migration adds a check that every allocation and hold has a reservation. Nothing could write either kind before this stage, so there should be none; the read-only count before the push must show 0 rows of `unit_blocks` with `kind` in (`allocation`, `hold`), or the migration stops there and changes nothing.
+
+**Known issues and follow-ups**
+
+- A product that has ever been reserved can't be deleted (the reservation's key to it), as a unit that has ever been booked can't. For a service this is new: the app should offer "retire" there when Phase 3 makes real bookings.
+- `e2e/products-stage-d6.spec.ts`, the tax-profile test: its "Bring back" check uses `count()` without waiting for the list, so the second width of a local run can miss a removed profile and time out. Not touched here; it needs a waiting check (CI's retries hide it).
+- A race test shows a race is closed for the timings it hit.
+- Nothing on a screen calls `reserve()` yet. Stage 3 builds the one server entry point for online channels; Phase 3 the staff screens.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s1` on ports 6132x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack.
+
+**Next:** stage 2, shortage, holds and the availability read (migration 2).
 
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 

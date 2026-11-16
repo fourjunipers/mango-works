@@ -47,6 +47,16 @@ npm workspaces, one `package-lock.json` at the root. Run `npm install` at the ro
 - New tables get no access by default (live, local and CI alike). A migration that creates a table grants on purpose, to `service_role` too; a new function starts with `revoke all on function ... from public, anon`. `apps/platform/tests/db/default-grants.test.ts` fails otherwise.
 - Migration names carry the owner: `<timestamp>_platform_<what>.sql` or `<timestamp>_marketplace_<what>.sql`. The 27 migrations from before Step R keep their names.
 
+## Lock order (platform database)
+
+Every function or trigger that takes more than one lock takes them in this order (docs/phase-2-plan.md §4). A new writer that needs another order is a deadlock waiting to happen: ask first.
+
+1. **Product-and-location advisory locks** (namespace `1a02`), sorted by the lock's own key: `platform_private.lock_product_stock()` for one product, `lock_products_stock()` for several.
+2. **Unit advisory locks** (namespace `1a01`), sorted by the lock's own key, through `platform_private.lock_units()`. By key (`hashtext` of the id), never by UUID.
+3. **Rows**, always after the advisory locks: unit rows in id order, then the product's row, then its listing's row, in product-id order; then `reservations`; then `unit_blocks`. Unit rows come first because deleting a unit takes no advisory lock: it locks the unit's row, then the product's.
+
+A booking reads prices before its transaction and never locks a pricing row, a price list or a tax profile. Stock is taken only through `platform.reserve()` and its siblings; nothing else writes an allocation or a hold.
+
 ## Environments
 
 | Environment | Supabase | Gets migrations |

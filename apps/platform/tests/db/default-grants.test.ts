@@ -437,3 +437,101 @@ describe("products stage C: product_listings and its functions", () => {
     ]);
   });
 });
+
+/**
+ * Phase 2, stage 1 (20261116000100): reservations, the booking functions and
+ * unit_blocks.created_by. Members read a reservation; nobody signed in
+ * writes one directly (reserve() and cancel_reservation() do).
+ */
+describe("booking core: reservations and its functions", () => {
+  it("reservations: members read, nobody signed in writes, signed-out visitors get nothing; the service role is granted on purpose", () => {
+    const rows = lines(`
+      select r || ' ' || coalesce(string_agg(p, ',' order by p)
+        filter (where has_table_privilege(r, 'platform.reservations', p)), 'none')
+      from unnest(array['anon', 'authenticated']) r,
+           unnest(array['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger']) p
+      group by r order by r;
+    `);
+    expect(rows).toEqual(["anon none", "authenticated select"]);
+    const migrations = migrationsText();
+    expect(hasExplicitGrant(migrations, "platform.reservations")).toBe(true);
+    expect(migrations).toMatch(
+      /grant select, insert, update, delete on platform\.reservations to service_role/,
+    );
+  });
+
+  it("row level security is on, with one policy: members read their own shop's", () => {
+    const rows = lines(`
+      select c.relrowsecurity::text from pg_class c
+      where c.oid = 'platform.reservations'::regclass;
+      select polname || ' ' || polcmd::text || ' ' || polroles::regrole[]::text
+      from pg_policy where polrelid = 'platform.reservations'::regclass order by 1;
+    `);
+    expect(rows).toEqual([
+      "true",
+      "Members read reservations r {authenticated}",
+    ]);
+  });
+
+  it("unit_blocks: a signed-in person may change a block's unit, period and note, and no other column", () => {
+    const rows = lines(`
+      select has_table_privilege('authenticated', 'platform.unit_blocks', 'update')::text;
+      select string_agg(a.attname, ',' order by a.attname)
+      from pg_attribute a
+      where a.attrelid = 'platform.unit_blocks'::regclass and a.attnum > 0
+        and not a.attisdropped
+        and has_column_privilege('authenticated', a.attrelid, a.attnum, 'update');
+      select has_table_privilege('authenticated', 'platform.unit_blocks', 'select, insert, delete')::text;
+    `);
+    expect(rows).toEqual(["false", "note,period,unit_id", "true"]);
+  });
+
+  it("every function is closed to signed-out visitors and to PUBLIC; members and the service role call the two booking functions", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || has_function_privilege('service_role', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in (
+          'reserve', 'cancel_reservation', 'booking_roles', 'free_units',
+          'lock_products_stock', 'json_time', 'unit_blocks_guard')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, service_role, PUBLIC
+      "platform.cancel_reservation false true true false",
+      "platform.reserve false true true false",
+      // Read by the reservations policy, and by the availability read.
+      "platform_private.booking_roles false true false false",
+      "platform_private.free_units false true false false",
+      // Called only inside the booking functions, as their owner.
+      "platform_private.json_time false false false false",
+      "platform_private.lock_products_stock false false false false",
+      // A trigger function: nobody calls it.
+      "platform_private.unit_blocks_guard false false false false",
+    ]);
+  });
+
+  it("the functions that run with their owner's rights pin their search path", () => {
+    const rows = lines(`
+      select p.proname || ' ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in ('reserve', 'cancel_reservation', 'unit_blocks_guard',
+          'booking_roles', 'free_units', 'lock_products_stock', 'json_time')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      'booking_roles false search_path=""',
+      'cancel_reservation true search_path=""',
+      'free_units false search_path=""',
+      'json_time false search_path=""',
+      'lock_products_stock false search_path=""',
+      'reserve true search_path=""',
+      'unit_blocks_guard true search_path=""',
+    ]);
+  });
+});

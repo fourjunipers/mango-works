@@ -6,6 +6,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  allocationFor,
   createCatalogEntry,
   listingOf,
   setListing,
@@ -268,14 +269,17 @@ describe("role limits", () => {
 describe("unit blocks: one lock for every kind", () => {
   it("refuses an overlap on the same unit, whatever the kinds", async () => {
     const id = await addUnit();
-    const first = await service
-      .from("unit_blocks")
-      .insert(block(id, hours(10), hours(20), "allocation"));
+    const booked = await allocationFor(shop.id, id, hours(10), hours(20));
+    const first = await service.from("unit_blocks").insert(booked);
     expect(first.error).toBeNull();
     for (const kind of ["downtime", "hold", "transfer", "allocation"]) {
-      const overlap = await service
-        .from("unit_blocks")
-        .insert(block(id, hours(15), hours(25), kind));
+      const overlap = await service.from("unit_blocks").insert({
+        ...block(id, hours(15), hours(25), kind),
+        // A hold or an allocation belongs to a reservation.
+        reservation_id: ["hold", "allocation"].includes(kind)
+          ? booked.reservation_id
+          : null,
+      });
       expect(overlap.error?.code, kind).toBe("23P01");
     }
   });
@@ -397,7 +401,7 @@ describe("selling or retiring a unit", () => {
       const id = await addUnit();
       const { data: future } = await service
         .from("unit_blocks")
-        .insert(block(id, hours(48), hours(72), "allocation"))
+        .insert(await allocationFor(shop.id, id, hours(48), hours(72)))
         .select("id")
         .single();
       const refused = await shop.members.owner.db
@@ -458,7 +462,7 @@ describe("selling or retiring a unit", () => {
     // 20261113000100: tests/db/fleet-rework.test.ts.)
     await service
       .from("unit_blocks")
-      .insert(block(id, hours(1), hours(2), "allocation"));
+      .insert(await allocationFor(shop.id, id, hours(1), hours(2)));
     const unit = await shop.members.owner.db
       .from("units")
       .delete()

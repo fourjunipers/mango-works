@@ -172,6 +172,53 @@ export function period(from: Date, to?: Date): string {
 export const hours = (n: number) => new Date(Date.now() + n * 3_600_000);
 
 /**
+ * A booking's block written by hand with the service role: makes the
+ * reservation row an allocation must belong to (since 20261116000100) and
+ * returns the block to insert. For setting a scene; a real booking is made
+ * with platform.reserve().
+ */
+export async function allocationFor(
+  tenantId: string,
+  unitId: string,
+  from: Date,
+  to: Date,
+) {
+  const service = serviceClient();
+  const unit = await service
+    .from("units")
+    .select("product_id, product_type, location_id")
+    .eq("id", unitId)
+    .single();
+  if (unit.error) throw unit.error;
+  const reservation = await service
+    .from("reservations")
+    .insert({
+      tenant_id: tenantId,
+      booking_id: randomUUID(),
+      product_id: unit.data.product_id,
+      product_type: unit.data.product_type,
+      location_id: unit.data.location_id,
+      starts_at: from.toISOString(),
+      ends_at: to.toISOString(),
+      block_period: period(from, to),
+      quantity: 1,
+      channel: "walk_in",
+      mode: "staff",
+      state: "reserved",
+    })
+    .select("id")
+    .single();
+  if (reservation.error) throw reservation.error;
+  return {
+    tenant_id: tenantId,
+    unit_id: unitId,
+    kind: "allocation",
+    period: period(from, to),
+    reservation_id: reservation.data.id as string | null,
+  };
+}
+
+/**
  * A model row's own description. For a model on a catalog entry the database
  * replaces these with the entry's values; they are here so the row is complete.
  */

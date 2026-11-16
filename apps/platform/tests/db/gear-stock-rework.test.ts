@@ -8,11 +8,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { gearActions, gearRoles } from "@/lib/gear-permissions";
 import type { Role } from "@/lib/roles";
 import {
+  allocationFor,
   anonClient,
   createTenant,
   deleteTenant,
   hours,
-  period,
   serviceClient,
   sql,
   type Db,
@@ -692,12 +692,9 @@ describe("written off: gone for good, with a record in the History", () => {
     const helmet = await gear(2);
     const units = await unitsOf(helmet);
     for (const unit of units) {
-      const past = await service.from("unit_blocks").insert({
-        tenant_id: shop.id,
-        unit_id: unit.id,
-        kind: "allocation",
-        period: period(hours(-48), hours(-24)),
-      });
+      const past = await service
+        .from("unit_blocks")
+        .insert(await allocationFor(shop.id, unit.id, hours(-48), hours(-24)));
       expect(past.error).toBeNull();
     }
     await report("owner", helmet, "repair", { notes: "Buckle" });
@@ -779,12 +776,9 @@ describe("only units in use and free are taken", () => {
   it("a booked unit is never put out of service from under its booking", async () => {
     const helmet = await gear(3);
     const [booked] = await unitsOf(helmet);
-    await service.from("unit_blocks").insert({
-      tenant_id: shop.id,
-      unit_id: booked.id,
-      kind: "allocation",
-      period: period(hours(24), hours(48)),
-    });
+    await service
+      .from("unit_blocks")
+      .insert(await allocationFor(shop.id, booked.id, hours(24), hours(48)));
     for (const kind of ["repair", "lost", "damaged"] as const) {
       const tooMany = await report("owner", helmet, kind, { quantity: 3 });
       expect(tooMany.error?.message, kind).toContain("not_enough_free");
