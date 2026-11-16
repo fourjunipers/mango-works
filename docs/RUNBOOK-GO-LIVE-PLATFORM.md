@@ -278,6 +278,15 @@ A deploy preview's address works the same way. The tests create what they need a
 
 The row of 15 Nov 2026 (BSR set to "per product" by the D4 deposit test) was removed by hand on the owner's instruction; nothing in the D6 tests needs that again.
 
+### BSR's prices on staging are test prices
+
+Since 16 Nov 2026 BSR on staging has four shared price lists ("300–3000", "350–3500", "400–4000", "500–5400"), a price and a ฿2,000 deposit on its scooters, and the deposit choice "per vehicle". They were loaded by `apps/platform/scripts/load-bsr-pricing.mts` (`npm run load:bsr-pricing -w @mango/platform`; `docs/PROGRESS.md`, stage D7).
+
+- **The lists are BSR's real ones; which scooter is on which list is not.** They were given out in turn, as test data.
+- **Live does not get this load.** The script takes its target from `STAGING_SUPABASE_URL` and `STAGING_ANON_KEY` only and refuses the live project. **Live gets BSR's real prices at go-live**, entered or imported then, with each product on its own list.
+- `STAGING_ANON_KEY` is the staging project's anon key (Project Settings › API). It is a public key, kept in `apps/platform/.env.local` like the others and never committed.
+- `apps/platform/.env.local` must hold **one** `DEMO_PASSWORD` line. A second, stale one was removed from the main checkout on 16 Nov 2026; staging takes the one that is left.
+
 ## Netlify environment variables
 
 Site `mango-works-platform`. The app needs:
