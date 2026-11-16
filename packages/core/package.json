@@ -14,6 +14,7 @@
     "./price-list": "./src/price-list.ts",
     "./pricing": "./src/pricing.ts",
     "./quote": "./src/quote.ts",
+    "./quote-snapshot": "./src/quote-snapshot.ts",
     "./rental-days": "./src/rental-days.ts",
     "./rental-period": "./src/rental-period.ts",
     "./rental-price": "./src/rental-price.ts",
