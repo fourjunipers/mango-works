@@ -13,6 +13,17 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Phase 2: plan only (branch `docs/phase-2-plan`, 16 Nov 2026)
+
+**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). No build stage has started.
+
+- **Already built by stage D:** price lists, seasons, VAT, deposits and `quote()` steps 1 to 3 and 5 to 8.
+- **Still to build:** the booking function (`reserve()`) with product locks, then unit locks sorted by their hash key, and a best-fit pick; the availability read; overbooking and the shortage rule; holds; booking rules (notice, cut-off, minimum days); `product_extras` and the pricer's included-quantity step; coupons and the returning-customer discount; the quote snapshot.
+- **Six migrations, eleven stages, one PR each**, the booking core first.
+- **Found while reading, to fix in stage 1:** `unit_blocks_guard` orders two unit locks by UUID where `lock_units()` orders by hash key. Nothing crosses today (only a hand-edited downtime row moves a block between units).
+- **Not in any migration yet, though the spec lists them:** `allow_overbooking`, and the notice, cut-off and minimum-days columns.
+- `docs/platform/SPEC.md`, `docs/INTEGRATION.md` and `docs/platform/MAPPING.md` are not changed; the plan's §12 lists what each will need.
+
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 
 The fourth build stage of pricing, of seven (`docs/products-redesign.md` §9.2, "As built in stage D4"; decision 29). **The first with a migration.** Nothing on any screen changes in this stage. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
