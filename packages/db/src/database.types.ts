@@ -415,6 +415,44 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"reservations": {
+                  Row: {
+                    "block_period": unknown,"booking_id": string,"channel": string,"created_at": string,"created_by": string | null,"ends_at": string,"hold_expires_at": string | null,"id": string,"location_id": string,"mode": string,"parent_id": string | null,"product_id": string,"product_type": string,"quantity": number,"shortage": number,"starts_at": string,"state": string,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "block_period": unknown,"booking_id": string,"channel": string,"created_at"?: string,"created_by"?: string | null,"ends_at": string,"hold_expires_at"?: string | null,"id"?: string,"location_id": string,"mode": string,"parent_id"?: string | null,"product_id": string,"product_type": string,"quantity": number,"shortage"?: number,"starts_at": string,"state": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "block_period"?: unknown,"booking_id"?: string,"channel"?: string,"created_at"?: string,"created_by"?: string | null,"ends_at"?: string,"hold_expires_at"?: string | null,"id"?: string,"location_id"?: string,"mode"?: string,"parent_id"?: string | null,"product_id"?: string,"product_type"?: string,"quantity"?: number,"shortage"?: number,"starts_at"?: string,"state"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "reservations_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "reservations_tenant_id_location_id_fkey"
+      columns: ["tenant_id","location_id"]
+isOneToOne: false
+      referencedRelation: "locations"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "reservations_tenant_id_parent_id_fkey"
+      columns: ["tenant_id","parent_id"]
+isOneToOne: false
+      referencedRelation: "reservations"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "reservations_tenant_id_product_id_product_type_fkey"
+      columns: ["tenant_id","product_id","product_type"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id","type"]
+    }
+                  ]
                 },"stock_movements": {
                   Row: {
                     "created_at": string,"created_by": string | null,"id": string,"kind": string,"location_id": string,"note": string | null,"product_id": string,"product_type": string,"quantity": number,"tenant_id": string
@@ -483,14 +521,14 @@ isOneToOne: false
                   ]
                 },"unit_blocks": {
                   Row: {
-                    "created_at": string,"created_by": string | null,"id": string,"kind": string,"note": string | null,"period": unknown,"tenant_id": string,"unit_id": string,"updated_at": string
+                    "created_at": string,"created_by": string | null,"id": string,"kind": string,"note": string | null,"period": unknown,"reservation_id": string | null,"tenant_id": string,"unit_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"kind": string,"note"?: string | null,"period": unknown,"tenant_id": string,"unit_id": string,"updated_at"?: string
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"kind": string,"note"?: string | null,"period": unknown,"reservation_id"?: string | null,"tenant_id": string,"unit_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"kind"?: string,"note"?: string | null,"period"?: unknown,"tenant_id"?: string,"unit_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"kind"?: string,"note"?: string | null,"period"?: unknown,"reservation_id"?: string | null,"tenant_id"?: string,"unit_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -499,6 +537,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "tenants"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "unit_blocks_tenant_id_reservation_id_fkey"
+      columns: ["tenant_id","reservation_id"]
+isOneToOne: false
+      referencedRelation: "reservations"
+      referencedColumns: ["tenant_id","id"]
     },{
       foreignKeyName: "unit_blocks_tenant_id_unit_id_fkey"
       columns: ["tenant_id","unit_id"]
@@ -635,7 +679,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "catalog_requests":
+            "cancel_reservation":
+{ Args: { "p_booking_id"?: string,"p_reservation_id"?: string,"p_tenant_id": string }; Returns: Json
+                           },
+"catalog_requests":
 { Args: Record<PropertyKey, never>; Returns: {
               "cc": number,"created_at": string,"id": string,"make": string,"model": string,"request_note": string,"requested_by_tenant_id": string,"requested_by_tenant_name": string,"slug": string,"status": Database["public"]['Enums']["catalog_status"],"transmission": Database["public"]['Enums']["transmission"],"type": Database["public"]['Enums']["bike_type"],"year_from": number,"year_to": number
             }[]
@@ -700,6 +747,9 @@ isOneToOne: false
                            },
 "report_gear_problem":
 { Args: { "p_expected_back"?: string,"p_happened_on"?: string,"p_kind": string,"p_location_id": string,"p_notes"?: string,"p_product_id": string,"p_quantity"?: number,"p_unit_ids"?: (string)[] }; Returns: Json
+                           },
+"reserve":
+{ Args: { "p_request": Json,"p_tenant_id": string }; Returns: Json
                            },
 "reset_product_order":
 { Args: { "p_tenant_id": string }; Returns: undefined
