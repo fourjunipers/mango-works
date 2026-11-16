@@ -4,7 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { BackLink } from "@/components/back-link";
 import { PageHeader } from "@/components/page";
 import { requireArea } from "@/lib/access";
-import { getPricingInputs } from "@/lib/pricing-data";
+import { getCurrencyLocked, getPricingInputs } from "@/lib/pricing-data";
 import { emptyBoxes, suggestedStep } from "@/lib/pricing-form";
 import { canPricing } from "@/lib/pricing-permissions";
 import { PriceListForm } from "../price-list-form";
@@ -22,9 +22,10 @@ export default async function NewPriceListPage({
   const { membership } = await requireArea(slug, "settings");
   const { tenant, role } = membership;
   if (!canPricing(role, "write")) notFound();
-  const [t, inputs] = await Promise.all([
+  const [t, inputs, locked] = await Promise.all([
     getTranslations("Pricing.lists"),
     getPricingInputs(tenant.id, []),
+    getCurrencyLocked(tenant.id),
   ]);
   return (
     <>
@@ -38,6 +39,7 @@ export default async function NewPriceListPage({
           String(suggestedStep(tenant.currency))
         }
         canEdit
+        fixesCurrency={!locked}
         list={{
           name: "",
           kind: null,

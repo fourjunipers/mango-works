@@ -17,6 +17,43 @@ export type AuditRow = {
   at: string;
 };
 
+/** An audit row as it is read: its before and after as JSON text. */
+export type AuditRowText = Omit<AuditRow, "before" | "after"> & {
+  before: string | null;
+  after: string | null;
+};
+
+/**
+ * JSON text as values, with every whole number too large for a JavaScript
+ * number kept as its string of digits. An amount in an audit row is a JSON
+ * number of any size; read plainly, one past 2^53 would come out rounded.
+ */
+export function parseExactJson(text: string | null): unknown {
+  if (text === null) return null;
+  type Reviver = (
+    key: string,
+    value: unknown,
+    context?: { source?: string },
+  ) => unknown;
+  const parse = JSON.parse as (text: string, reviver: Reviver) => unknown;
+  return parse(text, (_key, value, context) =>
+    typeof value === "number" &&
+    !Number.isSafeInteger(value) &&
+    context?.source !== undefined &&
+    /^-?\d+$/.test(context.source)
+      ? context.source
+      : value,
+  );
+}
+
+/** Audit rows read as text (`before::text, after::text`), parsed exactly. */
+export const exactAuditRows = (rows: readonly AuditRowText[]): AuditRow[] =>
+  rows.map((row) => ({
+    ...row,
+    before: parseExactJson(row.before),
+    after: parseExactJson(row.after),
+  }));
+
 export type HistoryChange = {
   field: string;
   from: unknown;

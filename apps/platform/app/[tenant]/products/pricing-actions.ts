@@ -112,10 +112,7 @@ function parseJson(text: string): unknown {
  * and sent to platform.save_product_pricing().
  *
  * A list that is on the form as it is saved is not sent again, so a save of
- * the deposit alone leaves the list's days as they are.
- *
- * Until the shop's settings have a screen (stage D6), a shop that enters
- * its first product deposit is set to "per product", as it was in stage D4.
+ * the long-stay rate alone leaves the list's days as they are.
  */
 export async function saveProductPricing(
   _prev: FormState,

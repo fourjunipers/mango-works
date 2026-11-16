@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHistory, type AuditRow } from "./history";
+import { buildHistory, exactAuditRows, type AuditRow } from "./history";
 import { pricingHistory, type TemplateInfo } from "./pricing-history";
 
 const product = "p1";
@@ -263,5 +263,75 @@ describe("a product's price lines in its History (§9.12)", () => {
     expect(
       buildHistory([pricingRow, method, named]).map((e) => e.action),
     ).toEqual(["update"]);
+  });
+});
+
+describe("amounts in audit rows are read exactly, at any size", () => {
+  it("keeps every digit of a number past 2^53, and leaves the rest as it is", () => {
+    const [read] = exactAuditRows([
+      {
+        id: 1,
+        entity: "product_pricing",
+        entity_id: product,
+        action: "update",
+        actor: "u1",
+        at: "2026-11-16T10:00:00Z",
+        before: '{"deposit": 9007199254740993, "taxable": true}',
+        after:
+          '{"deposit": 123456789012345678901234567890, "price_amount": 30000, "rate": 1.5, "name": "9007199254740993", "tax_profile_id": null}',
+      },
+    ]);
+    expect(read.before).toEqual({
+      deposit: "9007199254740993",
+      taxable: true,
+    });
+    expect(read.after).toEqual({
+      deposit: "123456789012345678901234567890",
+      price_amount: 30000,
+      rate: 1.5,
+      name: "9007199254740993",
+      tax_profile_id: null,
+    });
+  });
+
+  it("a deposit past 2^53 reaches its History line digit for digit", () => {
+    const rows = exactAuditRows([
+      {
+        id: 2,
+        entity: "product_pricing",
+        entity_id: product,
+        action: "update",
+        actor: "u1",
+        at: "2026-11-16T10:00:01Z",
+        before: '{"deposit": 9007199254740993}',
+        after: '{"deposit": 9007199254740995}',
+      },
+    ]);
+    expect(lines(rows)).toEqual([
+      {
+        key: "depositChanged",
+        args: {
+          from: { money: "9007199254740993" },
+          to: { money: "9007199254740995" },
+        },
+      },
+    ]);
+  });
+
+  it("a row with nothing before stays null", () => {
+    const [read] = exactAuditRows([
+      {
+        id: 3,
+        entity: "product_pricing",
+        entity_id: product,
+        action: "insert",
+        actor: null,
+        at: "2026-11-16T10:00:02Z",
+        before: null,
+        after: "{}",
+      },
+    ]);
+    expect(read.before).toBeNull();
+    expect(read.after).toEqual({});
   });
 });

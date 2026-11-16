@@ -17,6 +17,7 @@ import {
   readListDraft,
   readPricingDraft,
   sameAsSaved,
+  sameAsSavedDraft,
   sameEveryDayDraft,
   suggestedSampleBase,
   suggestedStep,
@@ -57,6 +58,22 @@ describe("money as text, digit by digit", () => {
     expect(minorDecimal(n(1200), "JPY")).toBe("1200");
     expect(formatMinor(n(140000), "USD", "en")).toBe("$1,400");
     expect(formatMinor(n(11666), "USD", "en")).toBe("$116.66");
+  });
+
+  it("formats an amount of any size with every digit", () => {
+    // 15 digits: formatted as a number, exactly.
+    expect(formatMinor("999999999999999", "USD", "en")).toBe(
+      "$9,999,999,999,999.99",
+    );
+    expect(formatMinor("5", "USD", "en")).toBe("$0.05");
+    expect(formatMinor("0", "USD", "en")).toBe("$0");
+    // Past a number's exact range: formatted from its digits.
+    expect(formatMinor("9007199254740993", "USD", "en")).toBe(
+      "$90,071,992,547,409.93",
+    );
+    expect(formatMinor("12345678901234567890", "JPY", "en")).toBe(
+      "¥12,345,678,901,234,567,890",
+    );
   });
 
   it("reads multipliers in millionths (decision 29)", () => {
@@ -592,6 +609,86 @@ describe("a saved list reads as it is stored (filled days are not filled again)"
     // With no saved list to compare with, the days always go.
     const first = pricingPayload(draft, { ...ctx, savedOwn: null });
     expect(first.ok && "own_list" in first.payload).toBe(true);
+  });
+});
+
+describe("Check a price says \"saved or not\" only when the form differs from what is saved", () => {
+  const ctx: PricingContext = {
+    type: "vehicle",
+    currency: THB,
+    step,
+    sharedKinds: new Map([["list-m", "multipliers"]]),
+    showDeposit: true,
+    showTax: false,
+  };
+  const draft = (change: Partial<PricingDraft>): PricingDraft => ({
+    method: "per_period",
+    flatAmount: "300",
+    flatPeriod: "day",
+    fixedAmount: "",
+    source: "own",
+    sharedId: "",
+    baseAmount: "",
+    list: boxes({}),
+    longStay: "",
+    deposit: "2000",
+    tax: "default",
+    replacement: "",
+    ...change,
+  });
+
+  it("what was typed is the same as how it reads back", () => {
+    // Typed "300" and "2000"; read back "300.00" and "2000.00".
+    const readBack = draft({ flatAmount: "300.00", deposit: "2000.00" });
+    expect(sameAsSavedDraft(draft({}), readBack, ctx)).toBe(true);
+    expect(sameAsSavedDraft(draft({ deposit: "2,000" }), readBack, ctx)).toBe(
+      true,
+    );
+  });
+
+  it("a different amount, period or way of pricing is a change", () => {
+    const saved = draft({ flatAmount: "300.00", deposit: "2000.00" });
+    expect(sameAsSavedDraft(draft({ flatAmount: "301" }), saved, ctx)).toBe(
+      false,
+    );
+    expect(sameAsSavedDraft(draft({ flatPeriod: "week" }), saved, ctx)).toBe(
+      false,
+    );
+    expect(sameAsSavedDraft(draft({ deposit: "" }), saved, ctx)).toBe(false);
+    expect(
+      sameAsSavedDraft(
+        draft({ method: "fixed", fixedAmount: "300" }),
+        saved,
+        ctx,
+      ),
+    ).toBe(false);
+  });
+
+  it("a list typed in the boxes is the list read back with its filled days", () => {
+    const typed = boxes({ daily: "300", weekly: "1400", monthly: "3000" });
+    const stored = daysPayload(computeList(typed, "amounts", THB, step));
+    const readBack = draftFromSaved(stored, null, "amounts", THB);
+    expect(readBack.stored).toBeDefined();
+    const tiered = (list: ListDraft) =>
+      draft({ method: "tiered", flatAmount: "", list, longStay: "100" });
+    expect(sameAsSavedDraft(tiered(typed), tiered(readBack), ctx)).toBe(true);
+    // A box changed after the read: not the saved list any more.
+    expect(
+      sameAsSavedDraft(
+        tiered(withBox(readBack, "weekly", "1500")),
+        tiered(readBack),
+        ctx,
+      ),
+    ).toBe(false);
+  });
+
+  it("a form that can't be saved yet is a change, unless untouched", () => {
+    const saved = draft({});
+    expect(sameAsSavedDraft(draft({ flatAmount: "abc" }), saved, ctx)).toBe(
+      false,
+    );
+    const broken = draft({ flatAmount: "" });
+    expect(sameAsSavedDraft(broken, broken, ctx)).toBe(true);
   });
 });
 

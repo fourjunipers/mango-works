@@ -3,7 +3,7 @@ import { cache } from "react";
 import { createClient } from "@mango/db/platform-server";
 import type { RenewalKind } from "./fleet";
 import { catalogName } from "./fleet-import";
-import type { AuditRow } from "./history";
+import { exactAuditRows, type AuditRow } from "./history";
 
 export { catalogName };
 
@@ -383,7 +383,10 @@ export async function getProductHistory(
   limit: number,
 ): Promise<AuditRow[]> {
   const supabase = await createClient();
-  const columns = "id, entity, entity_id, action, actor, before, after, at";
+  // before and after as text, parsed exactly: a price of any size reaches
+  // the History as its digits (lib/history.ts parseExactJson).
+  const columns =
+    "id, entity, entity_id, action, actor, before::text, after::text, at";
   const [product, units] = await Promise.all([
     supabase
       .from("audit_events")
@@ -408,7 +411,7 @@ export async function getProductHistory(
   ]);
   if (product.error) throw product.error;
   if (units.error) throw units.error;
-  return [...product.data, ...units.data]
+  return exactAuditRows([...product.data, ...units.data])
     .sort((a, b) => b.at.localeCompare(a.at) || b.id - a.id)
     .slice(0, limit);
 }

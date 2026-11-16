@@ -92,13 +92,23 @@ export function formatMinor(
 ): string {
   const decimal = minorDecimal(minor, currency);
   const whole = !decimal.includes(".") || /\.0+$/.test(decimal);
-  return new Intl.NumberFormat(locale, {
+  const format = new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     ...(whole ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}),
-    // A decimal string keeps every digit (ES2023 Intl.NumberFormat v3).
-  }).format(decimal as unknown as number);
+  });
+  // Up to 15 digits a number holds the amount exactly, and every browser
+  // formats a number. Past that only a decimal string keeps every digit,
+  // which needs ES2023's Intl.NumberFormat (Chrome 106, Safari 15.4,
+  // Firefox 116, Node 19); an older browser would round such an amount.
+  const digits = decimal.replace(".", "").replace(/^0+/, "");
+  return digits.length <= EXACT_NUMBER_DIGITS
+    ? format.format(Number(decimal))
+    : format.format(decimal as Intl.StringNumericLiteral);
 }
+
+/** A double holds any decimal of up to 15 significant digits exactly. */
+const EXACT_NUMBER_DIGITS = 15;
 
 /** A multiplier is stored in millionths (decision 29): "1.1666" → 1166600. */
 export const MULTIPLIER_DECIMALS = 6;
