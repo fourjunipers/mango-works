@@ -1,38 +1,39 @@
 /**
- * Money helpers. Amounts are whole Thai baht everywhere in the app and the
- * database. Satang (1/100 baht) exist only at the Stripe boundary, and these
- * are the only functions that convert between the two.
+ * Money helpers for the marketplace. Its amounts are whole Thai baht in the
+ * app and the database; satang (1/100 baht) exist only at the Stripe
+ * boundary, and these are the only functions that convert between the two.
+ *
+ * Since Phase 2 (docs/phase-2-plan.md §2.6) every function here is a thin
+ * wrapper: the rule itself is in currency.ts and takes the currency as an
+ * argument. These names stay so the marketplace does not change until 3M,
+ * and money.test.ts holds the two to the same answers. **New code passes
+ * the shop's currency to currency.ts, never calls these.**
  */
 
-const SATANG_PER_BAHT = 100;
+import {
+  assertWholeAmount,
+  formatWholeAmount,
+  fromMinorUnits,
+  toMinorUnits,
+} from "./currency";
+
+const BAHT = "THB";
 
 /** Whole baht → satang, for amounts sent to Stripe. */
 export function bahtToSatang(baht: number): number {
-  assertWholeBaht(baht);
-  return baht * SATANG_PER_BAHT;
+  return toMinorUnits(baht, BAHT);
 }
 
 /** Satang from Stripe → whole baht. Throws if the amount has a satang part. */
 export function satangToBaht(satang: number): number {
-  if (!Number.isInteger(satang) || satang % SATANG_PER_BAHT !== 0) {
-    throw new RangeError(
-      `Expected a whole number of baht in satang, got ${satang}`,
-    );
-  }
-  return satang / SATANG_PER_BAHT;
+  return fromMinorUnits(satang, BAHT);
 }
-
-const bahtFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
 /** 2592 → "฿2,592", -320 → "−฿320". */
 export function formatBaht(baht: number): string {
-  assertWholeBaht(baht);
-  const sign = baht < 0 ? "−" : "";
-  return `${sign}฿${bahtFormat.format(Math.abs(baht))}`;
+  return formatWholeAmount(baht, BAHT, "en-US");
 }
 
 export function assertWholeBaht(baht: number): void {
-  if (!Number.isSafeInteger(baht)) {
-    throw new RangeError(`Expected a whole number of baht, got ${baht}`);
-  }
+  assertWholeAmount(baht, BAHT);
 }
