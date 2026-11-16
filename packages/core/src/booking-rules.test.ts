@@ -1289,6 +1289,58 @@ describe("offer(): Moto Mangos, the listing's cap and mode", () => {
     ).toBe("unavailable @ b");
   });
 
+  it("an extra's included units are free in the offer's price, and still counted against stock", () => {
+    // Stage 4: the pricing argument says which line is an extra of which.
+    const products = [
+      scooter(),
+      { ...scooter(), productId: "helmet", type: "gear" as const },
+    ];
+    const withHelmets = (taken: number, free: number) => {
+      const [inputs, availability, pricing, request] = scene(
+        [
+          { id: "a" },
+          {
+            id: "b",
+            productId: "helmet",
+            quantity: taken,
+            pricing: daily(5000),
+          },
+        ],
+        { products, available: [5, free] },
+      );
+      return offer(
+        inputs,
+        availability,
+        {
+          ...pricing,
+          lines: [
+            pricing.lines[0],
+            {
+              ...pricing.lines[1],
+              vehicle: false,
+              extraOf: { lineId: "a", includedQuantity: 2 },
+            },
+          ],
+        },
+        request,
+      );
+    };
+    // Two days: the scooter 600.00; 3 helmets, 2 included, 1 charged: 100.00.
+    const answer = withHelmets(3, 3);
+    expect(refusal(answer)).toBe("ok");
+    if (answer.ok) {
+      expect(answer.quote.lines[1]).toMatchObject({
+        quantity: 3,
+        includedQuantity: 2,
+        chargedQuantity: 1,
+        listPrice: BigInt(10000),
+      });
+      expect(answer.quote.totals.total).toBe(BigInt(70000));
+    }
+    // Included helmets are real helmets: all three must be free.
+    expect(refusal(withHelmets(3, 2))).toBe("unavailable @ b");
+  });
+
   it("the listing's lead time binds a Moto Mangos booking and not the shop's own page", () => {
     const products = [
       scooter({
