@@ -1,4 +1,3 @@
-import { closeSync, openSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Dialog, type Page } from "@playwright/test";
@@ -11,6 +10,7 @@ const platformClient = () =>
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { db: { schema: "platform" }, auth: { persistSession: false } },
   );
+import { acquireFileLock } from "./file-lock";
 import { demoPassword } from "./helpers";
 
 /**
@@ -83,35 +83,34 @@ export async function readSettings(
   return (data as { settings: Settings | null }).settings;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/** One test at a time per shop, across processes: an exclusive lock file. */
-async function lock(slug: string): Promise<() => void> {
-  const path = join(tmpdir(), `mango-e2e-pricing-settings-${slug}.lock`);
-  for (;;) {
-    try {
-      const fd = openSync(path, "wx");
-      writeSync(fd, `${process.pid} ${new Date().toISOString()}`);
-      closeSync(fd);
-      return () => {
-        try {
-          unlinkSync(path);
-        } catch {
-          // Already gone.
-        }
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      // A lock left by a run that was killed: older than any test.
-      try {
-        if (Date.now() - statSync(path).mtimeMs > 10 * 60_000) unlinkSync(path);
-      } catch {
-        // Released meanwhile.
-      }
-      await sleep(250);
-    }
-  }
+/**
+ * Why no screen warns this shop that a first save fixes its currency, or
+ * null when its currency is still open and every pricing screen must warn.
+ * Read from the database as the owner, never from the page under test: a
+ * test that skipped because the note was missing would hide a lost note.
+ */
+export async function currencyFixedBy(
+  db: Db,
+  tenantId: string,
+): Promise<string | null> {
+  if ((await readSettings(db, tenantId)) !== null)
+    return "it has a pricing settings row";
+  const { data, error } = await db.rpc("currency_locked", {
+    p_tenant_id: tenantId,
+  });
+  if (error) throw error;
+  return data === true
+    ? "currency_locked() is true: it has a price, a price list or a vehicle's costs"
+    : null;
 }
+
+/**
+ * One test at a time per shop, across workers and both widths. A lock left
+ * by a killed run goes stale in half a minute (e2e/file-lock.ts), well
+ * inside the six minutes a waiting test is given below.
+ */
+const lock = (slug: string) =>
+  acquireFileLock(join(tmpdir(), `mango-e2e-pricing-settings-${slug}.lock`));
 
 /**
  * Runs `body` holding the shop's pricing settings, then puts every setting
