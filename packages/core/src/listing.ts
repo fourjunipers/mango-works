@@ -151,13 +151,45 @@ export function listingOffer(input: {
   const { settings, bookings, start, end } = input;
   if (end <= start) throw new RangeError("The return must be after the pickup");
   const p = peaks(bookings, start.getTime(), end.getTime());
+  return listingOfferFromPeaks({
+    settings,
+    available: input.available,
+    peaks: p,
+  });
+}
+
+/**
+ * The most Moto Mangos advance bookings holding a vehicle at one moment of a
+ * window, and the most of each kind: what the platform's availability read
+ * counts in the database (`mm_held`, `mm_instant`, `mm_request`).
+ */
+export type ListingPeaks = { held: number; instant: number; request: number };
+
+/**
+ * `listingOffer` from counts already taken, for `quantity` vehicles in one
+ * booking (1 unless said). The offer is the same rule; the mode is the one
+ * the whole booking would have: Instant while that many more Instant
+ * bookings still fit the Instant units, else Request the same way.
+ */
+export function listingOfferFromPeaks(input: {
+  settings: ListingSettings;
+  available: number;
+  peaks: ListingPeaks;
+  quantity?: number;
+}): ListingOffer {
+  const { settings, peaks: p } = input;
+  const quantity = input.quantity ?? 1;
+  if (!Number.isInteger(quantity) || quantity < 1)
+    throw new RangeError("The quantity must be a whole number of 1 or more");
   if (!settings.enabled) return { offered: 0, mode: null, held: p.held };
   const offered = Math.max(
     0,
     Math.min(input.available, listingCap(settings) - p.held),
   );
   let mode: ListingOffer["mode"] = null;
-  if (offered > 0 && p.instant < settings.instantUnits) mode = "instant";
-  else if (offered > 0 && p.request < settings.requestUnits) mode = "request";
+  if (offered >= quantity) {
+    if (p.instant + quantity <= settings.instantUnits) mode = "instant";
+    else if (p.request + quantity <= settings.requestUnits) mode = "request";
+  }
   return { offered, mode, held: p.held };
 }

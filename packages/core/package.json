@@ -2,10 +2,11 @@
   "name": "@mango/core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure rental rules shared by every app: rental days, day-table pricing, availability, closures, money, time.",
+  "description": "Pure rental rules shared by every app: rental days, day-table pricing, availability, booking rules, closures, money, time.",
   "sideEffects": false,
   "exports": {
     "./availability": "./src/availability.ts",
+    "./booking-rules": "./src/booking-rules.ts",
     "./closures": "./src/closures.ts",
     "./currency": "./src/currency.ts",
     "./listing": "./src/listing.ts",
