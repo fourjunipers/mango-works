@@ -221,6 +221,94 @@ select
 
 **Next:** D7, BSR's four lists, once Mark has supplied the amounts, base prices and the list for each product (with the tax-profile check and the explicit deposit choice above).
 
+## Products, stage D7: BSR's price lists and test prices, on staging (branch `platform/products-stage-d7-bsr-test-prices`, 16 Nov 2026)
+
+The seventh and last build stage of pricing (`docs/products-redesign.md` §9.11). **No migration.** A script, `apps/platform/scripts/load-bsr-pricing.mts`, and data on **staging only** (`mango-works-staging`, `qafhmdxsodeqkeznafaq`). Live was not touched and stays at 53 of 53.
+
+**Not finished: 5 of the 25 scooters are priced.** The other 20 are not products in BSR on staging, and none was created (Mark's instruction: report, and ask first). The script is safe to run again once they exist.
+
+**Before the load**
+
+- **Staging: 60 of 60 migrations**, newest `20261115000200_platform_tax_profile_in_use`, every one matching the repo (the CLI's migration list against `STAGING_DB_URL`).
+- **`.env.local` fixes** (values written nowhere):
+  - The main checkout's `apps/platform/.env.local` had two `DEMO_PASSWORD` lines. Each was tried against staging as BSR's demo owner: the first signs in, the second is refused. The second line was removed; the sign-in works with what is left.
+  - `STAGING_ANON_KEY` was added to the same file, read from the staging project's API keys. It is a public key, and still not committed; `.env.example` names the variable.
+  - **Every checkout was checked.** Five others still hold the same two lines (`drag-reorder`, `gear-stock-rework`, `lists-mobile-polish`, `products-stage-a`, and the `Bike Booking-ui-refresh` folder): **not changed**, because this stage was told to leave other worktrees alone. `products-stage-c-db` and `products-stage-c-tab` have one line, the right one. `products-stage-d4`, `-d5` and `-d6` have one line with another value and no staging variables (their own local stacks).
+
+**What the script does** (`npm run load:bsr-pricing -w @mango/platform`, reads only; `-- --load` to write)
+
+- Signs in as BSR's demo owner with the anon key and writes only through `save_price_template`, `save_product_pricing` and `save_pricing_settings`. No service key and no table write.
+- Its target is `STAGING_SUPABASE_URL` and `STAGING_ANON_KEY`, nothing else; it refuses the live project's address and a local one.
+- **Safe to run again:** a shared list is found by its exact name and updated; a product's pricing is saved over itself. Run twice on 16 Nov 2026: the first made the four lists, the second updated them, and staging still has four.
+- Products are matched by name (case and outer spaces ignored), never created. A scooter with no product is listed, with any similar name, and skipped.
+- No arithmetic on money: every figure is written out in the script as Mark gave it, turned into minor units by `parseMinorUnits`, and priced by `quote()`.
+
+**Loaded on staging, 16 Nov 2026**
+
+- **Four shared price lists in BSR, kind Amounts**, named "300–3000", "350–3500", "400–4000" and "500–5400": days 1 to 30 in THB from Booqable at a base price of 100, every day stored as loaded (`manual`), equal neighbours kept (days 28 and 29 of 300–3000; days 21 and 22 of 350–3500), no hourly price.
+- **Long-stay daily rate** (31 days or more), per product, as Mark wrote them: 300–3000 → ฿100.00, 350–3500 → ฿116.67, 400–4000 → ฿133.33, 500–5400 → ฿180.00.
+- **Deposit ฿2,000** on each scooter.
+- **BSR's settings:** deposit "per vehicle" (`per_product`) and prices include tax, set explicitly. The rounding step (not chosen), the default tax profile (none) and the tax profiles were not sent and are as they were. No product was given a tax profile.
+- **Not touched:** BSR's bigger bikes (CB300R, CB500X, CRF300L, Forza 350, NX500, Z250, Hunter 350, WR155, GTS300); Mark prices those by hand. Saigon and big-fleet.
+
+**These are test prices.** The four lists are BSR's real ones; which scooter is on which is round-robin in the order of Mark's list, whether or not the product exists yet:
+
+| List | Scooters, by position in the list of 25 |
+| --- | --- |
+| 300–3000 | Benelli Leoncino 250, Honda ADV160, **Honda Giorno**, **Honda Spacy**, Yamaha Aerox, Yamaha GT, Kawasaki Z250SL |
+| 350–3500 | Benelli TNT135, Honda Click 125, Honda Lead, Honda Zoomer-X, **Yamaha Fino**, Yamaha Mio 115 |
+| 400–4000 | Fazzio, Honda Click 150, Honda PCX, **Yamaha Nmax**, Yamaha Freego, Yamaha Qbix |
+| 500–5400 | GPX 250, **Honda Click 160**, Honda Scoopy, Ryuka Infinity 250, Yamaha Grand Filano, Yamaha TTX |
+
+In bold: the five that are products in BSR on staging and are priced.
+
+**Not in BSR on staging (20), not created.** Five have a product with a similar name, which was not treated as a match:
+
+| Mark's name | Similar product on staging |
+| --- | --- |
+| Fazzio | Yamaha Fazzio |
+| Honda ADV160 | Honda ADV 160 (2025-2026) |
+| Honda PCX | Honda PCX 160 |
+| Honda Scoopy | Honda Scoopy (New Gen) |
+| Yamaha Aerox | Yamaha Aerox 155 (2nd Gen) |
+
+No product at all: Benelli Leoncino 250, Benelli TNT135, GPX 250, Honda Click 125, Honda Click 150, Honda Lead, Honda Zoomer-X, Ryuka Infinity 250, Yamaha Freego, Yamaha Grand Filano, Yamaha GT, Yamaha Mio 115, Yamaha Qbix, Yamaha TTX, Kawasaki Z250SL.
+
+**Checks after the load** (reads only, as the owner; the script runs them every time)
+
+| Check | Result |
+| --- | --- |
+| Four lists, one of each name, kind Amounts, no hourly price, 30 days each, every day equal to Mark's figure | Pass |
+| Products on the right list, with its long-stay rate and a ฿2,000 deposit | **5 of 25.** The five that exist are right; 20 have no product |
+| Products in BSR that name an archived tax profile | 0 (no product names any profile) |
+| `quote()` through `pricing_inputs`, one product per list, pickup 1 Apr 2027 10:00 at BSR's main location | Pass, below |
+| Settings as the pricer reads them | Deposit per product, prices include tax, rounding step not chosen, no default tax profile |
+
+| List | Product | 1 day | 7 days | 30 days | 45 days |
+| --- | --- | --- | --- | --- | --- |
+| 300–3000 | Honda Giorno | ฿300 | ฿1,400 | ฿3,000 | ฿4,500.00 |
+| 350–3500 | Yamaha Fino | ฿350 | ฿1,500 | ฿3,500 | ฿5,250.05 |
+| 400–4000 | Yamaha Nmax | ฿400 | ฿1,800 | ฿4,000 | ฿5,999.95 |
+| 500–5400 | Honda Click 160 | ฿500 | ฿2,200 | ฿5,400 | ฿8,100.00 |
+
+Each matches the list; 45 days is the day-30 price and 15 long-stay days (April has 30 days, so 45 days from 1 April is one month and 15 days). The deposit on each quote is ฿2,000. No season applies to any of the four.
+
+**Where this differs from §9.11, on Mark's D7 instructions**
+
+- **The lists are Amounts, not multipliers** (§9.11 recommended multipliers). No product has a base price.
+- **The long-stay rates are rounded, not cut off:** ฿116.67 where §9.3 has ฿116.66 (฿133.33 is the same either way). They are written in as given and never derived.
+- **Which product is on which list is a test mapping**, not BSR's.
+
+**Left on staging:** the four lists, five pricing rows, BSR's settings row now on "per vehicle", and the audit rows of two runs. A browser run that reads BSR's deposit choice (`e2e/shop-settings.ts`) puts back what it finds, which is now "per vehicle".
+
+**Tests:** typecheck, lint and Prettier pass on the platform workspace with the script in it. No app or database code changed, so no test was added; the script's own checks are its test.
+
+**Next**
+
+1. Mark: the 20 scooters with no product. Create them in BSR on staging, rename the five similar ones or name the match, then run the script again with `--load`.
+2. The stale `DEMO_PASSWORD` line in the five other checkouts.
+3. Live gets BSR's real prices at go-live (`docs/RUNBOOK-GO-LIVE-PLATFORM.md` › Staging), not this load.
+
 ## Products, stage D3: rental-period maths (branch `platform/products-stage-d3-rental-periods`, 15 Nov 2026)
 
 The third build stage of pricing, of seven (`docs/products-redesign.md` §9.15 and §9.19). **`@mango/core` and docs only: no migration, no screen, nothing in `apps/`.** Phase 3 builds the orders, the screens and the atomic database step; the money for extending, swapping and returning early is worked out here.
