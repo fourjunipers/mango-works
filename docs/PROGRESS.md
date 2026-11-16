@@ -15,7 +15,7 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 ## Phase 2: plan only (branch `docs/phase-2-plan`, 16 Nov 2026)
 
-**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). Stages 1 to 3 are built (below).
+**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). Stages 1 to 4 are built (below).
 
 - **Already built by stage D:** price lists, seasons, VAT, deposits and `quote()` steps 1 to 3 and 5 to 8.
 - **Still to build:** the booking function (`reserve()`) with product locks, then unit locks sorted by their hash key, and a best-fit pick; the availability read; overbooking and the shortage rule; holds; booking rules (notice, cut-off, minimum days); `product_extras` and the pricer's included-quantity step; coupons and the returning-customer discount; the quote snapshot.
@@ -296,7 +296,7 @@ The third build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.3, §2.6
 - **The migration on a seeded copy of `main`'s database** (reset to 62 migrations, the three demo shops seeded, then this one): 3 shops, 4 locations, 16 products, 170 units and 263 audit rows before and after, with the same checksums over products, units, locations and tenants (the new columns left out); no block, reservation, pricing row or listing either side. Every shop reads overbooking off, 15 minutes and no default buffer; no location has a rule.
 - **Browser:** the full suite on that database, 375 px and 1280 px, two workers: 142 tests, **135 passed, 7 skipped, 0 failed**, the same as stage 2. No new browser test: nothing on a screen changed.
 
-**After the review of PR 38 (16 Nov 2026).** Six items, all in this PR; the migration had not left this machine or CI's throwaway databases, so it was edited in place. The review comment itself is not on PR 38 (only Netlify's two are); these are the items as the owner relayed them, so the five "Ride today" probes below are written from his description, not copied from the reviewer's.
+**After the review of PR 38 (16 Nov 2026).** Six items, all in this PR; the migration had not left this machine or CI's throwaway databases, so it was edited in place.
 
 1. **"Ride today" is Moto Mangos' alone, and only for a pickup that is now.** It skips the notice and the cap, and nothing stopped any channel, or a pickup next week, from calling itself that.
    - `bookable()` throws for a channel and mode that don't go together (`assertHow()`): mode `now` on any channel but `marketplace`, a staff channel in an online mode, an online channel in mode `staff`.
@@ -335,6 +335,109 @@ This replaces items 5 and 10 of the list above where they differ, and adds a rea
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s3` on ports 6332x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Stage 2's stack was stopped (not removed).
 
 **Next:** stage 4, the pricer's included quantity and the quote snapshot (`@mango/core` only, no migration).
+
+## Phase 2, stage 4: the pricer's included quantity and the quote snapshot (branch `platform/phase-2-stage-4-pricer-snapshot`, 16 Nov 2026)
+
+The fourth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.1, §5.2 (step 4's pricing only), §5.4, §8; the owner's answers in §10, Q9). **`@mango/core` only: no migration, no database change, nothing on a screen.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **`quote()` step 4, the included quantity** (`packages/core/src/quote.ts`). A line for gear or a service taken with a vehicle names that vehicle's line and how many units come free with each one (`extraOf: { lineId, includedQuantity }`):
+  - allowance = included per vehicle × the vehicle line's quantity; charged = max(0, quantity − allowance); list price = unit price × charged quantity.
+  - The plan's examples are tests: a scooter with 2 helmets included, 3 taken at ฿50 a day for 7 days: 1 charged, ฿350; two scooters and 5 helmets: 4 included, 1 charged.
+  - Quoted lines gain `parentLineId`, `includedQuantity` and `chargedQuantity`. A line with no parent reads 0 included and every unit charged, and is priced exactly as before.
+  - Included units are not a discount: they are in no discount total. From the list price on, an extra is a line like any other: seasons on its charged units, discounts, its own tax rate, no deposit.
+- **`lineTaxShares()`**: each line's share of its rate group's VAT, in proportion to what the line comes to, leftover minor units to the largest remainders, so the shares add up to the invoice's VAT lines exactly (Q9). VAT is still worked out once per invoice and rate; the invoice's figure is the one of record. Three lines of ฿350: VAT ฿68.69, shared 22.90, 22.90, 22.89 (line by line it would have been ฿68.70).
+- **`lineDeposits()`**: each vehicle line's own deposit in the per-vehicle mode; `depositAmount()` is now their sum, the same figure as before.
+- **`packages/core/src/quote-snapshot.ts`** (new; exported as `@mango/core/quote-snapshot`):
+  - **`snapshotQuote(input, quote, context)`** turns one priced invoice into plain JSON: keys in snake_case, every amount a string of digits in minor units (a season amount may lead with "-"; nothing else is signed), every instant an ISO string in UTC, and `version` 1. `context` adds what the pricer never needed: the currency and its exponent, `pricedAt`, each line's product name and type, the tax profile's id and name, each season's name, each coupon's id and code. A name that is missing is an error, not an empty field.
+  - **`readSnapshot(stored)`** reads it back with amounts as `bigint` and instants as `Date`. It takes the stored data and nothing else, so it can't look up a profile, a price list, a season or a coupon. It is strict: a missing field, an unknown field, or an amount that is a number or has a decimal point throws `SnapshotError`.
+  - **Every field of §5.4.** On each line: currency and exponent; product id, name and type; start, end, the original pickup for a continuation, the time zone, the charged periods and their unit; quantity, included and charged; the unit price with the pricer's basis; the list price; **the way of pricing as it was passed in** (the list's 30 totals, the hourly price, the long-stay rate, or the flat fee); each season (rule id, name, percentage, periods inside and in all, amount); the season total and price; each discount (id, source, the coupon's id and code, percentage or fixed and its value, what it took from this line); the discount total; the amount; taxable, rate, profile id and name, the shop's style; the tax share; the line's deposit. On the invoice: the totals; one entry per rate (rate, profile names, base, net, VAT, gross, style); the non-taxable part; credits; the deposit with its mode, its number and whether it came from the order, the customer or the shop; `priced_at`; `version`.
+  - **It prices nothing.** It copies what `quote()` returned and what went into it; the tax share and the line deposit come from `quote.ts`. Its only sum is one subtraction (a line's season total).
+  - **Versions.** `UPGRADES[n]` turns a stored version n into n + 1 as it is read; a stored snapshot is never rewritten. A version newer than the code knows is refused, not guessed at.
+- **`offer()` needed no change**: it passes `quote()`'s input through, so an extra with included units is priced that way (one new test). Stage 3's item 16 ("extras are priced as lines of their own until stage 4") is done for the pricer; stage 5's adapter fills `extraOf` from `product_extras`.
+- Root `CLAUDE.md`: a new section, "Not tied to Supabase" (below). `packages/core/README.md` names the new module.
+
+**Phase 3's columns, confirmed** (plan §5.4, "fixed now"). No column added or dropped. Each order-line column is a field of the stored line under the same name, and a test holds that:
+
+| On each order line | From the snapshot line | Notes |
+| --- | --- | --- |
+| `list_price` | `list_price` | Unit price × charged quantity |
+| `season_total` | `season_total` | Signed: negative when seasons lower the price |
+| `discount_total` | `discount_total` | |
+| `amount` | `amount` | |
+| `tax_rate_bp` | `tax_rate_bp` | Empty for a line that is not taxable |
+| `tax_profile_id`, `tax_profile_name` | the same | Empty for a line that is not taxable. Reference only |
+| `tax_inclusive` | `tax_inclusive` | |
+| `tax_amount` | `tax_amount` | The share; 0, not empty, for a line that is not taxable |
+| `deposit` | `deposit` | Empty unless the mode is per vehicle and the line is a vehicle |
+| `currency` | `currency` | The line also has `exponent` |
+| `snapshot jsonb` | the whole stored line | |
+
+On each invoice: its totals, its rate groups and `snapshot jsonb` (the whole stored snapshot). **Phase 3's save check needs addition and comparison only**, and a test runs it on every pinned invoice: list price + season total = season price; season price − discount total = amount; a line's discounts add up to its discount total; included + charged = quantity; the lines add up to each total; each rate group's base is its lines less its credits; net + VAT = gross; the groups' gross + the non-taxable part = the total; the lines' tax shares add up to each VAT line; the lines' deposits add up to the invoice's in the per-vehicle mode.
+
+**Also in this stage**
+
+1. **Four standing rules in the root `CLAUDE.md`** ("Not tied to Supabase": the owner plans to move from Supabase to Neon after Phase 3): all database access goes through `packages/db`; file storage sits behind one module; sign-in goes through one helper with no Supabase-only features; RLS uses the `my_tenant_ids()`-style helpers and not `auth.uid()` directly. What does not follow them yet is listed at the end of this section.
+2. **The line saying the review is not on PR 38 is gone** from stage 3's section.
+3. **The "other way round" `confirm_hold()` test is strengthened** (`apps/platform/tests/db/booking-rules.test.ts`). As it was, the confirm began after the expiry and the booking was at the same place, so it passed with or without the listing's row in `confirm_hold()` (checked: it passes with the lock taken out). Now:
+   - the confirm's transaction begins **before** the expiry (the session prints that its `now()` is earlier) and gets to its work five seconds on;
+   - a new Moto Mangos booking at a **second place** of the shop, begun after the expiry, takes the cap's one place and is left unsaved. It shares no product lock with the confirm, and it does not release the hold (another place's), so only the listing's row stands between them;
+   - the confirm is **seen in `pg_locks` waiting at the listing's row** (it has that row's tuple lock and waits for a transaction), and `pg_blocking_pids` names the booking's session as the one it waits for;
+   - the booking saves; the confirm answers `hold_expired`, judged by the clock after the expiry; one reservation is `reserved` (the new one), the hold is still a run-out hold, and Postgres counts no deadlock.
+   - **With the fix removed it fails.** `confirm_hold()` was put into the local database without the listing block (the products' and listings' rows and `clock_timestamp()`), by hand, then restored from the migration's text. The test failed on three counts: the confirm answered without ever waiting at the listing's row; it was not waiting for the booking; and it answered `ok`, so the cap of one was passed by one. Restored, it passed five times in a row.
+4. **Carried to stage 5** is below.
+
+**Where this differs from the plan or the brief, or decides what they left open** (say if any should change)
+
+1. **`includedQuantity` on a quoted line is how many of that line's units are free, never more than its quantity.** Two scooters with 2 helmets each and 3 helmets taken reads "3 included, 0 charged", not the plan's formula taken literally ("4 included"). So included + charged = quantity on every line, which Phase 3's save check can add up. The allowance itself (4) is not stored; the stored line has its parent line's id.
+2. **The pricer does not default an extra's dates to its vehicle's.** A line's dates stay required; stage 5's adapter gives an extra its vehicle's dates. An extra with its own dates (helmets for 3 of the 7 days) is priced on them.
+3. **What step 4 refuses** (`bad_input`): a parent that is not on the invoice, is the line itself, is not a vehicle, or is itself an extra; a vehicle as an extra; an included quantity that is negative or not whole; and **two lines of the same product naming the same parent**, which would each take the free units.
+4. **A season on a line whose units are all included** still lists the rule, with an amount of 0.
+5. **An older version still reads, tested two ways, because only version 1 exists.** A version 1 snapshot is written out by hand in the test: it reads to the satang, and it is exactly what the code writes today for that invoice, so the stored shape can't change without that test failing and a version being added. And the upgrade chain is run with made-up steps for a version 2 and a version 3 (a field added, then renamed): a version 1 snapshot comes out as version 3, a version 2 takes only the second step, and a gap in the chain is an error. The first real step is written with version 2.
+6. **An early return has no invoice of its own**, so its pinned figures (฿1,500 of ฿3,000; ฿1,250 of ฿2,500) are tested the way Phase 3 will work them out: the old period is rebuilt from the stored snapshot of the first booking alone, and `earlyReturn()` is run on that. The swap and the cheaper bike are tested the same way, and the swap's own invoice is snapshotted too. One more test changes the shop's list after the snapshot: the shares still come from the list as it was.
+7. **The stored keys are snake_case** (`list_price`, `tax_rate_bp`), as the plan's column list and the database's own rows are; what `readSnapshot()` returns is camelCase like the rest of `@mango/core`.
+8. **A rate group stores `profile_names`**, a list: two profiles at one rate share a VAT line.
+9. **Charge rules are not in the snapshot.** `RentalSpan.rules` is an empty type today (charge rules come after Phase 3). When they are built the line gains them and the version goes to 2.
+10. **Nothing calls `snapshotQuote()` yet.** Phase 3 stores it. `offer()` and `bookOnline()` are unchanged.
+11. **The older test files are not changed** (`quote.test.ts`, `rental-period.test.ts`): they are the proof that a line with no parent is priced as before. Their invoices are restated in `quote-pinned.fixtures.ts` so the snapshot is tested on the same ones.
+
+**Tests**
+
+- **Unit: 480 in `@mango/core`** (363 before), **364 on the platform** and **202 on the marketplace** (both unchanged). Typecheck and lint pass for every workspace, the one-pricer (money) rule included.
+  - `quote-extras.test.ts` (37): included quantity with one vehicle and with several; more included than taken; an extra priced each way (a flat fee per hour, day, week and month, by rental length, a fixed price); a free service; an extra with no price yet answering "can't be priced" even when all of it is included; in a currency with no decimals; included units in no discount total and no VAT base; seasons, a percentage and a fixed discount on the charged units; its own tax rate; no deposit; every refusal; and **every D2 and D3 pinned figure unchanged for lines with no parent** (31 invoices from D2, 8 from D3).
+  - `quote-snapshot.test.ts` (79): **every pinned figure snapshotted, turned to JSON text, parsed, read back and compared to the satang** (43 invoices: D2's 31, D3's 8, and four of Phase 2's own: a scooter with helmets included and a free drop-off, a dong shop with a season and a fixed coupon, a dong shop with VAT on top, a New York shop across the night the clocks go forward). Every amount of the quote is compared with the same amount read back, not only the pinned ones.
+  - **Tax shares add up to the VAT lines in every one of the 43**, and in 1,500 made-up invoices (a fixed sequence) in two-decimal and zero-decimal amounts, both tax styles, six rates, with percentage and fixed discounts and credits; more than 250 of them needed the leftover rule. In dong: ₫10,001 over three lines is 3,334, 3,333 and 3,334.
+  - **A snapshot read back after the profile is renamed, re-rated and archived, the list repriced, the season deleted and the coupon archived is unchanged**: the changes are made in place in the very objects the snapshot was made from, the same booking priced again comes to ฿2,800 where it was ฿1,152, and the stored snapshot reads exactly as before.
+  - The stored form (every amount a string of digits; the only numbers are counts, basis points, the exponent and the version); every field of §5.4 on a line, pinned whole; Phase 3's columns and its check by addition; versions; and what reading and writing refuse.
+  - One more in `booking-rules.test.ts`: `offer()` with an extra's included units.
+  - **The new tests fail when the code is wrong** (tried, then put back): with step 3 on the whole quantity, 25 tests fail; with the tax share rounded line by line, 5 fail.
+- **Database: 556 of 556 on the platform, on a freshly reset local database** (the same count as stage 3: one test rewritten, none added).
+- **Browser:** the full suite on a freshly reset and seeded database, 375 px and 1280 px, two workers: 142 tests, **135 passed, 7 skipped, 0 failed**, the same as stage 3. No new browser test: nothing on a screen changed.
+- Each suite was run on its own, one after the other.
+
+**Carried to stage 5** (the owner's, 16 Nov 2026, and two found here)
+
+- **`confirm_hold()`, `cancel_reservation()`, `assign_units()` and `move_unit()` get their own lock timeout, like `reserve()`'s 6 seconds**, so a lock wait that runs out answers `55P03` and not `57014`. **Staff callers of `reserve()` handle `55P03`** (today only `bookOnline()` does).
+- Found here: **`pricing_inputs()` returns a product's tax profile name but not its id, and no product name.** The snapshot needs both. Stage 5 re-creates `pricing_inputs()` for extras; they can go in then, or Phase 3's caller reads them itself.
+- Found here: stage 5's adapter (`lib/pricing-inputs.ts`) fills `extraOf` and gives an extra its vehicle's dates (item 2 above).
+
+**What does not follow the four "Not tied to Supabase" rules yet** (found by searching, not a full audit; nothing here was changed)
+
+- **Database access outside `packages/db`** (files that import `@supabase/*` themselves): both apps' `proxy.ts` and `app/auth/confirm/route.ts`; the marketplace's `lib/admin-queue.ts`, `lib/auth/sync-role.ts` and `lib/stations/merge.ts`; the platform's `scripts/seed.mts` and `scripts/load-bsr-pricing.mts`; and the test helpers (`tests/db/helpers.ts` in both apps, `e2e/shop-settings.ts`).
+- **File storage** is called directly in four marketplace files (`app/admin/actions.ts`, `app/vendor/actions/fleet.ts`, `app/vendor/actions/shop.ts`, `components/photo-picker.tsx`). The platform stores no file yet, so the one module does not exist: the first platform feature that stores a file creates it.
+- **Sign-in** is called directly from each app's login form and its `auth/callback`, `auth/confirm` and `auth/signout` routes: there is no one helper yet.
+- **RLS:** one platform policy calls `auth.uid()` directly (a member reading their own membership row, `20261110000100_platform_schema.sql`). The helpers themselves, the audit function and the "who did it" columns read `auth.uid()` too, and several tables have keys to `auth.users`: those are the places the move changes. The marketplace's own policies (the 27 older migrations) were not looked at.
+
+**Known issues and follow-ups**
+
+- The strengthened `confirm_hold()` test depends on timing in one place: the booking must hold the listing's row before the confirm's five seconds are up. It checks that itself and says so ("timing, run again") rather than report a false finding. It also waits to be clear of the minute's sweep, so it can take up to 20 seconds to start.
+- `quote-pinned.fixtures.ts` restates the older tests' invoices; if a D2 or D3 figure is ever changed on purpose, both places change.
+- A race test shows a race is closed for the timings it hit.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s4` on ports 6432x, started with CI's service list (`supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,storage-api,postgres-meta,supavisor`): with stage 3's stack and another project's still running, the full list timed out on the analytics container. `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Stage 3's stack was left running.
+
+**Next:** stage 5, extras in the database (migration 4): `product_extras`, `save_product_extras()`, `pricing_inputs()` with extras, the adapter in `lib/pricing-inputs.ts`, and the carried list above.
 
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 
