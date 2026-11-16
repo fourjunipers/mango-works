@@ -29,6 +29,7 @@ export function PriceListForm({
   currency,
   step,
   canEdit,
+  fixesCurrency = false,
   list,
 }: {
   slug: string;
@@ -36,6 +37,11 @@ export function PriceListForm({
   /** The shop's rounding step for amounts, minor units as digits. */
   step: string;
   canEdit: boolean;
+  /**
+   * The shop's currency is not fixed yet, and its first price list fixes
+   * it: the form says so and asks first, as Settings › Pricing and tax does.
+   */
+  fixesCurrency?: boolean;
   list: {
     id?: string;
     name: string;
@@ -45,6 +51,7 @@ export function PriceListForm({
   };
 }) {
   const t = useTranslations("Pricing");
+  const tFirst = useTranslations("Settings.pricing");
   const locale = useLocale();
   const [kind, setKind] = useState<ListKind | null>(list.kind);
   const [draft, setDraft] = useState<ListDraft>(list.draft);
@@ -89,10 +96,20 @@ export function PriceListForm({
         confirmIf={() =>
           list.id && others > 0
             ? t("lists.repriceConfirm", { count: others })
-            : undefined
+            : fixesCurrency
+              ? tFirst("firstSaveConfirm", { currency })
+              : undefined
         }
         className="space-y-6"
       >
+        {canEdit && fixesCurrency && (
+          <p
+            role="note"
+            className="rounded-md border border-highlight-border bg-highlight p-3 text-sm text-highlight-foreground"
+          >
+            {tFirst("firstSaveNote", { currency })}
+          </p>
+        )}
         <fieldset disabled={!canEdit} className="min-w-0 space-y-6">
           <section className="space-y-4 rounded-lg border bg-card p-4 sm:p-5">
             <TextInput

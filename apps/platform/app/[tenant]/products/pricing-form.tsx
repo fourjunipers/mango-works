@@ -14,6 +14,7 @@ import {
   computeList,
   methodsFor,
   periods,
+  sameAsSavedDraft,
   sameEveryDayDraft,
   valueText,
   withBox,
@@ -62,6 +63,7 @@ export function PricingForm({
   currency,
   timeZone,
   canEdit,
+  fixesCurrency,
   initial,
   step,
   shared,
@@ -77,6 +79,11 @@ export function PricingForm({
   currency: string;
   timeZone: string;
   canEdit: boolean;
+  /**
+   * The shop's currency is not fixed yet, and the first price saved fixes
+   * it: the form says so and asks first, as Settings › Pricing and tax does.
+   */
+  fixesCurrency: boolean;
   initial: PricingDraft;
   /** The rounding step, minor units as a string of digits. */
   step: string;
@@ -90,6 +97,7 @@ export function PricingForm({
   pickup: string;
 }) {
   const t = useTranslations("Pricing");
+  const tFirst = useTranslations("Settings.pricing");
   const locale = useLocale();
   const [draft, setDraft] = useState<PricingDraft>(initial);
   const set = (change: Partial<PricingDraft>) =>
@@ -124,8 +132,19 @@ export function PricingForm({
         showSubmit={canEdit}
         submitDisabled={ownBlocked}
         submitLabel={t("save")}
+        confirmIf={() =>
+          fixesCurrency ? tFirst("firstSaveConfirm", { currency }) : undefined
+        }
         className="space-y-6"
       >
+        {canEdit && fixesCurrency && (
+          <p
+            role="note"
+            className="rounded-md border border-highlight-border bg-highlight p-3 text-sm text-highlight-foreground"
+          >
+            {tFirst("firstSaveNote", { currency })}
+          </p>
+        )}
         {!canEdit && (
           <p className="rounded-md border bg-muted/40 p-3 text-sm">
             {t("readOnly")}
@@ -392,7 +411,7 @@ export function PricingForm({
         timeZone={timeZone}
         currency={currency}
         pickup={pickup}
-        changed={JSON.stringify(draft) !== JSON.stringify(initial)}
+        changed={!sameAsSavedDraft(draft, initial, ctx)}
       />
     </div>
   );

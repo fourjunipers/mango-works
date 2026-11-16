@@ -136,6 +136,8 @@ The fifth build stage of pricing, of seven (`docs/products-redesign.md` §9.12, 
    - no browser test opens a duplicate's Pricing tab to show it starts empty;
    - the shared-list editor's "reads as stored" is covered by unit tests only; the browser test uses a product's own list.
 
+All of these are closed: 1 to 3 and the first two nits in stage D6, the rest in "Pricing follow-ups before Phase 2" below (16 Nov 2026).
+
 **Next:** D6, Settings: pricing and tax (rounding step, tax profiles and the default, include or exclude tax, the deposit choice, the coupons switch) and Seasons; perhaps the price lists screen moved under it.
 
 ## Products, stage D6: Settings (branch `platform/products-stage-d6-settings`, 15 Nov 2026)
@@ -307,6 +309,47 @@ Each matches the list; 45 days is the day-30 price and 15 long-stay days (April 
 
 1. The 15 scooters not on staging: nothing more to do there. At go-live, check that each is a product on live before its prices are loaded.
 2. Live gets BSR's real prices at go-live (`docs/RUNBOOK-GO-LIVE-PLATFORM.md` › Staging), not this load.
+
+## Pricing follow-ups before Phase 2 (branch `platform/pricing-follow-ups`, 16 Nov 2026)
+
+What was left open by the reviews of PR 29 (D5) and PR 30 (D6). **No migration.** Nothing on staging or live was touched.
+
+**The rounding-step browser test does catch the bug it was written for**
+
+- **PR 29's code before the fix** (`aeca494`, the commit before `f90215d`), in a scratch worktree, with the test as PR 29 wrote it (`ed0b7c8`: Saigon, the step changed in the database; the Settings screen the D6 version uses did not exist yet): **failed at both widths**, at "every day is the stored amount". Day 2 was stored as 483333 and shown as 500000 (phone) and 490000 (desktop): filled in again with the new step.
+- **The test as it is now** (`products-stage-d6.spec.ts`), on `main` with only the fix switched off (the saved values of filled days not kept on load, one line of `draftFromSaved`): **failed at both widths**, day 3 stored 670.00 and shown 660.00.
+- **On `main` as it is** (`d5a22a8`): **passed at both widths.**
+- Nothing was changed because of this. The scratch worktree is removed.
+
+**What changed**
+
+- **A first product price or a first price list warns that it fixes the shop's currency**, as Settings › Pricing and tax does: the same note on the page and the same question before the save, on a product's Pricing tab and on "New price list", while `currency_locked` is false for the shop. The same two texts (`Settings.pricing.firstSaveNote`, `firstSaveConfirm`), so no new Thai. As on Settings, the question is asked by the screen; the database's rule is unchanged.
+- **D5 follow-ups 1 to 3 and the first two nits** were closed in D6 (checked in the code: no currency check left, one money parser, draft readers, no second call, the season's sign and dates). **The rest are closed here:**
+  - Check a price says "saved or not" only when a Save would send other prices: what was typed ("300") is the saved "300.00", and a list typed in the boxes is the same list read back (`sameAsSavedDraft` in `lib/pricing-form.ts`).
+  - `formatMinor` formats an amount of up to 15 digits as a number, which every browser does exactly; only a larger one is passed as a decimal string, which needs ES2023's `Intl.NumberFormat` (Chrome 106, Safari 15.4, Firefox 116). An older browser would round such an amount on screen only.
+  - The products under a shared list are read with their list (`getSharedLists`), so the API's 1,000-row limit cannot cut the names.
+  - History reads the audit rows' before and after as text and keeps a whole number past 2^53 as its digits (`parseExactJson` in `lib/history.ts`), for a product's pricing rows, its price lists and the seasons.
+  - A browser test opens a duplicate's Pricing tab: it starts empty, and the original keeps its price.
+  - A browser test covers the shared-list editor: after the rounding step changes it shows every day as stored, a new name alone rewrites no day, and a changed box fills in again only the days around it.
+- **From the review of PR 30:**
+  - The lock-order database test polls until the product save is waiting on a lock (`pg_stat_activity`), instead of sleeping 600 ms.
+  - A stale browser-test lock file expires in 30 seconds, not 10 minutes (the waiting test's timeout is 6 minutes). The holder touches its file every 5 seconds, so a live holder is never robbed however long it runs (`e2e/file-lock.ts`, unit-tested in `tests/file-lock.test.ts`).
+  - The first-save warning test decides whether to run from the database (a settings row, or `currency_locked`), not from the page, and a skip prints why. Before, a missing note made the test skip; now it fails.
+
+**Decided here, not specified by the owner** (say if any should change)
+
+- **The warning on the Pricing tab shows for any save while the currency is open**, also one that only chooses "not priced": every save there makes the product's pricing row, and any row fixes the currency.
+- **The first-save browser test declines every question**, so it saves nothing in big-fleet and can run again on the same database. The accepted path is the ordinary save, which the other tests cover in BSR.
+- **Left as it is:** the open item of D6, whether any settings row should fix a shop's currency at all (Mark keeps it; revisit before self-serve sign-up).
+
+**Tests**
+
+- Unit: 345 on the platform (332 before; the lock file 5, `sameAsSavedDraft` 4, `formatMinor` at any size 1, audit rows read exactly 3), 290 in `@mango/core`, 202 on the marketplace. Typecheck and lint pass for every workspace, the one-pricer (money) rule included.
+- Database: 353 on the platform, all passing on a freshly reset local database (the same 353; the lock-order test changed how it waits).
+- Browser, the full suite on a freshly reset and seeded local database, 375 px and 1280 px: 140 tests, 132 passed, 7 skipped (each runs at one width only), 1 failed on a page load that timed out (`drag-reorder.spec.ts`, "the drag library is fetched in reorder mode only", phone; not touched here). Run again on its own it passed at both widths. D5 and D6 saw the same timeouts on this machine. 140 is 136 plus the duplicate test and the shared-list editor test at both widths.
+- After the run: no settings row outside BSR, no pricing row, no price list; BSR has its one settings row on the defaults.
+
+**Local set-up.** This worktree uses the stage D6 stack (`Bike_Booking_stage_d6`, ports 6032x): `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack.
 
 ## Products, stage D3: rental-period maths (branch `platform/products-stage-d3-rental-periods`, 15 Nov 2026)
 

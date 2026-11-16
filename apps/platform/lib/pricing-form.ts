@@ -503,6 +503,29 @@ export function pricingPayload(
     : { ok: true, payload };
 }
 
+/**
+ * True when the form holds what is saved: a Save would send the same
+ * prices. Compared by what would be sent, not by the text typed, so "300"
+ * is the saved "300.00", and a list typed in the boxes is the same list
+ * read back with its filled days.
+ */
+export function sameAsSavedDraft(
+  draft: PricingDraft,
+  saved: PricingDraft,
+  ctx: PricingContext,
+): boolean {
+  if (JSON.stringify(draft) === JSON.stringify(saved)) return true;
+  // Every day is compared: no "leave the list alone" shortcut here.
+  const whole = { ...ctx, savedOwn: null };
+  const now = pricingPayload(draft, whole);
+  const was = pricingPayload(saved, whole);
+  return (
+    now.ok &&
+    was.ok &&
+    JSON.stringify(now.payload) === JSON.stringify(was.payload)
+  );
+}
+
 /** Which tax choice a saved row is: not taxable, its own profile, or the shop's. */
 export function taxChoice(row: {
   taxable: boolean;

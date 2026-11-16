@@ -101,6 +101,21 @@ async function holding(marker: string) {
   throw new Error(`No session reached ${marker}`);
 }
 
+/**
+ * Waits until a session running `call` is waiting for a lock: polled, so
+ * the test neither guesses how long that takes nor reads the locks early.
+ */
+async function waitingOnLock(call: string) {
+  for (let i = 0; i < 80; i++) {
+    const { out } = sql(
+      `select count(*) from pg_stat_activity where wait_event_type = 'Lock' and query like '%${call}%' and pid <> pg_backend_pid();`,
+    );
+    if (Number(out) > 0) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error(`No session running ${call} came to wait for a lock`);
+}
+
 /** A call made as a member in a session that stays open for `seconds`. */
 function heldAs(role: Role, call: string, marker: string, seconds = 1.5) {
   const claims = JSON.stringify({
@@ -306,7 +321,8 @@ describe("lock order: the product, the price list, the tax profile, the pricing 
     })
       // A query builder sends nothing until it is awaited: start it now.
       .then((result) => result);
-    await new Promise((r) => setTimeout(r, 600));
+    // The holder keeps the profile for 5 s; the save reaches it well inside.
+    await waitingOnLock("save_product_pricing");
     const locks = (relation: string) =>
       sql(`
         select count(*) from pg_locks l

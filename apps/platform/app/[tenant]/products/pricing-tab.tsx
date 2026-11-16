@@ -1,4 +1,5 @@
 import {
+  getCurrencyLocked,
   getPricingInputs,
   getProductPricingExtras,
   getSharedLists,
@@ -40,11 +41,12 @@ export async function PricingTab({
   productId: string;
   type: ProductType;
 }) {
-  const [inputs, extras, shared, taxProfiles] = await Promise.all([
+  const [inputs, extras, shared, taxProfiles, locked] = await Promise.all([
     getPricingInputs(tenant.id, [productId]),
     getProductPricingExtras(tenant.id, productId),
     getSharedLists(tenant.id),
     getTaxProfiles(tenant.id),
+    getCurrencyLocked(tenant.id),
   ]);
   const currency = tenant.currency;
   const row = inputs.products.find((p) => p.product_id === productId);
@@ -89,6 +91,7 @@ export async function PricingTab({
       currency={currency}
       timeZone={tenant.timezone}
       canEdit={canPricing(role, "write")}
+      fixesCurrency={!locked}
       initial={initial}
       step={step}
       shared={shared.map(({ id, name, kind, hourly, days }) => ({

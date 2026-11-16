@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@mango/db/platform-server";
-import type { AuditRow } from "./history";
+import { exactAuditRows, type AuditRow } from "./history";
 import type { ListKind, ProductType, SavedList } from "./pricing-form";
 import type { PricingInputs } from "./pricing-inputs";
 import type { SharedList, TaxProfile } from "./pricing-preview";
@@ -38,33 +38,44 @@ export async function getPricingInputs(
   return data as unknown as PricingInputs;
 }
 
+/**
+ * True once the shop's currency is fixed (platform.currency_locked): it has
+ * a price, a price list, pricing settings or a vehicle's costs. Until then
+ * the first pricing save of any kind fixes it, and each screen asks first.
+ */
+export async function getCurrencyLocked(tenantId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("currency_locked", {
+    p_tenant_id: tenantId,
+  });
+  if (error) throw error;
+  return data === true;
+}
+
 export type ListSummary = SharedList & {
   /** How many products are priced from it. */
   products: { id: string; name: string }[];
   updated_at: string;
 };
 
-/** The shop's shared price lists, with their days and the products on each. */
+/**
+ * The shop's shared price lists, with their days and the products on each.
+ * Both are read with their list (embedded reads), so the API's row limit
+ * can cut neither a list's days nor the names under it, however many
+ * products the shop prices.
+ */
 export async function getSharedLists(tenantId: string): Promise<ListSummary[]> {
   const supabase = await createClient();
-  const [lists, users] = await Promise.all([
-    supabase
-      .from("price_templates")
-      .select(
-        "id, name, kind, hourly::text, updated_at, price_template_days(day, value::text)",
-      )
-      .eq("tenant_id", tenantId)
-      .is("product_id", null)
-      .order("name"),
-    supabase
-      .from("product_pricing")
-      .select("price_template_id, products!inner(id, name)")
-      .eq("tenant_id", tenantId)
-      .not("price_template_id", "is", null),
-  ]);
-  if (lists.error) throw lists.error;
-  if (users.error) throw users.error;
-  return lists.data.map((list) => ({
+  const { data, error } = await supabase
+    .from("price_templates")
+    .select(
+      "id, name, kind, hourly::text, updated_at, price_template_days(day, value::text), product_pricing(products!inner(id, name))",
+    )
+    .eq("tenant_id", tenantId)
+    .is("product_id", null)
+    .order("name");
+  if (error) throw error;
+  return data.map((list) => ({
     id: list.id,
     name: list.name,
     kind: list.kind as ListKind,
@@ -73,8 +84,7 @@ export async function getSharedLists(tenantId: string): Promise<ListSummary[]> {
     days: [...list.price_template_days]
       .sort((a, b) => a.day - b.day)
       .map((d) => d.value),
-    products: users.data
-      .filter((u) => u.price_template_id === list.id)
+    products: list.product_pricing
       .map((u) => {
         const product = u.products as unknown as { id: string; name: string };
         return { id: product.id, name: product.name };
@@ -171,7 +181,10 @@ export async function getProductPricingExtras(
   };
 }
 
-const auditColumns = "id, entity, entity_id, action, actor, before, after, at";
+// before and after as text, parsed by exactAuditRows: an amount of any size
+// reaches the History as its digits, never as a rounded JSON number.
+const auditColumns =
+  "id, entity, entity_id, action, actor, before::text, after::text, at";
 
 /**
  * The audit rows behind a product's price lines (owners and managers, by
@@ -220,11 +233,13 @@ export async function getPricingAudit(
           .limit(limit);
   if (ownRows.error) throw ownRows.error;
   const seen = new Set<number>();
-  return [...own.data, ...ownRows.data, ...shared.data].filter((row) => {
-    if (seen.has(row.id)) return false;
-    seen.add(row.id);
-    return true;
-  });
+  return exactAuditRows(
+    [...own.data, ...ownRows.data, ...shared.data].filter((row) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    }),
+  );
 }
 
 /**
@@ -243,7 +258,7 @@ export async function getSeasonAudit(tenantId: string): Promise<AuditRow[]> {
     .order("id")
     .limit(1000);
   if (error) throw error;
-  return data;
+  return exactAuditRows(data);
 }
 
 /** Names and kinds of the shop's lists, shared and own, for History lines. */
