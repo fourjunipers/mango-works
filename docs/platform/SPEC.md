@@ -1,6 +1,6 @@
 # Vehicle Rental SaaS — Spec & Build Plan
 
-Nov 8, 2026 · @Mark
+Nov 16, 2026 · @Mark
 
 ## Verdict
 
@@ -38,7 +38,7 @@ This inventory comes from Booqable's [pricing and feature comparison](https://ww
 | Real-time stock, unique item tracking | Improve. Every vehicle is a unit with plate, VIN, docs and odometer | 1 |
 | Buffer time | Match. Per model, before and after | 2 |
 | Downtime scheduling | Improve. Linked to maintenance jobs and service-due alerts | 1 |
-| Sub-rentals / temporary stock | Match. Borrowed units with an active-from/to window | 1 |
+| Sub-rentals / temporary stock | Dropped (11 Nov 2026): borrowed units (sub-rentals) are not needed | 1 |
 | Overbooking / shortage flags | Match, as a shop setting (off by default). Shortage warning on the order and dashboard | 3 |
 | Multi-location | Match. Locations per tenant; transfers between shops | 11 |
 | Barcode scanning | Improve. QR sticker per vehicle, scanned with the phone camera | 5 |
@@ -78,7 +78,7 @@ This is a multi-tenant SaaS: each rental shop signs up, gets its own workspace, 
 
 **Vehicle types:** motorbikes/scooters first, then cars. Per-model specs come from a vehicle-type template (bike: cc, ABS, keyless; car: seats, transmission, fuel type), so new types need no new code.
 
-**Out of scope for v1:** native iOS/Android apps, processors other than Stripe, accounting sync, AI assistant. All are listed under Later in the build plan.
+**Out of scope for v1:** native iOS/Android apps, processors other than Stripe, accounting sync, an AI assistant that acts on bookings (the read-only support assistant is in scope, see Support assistant and support chat). All are listed under Later in the build plan.
 
 **How it connects to the Bike-Booking marketplace: one platform, two front doors.** Rather than syncing two separate systems, the marketplace becomes a customer-facing site that runs on this platform's data.
 
@@ -220,9 +220,34 @@ A market is a place Moto Mangos operates: a city or region, or a whole country. 
 - Settings pass down: a city uses its country's setting unless it sets its own. Referrals are on or off per market from the start: off means no partner QR codes and no new earnings there, while earnings already made are still paid. A country's referrals go on only after a check of local rules on paying partners (tax withholding, payout method). Ranking and promotions use one global setup in v1, with per-market overrides later.
 - Rollout order: Bangkok, Chiang Mai, all of Thailand, Vietnam, Japan. Each new country needs its currency, languages, a payment-provider check, a privacy review and a local landmark list.
 
-**Moto Mangos search by transmission and engine size.** Renters filter by transmission (automatic, semi-automatic, manual) and engine size in cc bands (under 125, 125–160, 160–300, over 300), alongside vehicle type, price, area and dates. Both values come from the vehicle catalog entry each model links to. A model can't be saved without a catalog entry, so cc and transmission are always filled in; a missing catalog entry goes to the platform admin for approval.
+**Moto Mangos search by transmission and engine size.** Renters filter by transmission (automatic, semi-automatic, manual) and engine size in cc bands (under 125, 125–160, 160–300, over 300), alongside vehicle type, price, area and dates. Both values come from the model's own cc and transmission fields, which every model has whether or not it links to a catalog entry. Only models linked to an approved catalog entry can be listed on Moto Mangos.
 
 **When it's built.** Markets arrive with the marketplace adapter switch after Phase 3, as a marketplace-owned table; until then the site is Bangkok-only. Bike-Booking stores whole baht today and moves to minor units at the same switch. packages/core's Bangkok-only time helpers take a time-zone argument in Phase 2.
+
+**Moto Mangos ranking and vendor billing (decided 15 Nov 2026; designed now, built once Bangkok has several competing shops).** Search results are ordered by a ranking score. The customer's booking fee stays the same at every shop, and a shop can never buy a higher rank by paying a bigger booking fee. Three layers:
+
+| Layer | What it does | Who pays |
+| --- | --- | --- |
+| 1. Quality score | Orders every shop from measured quality | Free for all shops |
+| 2. Featured placement | A limited number of slots per area, labelled "Featured" or "Sponsored"; also a badge and priority in the "ride today" results | The shop, billed separately from any booking |
+| 3. Connected-shop bonus | Shops whose availability is live in the platform rank higher | Included in a higher platform plan |
+
+**Quality score inputs.** Google rating and review count; share of requests accepted and reply speed; cancellations made by the shop; completed bookings; listing completeness (real photos, clear inclusions); a verified-business badge (instead of raw years in business, so a good new shop is not buried). The admin override already planned stays on top.
+
+**Rules for paid placement.**
+
+- Slots are limited per area and always labelled, so customers can tell paid from earned.
+- A shop needs a minimum quality score to buy a slot, so money cannot put a poor shop at the top.
+- A boost has a start and an end date and is paid for before it starts.
+- Admins see why each shop ranks where it does (score inputs, admin adjustment, boost, with a reason log).
+
+**Billing vendors (no card needed).** Moto Mangos takes only the customer's booking fee, so vendor charges are a separate invoice from Mango Works to the shop.
+
+- **Pay by PromptPay QR or bank transfer, as well as card.** Each invoice shows a QR with the amount and an invoice reference. Preferred route: Stripe's PromptPay payment, which marks the invoice paid automatically (to confirm it is available on Mango Works' Stripe account; Omise is the fallback).
+- **Manual route.** For a plain bank transfer, finance marks the invoice paid, with the slip image and the date attached. Every payment records its method, amount, date and who recorded it.
+- **Prepaid credits for boosts.** A shop tops up a balance by QR and boosts draw it down, so there is no invoice to chase. Subscription plans are invoiced monthly; unpaid after a grace period pauses the paid features only, never bookings.
+- **Withholding tax.** A shop that is a company may pay 3% less and send a withholding certificate. The payment record has a "paid net of withholding" option; confirmed by Korn, and only for vendors that are businesses.
+- **Tax documents.** Every vendor payment gets its own tax invoice; a refund to a vendor gets a credit note.
 
 ## Data model
 
@@ -234,8 +259,8 @@ The core idea: renters book a **model** (e.g. Honda PCX 160). Staff assign a spe
 | memberships | tenant\_id, user\_id, role (owner, manager, staff, mechanic, driver) | Users can belong to several tenants |
 | locations | name, address, geo, opening\_hours, is\_default | Multi-location later; one by default |
 | vehicle\_types | name, spec\_schema (JSON schema). Platform-wide vehicle\_catalog table (no tenant\_id): make, model, year\_from, year\_to, cc, type, transmission, abs, underseat\_storage, usb\_charger, key\_type, stock photo, approved | Motorbike, car; drives spec fields |
-| models | type\_id, catalog\_id, instant\_units, request\_units, walkin\_only\_units, ready\_now, ready\_updated\_at, inclusions\_override, make, model, year, cc, specs (JSON), photos, description, buffer\_before, buffer\_after, deposit, min\_age, licence\_class, bookable\_online | What renters see |
-| units | model\_id, location\_id, plate, frame\_number (VIN), engine\_number, colour, first\_registered, keys (list: type, number, spares), current\_odometer, avg\_daily\_km, status (active, maintenance, retired, sold, borrowed), active\_from, active\_to, qr\_code, purchase\_date, purchase\_price, purchased\_from, sold\_at, sale\_price, sold\_to | Each real vehicle |
+| models | type\_id, catalog\_id (optional), instant\_units, request\_units, walkin\_only\_units, ready\_now, ready\_updated\_at, inclusions\_override, make, model, year, cc, specs (JSON), photos, description, buffer\_before, buffer\_after, deposit, min\_age, licence\_class, bookable\_online | What renters see |
+| units | model\_id, location\_id, plate, frame\_number (VIN), engine\_number, colour, model\_year, keys (list: type, number, spares), current\_odometer, avg\_daily\_km, status (active, maintenance, retired, sold), road\_tax\_expires\_at, insurance\_expires\_at (the expiry of the latest renewal record of each kind), qr\_code, purchase\_date, purchase\_price, purchased\_from, sold\_at, sale\_price, sold\_to | Each real vehicle |
 | unit\_renewals | unit\_id, kind (registration, compulsory\_insurance, voluntary\_insurance, road\_tax, inspection), provider, reference\_no, cost, starts\_at, expires\_at, file, recorded\_by | Full renewal history; latest per kind = current; drives reminders |
 | maintenance\_jobs | unit\_id, tasks (from schedule or custom), odometer, opened\_at, closed\_at, parts\_cost, labour\_cost, done\_by (staff or garage), receipt\_file, notes, blocks\_availability | The maintenance log; can create a downtime block |
 | service\_schedules | model\_id or unit\_id, task, every\_km, every\_days, warn\_km, warn\_days, blocks\_when\_overdue | Unit row overrides the model template; next due computed from the last job with that task |
@@ -299,9 +324,20 @@ The full admin (settings, pricing, reports, fleet setup) stays in the desktop we
 
 ### Fleet
 
-- Models with photos, buffers, deposit, minimum age, licence class, online-bookable toggle. Each model links to a platform-wide vehicle catalog entry (make, model, years, cc, type, transmission, ABS, under-seat storage, USB, key type, stock photo) that the platform admin approves; shops pick an entry and add their own photos. Booking modes per model: its quantity is split into Instant units, Request units and walk-in-only units, plus a "ready for walk-ins" count staff update from the app.
-- Units with plate, frame (chassis/VIN) number, engine number, colour, first registration date, odometer, location and status (active, maintenance, retired, sold, borrowed). A QR sticker is generated per unit and printed from the unit page.
-- Borrowed units (sub-rentals) with an active window. Retired and sold units keep their full history.
+- Models with photos, buffers, deposit, minimum age, licence class, online-bookable toggle. A model can optionally link to a platform-wide vehicle catalog entry (make, model, years, cc, type, transmission, ABS, under-seat storage, USB, key type, stock photo) that the platform admin approves. Presets are offered first and fill the specs; a shop can instead enter any make, model and vehicle type freely, with no approval, and still captures vehicle type, cc and transmission. Shops add their own photos either way. To list a model on Moto Mangos, the shop picks the matching catalog entry (close matches are suggested) or submits it to the platform admin, who approves it or merges it into an existing entry. Booking modes per model: its quantity is split into Instant units, Request units and walk-in-only units, plus a "ready for walk-ins" count staff update from the app.
+- Units with plate, frame (chassis/VIN) number, engine number, colour, model year, odometer, location and status (active, maintenance, retired, sold). A QR sticker is generated per unit and printed from the unit page.
+- Retired and sold units keep their full history.
+- Fleet page (decided 11 Nov 2026): bikes are grouped by model by default, each group showing a count and a status breakdown and opening with a down arrow to list its individual bikes (plate, odometer, status, location). Expand all and collapse all buttons. Group by can be changed to make, location, status or none (flat list). Filters: make, model, cc range, transmission, status, location, year, plate search. Sort by make and model, cc, bike count, plate, odometer, purchase date or next service due. Each user's last view is remembered.
+- Anywhere a model is chosen: two linked dropdowns, make first (Honda, Yamaha), then model (ADV160, Click, Scoopy), from the platform catalog presets, with "add my own" as the secondary path for a shop's own make or model (duplicates within a shop are blocked, ignoring case and spacing).
+- Fleet buttons, one job each (12 Nov 2026). "+ Make & model" at the top of the Fleet page creates the kind of vehicle: make, model, category and rental settings. "+ Add to inventory" above the list only adds a vehicle's own details (plate, frame number, colour, year, location) to an existing make and model; it never creates a model, and if the model is missing it links to "+ Make & model" and returns. Each model row has a (+) left of the expand arrow that opens the inventory form with that model already chosen. "Bike" becomes "vehicle" everywhere in the platform; the Moto Mangos panel keeps saying motorbikes.
+- Kind and category on the model (12 Nov 2026). The first choice on "+ Make & model" is the kind: Motorbike, Car, Off-road, Boat or jet ski (plus Other as a catch-all), and the form below changes to fit; the Fleet list can filter by the same kinds. Each kind has its own category list, required for motorbikes and cars: Motorbike (scooter, touring, adventure, sport, classic, off-road), Car (sedan, SUV, pickup, van, hatchback, convertible), Off-road (ATV, UTV), Boat or jet ski (jet ski, speedboat, pontoon). The category is asked once on the model, so it serves the shop's own booking page and Moto Mangos. Dirt bikes are motorbikes, category off-road. Car, off-road and boat lists are first guesses the owner can change.
+- Moto Mangos card (12 Nov 2026). On a motorbike model's form a small Moto Mangos card shows the review status (on the list, waiting, not added with the reviewer's note, not sent). The "List on Moto Mangos" toggle stays on the model's page until Phase 3, because listing also needs photos, prices and the shop-level opt-in. The shop is told about a review result by a dashboard item and a marker on the model in the Fleet list; email and LINE come with Phases 3 and 6.
+- Odometer lower than the current reading: no refusal for any role. A confirmation asks "Are you sure? This is lower than the current reading", and the change is recorded in the audit log with who made it.
+- Status and selling: one status control per bike (active, maintenance, retired, sold), with a short explanation of what each does to availability. Mark as sold is the only way to set sold: it asks for the date, price and buyer, and the purchase and sale details below are then read-only.
+- Model year groups (decided 11 Nov 2026): inside a model, bikes are grouped into year bands, newest first, for example Honda PCX 2024-2026, then 2020-2023, then 2014-2019. Each bike has a model year, and each shop edits its own bands per model. Bikes with no model year sit in an "Unknown year" band. The first registration date is removed.
+- Road tax and insurance: each bike shows its road tax expiry and insurance expiry, taken from the latest renewal record of each kind. Reminder timing is each shop's own setting: days before expiry (for example 30 and 15), and optionally a monthly digest on a chosen day.
+- Sticker sheet: choose bikes to print from a list that can be filtered by make and model and sorted by most recently added.
+- Purchase price, sale price and the other purchase and sale details appear only in one section at the bottom of the bike page, which is where they are viewed, edited and saved. Mark as sold only changes the status (with the check against future bookings).
 
 **Distance unit.** Each shop picks km or miles in settings. Odometer readings, service intervals and km allowances are stored in km and shown in the shop's unit. Every maintenance job records both the date and the odometer reading.
 
@@ -317,10 +353,12 @@ The full admin (settings, pricing, reports, fleet setup) stays in the desktop we
 - **Maintenance notifications:** due soon (e.g. 300 km or 7 days before), due, and overdue. Alerts go to the dashboard, the mechanic's to-do list and LINE. At check-out, staff see a warning such as "oil change due in 120 km". Overdue tasks can be set to block the unit.
 - **Bikes out on long rentals:** km can't be read while the bike is away, so time-based tasks still run. When one comes due, staff get a follow-up task to contact the customer and arrange the service.
 - **Tax and insurance log:** every renewal is a record: type (compulsory insurance (พ.ร.บ.), voluntary insurance, road tax, inspection), provider, policy or receipt number, cost, start date, expiry date and document photo. The full history is kept; the latest record of each type is the current one.
-- **Renewal reminders:** to the owner/manager by LINE and on the dashboard at 45, 30, 14 and 7 days before expiry (editable), then daily once expired. Expired units are blocked from new pickups unless a manager overrides with a reason. The renewal task shows the steps in order: inspection where required, then compulsory insurance, then road tax.
+- **Renewal reminders:** to the owner/manager by LINE and on the dashboard at 45, 30, 14 and 7 days before expiry (editable), then daily once expired. Each shop sets its own schedule: any list of days before expiry, and optionally a monthly digest on a chosen day (for example the 1st) that lists everything expiring that month. Expired units are blocked from new pickups unless a manager overrides with a reason. The renewal task shows the steps in order: inspection where required, then compulsory insurance, then road tax.
 - **Unit timeline:** every order, odometer reading, service job, renewal and cost on one scrolling history.
 
 ### Pricing
+
+**As built (16 Nov 2026):** see [Products redesign and pricing](#m08qt0krryj.112583). The bullets below are the original spec, kept for history. Where they differ, the as-built rules win: the price-per-day mode is dropped, rentals over 30 days run month to month with a long-stay rate, VAT is worked out per invoice, and deposits follow the shop's deposit setting.
 
 - Price structure per model: a total price for every length from 1 to 30 days. The shop enters anchors (1 and 30 days required; 7, 14 and 21 optional), the days between fill at equal steps rounded to ฿10, and any single day can be edited. Hourly rates are optional. Beyond 30 days there is no separate rate: every day costs the 30-day total ÷ 30, so total = round(30-day total × days ÷ 30) to the nearest baht. Example with ฿5,500 for 30 days: 45 days = ฿8,250, 2 months = ฿11,000, 3 months = ฿16,500. A rental day is every started 24 hours from pickup time. This platform owns all pricing and availability rules; the marketplace only shows what the API returns.
 - **Two pricing modes; each model uses one (price\_structures.mode).** *Total-price table*: as above, anchors at 1, 7, 14, 21 and 30 days with the days between filled in and editable. *Price per day*: the shop enters three daily rates: 1–6 days, 7+ days and 28+ days. The whole rental is charged at the rate for its length (10 days = 10 × the 7+ rate; 40 days = 40 × the 28+ rate). Hourly rates, season and weekday rules, extras and coupons work the same in both modes.
@@ -451,8 +489,8 @@ These came from an independent review of the plan after Phase 0. They are bindin
 
 **Build order.** 0 → 1a → 2 → 3 → 3M → 1b → 4 onward. Phase 1 is split in two:
 
-- **1a Fleet core:** locations, catalog link, models, units, CSV import, QR stickers, unit blocks (downtime), the audit table, and the legacy-table mapping.
-- **1b Fleet care:** maintenance log, service schedules, odometer alerts, tax and insurance renewals, keys, GPS, unit timeline, profit per vehicle. It runs after Phase 3, because profit needs orders and payments.
+- **1a Fleet core:** locations, optional catalog link, models, units, CSV import, QR stickers, unit blocks (downtime), the audit table, and the legacy-table mapping.
+- **1b Fleet care:** maintenance log, service schedules, odometer alerts, tax and insurance renewals, keys, GPS, unit timeline, profit per vehicle. It runs after Phase 3, because profit needs orders and payments. Update 11 Nov 2026: the tax and insurance renewal records, expiry dates and reminder settings were built in Phase 1a with dashboard reminders and a queue for the messages. Nothing sends yet: email arrives with Phase 3 and LINE with Phase 6.
 - **3M Marketplace switch:** a named phase for the adapter switch (marketplace\_api functions, createBooking, markets table, baht to minor units, dropping legacy tables). Accept: search results identical before and after on a seeded dataset; two parallel marketplace bookings for the last bike give one success.
 - **Phase 3 also gets** the basic customer record, the payments ledger with cash and transfer recording, and the jobs + outbox + email plumbing. Phase 4 keeps KYC, Phase 6 templates and LINE, Phase 7 card payments.
 - **Before Gate A** (pulled forward from Phase 11): team invites, enforced 2FA for owners, managers and anyone with document access, and a session list. Website templates and the public API move past Gate B.
@@ -470,7 +508,13 @@ These came from an independent review of the plan after Phase 0. They are bindin
 
 **Pricing (settle before Phase 2).** Never charge more for fewer days: in price-per-day mode each total is capped at the next tier's lowest total, and in table mode totals never fall as days rise. Days count in the shop's local wall-clock time. TypeScript quote() is the only pricer; the marketplace's SQL pricing copy is retired at 3M. Orders store a quote snapshot. Tax is stored per order line; rounding step is a setting with a default per currency. Worked examples for season rules, extensions, early returns and rentals past 30 days go in the spec before Phase 2 and become its tests.
 
+**Pricing update (16 Nov 2026).** Settled and built in Stage D: the price-per-day mode is dropped (every list is totals for days 1–30), tax is worked out once per invoice and rate instead of per line, and orders will snapshot their prices and tax from Phase 2. Details in Products redesign and pricing.
+
 **Payments.** Provider-neutral from the start of the schema (before Phase 3): payment\_accounts (tenant, provider, external id, capabilities) and payments.provider + provider\_ref, an append-only payments ledger, and a webhook\_events table unique on provider + event id. Features switch on capabilities (hold, save card, partial refund, platform fee). Goal: support the major payment providers in each country; Stripe and PromptPay first for Thailand. The Moto Mangos booking fee is charged fee-only on Moto Mangos' own account (as in INTEGRATION), not as a Connect platform fee. Stripe's written answers on Thai Connect limits come before Phase 2. Tap to Pay moves to Later (needs a native app; Stripe Terminal doesn't serve Thailand).
+
+**Stripe in Thailand (Stripe's answers, 10 Nov 2026).** Shops get their own connected accounts through Stripe-hosted Connect Onboarding (Accounts v2 or controller properties; Stripe liable for negative balances; the shop pays processing and dispute fees). Payments are direct charges on the shop's account. A Thai platform can't take an application fee from Thai shops, so Mango Works earns through its subscription (Stripe Billing), and the Moto Mangos booking fee is charged on Moto Mangos' own account. Stripe keeps its fee on refunds (cards 3.65% + ฿10 domestic, 4.75% + ฿10 foreign; PromptPay 1.65%).
+
+**When the renter pays.** Moto Mangos bookings: free cancellation until 72 hours before pickup. At booking the card is saved with explicit consent (checkbox, terms stating timing and amount; recorded); it is charged off-session 72 hours before pickup (unscheduled), and monthly for long-term rentals (recurring). Bookings made within 72 hours are charged at booking. PromptPay can't be charged later, so PromptPay bookings pay in full at booking. **Deposit:** for a shop's own bookings (booking page, staff app), each shop picks a security deposit mode: (1) none; (2) a percentage of the order total, including or excluding the deposit amount; (3) per-model deposits set on each model; (4) a fixed amount per order. Every card payment, deposit or not, can be charged or authorized. An authorization carries an at-expiry action chosen by staff (shop default, per-order override): release, or capture shortly before the hold's capture\_before time (about 7 days). Staff can capture or release by hand at any time before then. A captured deposit that is later refunded loses Stripe's fee; the shop is told this in settings. If Stripe grants extended authorisation (requires removing Link as a payment method), holds can last up to about 30 days. Cash deposits stay outside revenue in the cash close.
 
 **Hosting and data.**
 
@@ -480,6 +524,136 @@ These came from an independent review of the plan after Phase 0. They are bindin
 - The shop Google Drive document option is deferred until after Gate B. A 'download all my files' export covers data ownership instead.
 
 **Kickoff prompt additions.** Each phase lists any acceptance check it could not truly test, ships a fixture row per tenant for every new table, and records server response time per page in PROGRESS.
+
+## Support assistant and support chat
+
+Every shop user gets a help button in the staff app and admin. It opens a search over our help articles, then an AI assistant that answers from them, and hands over to a person when it can't. It is in all tiers and ships before the first outside shop signs up (Gate A). Moto Mangos renters get the same engine later.
+
+Built in two steps on the same search. Step 1: article search plus hand-over to a person, with no AI cost. Step 2: an AI answer written from the matching articles, added once step 1 works. The articles carry most of the value, so they are written to be thorough enough that plain search alone answers most questions.
+
+- **Knowledge base:** help articles are Markdown files in the repo (English and Thai), split into chunks and stored with embeddings in Supabase (pgvector). One article per task and per setting, in the wording shops use. Each phase ships its articles with its code, written against the real screens (Opus drafts; Fable checks the pricing, tax and payment articles); Mark approves. Every answer links the article it came from.
+- **Answers only from the articles.** If nothing relevant is found, the assistant says so and offers a person. It never guesses about prices, tax, legal or payment questions.
+- **Read-only in v1.** The assistant can't change bookings, see customer data or take actions. It knows only the shop's plan, language and the page the user is on. Input is treated as untrusted (prompt injection), and card numbers or passwords typed into the chat are masked before storing.
+- **Cost control:** AI is used only for step 2's final answer, with a small, fast model and prompt caching. Search and hand-over cost nothing. A per-shop daily message limit and a monthly spend cap with an alert stop runaway use; at a cap the chat falls back to search only.
+- **Hand-over:** a "Talk to a person" button shows from the first reply, and the assistant offers it itself after a thumbs-down, two unhelpful answers or low retrieval confidence.
+- **Two request types:** Question, or Bug report. A bug report is pre-filled with the transcript, page, app version, shop, user, browser and the latest Sentry error id, plus an optional screenshot.
+- **Human side:** requests land in a platform support table with status (new, open, waiting on shop, solved). Mark gets an email for each new one (LINE later). Replies appear in the same chat thread and are also emailed. Support hours and expected reply time are shown in the chat.
+- **Learning loop:** unanswered questions and thumbs-downs are logged weekly so articles can be added or fixed.
+- **Data:** support tables live in the `platform` schema with RLS. A shop sees only its own conversations, and only platform admins see all. Transcripts follow the retention rules in the privacy review.
+
+This changes nothing in Phase 1a.
+
+## Booqable reference (broad pass, 11 Nov 2026)
+
+This is what a read-only walkthrough of BSR's own Booqable account showed, used as a reference for layout and flow only. Nothing was changed there, and customer details were not recorded. A closer pass is made before each phase.
+
+| Area | How Booqable does it | Our plan |
+| --- | --- | --- |
+| Navigation | Left sidebar: New order, Dashboard, Calendar, Orders, Customers, Inventory, Coupons, Documents, Online store, Apps, Reports; Settings, Help and barcode scan at the bottom | Same idea; no Coupons |
+| Dashboard | Two lists, "Going out" and "Coming back", each with a late link; notes panel on the right | Four tabs, each item shown once (see Staff app) |
+| Calendar | Timeline with one row per product, orders as bars; day, week and month views; "Check availability" button; calendar subscribe | To check: availability checker and calendar feed |
+| Orders list | Filters for status and payment status; tags; summary tiles (orders, items, revenue, due); "Late" and "With shortage" tabs; export | Shortage filter already in spec, now extended to bikes that become unavailable after booking; summary tiles not needed |
+| Order page | Customer, custom fields, pickup and return period, product lines with availability, totals with VAT shown, security deposit line; side panel with email, documents, invoices, payments, tags, notes; one button to return | To compare when Phase 3 is prepared |
+| Inventory | Products, Bundles, Collections and Downtime tabs; filters by type, tax profile, pricing template, price ruleset; each product has Inventory, Variations, Pricing, Settings, Online store, History, Downtime tabs; stock items are the real units | Per-unit tracking and downtime are in; bundles and collections are out |
+| Pricing | Pricing structure templates (for example a daily or monthly rate), price rulesets for seasons, per-product deposit value | Covered by Phase 2 pricing rules |
+| Security deposit | Account default: none, percentage of order total, per-product deposit (with a percentage), or fixed amount; can be overridden per customer or order; "authorize instead of charge" is offered only for manual payments | Same four modes. We also offer authorize for card payments inside the app. |
+| Payments | Stripe connection with an option to extend authorization holds to 30 days (needs Interchange Plus pricing) | Same finding as our Stripe check |
+| Rental period | Three modes (dates and times, fixed durations, fixed time slots), operating hours by weekday or weekend, time intervals, away mode, default order times | Fixed durations and time slots added (decided); away mode was already in the shop booking rules |
+| Online booking | Booking page, website builder, website embed, cross-sell, checkout and SEO settings, pickup or delivery choice, delivery countries; delivery itself is an add-on app | Booking page in Phase 4; delivery bands already specced |
+| Documents | Invoices (including pro forma), contracts, quotes; invoice list with paid and due tiles | Invoices and contracts yes; no quotes |
+| Reports | Company performance, product performance, availability, product fulfilment, customer, activity log, background tasks | To check against our reports list; the activity log is our audit table |
+| Settings | Company info, regional settings, custom labels, taxes, locations, emails, translations, security (2FA for all users, new-device email confirmation, IP limits, single sign-on) | To check: owner-enforced 2FA and new-device confirmation |
+
+**Things worth adding to the spec (to decide):**
+
+- Decided: two-factor sign-in is optional. Each user can turn it on, and an owner can choose to require it for the shop. Off by default.
+- A "With shortage" view for orders that can't be fulfilled. Decided: the shortage flag already in the spec (overbooking, when a shop allows it) also covers a valid booking that later can't be fulfilled because its bike went into unplanned downtime or was lost, sold or written off. It shows on the order, in the order list filter and on the dashboard. The system still refuses to double-book by default.
+- Not needed: no background-jobs page. The fleet CSV import and any export just show a result message when they finish.
+- Decided: fixed rental durations and time slots as optional rental-period modes, set per shop.
+- Away mode already exists in the shop booking rules; no change needed.
+- Not needed: summary tiles above the order list.
+
+Booqable's look, wording and artwork are not copied.
+
+## Competitor reference: Byklo (11 Nov 2026)
+
+Byklo (byklo.rent) is the closest competitor to Moto Mangos, for shops that already run their own software; it is not seen as a competitor to the management program. This is from its public pages only; the figures are Byklo's own claims and are unverified. No booking was started. A closer comparison is made when Moto Mangos is designed.
+
+| Area | What Byklo does | Note for us |
+| --- | --- | --- |
+| Scale (claimed) | 3,000+ bikes, 200+ shops, 15+ cities, 4.8 rating from 30,000+ reviews | The supply we are competing with |
+| Search | Location and date picker, then a list beside a map with price pins; quick Small, Medium and Big buttons; filter by price, engine size and cc, brand and transmission | Matches our planned search filters |
+| Listing | Model, cc, transmission, "multiple bikes" note (same model, colour and year may vary), free cancellation, unlimited mileage, helmets, deposit, delivery, insurance level, shop rating; shop address hidden until the booking is paid | Hiding the address protects against renters going direct. Worth copying. |
+| Price display | Day price with the standard price struck through; a monthly discount line in the total | Fits our pricing rules |
+| Payment | Renter pays a small reservation fee online (about 10% of the undiscounted rental in the example seen); the rest and the deposit are paid in cash at the shop. The deposit seen was 8,000 baht in cash plus the passport. | Different from ours: we charge the renter's card 3 days before pickup |
+| Shop side | Shops approve every booking by one tap in LINE or on the web; no bank account or company needed; shop sets its own price and deposit | Low barrier for small shops; no card handling for them |
+| Money model (claimed) | 0% commission to shops; Byklo earns a reservation fee from the renter; ads paid by Byklo | We earn from the platform subscription instead |
+| Free software | Calendar, price groups (one price for a group of bikes), staff accounts and LINE notifications, free | Free software caps what shops will pay for basic features; our value must come from depth: per-unit records, maintenance, finances, documents |
+| Cancellation | Free up to 7 days before pickup (the FAQ says 1 to 7 days) | Ours: free until 72 hours before pickup |
+| Reviews | Reviews are shown at shop level on every listing, including reviews of other models | We can do better with per-model reviews |
+
+**Ideas to consider (not decided):**
+
+- A "reserve with a small deposit, rest at the shop" option for shops that don't want card payments, alongside the full card flow.
+- A shop-approval step before a booking is confirmed (optional per shop).
+- LINE notifications for new bookings and staff alerts.
+- Hide the shop's exact address until the booking is paid.
+
+Byklo's look, wording and artwork are not copied.
+
+**Byklo shop side** (BSR's own approved but not yet activated shop account, viewed read-only; nothing was changed):
+
+| Screen | What it holds | Note for us |
+| --- | --- | --- |
+| Getting started | A short checklist: create price groups, add bikes, connect LINE, activate the shop | A good model for our own sign-up checklist |
+| Bookings and Requests | A month calendar with the day's bookings, a manual "Add booking" button, and a separate list of new requests to accept or decline | Shows how little a shop must do: accept or decline |
+| Messages | One inbox of renter conversations | Our support chat is separate; a renter-to-shop thread may be needed for Moto Mangos |
+| Bikes | Cards with photo, model and price group; "Single bike" or "Multiple bikes" (identical bikes are only a count); an available switch per card | Weaker than our per-unit records (plates, odometer, maintenance) |
+| Pricing | One price group per model family: a price per day, a price for 7+ days and one for 28+ days; delivery prices by distance (0-3, 4-9, 10-29 and 30+ km, each switchable); deposit type and amount; minimum rental days; included extras (helmets, full tank, unlimited mileage) | Close to our rate tiers and delivery bands, which we do per model and per period |
+| Business profile | Name, address, phone, opening hours, team members, LINE and WhatsApp contacts, and a refund policy set as days before pickup for a full refund | Simple; our booking rules are richer |
+| Reviews and history | Reviews of the shop and a list of past rentals | Starts empty for a new shop |
+
+What this tells us: Byklo is built to be a lead source with a very light shop workflow, not a management system. Shops that want to run the whole business (fleet records, maintenance, payments, documents) still need software like ours.
+
+## Products redesign and pricing (as built)
+
+Stage D of the products redesign is merged as of 16 Nov 2026: one Products list, price lists, a Pricing tab on every product and pricing Settings. It is on staging (60 of 60 migrations); live is untouched at 53 of 53. The full design and decisions 1–29 are in `docs/products-redesign.md`; where it differs from this spec, it wins.
+
+**What the redesign changed**
+
+- One `products` table, renamed from `models`, with a type: vehicle, rental gear, item for sale, or service and extra. No preset products; names are free text.
+- No make or model on platform screens: a product is known by its name. Make, model, engine size, transmission and year are asked only when a motorbike is sent to Moto Mangos.
+- Gear counted by quantity is stored as nameless unit rows, so one availability lock covers vehicles and gear. A gear unit is In use, Damaged or Lost.
+- Moto Mangos settings sit in their own table (`product_listings`): Instant, Request and Walk-in counts, and a lead time in hours.
+- Prices sit in `product_pricing`, which mechanics and drivers can't read. Staff read prices but can't change them.
+
+**Stage D build**
+
+| Stage | What was built | PR |
+| --- | --- | --- |
+| D7 | BSR's four price lists (300–3000, 350–3500, 400–4000, 500–5400) and per-vehicle deposits loaded on staging, with test prices on 10 scooters; load script for go-live | 32 |
+| D6 | Settings › Pricing and tax, Seasons, Price lists; deposit modes; per-currency rounding defaults; a tax profile in use can't be archived (migration) | 30, 31 |
+| D5 | Pricing tab on every product, Check a price, Price lists screen, price on each Products row, History lines | 29 |
+| D1–D4 | The pricer and rental-period maths in `@mango/core`, the pricing tables and save functions, deposit moved into pricing | 24–27 |
+
+**Pricing rules in force**
+
+- **Methods by type:** vehicles by rental length or flat fee; gear by rental length, flat fee or fixed; services and extras flat fee, fixed or free; items for sale fixed. No zero price; "Free" is for services and extras.
+- **By rental length:** the product's own prices or a shared price list, as amounts or as a base price × multipliers. Quick entry of hourly, daily, weekly, 2-week, 3-week and monthly prices fills days 1–30 at the shop's rounding step; every day stays editable. A total that falls as days rise is refused; equal neighbours are fine. Changing the rounding step never changes stored prices.
+- **Over 30 days:** a month runs date to date from the pickup date. Whole months cost the monthly price; leftover days cost the product's long-stay daily rate (default monthly ÷ 30) and never more than one more month. A rental never costs more than the list price for the same number of days.
+- **Seasons:** a date range with a percentage increase or decrease, for all products or chosen ones, once or every year; each charged day belongs to the calendar day it starts on.
+- **Deposits:** each shop chooses none, a percentage of the order, a fixed amount per order, or per vehicle (with an optional shop amount). Deposits are never taxed.
+- **Tax:** shop tax profiles with a default (one tap adds VAT 7% in Thailand); prices include tax or have it added on top. VAT is worked out once per invoice and rate, not per line. Each payment gets its own tax invoice; a credit note only for a refund.
+- **Coupons:** an on/off switch now; coupon creation in Phase 2.
+- **One pricer:** `quote()` in `@mango/core` prices every screen; Check a price and Save always agree.
+
+**Still to come**
+
+- **Phase 2:** booking-side pricing and customer coupons. Every order line snapshots the tax rate, profile name and id, whether prices included tax, the tax amount, list price, season adjustments, discounts, deposit and currency, and never re-reads a profile.
+- **Phase 3:** billed periods per rental, Extend rental, Swap bike, early return.
+- **Charge rules** (pickup-day and return-day): after Phase 3, before 3M.
+- **Go-live:** BSR's real prices loaded on live with the D7 script, naming only active tax profiles.
+- **Before self-serve sign-up:** revisit the rule that any pricing setting fixes a shop's currency.
 
 ## Build plan
 
@@ -579,10 +753,13 @@ This log tracks your additions and removals. Each one is already worked into the
 
 | # | Request | Type | Where in the spec | Phase |
 | --- | --- | --- | --- | --- |
+| 48 | Price-per-day mode (request 41) dropped; over 30 days runs month to month plus a long-stay daily rate (replaces request 26's ÷ 30 rule); VAT once per invoice and rate | Change | Pricing; Products redesign and pricing | 2 |
+| 47 | Stage D pricing: price lists (amounts or multipliers), Pricing tab, Settings for rounding, tax profiles, seasons and deposit modes; coupon switch now, coupons in Phase 2 | Add | Products redesign and pricing | 2 (built) |
+| 46 | Products redesign: one Products list for vehicles, gear, items for sale and services; no make or model on platform screens; Moto Mangos settings in their own table | Change | Products redesign and pricing; Data model | 1a (built) |
 | 45 | Review decisions after Phase 0: split Phase 1 (1a/1b), new order 1a → 2 → 3 → 3M → 1b, unit\_blocks, locations, legacy mapping, tenant keys, bigint money, provider-neutral payments, private repo, Drive option deferred | Decision | Review decisions (10 Nov 2026) | 1a onward |
 | 44 | Look: light grey background, white sidebar and cards, orange accent; instant loading state on every tap | Change | Staff app | 0 |
 | 43 | Dashboard tabs: Today, Tomorrow, Upcoming, Late; each item shown once | Change | Staff app | 0, then each phase |
-| 42 | Moto Mangos search by transmission and cc; both required on every model through its catalog entry | Add | Built for any country › Moto Mangos; Fleet | 1, marketplace |
+| 42 | Moto Mangos search by transmission and cc; both required on every model (from its catalog entry or entered by the shop) | Add | Built for any country › Moto Mangos; Fleet | 1, marketplace |
 | 41 | Second pricing mode, price per day: 1–6 days, 7+ days, 28+ days | Add | Pricing | 2 |
 | 40 | Delivery fee by distance bands the shop sets, each switched on or off | Add | Online booking | 8, marketplace |
 | 39 | Subscription tiers (draft): staff app in all tiers; Tier 1 management, Tier 2 adds online booking, Tier 3 adds multi-store; possibly priced by fleet size (under 100 / 100+ vehicles) | Decision | Open decisions | 11 |
@@ -634,6 +811,8 @@ Phases 0–1 can start without these. Each one is needed by the phase noted.
 - [ ] Damage diagram artwork: generic scooter, big bike and car outlines, or per model (before Phase 5).
 - [ ] Thai lawyer review of the privacy notice and document retention period (before Phase 4 goes live).
 - [x] Supabase region: confirmed. The live project is in Singapore (ap-southeast-1), checked 9 Nov 2026.
+- [ ] Korn's Thai review of about 350 new product and pricing lines, including one term: "tax profile" as ประเภทภาษี or รายการภาษี.
+- [ ] Before self-serve sign-up: should any pricing setting still fix a shop's currency, or only one that holds an amount?
 
 ## Sources
 
