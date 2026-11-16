@@ -2129,7 +2129,7 @@ describe("shop against shop: another shop's thing is answered exactly like one t
   });
 
   it("the helpers a member can call see nothing of another shop", async () => {
-    const theirs = await vehicle(2, { tenant: newYork });
+    const theirs = await listedVehicle(2, newYork);
     booked(
       (await service.rpc(
         "reserve",
