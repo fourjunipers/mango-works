@@ -11,6 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Role } from "@/lib/roles";
 import {
+  allocationFor,
   anonClient,
   createCatalogEntry,
   createTenant,
@@ -425,12 +426,9 @@ describe("quantity", () => {
   it("retires a unit that has bookings on record instead of deleting it", async () => {
     const helmet = await general("gear", 1);
     const [unit] = await unitsOf(helmet);
-    const past = await service.from("unit_blocks").insert({
-      tenant_id: shop.id,
-      unit_id: unit.id,
-      kind: "allocation",
-      period: period(hours(-48), hours(-24)),
-    });
+    const past = await service
+      .from("unit_blocks")
+      .insert(await allocationFor(shop.id, unit.id, hours(-48), hours(-24)));
     expect(past.error).toBeNull();
     expect((await setQuantity("owner", helmet, 0)).error).toBeNull();
     expect(await unitsOf(helmet)).toMatchObject([
@@ -866,10 +864,7 @@ describe("Moto Mangos: change model and disconnect", () => {
     const { data: block } = await service
       .from("unit_blocks")
       .insert({
-        tenant_id: shop.id,
-        unit_id: unit!.id,
-        kind: "allocation",
-        period: period(hours(24), hours(72)),
+        ...(await allocationFor(shop.id, unit!.id, hours(24), hours(72))),
         note: "Moto Mangos booking",
       })
       .select("*")

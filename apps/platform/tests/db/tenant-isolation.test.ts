@@ -12,6 +12,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { roles } from "@/lib/roles";
 import {
+  allocationFor,
   anonClient,
   createCatalogEntry,
   createTenant,
@@ -128,6 +129,12 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
       year_from: 2020,
       year_to: 2023,
     }),
+  );
+  // A booking (Phase 2, stage 1): its reservation and the block it holds.
+  ok(
+    await service
+      .from("unit_blocks")
+      .insert(await allocationFor(tenant.id, unit.id, hours(30), hours(31))),
   );
   const renewal = ok(
     await service
@@ -363,6 +370,20 @@ const payloads: Record<string, (t: Fixture, userId: string) => Row> = {
     product_id: t.itemId,
     lead_time_hours: 1,
   }),
+  reservations: (t) => ({
+    tenant_id: t.id,
+    booking_id: "00000000-0000-4000-8000-000000000001",
+    product_id: t.modelId,
+    product_type: "vehicle",
+    location_id: t.locationId,
+    starts_at: "2027-03-01T03:00:00Z",
+    ends_at: "2027-03-02T03:00:00Z",
+    block_period: "[2027-03-01T03:00:00Z,2027-03-02T03:00:00Z)",
+    quantity: 1,
+    channel: "walk_in",
+    mode: "staff",
+    state: "reserved",
+  }),
   tax_profiles: (t) => ({ tenant_id: t.id, name: "Forged", rate_bp: 700 }),
   pricing_settings: (t) => ({ tenant_id: t.id, currency: t.currency }),
   price_templates: (t) => ({
@@ -423,6 +444,7 @@ const changes: Record<string, Row> = {
   notification_outbox: { status: "cancelled" },
   stock_movements: { note: "Hijacked" },
   product_listings: { lead_time_hours: 99 },
+  reservations: { state: "cancelled" },
   tax_profiles: { rate_bp: 0 },
   pricing_settings: { coupons_enabled: true },
   price_templates: { name: "Hijacked" },
@@ -493,6 +515,7 @@ describe("every tenant table", () => {
       "product_pricing",
       "product_year_bands",
       "products",
+      "reservations",
       "stock_movements",
       "tax_profiles",
       "tenants",

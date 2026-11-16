@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  allocationFor,
   createCatalogEntry,
   listingOf,
   setListing,
@@ -414,12 +415,22 @@ describe("deleting vehicles and models", () => {
       })
       .select("id")
       .single();
-    const { error } = await service.from("unit_blocks").insert({
-      tenant_id: shop.id,
-      unit_id: unit!.id,
-      kind,
-      period: `[${past(3)},${past(2)})`,
-    });
+    const { error } = await service.from("unit_blocks").insert(
+      kind === "allocation"
+        ? await allocationFor(
+            shop.id,
+            unit!.id,
+            new Date(past(3)),
+            new Date(past(2)),
+          )
+        : {
+            tenant_id: shop.id,
+            unit_id: unit!.id,
+            kind,
+            period: `[${past(3)},${past(2)})`,
+            reservation_id: null,
+          },
+    );
     expect(error).toBeNull();
     return unit!.id;
   };
