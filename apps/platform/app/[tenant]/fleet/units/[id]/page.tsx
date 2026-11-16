@@ -19,6 +19,7 @@ import {
   getRenewalCosts,
   getUnit,
   getUnitBlocks,
+  countUnitUpcomingBookings,
   getUnitFinancials,
   getUnitRenewals,
 } from "@/lib/fleet-data";
@@ -83,6 +84,7 @@ export default async function UnitPage({
     reminders,
     money,
     origin,
+    upcomingBookings,
   ] = await Promise.all([
     getTranslations("Fleet"),
     getTranslations("Fleet.unit"),
@@ -95,6 +97,7 @@ export default async function UnitPage({
     getReminderSettings(tenant.id),
     manage ? getUnitFinancials(tenant.id, id) : null,
     siteOrigin(),
+    manage ? countUnitUpcomingBookings(tenant.id, id) : 0,
   ]);
   if (!unit) notFound();
   const model = fleet.find((m) => m.id === unit.product_id);
@@ -182,6 +185,7 @@ export default async function UnitPage({
               <UnitForm
                 slug={slug}
                 distanceUnit={tenant.distanceUnit}
+                upcomingBookings={upcomingBookings}
                 addModelHref={`/${slug}/products/new`}
                 models={inventoryModelOptions(fleet)}
                 locations={locations.map((l) => ({

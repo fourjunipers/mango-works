@@ -398,6 +398,8 @@ export function dbErrorKey(
     // A unit can't be deleted at the very moment a booking or a block is
     // being written on it (20261116000200): nothing is wrong, send it again.
     "unit_busy",
+    // A booked unit changes product or place through platform.move_unit().
+    "unit_has_bookings",
     "more_units_than_active",
     "catalog_entry_not_usable",
     "not_listable",

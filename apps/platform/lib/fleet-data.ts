@@ -546,6 +546,29 @@ export async function getStockMovements(
 }
 
 /**
+ * How many bookings hold this unit from now on: reservations that are held,
+ * reserved or out, with a block on it that has not ended. Moving the unit to
+ * another product or place moves them with it (platform.move_unit counts
+ * the same way), and the form says how many before saving.
+ */
+export async function countUnitUpcomingBookings(
+  tenantId: string,
+  unitId: string,
+) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("unit_blocks")
+    .select("reservation:reservations!inner(booking_id, state)")
+    .eq("tenant_id", tenantId)
+    .eq("unit_id", unitId)
+    .in("kind", ["allocation", "hold"])
+    .in("reservation.state", ["held", "reserved", "out"])
+    .overlaps("period", `[${new Date().toISOString()},)`);
+  if (error) throw error;
+  return new Set(data.map((row) => row.reservation.booking_id)).size;
+}
+
+/**
  * Bookings on a product's vehicles that have not ended. Changing or
  * disconnecting its Moto Mangos list entry leaves them as they are; the panel
  * says how many.

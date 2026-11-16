@@ -7,7 +7,8 @@
  * off what is free; assign_units(); the overdue rule with a hand-set 'out'
  * state; the availability read; who may call each new function, and shop
  * against shop; a unit delete that never waits; and the races between
- * reserve, confirm, cancel, assign and the hold sweep. The races run in
+ * reserve, confirm, cancel, assign and the hold sweep; and move_unit(): a
+ * unit's bookings move with it to another product or place. The races run in
  * three shops: Bangkok (THB), New York (USD, daylight saving) and Saigon
  * (VND).
  */
@@ -2755,6 +2756,943 @@ describe("races between reserve, confirm, cancel, assign and the sweep: no deadl
             await counts(helmet.id, window.starts_at, window.ends_at, tenant),
           ).toBe("2 / 1 / 1 / 0");
         }
+      }
+    }
+  }, 300_000);
+});
+
+type Moved =
+  | {
+      ok: true;
+      unit_id: string;
+      bookings: number;
+      reservation_ids: string[];
+      updated_at: string;
+    }
+  | { ok: false; reason: string; bookings?: number };
+
+const move = (
+  client: Db,
+  tenant: TestTenant,
+  unit: string,
+  to: { product: string; location?: string },
+  expect_: { bookings?: number; updatedAt?: string } = {},
+) =>
+  Promise.resolve(
+    client.rpc("move_unit", {
+      p_tenant_id: tenant.id,
+      p_unit_id: unit,
+      p_product_id: to.product,
+      p_location_id: to.location ?? tenant.locationId,
+      ...(expect_.bookings === undefined
+        ? {}
+        : { p_expected_bookings: expect_.bookings }),
+      ...(expect_.updatedAt === undefined
+        ? {}
+        : { p_expected_updated_at: expect_.updatedAt }),
+    }),
+  ) as Promise<Result<Moved>>;
+
+/** A vehicle on an approved list entry, listed on Moto Mangos. */
+async function listedVehicle(units: number, tenant: TestTenant = shop) {
+  const bike = await vehicle(units, { tenant });
+  await service
+    .from("products")
+    .update({ catalog_id: catalogId })
+    .eq("id", bike.id)
+    .throwOnError();
+  const listed = await forceListing(tenant.id, bike.id, {
+    marketplace_listed: true,
+    instant_units: 1,
+    request_units: 0,
+  });
+  expect(listed.error).toBeNull();
+  return bike;
+}
+
+/** "stock/free/available, MM held" for a product over a window. */
+async function figures(
+  productId: string,
+  from: Date,
+  to: Date,
+  tenant: TestTenant = shop,
+  locationId?: string,
+) {
+  const { data, error } = await availability(service, tenant, [
+    {
+      product_id: productId,
+      location_id: locationId,
+      starts_at: from,
+      ends_at: to,
+    },
+  ]);
+  expect(error, error?.message).toBeNull();
+  const a = data![0];
+  return `${a.stock}/${a.free}/${a.available}${a.marketplace ? `, MM held ${a.marketplace.mm_held}` : ""}`;
+}
+
+/** Every reservation that holds a unit names that unit's product and place. */
+async function agree(productIds: string[]) {
+  const out = sql(`
+    select count(*)
+    from platform.unit_blocks b
+    join platform.reservations r on r.id = b.reservation_id
+    join platform.units u on u.id = b.unit_id
+    where r.state in ('held', 'reserved', 'out')
+      and (r.product_id in (${productIds.map((p) => `'${p}'`).join(",")})
+        or u.product_id in (${productIds.map((p) => `'${p}'`).join(",")}))
+      and (r.product_id <> u.product_id or r.location_id <> u.location_id);
+  `).out;
+  expect(out, "reservations that name another product than their unit").toBe(
+    "0",
+  );
+}
+
+/** A background session acting as a signed-in member, or as the server. */
+const actingAs = (userId: string | null) =>
+  userId
+    ? `select set_config('request.jwt.claims', '${JSON.stringify({ sub: userId, role: "authenticated" })}', true); set local role authenticated;`
+    : `select set_config('request.jwt.claims', '{"role":"service_role"}', true); set local role service_role;`;
+
+/** Waiting for a product lock, with how many unit locks in hand. */
+const waitingForProductLock = () =>
+  until(`
+    select 'waiting, unit locks: ' || (
+      select count(*) from pg_locks u
+      where u.pid = w.pid and u.locktype = 'advisory' and u.classid = x'1a01'::int
+    )
+    from pg_locks w
+    where w.locktype = 'advisory' and w.classid = x'1a02'::int and not w.granted
+    limit 1;
+  `);
+
+describe("moving a unit that has bookings: the bookings move with it", () => {
+  it("to another product: both products' counts and Moto Mangos figures before and after; the rows, blocks and one event per booking", async () => {
+    const a = await listedVehicle(3);
+    const b = await listedVehicle(1);
+    const window = { starts_at: at(1), ends_at: at(3) };
+    const mm = booked(
+      (await service.rpc(
+        "reserve",
+        request(
+          shop,
+          "marketplace",
+          "instant",
+          [{ product_id: a.id, ...window }],
+          false,
+        ),
+      )) as unknown as Result,
+    );
+    const hold = booked(
+      await staffBook("staff", [{ product_id: a.id, ...window }], {
+        hold: true,
+      }),
+    );
+    const [mmUnit, heldUnit] = [mm, hold].map((x) => x.lines[0].unit_ids[0]);
+    const blocksBefore = await blocksOf(a.id);
+
+    expect(await figures(a.id, at(1), at(3))).toBe("3/1/1, MM held 1");
+    expect(await figures(b.id, at(1), at(3))).toBe("1/1/1, MM held 0");
+
+    const first = await move(db("owner"), shop, mmUnit, { product: b.id });
+    expect(first.error).toBeNull();
+    expect(first.data).toEqual({
+      ok: true,
+      unit_id: mmUnit,
+      bookings: 1,
+      reservation_ids: [mm.lines[0].reservation_id],
+      updated_at: expect.any(String),
+    });
+    // One unit and its Moto Mangos booking have gone from A to B.
+    expect(await figures(a.id, at(1), at(3))).toBe("2/1/1, MM held 0");
+    expect(await figures(b.id, at(1), at(3))).toBe("2/1/1, MM held 1");
+
+    const second = await move(db("manager"), shop, heldUnit, { product: b.id });
+    expect(second.data).toMatchObject({ ok: true, bookings: 1 });
+    expect(await figures(a.id, at(1), at(3))).toBe("1/1/1, MM held 0");
+    expect(await figures(b.id, at(1), at(3))).toBe("3/1/1, MM held 1");
+    // A window that touches neither booking: all of B is free.
+    expect(await figures(b.id, at(5), at(6))).toBe("3/3/3, MM held 0");
+
+    // The same rows, now B's, each in the state it was in.
+    const rows = await reservationsOf(b.id);
+    expect(rows.map((r) => `${r.id} ${r.state} ${r.quantity}`).sort()).toEqual(
+      [
+        `${mm.lines[0].reservation_id} reserved 1`,
+        `${hold.lines[0].reservation_id} held 1`,
+      ].sort(),
+    );
+    expect(await reservationsOf(a.id)).toEqual([]);
+    // The same blocks, on the same units.
+    const blocksAfter = (await blocksOf(b.id)).filter((x) =>
+      [mmUnit, heldUnit].includes(x.unit_id),
+    );
+    expect(
+      blocksAfter.map((x) => `${x.id} ${x.unit_id} ${x.kind}`).sort(),
+    ).toEqual(blocksBefore.map((x) => `${x.id} ${x.unit_id} ${x.kind}`).sort());
+    await agree([a.id, b.id]);
+
+    for (const [booking, unit, actor] of [
+      [mm, mmUnit, shop.members.owner.id],
+      [hold, heldUnit, shop.members.manager.id],
+    ] as const) {
+      const events = await eventsOf(booking.booking_id);
+      expect(events.map((e) => e.action)).toEqual(["reserve", "move"]);
+      expect(events[1]).toEqual({
+        action: "move",
+        actor,
+        after: {
+          unit_id: unit,
+          reservation_ids: [booking.lines[0].reservation_id],
+          from: { product_id: a.id, location_id: shop.locationId },
+          to: { product_id: b.id, location_id: shop.locationId },
+        },
+      });
+    }
+
+    // New bookings see what is really there.
+    expect(outcome(await onlineBook([{ product_id: b.id, ...window }]))).toBe(
+      "ok",
+    );
+    expect(outcome(await onlineBook([{ product_id: b.id, ...window }]))).toBe(
+      "unavailable",
+    );
+    // The hold is confirmed and the booking cancelled as B's.
+    expect(outcome(await confirm(db("staff"), shop, hold.booking_id))).toBe(
+      "ok",
+    );
+    expect(outcome(await cancel(service, shop, mm.booking_id))).toBe("ok");
+    expect(await figures(b.id, at(1), at(3))).toBe("3/1/1, MM held 0");
+  });
+
+  it("to another place: the booking's place follows, and each place counts what is there", async () => {
+    const bike = await vehicle(2);
+    const branch = await service
+      .from("locations")
+      .insert({
+        tenant_id: shop.id,
+        name: name("Branch"),
+        timezone: "Asia/Bangkok",
+      })
+      .select("id")
+      .single();
+    expect(branch.error).toBeNull();
+    const there = branch.data!.id;
+    const one = booked(
+      await onlineBook([
+        { product_id: bike.id, starts_at: at(1), ends_at: at(2) },
+      ]),
+    );
+    const unit = one.lines[0].unit_ids[0];
+    expect(await figures(bike.id, at(1), at(2))).toBe("2/1/1");
+    expect(await figures(bike.id, at(1), at(2), shop, there)).toBe("0/0/0");
+
+    const moved = await move(db("owner"), shop, unit, {
+      product: bike.id,
+      location: there,
+    });
+    expect(moved.data).toMatchObject({ ok: true, bookings: 1 });
+    expect(await figures(bike.id, at(1), at(2))).toBe("1/1/1");
+    expect(await figures(bike.id, at(1), at(2), shop, there)).toBe("1/0/0");
+    const [row] = await reservationsOf(bike.id);
+    expect(row).toMatchObject({ location_id: there, state: "reserved" });
+    const [, event] = await eventsOf(one.booking_id);
+    expect(event.after).toMatchObject({
+      from: { product_id: bike.id, location_id: shop.locationId },
+      to: { product_id: bike.id, location_id: there },
+    });
+    await agree([bike.id]);
+  });
+
+  it("a row for several units is split: the moved unit's part is a row of its own for one unit, in the same booking", async () => {
+    await setShop(saigon, { allow_overbooking: true });
+    const a = await vehicle(3, { tenant: saigon });
+    const b = await vehicle(0, { tenant: saigon });
+    // Four wanted, three there: a row for 4 with 3 units and 1 short.
+    const big = booked(
+      await staffBook(
+        "staff",
+        [
+          {
+            product_id: a.id,
+            starts_at: at(1),
+            ends_at: at(2),
+            quantity: 4,
+          },
+        ],
+        { tenant: saigon },
+      ),
+    );
+    await setShop(saigon, { allow_overbooking: false });
+    const original = big.lines[0].reservation_id;
+    const [first, second, third] = big.lines[0].unit_ids;
+
+    const moved = await move(db("owner", saigon), saigon, first, {
+      product: b.id,
+    });
+    expect(moved.data).toMatchObject({ ok: true, bookings: 1 });
+    const part = (moved.data as Extract<Moved, { ok: true }>)
+      .reservation_ids[0];
+    expect(part).not.toBe(original);
+
+    const [left] = await reservationsOf(a.id);
+    expect(left).toMatchObject({
+      id: original,
+      quantity: 3,
+      shortage: 1,
+      state: "reserved",
+    });
+    const [split] = await reservationsOf(b.id);
+    expect(split).toMatchObject({
+      id: part,
+      booking_id: big.booking_id,
+      quantity: 1,
+      shortage: 0,
+      state: "reserved",
+      channel: left.channel,
+      mode: left.mode,
+      starts_at: left.starts_at,
+      ends_at: left.ends_at,
+      block_period: left.block_period,
+      created_by: saigon.members.staff.id,
+    });
+    expect(
+      (await blocksOf(a.id))
+        .map((x) => `${x.unit_id} ${x.reservation_id}`)
+        .sort(),
+    ).toEqual([`${second} ${original}`, `${third} ${original}`].sort());
+    expect(
+      (await blocksOf(b.id)).map((x) => `${x.unit_id} ${x.reservation_id}`),
+    ).toEqual([`${first} ${part}`]);
+    // What is owed stays owed, on the product it was booked on.
+    expect(await counts(a.id, at(1), at(2), saigon)).toBe("2 / 0 / 1 / 0");
+    expect(await counts(b.id, at(1), at(2), saigon)).toBe("1 / 0 / 0 / 0");
+    expect((await eventsOf(big.booking_id)).map((e) => e.action)).toEqual([
+      "reserve",
+      "move",
+    ]);
+
+    // A second unit: split again. The last one: the row itself would move,
+    // but it is still a row for more than one, so it is split too.
+    for (const unit of [second, third]) {
+      expect(
+        outcome(
+          await move(db("owner", saigon), saigon, unit, { product: b.id }),
+        ),
+      ).toBe("ok");
+    }
+    expect((await reservationsOf(a.id))[0]).toMatchObject({
+      id: original,
+      quantity: 1,
+      shortage: 1,
+    });
+    expect(
+      (await reservationsOf(b.id)).map((r) => `${r.quantity} ${r.shortage}`),
+    ).toEqual(["1 0", "1 0", "1 0"]);
+    expect(await blocksOf(a.id)).toEqual([]);
+    await agree([a.id, b.id]);
+    // Cancelling the booking cancels every part of it.
+    expect(
+      outcome(await cancel(db("staff", saigon), saigon, big.booking_id)),
+    ).toBe("ok");
+    expect(await held(b.id)).toBe("cancelled,cancelled,cancelled | ");
+  });
+
+  it("only bookings that hold the unit from now on move: a finished, cancelled or returned one stays where it was", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(0);
+    const [unit] = a.units;
+    const past = booked(
+      await staffBook("staff", [
+        {
+          product_id: a.id,
+          starts_at: hoursFromNow(-5),
+          ends_at: hoursFromNow(-3),
+        },
+      ]),
+    );
+    const returned = booked(
+      await staffBook("staff", [
+        {
+          product_id: a.id,
+          starts_at: hoursFromNow(-2),
+          ends_at: hoursFromNow(-1),
+        },
+      ]),
+    );
+    await service
+      .from("reservations")
+      .update({ state: "returned" })
+      .eq("booking_id", returned.booking_id)
+      .throwOnError();
+    const gone = booked(
+      await staffBook("staff", [
+        { product_id: a.id, starts_at: at(1), ends_at: at(2) },
+      ]),
+    );
+    expect(outcome(await cancel(db("staff"), shop, gone.booking_id))).toBe(
+      "ok",
+    );
+    const out = booked(
+      await staffBook("staff", [
+        {
+          product_id: a.id,
+          starts_at: hoursFromNow(-0.5),
+          ends_at: hoursFromNow(4),
+        },
+      ]),
+    );
+    await service
+      .from("reservations")
+      .update({ state: "out" })
+      .eq("booking_id", out.booking_id)
+      .throwOnError();
+    const next = booked(
+      await onlineBook([
+        { product_id: a.id, starts_at: at(3), ends_at: at(4) },
+      ]),
+    );
+
+    const moved = await move(db("owner"), shop, unit, { product: b.id });
+    expect(moved.data).toMatchObject({ ok: true, bookings: 2 });
+    expect(
+      [...(moved.data as Extract<Moved, { ok: true }>).reservation_ids].sort(),
+    ).toEqual(
+      [out.lines[0].reservation_id, next.lines[0].reservation_id].sort(),
+    );
+    expect((await reservationsOf(a.id)).map((r) => r.state).sort()).toEqual([
+      "cancelled",
+      "reserved",
+      "returned",
+    ]);
+    expect((await reservationsOf(b.id)).map((r) => r.state).sort()).toEqual([
+      "out",
+      "reserved",
+    ]);
+    expect((await eventsOf(past.booking_id)).map((e) => e.action)).toEqual([
+      "reserve",
+    ]);
+  });
+
+  it("a direct change of a booked unit's product or place is refused, for the owner and for the service role; an unbooked unit moves as before", async () => {
+    const a = await vehicle(2);
+    const b = await vehicle(0);
+    const branch = await service
+      .from("locations")
+      .insert({
+        tenant_id: shop.id,
+        name: name("Branch"),
+        timezone: "Asia/Bangkok",
+      })
+      .select("id")
+      .single();
+    const [bookedUnit, freeUnit] = a.units;
+    const hold = booked(
+      await staffBook(
+        "staff",
+        [
+          {
+            product_id: a.id,
+            starts_at: at(1),
+            ends_at: at(2),
+            unit_ids: [bookedUnit],
+          },
+        ],
+        { hold: true },
+      ),
+    );
+    for (const client of [db("owner"), db("manager"), service]) {
+      for (const change of [
+        { product_id: b.id },
+        { location_id: branch.data!.id },
+        { product_id: b.id, location_id: branch.data!.id },
+      ]) {
+        const { error } = await client
+          .from("units")
+          .update(change)
+          .eq("id", bookedUnit)
+          .select("id");
+        expect(error?.message, JSON.stringify(change)).toBe(
+          "unit_has_bookings",
+        );
+      }
+    }
+    // Anything else about it can still be changed directly.
+    const other = await db("owner")
+      .from("units")
+      .update({ colour: "Red", product_id: a.id })
+      .eq("id", bookedUnit)
+      .select("colour");
+    expect(other.error).toBeNull();
+    expect(other.data).toEqual([{ colour: "Red" }]);
+    // A unit with no booking moves directly, as it always did.
+    const free = await db("owner")
+      .from("units")
+      .update({ product_id: b.id, location_id: branch.data!.id })
+      .eq("id", freeUnit)
+      .select("product_id");
+    expect(free.error).toBeNull();
+    expect(free.data).toEqual([{ product_id: b.id }]);
+    // Once its booking is over, so does the first.
+    expect(outcome(await cancel(db("staff"), shop, hold.booking_id))).toBe(
+      "ok",
+    );
+    const after = await db("owner")
+      .from("units")
+      .update({ product_id: b.id })
+      .eq("id", bookedUnit)
+      .select("product_id");
+    expect(after.error).toBeNull();
+    expect(after.data).toEqual([{ product_id: b.id }]);
+  });
+
+  it("assign_units() by name after a move: the unit it holds is its own again, and it can be swapped for another of the new product", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(1);
+    const one = booked(
+      await staffBook("staff", [
+        { product_id: a.id, starts_at: at(1), ends_at: at(2) },
+      ]),
+    );
+    const id = one.lines[0].reservation_id;
+    const [unit] = a.units;
+    expect(
+      outcome(await move(db("owner"), shop, unit, { product: b.id })),
+    ).toBe("ok");
+    // Naming the unit it already holds raised unit_not_found before.
+    const same = await assign(db("staff"), shop, id, [unit]);
+    expect(same.error).toBeNull();
+    expect(same.data).toMatchObject({
+      ok: true,
+      unit_ids: [unit],
+      added: [],
+      removed: [],
+    });
+    const swapped = await assign(db("staff"), shop, id, [b.units[0]]);
+    expect(swapped.data).toMatchObject({
+      ok: true,
+      added: [b.units[0]],
+      removed: [unit],
+    });
+    // A unit of the product it left is no longer its kind.
+    const back = await vehicle(1);
+    expect(
+      (await assign(db("staff"), shop, id, [back.units[0]])).error?.message,
+    ).toBe("unit_not_found");
+    await agree([a.id, b.id]);
+  });
+
+  it("the warning's count and the form's age are checked: other bookings than the ones warned about, or a changed unit, move nothing", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(0);
+    const [unit] = a.units;
+    booked(
+      await onlineBook([
+        { product_id: a.id, starts_at: at(1), ends_at: at(2) },
+      ]),
+    );
+    const loaded = await service
+      .from("units")
+      .select("updated_at")
+      .eq("id", unit)
+      .single();
+    // Warned about none; there is one.
+    expect(
+      (await move(db("owner"), shop, unit, { product: b.id }, { bookings: 0 }))
+        .data,
+    ).toEqual({ ok: false, reason: "bookings_changed", bookings: 1 });
+    // A second booking arrives after the warning about one.
+    booked(
+      await onlineBook([
+        { product_id: a.id, starts_at: at(3), ends_at: at(4) },
+      ]),
+    );
+    expect(
+      (await move(db("owner"), shop, unit, { product: b.id }, { bookings: 1 }))
+        .data,
+    ).toEqual({ ok: false, reason: "bookings_changed", bookings: 2 });
+    // Someone changed the unit since the form was loaded.
+    await service
+      .from("units")
+      .update({ colour: "Blue" })
+      .eq("id", unit)
+      .throwOnError();
+    expect(
+      (
+        await move(
+          db("owner"),
+          shop,
+          unit,
+          { product: b.id },
+          { bookings: 2, updatedAt: loaded.data!.updated_at },
+        )
+      ).data,
+    ).toEqual({ ok: false, reason: "stale" });
+    expect(await held(a.id)).toBe("reserved,reserved | allocation,allocation");
+    expect(await reservationsOf(b.id)).toEqual([]);
+
+    const now = await service
+      .from("units")
+      .select("updated_at")
+      .eq("id", unit)
+      .single();
+    const done = await move(
+      db("owner"),
+      shop,
+      unit,
+      { product: b.id },
+      { bookings: 2, updatedAt: now.data!.updated_at },
+    );
+    expect(done.data).toMatchObject({ ok: true, bookings: 2 });
+    const after = await service
+      .from("units")
+      .select("updated_at, product_id")
+      .eq("id", unit)
+      .single();
+    // The answer carries the unit's new age, for the save that follows.
+    expect(new Date(after.data!.updated_at).getTime()).toBe(
+      new Date(
+        (done.data as Extract<Moved, { ok: true }>).updated_at,
+      ).getTime(),
+    );
+    // Where it already is: nothing to do.
+    expect(
+      (await move(db("owner"), shop, unit, { product: b.id })).data,
+    ).toMatchObject({ ok: true, bookings: 0, reservation_ids: [] });
+  });
+
+  it("who may move: owners and managers; staff, mechanics, drivers and strangers are refused; another shop's thing is like one that does not exist", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(0);
+    const [unit] = a.units;
+    booked(
+      await onlineBook([
+        { product_id: a.id, starts_at: at(1), ends_at: at(2) },
+      ]),
+    );
+    for (const role of ["staff", "mechanic", "driver"] as const) {
+      expect(
+        (await move(db(role), shop, unit, { product: b.id })).data,
+        role,
+      ).toEqual({ ok: false, reason: "not_allowed" });
+    }
+    expect(
+      (await move(outsider.db, shop, unit, { product: b.id })).data,
+    ).toEqual({ ok: false, reason: "not_allowed" });
+    const visitor = await move(anonClient(), shop, unit, { product: b.id });
+    expect(visitor.data).toBeNull();
+    expect(visitor.error?.code).toBe("42501");
+    expect(await held(a.id)).toBe("reserved | allocation");
+
+    const theirs = await vehicle(1, { tenant: newYork });
+    const gear = await general("gear", 1);
+    const retired = await vehicle(0);
+    await service
+      .from("products")
+      .update({ retired_at: new Date().toISOString() })
+      .eq("id", retired.id)
+      .throwOnError();
+    const cases: [string, Promise<Result<Moved>>, string][] = [
+      [
+        "another shop's unit",
+        move(db("owner"), shop, theirs.units[0], { product: b.id }),
+        "unit_not_found",
+      ],
+      [
+        "a made-up unit",
+        move(db("owner"), shop, randomUUID(), { product: b.id }),
+        "unit_not_found",
+      ],
+      [
+        "another shop's product",
+        move(db("owner"), shop, unit, { product: theirs.id }),
+        "product_not_found",
+      ],
+      [
+        "a made-up product",
+        move(db("owner"), shop, unit, { product: randomUUID() }),
+        "product_not_found",
+      ],
+      [
+        "a retired product",
+        move(db("owner"), shop, unit, { product: retired.id }),
+        "product_not_found",
+      ],
+      [
+        "another shop's place",
+        move(db("owner"), shop, unit, {
+          product: b.id,
+          location: newYork.locationId,
+        }),
+        "location_not_found",
+      ],
+      [
+        "a made-up place",
+        move(db("owner"), shop, unit, {
+          product: b.id,
+          location: randomUUID(),
+        }),
+        "location_not_found",
+      ],
+      [
+        "a product of another kind",
+        move(db("owner"), shop, unit, { product: gear.id }),
+        "invalid_request",
+      ],
+    ];
+    for (const [what, call, message] of cases) {
+      const { data, error } = await call;
+      expect(data, what).toBeNull();
+      expect(error?.message, what).toBe(message);
+    }
+    // Naming the other shop: not allowed, as for any stranger.
+    expect(
+      (
+        await move(db("owner"), newYork, theirs.units[0], {
+          product: theirs.id,
+        })
+      ).data,
+    ).toEqual({ ok: false, reason: "not_allowed" });
+    expect(await held(a.id)).toBe("reserved | allocation");
+    for (const role of ["owner", "manager"] as const) {
+      const target = role === "owner" ? b.id : a.id;
+      expect(
+        outcome(await move(db(role), shop, unit, { product: target })),
+        role,
+      ).toBe("ok");
+    }
+  });
+
+  it("a hold that has run out on a unit that got to another product some other way is released by a booking of that product", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(0);
+    const [unit] = a.units;
+    const window = { starts_at: at(1), ends_at: at(2) };
+    const hold = booked(
+      await staffBook("staff", [{ product_id: a.id, ...window }], {
+        hold: true,
+      }),
+    );
+    // Past the guard, as a unit moved before move_unit() existed would be.
+    const forced = sql(`
+      begin;
+      set local session_replication_role = replica;
+      update platform.units set product_id = '${b.id}' where id = '${unit}';
+      commit;
+    `);
+    expect(forced.failed).toBe("");
+    await runOut(hold.booking_id);
+    // B's only unit carries a run-out hold whose reservation still says A.
+    const next = booked(await onlineBook([{ product_id: b.id, ...window }]));
+    expect(next.lines[0].unit_ids).toEqual([unit]);
+    expect((await reservationsOf(a.id)).map((r) => r.state)).toEqual([
+      "expired",
+    ]);
+    expect((await eventsOf(hold.booking_id)).map((e) => e.action)).toEqual([
+      "reserve",
+      "expire",
+    ]);
+    expect(
+      (await blocksOf(b.id)).map((x) => `${x.kind} ${x.reservation_id}`),
+    ).toEqual([`allocation ${next.lines[0].reservation_id}`]);
+  });
+
+  it("a booking of the product it leaves, written and not yet saved: the move waits for that product's lock with no unit lock, then takes the new booking with it", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(0);
+    const [unit] = a.units;
+    const marker = `booking-of-a-${tag}`;
+    const call = request(
+      shop,
+      "booking_page",
+      "instant",
+      [{ product_id: a.id, starts_at: at(1), ends_at: at(2) }],
+      false,
+    );
+    const booking = sqlBackground(`
+      begin;
+      ${actingAs(null)}
+      select platform.reserve('${shop.id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
+      select pg_sleep(3) /* ${marker} */;
+      commit;
+    `);
+    await holding(marker);
+    const moving = move(db("owner"), shop, unit, { product: b.id });
+    expect(await waitingForProductLock()).toBe("waiting, unit locks: 0");
+    const saved = await booking;
+    expect(saved.failed).toBe("");
+    expect(saved.out).toContain("true");
+    const moved = await moving;
+    noDeadlock([moved]);
+    expect(moved.data).toMatchObject({ ok: true, bookings: 1 });
+    expect(await held(b.id)).toBe("reserved | allocation");
+    expect(await reservationsOf(a.id)).toEqual([]);
+    await agree([a.id, b.id]);
+  }, 60_000);
+
+  it("a booking of the product it goes to, written and not yet saved: the move waits for that product's lock too", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(1);
+    const [unit] = a.units;
+    booked(
+      await onlineBook([
+        { product_id: a.id, starts_at: at(1), ends_at: at(2) },
+      ]),
+    );
+    const marker = `booking-of-b-${tag}`;
+    const call = request(
+      shop,
+      "walk_in",
+      "staff",
+      [{ product_id: b.id, starts_at: at(1), ends_at: at(2) }],
+      false,
+    );
+    const booking = sqlBackground(`
+      begin;
+      ${actingAs(shop.members.staff.id)}
+      select platform.reserve('${shop.id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
+      select pg_sleep(3) /* ${marker} */;
+      commit;
+    `);
+    await holding(marker);
+    const moving = move(db("manager"), shop, unit, { product: b.id });
+    expect(await waitingForProductLock()).toBe("waiting, unit locks: 0");
+    expect((await booking).failed).toBe("");
+    const moved = await moving;
+    noDeadlock([moved]);
+    expect(moved.data).toMatchObject({ ok: true, bookings: 1 });
+    expect(await held(b.id)).toBe("reserved,reserved | allocation,allocation");
+    expect(await counts(b.id, at(1), at(2))).toBe("2 / 0 / 0 / 0");
+    await agree([a.id, b.id]);
+  }, 60_000);
+
+  it("the move written and not yet saved: a booking of either product waits for its lock; the one it left finds the unit gone, the one it joined gets it", async () => {
+    for (const side of ["left", "joined"] as const) {
+      const a = await vehicle(1);
+      const b = await vehicle(0);
+      const [unit] = a.units;
+      const marker = `move-held-${side}-${tag}`;
+      const moving = sqlBackground(`
+        begin;
+        ${actingAs(shop.members.owner.id)}
+        select platform.move_unit('${shop.id}', '${unit}', '${b.id}', '${shop.locationId}') ->> 'ok';
+        select pg_sleep(3) /* ${marker} */;
+        commit;
+      `);
+      await holding(marker);
+      const call = onlineBook([
+        {
+          product_id: side === "left" ? a.id : b.id,
+          starts_at: at(1),
+          ends_at: at(2),
+        },
+      ]);
+      expect(await waitingForProductLock(), side).toBe(
+        "waiting, unit locks: 0",
+      );
+      const saved = await moving;
+      expect(saved.failed).toBe("");
+      expect(saved.out).toContain("true");
+      const result = await call;
+      noDeadlock([result]);
+      if (side === "left") {
+        expect(result.data).toEqual({
+          ok: false,
+          reason: "unavailable",
+          line: 0,
+        });
+      } else {
+        expect(booked(result).lines[0].unit_ids).toEqual([unit]);
+      }
+      await agree([a.id, b.id]);
+    }
+  }, 90_000);
+
+  it("a direct change of an unbooked unit's product while a booking of it is written and not yet saved: it waits for the unit's lock, then is refused", async () => {
+    const a = await vehicle(1);
+    const b = await vehicle(0);
+    const [unit] = a.units;
+    const marker = `booking-before-direct-${tag}`;
+    const call = request(
+      shop,
+      "booking_page",
+      "instant",
+      [{ product_id: a.id, starts_at: at(1), ends_at: at(2) }],
+      false,
+    );
+    const booking = sqlBackground(`
+      begin;
+      ${actingAs(null)}
+      select platform.reserve('${shop.id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
+      select pg_sleep(3) /* ${marker} */;
+      commit;
+    `);
+    await holding(marker);
+    const direct = Promise.resolve(
+      db("owner")
+        .from("units")
+        .update({ product_id: b.id })
+        .eq("id", unit)
+        .select("id"),
+    );
+    const seen = await until(`
+      select 'waiting for the unit lock'
+      from pg_locks w
+      where w.locktype = 'advisory' and w.classid = x'1a01'::int and not w.granted
+        and w.objid::bigint = (hashtext('${unit}')::bigint & 4294967295)
+      limit 1;
+    `);
+    expect(seen).toBe("waiting for the unit lock");
+    expect((await booking).failed).toBe("");
+    const refused = await direct;
+    noDeadlock([refused]);
+    expect(refused.error?.message).toBe("unit_has_bookings");
+    expect(await held(a.id)).toBe("reserved | allocation");
+    await agree([a.id, b.id]);
+  }, 60_000);
+
+  it(`a move racing bookings of both products and the sweep: every booking ends on the product its unit is on, ${ROUNDS} rounds a shop`, async () => {
+    for (const [where, tenant] of everyShop()) {
+      for (let round = 0; round < ROUNDS; round++) {
+        const a = await vehicle(1, { tenant });
+        const b = await vehicle(1, { tenant });
+        const [unit] = a.units;
+        const window = { starts_at: at(1), ends_at: at(2) };
+        const results = await Promise.all([
+          move(db("owner", tenant), tenant, unit, { product: b.id }),
+          round % 2
+            ? staffBook("staff", [{ product_id: a.id, ...window }], {
+                tenant,
+                hold: true,
+              })
+            : onlineBook([{ product_id: a.id, ...window }], { tenant }),
+          onlineBook([{ product_id: b.id, ...window, quantity: 2 }], {
+            tenant,
+          }),
+          sweep(),
+        ]);
+        raceRounds++;
+        noDeadlock(results);
+        const [moved, ofA, ofB] = results.map((r) => outcome(r as Result));
+        expect(moved, `${where}, round ${round}`).toBe("ok");
+        // A's booking got the unit before it left (and went with it), or
+        // found it gone. B's booking for two got both only if the unit had
+        // arrived free.
+        expect(["ok", "unavailable"]).toContain(ofA);
+        expect(["ok", "unavailable"]).toContain(ofB);
+        expect(ofA === "ok" && ofB === "ok", `${where}, round ${round}`).toBe(
+          false,
+        );
+        const blocks = await blocksOf(b.id);
+        expect(new Set(blocks.map((x) => x.unit_id)).size).toBe(blocks.length);
+        expect(await blocksOf(a.id)).toEqual([]);
+        expect(
+          (await reservationsOf(a.id)).filter((r) =>
+            ["held", "reserved"].includes(r.state),
+          ),
+          `${where}, round ${round}`,
+        ).toEqual([]);
+        await agree([a.id, b.id]);
       }
     }
   }, 300_000);

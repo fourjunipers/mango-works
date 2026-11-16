@@ -53,6 +53,7 @@ export function UnitForm({
   locations,
   distanceUnit,
   addModelHref,
+  upcomingBookings = 0,
 }: {
   slug: string;
   values: UnitFormValues;
@@ -60,6 +61,8 @@ export function UnitForm({
   locations: Option[];
   distanceUnit: string;
   addModelHref: string;
+  /** Bookings that hold this vehicle from now on: they move with it. */
+  upcomingBookings?: number;
 }) {
   const t = useTranslations("Fleet.unit");
   return (
@@ -68,20 +71,45 @@ export function UnitForm({
       hidden={{
         slug,
         ...(values.id
-          ? { id: values.id, updated_at: values.updated_at ?? "" }
+          ? {
+              id: values.id,
+              updated_at: values.updated_at ?? "",
+              upcoming_bookings: String(upcomingBookings),
+            }
           : {}),
       }}
       confirmIf={(data) => {
         if (!values.id) return undefined;
+        const questions: string[] = [];
+        // Another product or place: its upcoming bookings move with it.
+        const model = String(data.get("model_choice") ?? "");
+        const place = String(data.get("location_id") ?? "");
+        const destination = [
+          model !== values.model_choice
+            ? models.find((m) => m.value === model)?.label
+            : undefined,
+          place !== values.location_id
+            ? locations.find((l) => l.value === place)?.label
+            : undefined,
+        ].filter((name): name is string => !!name);
+        if (upcomingBookings > 0 && destination.length > 0)
+          questions.push(
+            t("moveBookingsConfirm", {
+              count: upcomingBookings,
+              destination: destination.join(", "),
+            }),
+          );
         const typed = Number(
           String(data.get("odometer") ?? "").replace(/[\s,]/g, ""),
         );
-        return Number.isFinite(typed) && typed < Number(values.odometer)
-          ? t("odometerLowerConfirm", {
+        if (Number.isFinite(typed) && typed < Number(values.odometer))
+          questions.push(
+            t("odometerLowerConfirm", {
               current: values.odometer,
               unit: distanceUnit,
-            })
-          : undefined;
+            }),
+          );
+        return questions.length > 0 ? questions.join("\n\n") : undefined;
       }}
     >
       <div className="grid gap-5 md:grid-cols-2">

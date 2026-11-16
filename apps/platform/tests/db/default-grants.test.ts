@@ -555,7 +555,7 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
         and p.proname in (
           'confirm_hold', 'assign_units', 'availability', 'release_expired_holds',
           'expire_holds', 'hold_expiry', 'shortage_demand', 'marketplace_peaks',
-          'units_busy_on_delete', 'json_uuid')
+          'units_busy_on_delete', 'json_uuid', 'move_unit', 'units_guard')
       order by 1;
     `);
     expect(rows).toEqual([
@@ -565,6 +565,9 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
       // The read runs as its caller, under RLS.
       'platform.availability false true true false | false search_path=""',
       'platform.confirm_hold false true true false | true search_path=""',
+      // A booked unit's change of product or place: owners and managers
+      // (checked inside), and the server.
+      'platform.move_unit false true true false | true search_path=""',
       // The sweep: the server's and the job's.
       'platform.release_expired_holds false false true false | true search_path=""',
       // Called only inside the booking functions, as their owner.
@@ -577,6 +580,7 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
       'platform_private.shortage_demand false true true false | false search_path=""',
       // A trigger function: nobody calls it.
       'platform_private.units_busy_on_delete false false false false | false search_path=""',
+      'platform_private.units_guard false false false false | true search_path=""',
     ]);
   });
 

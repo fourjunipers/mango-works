@@ -24,6 +24,9 @@
 -- 10. platform.confirm_hold(), platform.assign_units().
 -- 11. platform.release_expired_holds() and its schedule (every minute).
 -- 12. platform.availability(): the read.
+-- 13. platform.move_unit(), and platform_private.units_guard() re-created: a
+--     unit that has bookings changes its product or place only through the
+--     function, which moves the bookings with it.
 --
 -- Re-created functions are their bodies from the database
 -- (pg_get_functiondef) with the changes named above each, and their grants
@@ -243,6 +246,13 @@ revoke all on function platform_private.hold_expiry(timestamptz, integer)
 -- holds the product locks of those pairs, and is past every other lock it
 -- will take. One 'expire' event per booking. Answers how many rows.
 -- p_tenant_id null: every shop (the job).
+--
+-- A hold is on these pairs when its reservation names one, or when one of
+-- its blocks is on a unit that is there now, whatever its reservation names
+-- (move_unit() keeps the two the same; this covers a unit that got there
+-- any other way). Such a hold is not under a lock the caller holds, so its
+-- rows are locked first, in id order, and read again before anything goes:
+-- reservations, then blocks, as cancel_reservation() takes them.
 
 create function platform_private.expire_holds(
   p_tenant_id uuid,
@@ -265,13 +275,33 @@ begin
     where r.state = 'held'
       and r.hold_expires_at <= p_now
       and (p_tenant_id is null or r.tenant_id = p_tenant_id)
-      and exists (
-        select 1 from unnest(p_product_ids, p_location_ids) t(product_id, location_id)
-        where t.product_id = r.product_id and t.location_id = r.location_id
+      and (
+        exists (
+          select 1 from unnest(p_product_ids, p_location_ids) t(product_id, location_id)
+          where t.product_id = r.product_id and t.location_id = r.location_id
+        )
+        or exists (
+          select 1
+          from platform.unit_blocks b
+          join platform.units u on u.id = b.unit_id
+          join unnest(p_product_ids, p_location_ids) t(product_id, location_id)
+            on t.product_id = u.product_id and t.location_id = u.location_id
+          where b.reservation_id = r.id
+        )
       )
     group by r.tenant_id, r.booking_id
     order by r.booking_id
   loop
+    perform 1 from platform.reservations r
+    where r.id = any (v_booking.ids)
+    order by r.id
+    for update;
+    select coalesce(array_agg(r.id order by r.id), '{}') into v_booking.ids
+    from platform.reservations r
+    where r.id = any (v_booking.ids)
+      and r.state = 'held' and r.hold_expires_at <= p_now;
+    continue when cardinality(v_booking.ids) = 0;
+
     perform platform_private.audit(
       v_booking.tenant_id, 'bookings', v_booking.booking_id::text, 'expire', null,
       jsonb_build_object(
@@ -1534,3 +1564,364 @@ $$;
 
 revoke all on function platform.availability(uuid, jsonb) from public, anon;
 grant execute on function platform.availability(uuid, jsonb) to authenticated, service_role;
+
+-- 13. Moving a unit that has bookings -----------------------------------------------------------
+-- units_guard as it stood (20261114000100, from the database), plus one
+-- check: a unit can't change its product or its place while a booking that
+-- has not ended names where it was.
+
+create or replace function platform_private.units_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_role platform.platform_role;
+  v_free text[] := array['current_odometer_km', 'status', 'updated_at'];
+begin
+  if new.product_type = 'gear' then
+    v_free := v_free || array['problem_on', 'expected_back', 'problem_notes'];
+  end if;
+
+  if (select auth.uid()) is not null then
+    v_role := platform_private.my_role(new.tenant_id);
+    if v_role is null or v_role not in ('owner', 'manager') then
+      if (to_jsonb(new) - v_free) is distinct from (to_jsonb(old) - v_free) then
+        raise exception 'only_owner_or_manager' using errcode = '42501';
+      end if;
+      if new.status is distinct from old.status then
+        if old.status in ('active', 'maintenance') and new.status in ('active', 'maintenance') then
+          null;
+        elsif old.status in ('active', 'maintenance') and new.status = 'lost' then
+          if v_role is distinct from 'staff' then
+            raise exception 'role_not_allowed' using errcode = '42501';
+          end if;
+        else
+          raise exception 'only_owner_or_manager' using errcode = '42501';
+        end if;
+      end if;
+    end if;
+  end if;
+
+  -- Selling or retiring: its future blocks must be moved or ended first.
+  if new.status in ('sold', 'retired') and old.status not in ('sold', 'retired') then
+    -- Wait for anyone writing this bike's blocks right now (same lock as
+    -- unit_blocks_guard), so the check below sees what they saved.
+    perform pg_advisory_xact_lock(x'1a01'::int, hashtext(new.id::text));
+    if exists (
+      select 1 from platform.unit_blocks b
+      where b.unit_id = new.id and (upper_inf(b.period) or upper(b.period) > now())
+    ) then
+      raise exception 'unit_has_future_blocks' using errcode = 'P0001';
+    end if;
+  end if;
+
+  if new.status = 'lost' and old.status <> 'lost' then
+    perform pg_advisory_xact_lock(x'1a01'::int, hashtext(new.id::text));
+    if exists (
+      select 1 from platform.unit_blocks b
+      where b.unit_id = new.id
+        and b.kind <> 'downtime'
+        and (upper_inf(b.period) or upper(b.period) > now())
+    ) then
+      raise exception 'unit_has_future_blocks' using errcode = 'P0001';
+    end if;
+    delete from platform.unit_blocks b
+    where b.unit_id = new.id and b.kind = 'downtime' and lower(b.period) >= now();
+    update platform.unit_blocks b
+    set period = tstzrange(lower(b.period), now(), '[)')
+    where b.unit_id = new.id and b.kind = 'downtime'
+      and (upper_inf(b.period) or upper(b.period) > now());
+    new.expected_back := null;
+  end if;
+
+  -- Another product or another place: its bookings must be there already.
+  -- move_unit() takes them there first; a change made any other way is
+  -- refused while a booking still names where the unit was. It reads the
+  -- unit's blocks, so it waits for anyone writing them (the same lock).
+  if new.product_id <> old.product_id or new.location_id <> old.location_id then
+    perform pg_advisory_xact_lock(x'1a01'::int, hashtext(new.id::text));
+    if exists (
+      select 1
+      from platform.unit_blocks b
+      join platform.reservations r on r.id = b.reservation_id
+      where b.unit_id = new.id
+        and (upper_inf(b.period) or upper(b.period) > now())
+        and r.state in ('held', 'reserved', 'out')
+        and (r.product_id <> new.product_id or r.location_id <> new.location_id)
+    ) then
+      raise exception 'unit_has_bookings' using errcode = 'P0001';
+    end if;
+  end if;
+
+  if old.status = 'lost' and new.status <> 'lost' then
+    new.problem_on := null;
+    new.expected_back := null;
+    new.problem_notes := null;
+  end if;
+  return new;
+end;
+$$;
+
+-- A trigger function: nobody calls it.
+revoke all on function platform_private.units_guard() from public, anon, authenticated;
+
+-- move_unit() -----------------------------------------------------------------------------------
+-- The one way a unit that has bookings changes its product or its place
+-- (the owner, 16 Nov 2026: a move stays allowed, and the bookings move with
+-- the unit). Every reservation that is 'held', 'reserved' or 'out' and has a
+-- block on the unit that has not ended takes the new product and place. A
+-- row for several units is split: the moved unit's part becomes a row of its
+-- own for one unit, with the same booking id. One 'move' event per booking.
+-- The price does not move: Phase 3's order line keeps what was sold.
+--
+-- Locks, in the one order: the product-and-location locks of where the unit
+-- is, where it goes and whatever its bookings name, sorted once; the unit's
+-- lock; then rows: the unit, the two products, the reservations, the blocks.
+--
+-- p_expected_bookings: how many upcoming bookings the person was warned
+-- about. If the unit has a different number now, nothing moves
+-- (bookings_changed) and the screen asks again.
+-- p_expected_updated_at: the unit as the form loaded it (stale otherwise).
+--
+-- Answers { "ok": true, "unit_id", "bookings", "reservation_ids",
+-- "updated_at" } or { "ok": false, "reason" } with reason not_allowed,
+-- bookings_changed, stale or try_again. A request our own code could not
+-- have sent raises invalid_request, unit_not_found, product_not_found or
+-- location_not_found; another shop's is answered like one that does not
+-- exist. Owner and manager, as for every other change to a unit's details;
+-- and the service role.
+
+create function platform.move_unit(
+  p_tenant_id uuid,
+  p_unit_id uuid,
+  p_product_id uuid,
+  p_location_id uuid,
+  p_expected_bookings integer default null,
+  p_expected_updated_at timestamptz default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_unit platform.units%rowtype;
+  v_from_product uuid;
+  v_from_location uuid;
+  v_product_ids uuid[];
+  v_location_ids uuid[];
+  v_r platform.reservations%rowtype;
+  v_new_id uuid;
+  v_moved uuid[] := '{}';
+  v_booking record;
+  v_bookings integer;
+  v_updated_at timestamptz;
+begin
+  if (select auth.role()) is distinct from 'service_role'
+    and not platform_private.has_role(
+      p_tenant_id, '{owner,manager}'::platform.platform_role[])
+  then
+    return jsonb_build_object('ok', false, 'reason', 'not_allowed');
+  end if;
+  if p_unit_id is null or p_product_id is null or p_location_id is null then
+    raise exception 'invalid_request' using errcode = '22023';
+  end if;
+
+  -- Not found, or another shop's: the same answer.
+  select * into v_unit
+  from platform.units u
+  where u.id = p_unit_id and u.tenant_id = p_tenant_id;
+  if not found then
+    raise exception 'unit_not_found' using errcode = 'P0001';
+  end if;
+  if not exists (
+    select 1 from platform.products p
+    where p.id = p_product_id and p.tenant_id = p_tenant_id and p.retired_at is null
+  ) then
+    raise exception 'product_not_found' using errcode = 'P0001';
+  end if;
+  -- A scooter can't become a helmet.
+  if not exists (
+    select 1 from platform.products p
+    where p.id = p_product_id and p.type = v_unit.product_type
+  ) then
+    raise exception 'invalid_request' using errcode = '22023';
+  end if;
+  if not exists (
+    select 1 from platform.locations l
+    where l.id = p_location_id and l.tenant_id = p_tenant_id
+  ) then
+    raise exception 'location_not_found' using errcode = 'P0001';
+  end if;
+
+  -- 1. Product-and-location locks: where it is, where it goes, and whatever
+  -- its bookings name, sorted once.
+  select array_agg(x.product_id), array_agg(x.location_id)
+  into v_product_ids, v_location_ids
+  from (
+    select v_unit.product_id as product_id, v_unit.location_id as location_id
+    union
+    select p_product_id, p_location_id
+    union
+    select r.product_id, r.location_id
+    from platform.unit_blocks b
+    join platform.reservations r on r.id = b.reservation_id
+    where b.unit_id = p_unit_id
+  ) x;
+  perform platform_private.lock_products_stock(v_product_ids, v_location_ids);
+
+  -- 2. The unit's lock.
+  perform platform_private.lock_units(array[p_unit_id]);
+
+  -- 3. Rows: the unit, then the products in id order.
+  select * into v_unit
+  from platform.units u
+  where u.id = p_unit_id
+  for no key update;
+  if not found then
+    raise exception 'unit_not_found' using errcode = 'P0001';
+  end if;
+  if p_expected_updated_at is not null and v_unit.updated_at <> p_expected_updated_at then
+    return jsonb_build_object('ok', false, 'reason', 'stale');
+  end if;
+  v_from_product := v_unit.product_id;
+  v_from_location := v_unit.location_id;
+
+  perform 1 from platform.products p
+  where p.id in (v_from_product, p_product_id)
+  order by p.id
+  for share;
+  if not exists (
+    select 1 from platform.products p
+    where p.id = p_product_id and p.tenant_id = p_tenant_id and p.retired_at is null
+  ) then
+    raise exception 'product_not_found' using errcode = 'P0001';
+  end if;
+
+  -- Under the locks. The unit was somewhere else when the locks were chosen,
+  -- or one of its bookings names a product that was not locked: start again.
+  if exists (
+      select 1
+      from (
+        select v_from_product as product_id, v_from_location as location_id
+        union
+        select r.product_id, r.location_id
+        from platform.unit_blocks b
+        join platform.reservations r on r.id = b.reservation_id
+        where b.unit_id = p_unit_id
+      ) needed
+      where not exists (
+        select 1 from unnest(v_product_ids, v_location_ids) t(product_id, location_id)
+        where t.product_id = needed.product_id and t.location_id = needed.location_id
+      )
+    )
+  then
+    return jsonb_build_object('ok', false, 'reason', 'try_again');
+  end if;
+
+  -- The bookings the person was warned about: the ones that hold this unit
+  -- from now on.
+  select count(distinct r.booking_id) into v_bookings
+  from platform.reservations r
+  where r.state in ('held', 'reserved', 'out')
+    and exists (
+      select 1 from platform.unit_blocks b
+      where b.reservation_id = r.id and b.unit_id = p_unit_id
+        and (upper_inf(b.period) or upper(b.period) > now())
+    );
+  if p_expected_bookings is not null and v_bookings <> p_expected_bookings then
+    return jsonb_build_object(
+      'ok', false, 'reason', 'bookings_changed', 'bookings', v_bookings);
+  end if;
+
+  if v_from_product = p_product_id and v_from_location = p_location_id then
+    return jsonb_build_object(
+      'ok', true, 'unit_id', p_unit_id, 'bookings', 0,
+      'reservation_ids', '[]'::jsonb, 'updated_at', v_unit.updated_at);
+  end if;
+
+  -- The reservations follow, in id order.
+  for v_r in
+    select r.*
+    from platform.reservations r
+    where r.state in ('held', 'reserved', 'out')
+      and (r.product_id <> p_product_id or r.location_id <> p_location_id)
+      and exists (
+        select 1 from platform.unit_blocks b
+        where b.reservation_id = r.id and b.unit_id = p_unit_id
+          and (upper_inf(b.period) or upper(b.period) > now())
+      )
+    order by r.id
+    for update of r
+  loop
+    if v_r.quantity = 1 then
+      update platform.reservations r
+      set product_id = p_product_id, location_id = p_location_id
+      where r.id = v_r.id;
+      v_new_id := v_r.id;
+    else
+      -- A row for several units: this unit's part becomes a row of its own.
+      insert into platform.reservations (
+        tenant_id, booking_id, parent_id, product_id, product_type, location_id,
+        starts_at, ends_at, block_period, quantity, shortage, channel, mode, state,
+        hold_expires_at, created_by
+      )
+      values (
+        v_r.tenant_id, v_r.booking_id, v_r.parent_id, p_product_id, v_r.product_type,
+        p_location_id, v_r.starts_at, v_r.ends_at, v_r.block_period, 1, 0,
+        v_r.channel, v_r.mode, v_r.state, v_r.hold_expires_at, v_r.created_by
+      )
+      returning id into v_new_id;
+      update platform.unit_blocks b
+      set reservation_id = v_new_id
+      where b.reservation_id = v_r.id and b.unit_id = p_unit_id;
+      update platform.reservations r
+      set quantity = r.quantity - 1
+      where r.id = v_r.id;
+    end if;
+    v_moved := v_moved || v_new_id;
+  end loop;
+
+  -- The unit itself. Its guard finds every booking already where it is going.
+  update platform.units u
+  set product_id = p_product_id, location_id = p_location_id
+  where u.id = p_unit_id
+  returning u.updated_at into v_updated_at;
+
+  -- One event per booking.
+  for v_booking in
+    select r.booking_id, array_agg(r.id order by r.id) as ids
+    from platform.reservations r
+    where r.id = any (v_moved)
+    group by r.booking_id
+    order by r.booking_id
+  loop
+    perform platform_private.audit(
+      p_tenant_id, 'bookings', v_booking.booking_id::text, 'move', null,
+      jsonb_build_object(
+        'unit_id', p_unit_id,
+        'reservation_ids', to_jsonb(v_booking.ids),
+        'from', jsonb_build_object(
+          'product_id', v_from_product, 'location_id', v_from_location),
+        'to', jsonb_build_object(
+          'product_id', p_product_id, 'location_id', p_location_id)));
+  end loop;
+
+  return jsonb_build_object(
+    'ok', true,
+    'unit_id', p_unit_id,
+    'bookings', v_bookings,
+    'reservation_ids', to_jsonb(v_moved),
+    'updated_at', v_updated_at);
+exception
+  when deadlock_detected then
+    return jsonb_build_object('ok', false, 'reason', 'try_again');
+end;
+$$;
+
+revoke all on function platform.move_unit(uuid, uuid, uuid, uuid, integer, timestamptz)
+  from public, anon;
+grant execute on function platform.move_unit(uuid, uuid, uuid, uuid, integer, timestamptz)
+  to authenticated, service_role;
