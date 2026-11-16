@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { ActionForm, useFieldError } from "@/components/action-form";
 import { Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
-import { formatMinor, multiplierText } from "@/lib/money";
+import { formatMinor, multiplierText, parseMinorUnits } from "@/lib/money";
 import {
+  asksProductDeposit,
   boxDay,
   boxes,
   computeList,
@@ -26,9 +27,10 @@ import {
   type ProductType,
 } from "@/lib/pricing-form";
 import type { PricingInputs } from "@/lib/pricing-inputs";
+import { percentLabel, seasonDates } from "@/lib/seasons";
+import { adjustmentParts } from "@mango/core/season";
 import {
   draftRow,
-  previewInputs,
   previewQuote,
   sampleSpan,
   type SharedList,
@@ -96,8 +98,7 @@ export function PricingForm({
     formatMinor(value, currency, locale);
 
   const isVehicle = type === "vehicle";
-  const showDeposit =
-    isVehicle && (deposit.mode === null || deposit.mode === "per_product");
+  const showDeposit = asksProductDeposit(type, deposit.mode);
   const ctx: PricingContext = {
     type,
     currency,
@@ -239,6 +240,7 @@ export function PricingForm({
                   />
                 ) : (
                   <SharedChoice
+                    canEdit={canEdit}
                     slug={slug}
                     currency={currency}
                     shared={shared}
@@ -269,13 +271,11 @@ export function PricingForm({
                   id="deposit"
                   label={t("deposit.amount", { currency })}
                   help={
-                    deposit.mode === "per_product" && deposit.amount
+                    deposit.amount
                       ? t("deposit.shopAmount", {
                           amount: money(deposit.amount),
                         })
-                      : deposit.mode === null
-                        ? t("deposit.firstHelp")
-                        : t("deposit.help")
+                      : t("deposit.help")
                   }
                   value={draft.deposit}
                   onChange={(value) => set({ deposit: value })}
@@ -291,6 +291,17 @@ export function PricingForm({
                           amount: money(deposit.amount ?? "0"),
                         })
                       : t("deposit.none")}
+                  {canEdit && (
+                    <>
+                      {" "}
+                      <Link
+                        href={`/${slug}/settings/pricing`}
+                        className="underline underline-offset-2"
+                      >
+                        {t("deposit.change")}
+                      </Link>
+                    </>
+                  )}
                 </p>
               )}
             </Card>
@@ -346,20 +357,18 @@ export function PricingForm({
                   <li key={season.id}>
                     <span className="font-medium">{season.name}</span>
                     {" · "}
-                    {season.adjust_bp < 0
-                      ? t("seasons.off", {
-                          percent: percentText(-season.adjust_bp, locale),
-                        })
-                      : t("seasons.more", {
-                          percent: percentText(season.adjust_bp, locale),
-                        })}
+                    {t(season.adjust_bp < 0 ? "seasons.off" : "seasons.more", {
+                      percent: percentLabel(season.adjust_bp, locale),
+                    })}
                     {" · "}
                     {t(
                       season.repeats_yearly ? "seasons.yearly" : "seasons.once",
-                      {
-                        from: season.starts_on,
-                        to: season.ends_on,
-                      },
+                      seasonDates(
+                        season.starts_on,
+                        season.ends_on,
+                        season.repeats_yearly,
+                        locale,
+                      ),
                     )}
                   </li>
                 ))}
@@ -398,9 +407,15 @@ function percentText(bp: number, locale: string): string {
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
+  const headingId = useId();
   return (
-    <section className="rounded-lg border bg-card p-4 sm:p-5">
-      <h2 className="mb-4 text-lg font-semibold">{title}</h2>
+    <section
+      aria-labelledby={headingId}
+      className="rounded-lg border bg-card p-4 sm:p-5"
+    >
+      <h2 id={headingId} className="mb-4 text-lg font-semibold">
+        {title}
+      </h2>
       {children}
     </section>
   );
@@ -702,6 +717,7 @@ export function ListEditor({
 // ----------------------------------------------------------- a shared list
 
 function SharedChoice({
+  canEdit,
   slug,
   currency,
   shared,
@@ -709,6 +725,8 @@ function SharedChoice({
   draft,
   set,
 }: {
+  /** Price lists are in Settings, which staff can't open. */
+  canEdit: boolean;
   slug: string;
   currency: string;
   shared: SharedList[];
@@ -766,14 +784,16 @@ function SharedChoice({
           </select>
         </Field>
       )}
-      <p className="text-sm">
-        <Link
-          href={`/${slug}/products/price-lists`}
-          className="font-medium underline underline-offset-4"
-        >
-          {t("tiered.manageLists")}
-        </Link>
-      </p>
+      {canEdit && (
+        <p className="text-sm">
+          <Link
+            href={`/${slug}/settings/price-lists`}
+            className="font-medium underline underline-offset-4"
+          >
+            {t("tiered.manageLists")}
+          </Link>
+        </p>
+      )}
       {list?.kind === "multipliers" && (
         <MoneyInput
           id="baseAmount"
@@ -814,20 +834,10 @@ function SharedChoice({
   );
 }
 
+/** A base price as typed, through the one money parser. Null: not usable. */
 function parseBase(text: string, currency: string): bigint | null {
-  const match = /^\s*(\d[\d,]*)(?:\.(\d+))?\s*$/.exec(text);
-  if (!match) return null;
-  const exponent =
-    new Intl.NumberFormat("en", {
-      style: "currency",
-      currency,
-    }).resolvedOptions().maximumFractionDigits ?? 2;
-  const fraction = match[2] ?? "";
-  if (fraction.length > exponent) return null;
-  const value = BigInt(
-    match[1].replace(/,/g, "") + fraction.padEnd(exponent, "0"),
-  );
-  return value > BigInt(0) ? value : null;
+  const value = parseMinorUnits(text, currency);
+  return typeof value === "bigint" && value > BigInt(0) ? value : null;
 }
 
 // ------------------------------------------------------------ check a price
@@ -883,7 +893,7 @@ function CheckPrice({
     defaultId: defaultTaxId,
   });
   const result = span
-    ? previewQuote(previewInputs(inputs, draft, ctx), row, {
+    ? previewQuote(inputs, row, {
         ...span,
         quantity: Number(quantity),
         timeZone,
@@ -989,15 +999,18 @@ function CheckPrice({
                 detail={basisText(line.unit.basis, t, money)}
                 value={money(line.listPrice)}
               />
-              {line.seasons.map((s) => (
-                <Row
-                  key={s.ruleId}
-                  label={t("check.season", { name: seasonName(s.ruleId) })}
-                  detail={t("check.seasonDays", { count: s.periodsInside })}
-                  value={money(s.amount < BigInt(0) ? -s.amount : s.amount)}
-                  sign={s.amount < BigInt(0) ? "−" : "+"}
-                />
-              ))}
+              {line.seasons.map((s) => {
+                const parts = adjustmentParts(s.amount);
+                return (
+                  <Row
+                    key={s.ruleId}
+                    label={t("check.season", { name: seasonName(s.ruleId) })}
+                    detail={t("check.seasonDays", { count: s.periodsInside })}
+                    value={money(parts.size)}
+                    sign={parts.direction === "decrease" ? "−" : "+"}
+                  />
+                );
+              })}
               {result.taxGroups.map((g) => (
                 <Row
                   key={g.rateBp}

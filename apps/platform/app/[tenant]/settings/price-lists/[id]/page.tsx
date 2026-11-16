@@ -11,7 +11,7 @@ import {
 } from "@/lib/pricing-data";
 import { draftFromSaved, suggestedStep } from "@/lib/pricing-form";
 import { canPricing } from "@/lib/pricing-permissions";
-import { PriceListForm } from "../../price-list-form";
+import { PriceListForm } from "../price-list-form";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("Pricing.lists");
@@ -20,17 +20,17 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * One shared price list: its days, the products on it, and Delete (refused
- * while a product is priced from it). Staff read it.
+ * while a product is priced from it). Owners and managers.
  */
 export default async function PriceListPage({
   params,
   searchParams,
-}: PageProps<"/[tenant]/products/price-lists/[id]">) {
+}: PageProps<"/[tenant]/settings/price-lists/[id]">) {
   const [{ tenant: slug, id }, query] = await Promise.all([
     params,
     searchParams,
   ]);
-  const { membership } = await requireArea(slug, "products");
+  const { membership } = await requireArea(slug, "settings");
   const { tenant, role } = membership;
   if (!canPricing(role, "read")) notFound();
   if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) notFound();
@@ -45,7 +45,7 @@ export default async function PriceListPage({
 
   return (
     <>
-      <BackLink href={`/${slug}/products/price-lists`} label={t("title")} />
+      <BackLink href={`/${slug}/settings/price-lists`} label={t("title")} />
       <PageHeader title={list.name} intro={t("editIntro")} />
       {query.added === "1" && (
         <p

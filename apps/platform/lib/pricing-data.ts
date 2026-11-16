@@ -227,6 +227,25 @@ export async function getPricingAudit(
   });
 }
 
+/**
+ * The shop's season audit rows (row by row, and price_rule_change), oldest
+ * first: lib/season-history.ts replays each season's saves and words what
+ * each did to one product. Owners and managers, by the audit log's RLS.
+ */
+export async function getSeasonAudit(tenantId: string): Promise<AuditRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("audit_events")
+    .select(auditColumns)
+    .eq("tenant_id", tenantId)
+    .eq("entity", "price_rules")
+    .order("at")
+    .order("id")
+    .limit(1000);
+  if (error) throw error;
+  return data;
+}
+
 /** Names and kinds of the shop's lists, shared and own, for History lines. */
 export async function getTemplateNames(tenantId: string) {
   const supabase = await createClient();

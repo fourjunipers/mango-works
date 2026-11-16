@@ -28,7 +28,11 @@ export type PricingArg =
   | { method: Method | null }
   | { period: Period }
   /** "default", "none" (not taxable), or a profile's id. */
-  | { tax: string };
+  | { tax: string }
+  /** A season's change in basis points: −2000 is "20% off". */
+  | { adjust: number }
+  /** A season's days: calendar days, the year unused when yearly. */
+  | { dates: { startsOn: string; endsOn: string; yearly: boolean } };
 
 export type PricingLine = {
   key: string;

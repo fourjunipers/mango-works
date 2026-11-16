@@ -1,5 +1,7 @@
 /**
- * Products, stage D4 (20261115000100): where prices live.
+ * Products, stage D4 (20261115000100): where prices live. Stage D6
+ * (20261115000200) adds the tax profile to the lock order; its own tests are
+ * in tax-profile-in-use.test.ts.
  *
  * What is held here: who may read and who may write, by role and by shop;
  * that nobody signed in writes the tables directly; every save function and
@@ -1689,7 +1691,7 @@ describe("the currency lock", () => {
   }, 120_000);
 });
 
-describe("lock order: the product's row, then the price list's, then the pricing row", () => {
+describe("lock order: the product's row, then the price list's, then the tax profile's, then the pricing row", () => {
   it("save_product_pricing waits for whoever holds the product's row", async () => {
     const id = await addProduct();
     const marker = `hold-priced-${tag}`;

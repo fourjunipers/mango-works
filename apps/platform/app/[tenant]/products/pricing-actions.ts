@@ -5,15 +5,16 @@ import { redirect } from "next/navigation";
 import type { FormState } from "@/components/action-form";
 import {
   MULTIPLIER_STEP,
+  asksProductDeposit,
   computeList,
   daysPayload,
   listNameError,
   pricingPayload,
+  readListDraft,
+  readPricingDraft,
   sameAsSaved,
   suggestedStep,
-  type ListDraft,
   type ListKind,
-  type PricingDraft,
   type ProductType,
 } from "@/lib/pricing-form";
 import { getProductPricingExtras, getSharedList } from "@/lib/pricing-data";
@@ -49,6 +50,11 @@ export async function pricingErrorKey(
     pricing_method_not_allowed: "methodNotAllowed",
     deposit_vehicles_only: "depositVehiclesOnly",
     invalid_tax_profile: "invalidTaxProfile",
+    tax_profile_in_use: "taxProfileInUse",
+    tax_profile_is_default: "taxProfileIsDefault",
+    tax_profiles_name_idx: "profileNameExists",
+    deposit_number_required: "depositNumberRequired",
+    invalid_season: "invalidSeason",
     price_templates_name_idx: "listNameExists",
     only_owner_or_manager: "notAllowed",
   };
@@ -73,6 +79,7 @@ async function context(formData: FormData) {
 function refresh(slug: string) {
   revalidatePath(`/${slug}/products`, "layout");
   revalidatePath(`/${slug}/fleet`, "layout");
+  revalidatePath(`/${slug}/settings`, "layout");
 }
 
 /** The shop's rounding step: its own, or the one suggested for its currency. */
@@ -91,9 +98,9 @@ async function stepOf(
     : suggestedStep(currency);
 }
 
-function parseJson<T>(text: string): T | null {
+function parseJson(text: string): unknown {
   try {
-    return JSON.parse(text) as T;
+    return JSON.parse(text);
   } catch {
     return null;
   }
@@ -117,7 +124,7 @@ export async function saveProductPricing(
   const { slug, tenant, role, supabase } = await context(formData);
   if (!canPricing(role, "write")) return notAllowed;
   const productId = field(formData, "productId");
-  const draft = parseJson<PricingDraft>(field(formData, "draft"));
+  const draft = readPricingDraft(parseJson(field(formData, "draft")));
   if (!productId || !draft) return { errors: { form: "saveFailed" } };
 
   const [product, settings, lists, profiles, extras] = await Promise.all([
@@ -147,8 +154,7 @@ export async function saveProductPricing(
   if (!product.data) return notAllowed;
   const type = product.data.type as ProductType;
   const mode = settings.data?.deposit_mode ?? null;
-  const showDeposit =
-    type === "vehicle" && (mode === null || mode === "per_product");
+  const showDeposit = asksProductDeposit(type, mode);
   const result = pricingPayload(draft, {
     type,
     currency: tenant.currency,
@@ -170,15 +176,6 @@ export async function saveProductPricing(
   });
   if (error) return { errors: { form: await pricingErrorKey(error) } };
 
-  const deposit = result.payload.deposit;
-  if (showDeposit && mode === null && deposit && deposit !== "0") {
-    const { error: modeError } = await supabase.rpc("save_pricing_settings", {
-      p_tenant_id: tenant.id,
-      p_settings: { deposit_mode: "per_product" },
-    });
-    if (modeError)
-      return { errors: { form: await pricingErrorKey(modeError) } };
-  }
   refresh(slug);
   return { ok: true };
 }
@@ -200,7 +197,7 @@ export async function savePriceList(
   const kind = field(formData, "kind") as ListKind;
   if (kind !== "amounts" && kind !== "multipliers")
     return { errors: { kind: "required" } };
-  const draft = parseJson<ListDraft>(field(formData, "list"));
+  const draft = readListDraft(parseJson(field(formData, "list")));
   if (!draft) return { errors: { form: "saveFailed" } };
   const step =
     kind === "multipliers"
@@ -229,7 +226,7 @@ export async function savePriceList(
       : { errors: { form: key } };
   }
   refresh(slug);
-  if (!id) redirect(`/${slug}/products/price-lists/${data}?added=1`);
+  if (!id) redirect(`/${slug}/settings/price-lists/${data}?added=1`);
   return { ok: true };
 }
 
@@ -245,5 +242,5 @@ export async function deletePriceList(
   });
   if (error) return { errors: { form: await pricingErrorKey(error) } };
   refresh(slug);
-  redirect(`/${slug}/products/price-lists?deleted=1`);
+  redirect(`/${slug}/settings/price-lists?deleted=1`);
 }

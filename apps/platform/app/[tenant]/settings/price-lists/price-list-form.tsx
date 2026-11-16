@@ -8,13 +8,14 @@ import { formatMinor, parseMinorUnits } from "@/lib/money";
 import {
   MULTIPLIER_STEP,
   computeList,
+  suggestedSampleBase,
   type ListDraft,
   type ListKind,
 } from "@/lib/pricing-form";
 import { cn } from "@/lib/utils";
 import { resolvePriceList } from "@mango/core/price-list";
-import { deletePriceList, savePriceList } from "./pricing-actions";
-import { ListEditor } from "./pricing-form";
+import { deletePriceList, savePriceList } from "../../products/pricing-actions";
+import { ListEditor } from "../../products/pricing-form";
 
 /**
  * A shared price list's editor (docs/products-redesign.md §9.3, §9.4,
@@ -47,7 +48,7 @@ export function PriceListForm({
   const locale = useLocale();
   const [kind, setKind] = useState<ListKind | null>(list.kind);
   const [draft, setDraft] = useState<ListDraft>(list.draft);
-  const [sample, setSample] = useState(currency === "THB" ? "100" : "10");
+  const [sample, setSample] = useState(() => suggestedSampleBase(currency));
   const listStep = kind === "multipliers" ? MULTIPLIER_STEP : BigInt(step);
   const result = useMemo(
     () => computeList(draft, kind ?? "amounts", currency, listStep),

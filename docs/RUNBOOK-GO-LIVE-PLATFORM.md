@@ -270,7 +270,13 @@ From `apps/platform`, with staging's demo password in the environment:
 PLAYWRIGHT_BASE_URL=https://mango-works-platform.netlify.app npx playwright test
 ```
 
-A deploy preview's address works the same way. The tests create what they need and remove it again. One thing stays behind: the first time a product deposit is saved in a shop that has no pricing settings yet, the shop gets a settings row on "per product" (`pricing_settings`), and the deposit test does that to the demo shop BSR. After the run of 15 Nov 2026 the row was removed again by hand, on the owner's instruction, so BSR is back to no settings row ("none"). A later run against staging will make the row again.
+A deploy preview's address works the same way. The tests create what they need and remove it again. What stays behind on staging, from stage D6 on:
+
+- **BSR's pricing settings row.** A shop's settings (`pricing_settings`) are made by the first Save in Settings › Pricing and tax, never by opening a page, and nothing removes a row. The browser tests that change BSR's settings (the deposit choice, the default tax profile, tax on top, the rounding step) hold them one test at a time and put every setting back as it was when they finish, pass or fail (`apps/platform/e2e/shop-settings.ts`). If BSR had no row before the first such run, it is left with a row on the defaults: rounding step not chosen, prices include tax, no default profile, no deposit, coupons off. Since stage D6 that row works exactly like no row (a shop's first product deposit no longer switches it to "per product"); the one difference is that a row fixes the shop's currency, and BSR's is fixed already by its fleet's money. No test makes a settings row in the Saigon or big-fleet shops.
+- **One archived tax profile in BSR, "E2E VAT" (7%).** Tax profiles are never deleted, only removed from use. The tax test reuses this one name every run, brings it back, and removes it again at the end, so a run adds none.
+- **Audit rows** for every season, price and setting a test changed, as for everything else the tests do.
+
+The row of 15 Nov 2026 (BSR set to "per product" by the D4 deposit test) was removed by hand on the owner's instruction; nothing in the D6 tests needs that again.
 
 ## Netlify environment variables
 

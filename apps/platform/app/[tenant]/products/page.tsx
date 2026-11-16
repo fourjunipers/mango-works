@@ -120,6 +120,8 @@ export default async function ProductsPage({
   // mechanic or a driver has no prices to see, and the database would send
   // none (RLS). Worked out from pricing_inputs by @mango/core.
   const seePrices = canPricing(role, "read");
+  // Price lists live in Settings: owners and managers.
+  const editPrices = canPricing(role, "write");
   const prices = seePrices
     ? await getPricingInputs(
         tenant.id,
@@ -239,11 +241,11 @@ export default async function ProductsPage({
         title={t("title")}
         intro={t("intro", { count: total })}
         actions={
-          (manage || seePrices) && (
+          (manage || editPrices) && (
             <div className="flex flex-wrap gap-2">
-              {seePrices && (
+              {editPrices && (
                 <Link
-                  href={`${base}/price-lists`}
+                  href={`/${slug}/settings/price-lists`}
                   className={cn(
                     buttonVariants({ variant: "outline" }),
                     "h-11 px-4",
