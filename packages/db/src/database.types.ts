@@ -301,14 +301,14 @@ isOneToOne: true
                   ]
                 },"product_extras": {
                   Row: {
-                    "created_at": string,"extra_product_id": string,"extra_product_type": string,"id": string,"included_quantity": number,"max_quantity": number | null,"product_id": string | null,"product_type": string,"sort_position": number,"tenant_id": string,"updated_at": string
+                    "created_at": string,"extra_product_id": string,"extra_product_type": string,"id": string,"included_quantity": number,"max_quantity": number | null,"offered": boolean,"product_id": string | null,"product_type": string,"sort_position": number,"tenant_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"extra_product_id": string,"extra_product_type": string,"id"?: string,"included_quantity"?: number,"max_quantity"?: number | null,"product_id"?: string | null,"product_type"?: string,"sort_position"?: number,"tenant_id": string,"updated_at"?: string
+                    "created_at"?: string,"extra_product_id": string,"extra_product_type": string,"id"?: string,"included_quantity"?: number,"max_quantity"?: number | null,"offered"?: boolean,"product_id"?: string | null,"product_type"?: string,"sort_position"?: number,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"extra_product_id"?: string,"extra_product_type"?: string,"id"?: string,"included_quantity"?: number,"max_quantity"?: number | null,"product_id"?: string | null,"product_type"?: string,"sort_position"?: number,"tenant_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"extra_product_id"?: string,"extra_product_type"?: string,"id"?: string,"included_quantity"?: number,"max_quantity"?: number | null,"offered"?: boolean,"product_id"?: string | null,"product_type"?: string,"sort_position"?: number,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
