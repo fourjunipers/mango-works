@@ -13,6 +13,15 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Next.js security upgrade (branch `security/next-upgrade`, 17 Nov 2026)
+
+`next build` warned that the Next.js version is affected by a known security vulnerability.
+
+- **Advisory:** GHSA-mfr8-8qww-v76h (CVE-2026-119790), **medium**, published 16 Nov 2026. Information disclosure across root params: a `'use cache'` function that reads a root param and is called both directly and through `unstable_cache()` can, in a race on a cold process start, have its result stored without root params and served to requests for other root param values. Affects `next` 16.3.0 to 16.4.4; **first fixed 16.4.5**.
+- **Exposure:** the marketplace uses `'use cache'` (`cacheComponents: true`) but nothing in the repo calls `unstable_cache()`, so the affected path was not reachable.
+- **Change:** `next` and `eslint-config-next` 16.4.2 → **16.4.5** in both apps, and the `next` peer range in `packages/db` (it pinned 16.4.2, which kept a second, vulnerable copy installed). Lockfile: only the `next`, `@next/*` and `eslint-config-next` entries change. Same major line; no code change. `npm audit` no longer lists `next`. The other `npm audit` findings (hono, body-parser, typescript-eslint, shadcn's tree) are left as they are.
+- **Tests**, on this worktree's own local stack: typecheck and lint clean; unit 929 (marketplace 202, platform 364, core 363); database: marketplace 87, platform 556. In the full platform run, 4 lock-timing tests failed under load (timeouts in `availability`, `reservations`' cleanup hook, and a 620 ms wait where over 700 ms was expected in `tax-profile-in-use`); the three files pass when run alone (78, 68, 11). Browser, on a freshly reset and seeded database, 375 px and 1280 px, two workers: 142 tests, **135 passed, 7 skipped, 0 failed**. Production build of both apps on 16.4.5 succeeded with no vulnerability warning.
+
 ## Phase 2: plan only (branch `docs/phase-2-plan`, 16 Nov 2026)
 
 **No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). Stages 1 to 3 are built (below).
