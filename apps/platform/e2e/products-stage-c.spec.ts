@@ -107,6 +107,7 @@ test("Moto Mangos tab: Connect, the switch, counts and lead time, Change model, 
     "Details",
     /^Units/,
     "Pricing",
+    "Extras",
     "Moto Mangos",
     "History",
   ]);

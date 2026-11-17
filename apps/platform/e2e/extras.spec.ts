@@ -47,13 +47,13 @@ async function addBoat(page: Page, name: string): Promise<string> {
   return page.url().split("?")[0];
 }
 
-/** Rental gear, 5 in stock, made as the owner. */
+/** Rental gear with none in stock (so it can be deleted), made as the owner. */
 async function addGear(page: Page, name: string): Promise<string> {
   await page.goto("/bsr/products/new");
   await page.getByRole("radio", { name: /^General/ }).check();
   await page.getByRole("radio", { name: /^Rental gear/ }).check();
   await page.getByLabel("Product name").fill(name);
-  await page.getByLabel("Quantity", { exact: true }).fill("5");
+  await page.getByLabel("Quantity", { exact: true }).fill("0");
   await page.getByRole("button", { name: "Add product" }).click();
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
   return page.url().split("?")[0];
@@ -143,7 +143,9 @@ test("an owner sets a vehicle's extras on its Extras tab: Included free and Most
     await line.getByLabel("Included free").fill("3");
     await line.getByLabel("Most per vehicle").fill("2");
     await expect(
-      line.getByText("The most per vehicle can't be below the number included."),
+      line.getByText(
+        "The most per vehicle can't be below the number included.",
+      ),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Save extras" }),
@@ -151,7 +153,9 @@ test("an owner sets a vehicle's extras on its Extras tab: Included free and Most
 
     await line.getByLabel("Included free").fill("1");
     await expect(
-      line.getByText("The most per vehicle can't be below the number included."),
+      line.getByText(
+        "The most per vehicle can't be below the number included.",
+      ),
     ).toHaveCount(0);
     await noSidewaysScroll(page);
     await saveExtras(page);
@@ -202,7 +206,9 @@ test("Settings › Extras: the owner adds to the list for every vehicle; a vehic
       await page.reload();
       await expect(
         page.getByText(
-          new RegExp(`added ${gearName}: 2 included, no limit per vehicle \\(every vehicle\\)`),
+          new RegExp(
+            `added ${gearName}: 2 included, no limit per vehicle \\(every vehicle\\)`,
+          ),
         ),
       ).toBeVisible();
 
@@ -279,7 +285,9 @@ test("staff read both screens with no controls; a mechanic reads the Extras tab 
 
       // Settings › Extras: read-only, with no menu of sections and no History.
       await staff.page
-        .getByRole("link", { name: "Settings › Extras: what every vehicle offers" })
+        .getByRole("link", {
+          name: "Settings › Extras: what every vehicle offers",
+        })
         .click();
       await expect(staff.page).toHaveURL(/\/bsr\/settings\/extras$/);
       await expect(
@@ -360,7 +368,9 @@ test.describe("every other Settings page is Page not found for staff", () => {
     // A price list nothing is priced from.
     const page = (await as(browser, demo.bsrOwner)).page;
     await page.goto("/bsr/settings/price-lists/new");
-    await page.getByLabel("Name", { exact: true }).fill(`Extras list ${stamp()}`);
+    await page
+      .getByLabel("Name", { exact: true })
+      .fill(`Extras list ${stamp()}`);
     await page.getByRole("radio", { name: /^Amounts/ }).check();
     await page.getByLabel("Daily (1 day)").fill("300");
     await page.getByLabel("Monthly (30 days)").fill("3000");
@@ -405,7 +415,10 @@ test.describe("every other Settings page is Page not found for staff", () => {
         await staff.page.goto(address);
         await expect(staff.page.getByText("Page not found")).toBeVisible();
         await expect(
-          staff.page.getByRole("heading", { level: 1, name: new RegExp(heading) }),
+          staff.page.getByRole("heading", {
+            level: 1,
+            name: new RegExp(heading),
+          }),
         ).toHaveCount(0);
         await expect(
           staff.page.getByRole("navigation", { name: "Settings sections" }),
