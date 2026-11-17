@@ -644,15 +644,8 @@ function buildSnapshot(
   quote: Extract<Quote, { ok: true }>,
   context: SnapshotContext,
 ): QuoteSnapshot {
-  if (!/^[A-Z]{3}$/.test(context.currency))
-    fail(`Not a currency code: ${context.currency}`);
-  if (
-    !Number.isInteger(context.exponent) ||
-    context.exponent < 0 ||
-    context.exponent > 4
-  )
-    fail(`Not a currency exponent: ${context.exponent}`);
-
+  // The currency, its exponent and `pricedAt` are checked as they are
+  // written (`encode`), by the same rules the reader uses: one guard each.
   const discounts = new Map<
     string,
     NonNullable<QuoteInput["discounts"]>[number]
@@ -730,12 +723,14 @@ function buildSnapshot(
       pricing: from.pricing,
       seasons: line.seasons.map((season) => {
         const rule = seasonRules.get(season.ruleId);
-        const named = context.seasons?.[season.ruleId];
-        if (!rule || !named)
+        const seasonName = Object.hasOwn(context.seasons ?? {}, season.ruleId)
+          ? context.seasons![season.ruleId]
+          : null;
+        if (!rule || !seasonName)
           return fail(`Season ${season.ruleId}: the snapshot needs its name`);
         return {
           ruleId: season.ruleId,
-          name: named.name,
+          name: seasonName.name,
           adjustBp: rule.adjustBp,
           periodsInside: season.periodsInside,
           periods: starts === null ? 0 : starts.length,
@@ -925,7 +920,14 @@ export function upgradeSnapshot(
   while (version < current) {
     const step = stepFrom(upgrades, version);
     const next = step.invoice ? step.invoice(data) : data;
-    const lines = Array.isArray(next.lines) ? next.lines : [];
+    // A step that loses the lines, or moves them, must not leave an invoice
+    // that reads as one with no lines.
+    const lines = next.lines;
+    if (!Array.isArray(lines) || lines.some((line) => !isObject(line))) {
+      return fail(
+        `The step from version ${version} must keep the snapshot's lines`,
+      );
+    }
     data = {
       ...next,
       lines: lines.map((line) => ({

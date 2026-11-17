@@ -1319,56 +1319,6 @@ describe("what is refused", () => {
     unreadable((s) => (s.tax_inclusive = "yes"));
   });
 
-  const unwritable = (
-    change: (parts: {
-      quoteInput: QuoteInput;
-      context: SnapshotContext;
-    }) => void,
-    quoteInput: QuoteInput = first.input,
-  ) => {
-    const parts = {
-      quoteInput: { ...quoteInput },
-      context: { ...contextFor(quoteInput) },
-    };
-    change(parts);
-    expect(() => snapshotQuote(parts.quoteInput, parts.context)).toThrow(
-      SnapshotError,
-    );
-  };
-
-  it("writing: a line with no product name, or a taxed line with no profile", () => {
-    unwritable((p) => (p.context.lines = {}));
-    unwritable(
-      (p) =>
-        (p.context.lines = { a: { ...p.context.lines.a, taxProfile: null } }),
-    );
-    unwritable(
-      (p) =>
-        (p.context.lines = {
-          a: { ...p.context.lines.a, productType: "gear" },
-        }),
-    );
-  });
-
-  it("writing: a season or a coupon with no name to keep", () => {
-    const season = pinnedQuotes().find((p) =>
-      p.name.startsWith("3 of 7 days"),
-    )!;
-    unwritable((p) => (p.context.seasons = {}), season.input);
-    const coupon = pinnedQuotes().find((p) =>
-      p.name.startsWith("a 10% coupon"),
-    )!;
-    unwritable((p) => (p.context.coupons = {}), coupon.input);
-  });
-
-  it("writing: a currency that is not one, an exponent or a moment that is not one", () => {
-    unwritable((p) => (p.context.currency = "baht"));
-    unwritable((p) => (p.context.currency = "thb"));
-    unwritable((p) => (p.context.exponent = 5));
-    unwritable((p) => (p.context.exponent = 2.5));
-    unwritable((p) => (p.context.pricedAt = new Date("never")));
-  });
-
   it("an invoice with no lines snapshots as an empty one", () => {
     const empty = input({ lines: [] });
     const { read } = roundTrip(empty, contextFor(empty));
@@ -1853,16 +1803,294 @@ describe("what the reader refuses, value by value", () => {
     lineUnreadable((l) => (l.version = 0));
     lineUnreadable((l) => (l.version = 1.5));
   });
+});
 
-  it("and writing refuses the same values, so a bad one is never stored", () => {
-    const quoteInput = input({ lines: [line("a", bike300())] });
-    for (const context of [
-      contextFor(quoteInput, { currency: "thb" }),
-      contextFor(quoteInput, { currency: "BAHT" }),
-      contextFor(quoteInput, { exponent: 5 }),
-      contextFor(quoteInput, { exponent: -1 }),
-    ]) {
-      expect(() => snapshotQuote(quoteInput, context)).toThrow(SnapshotError);
+// ------------------------------------ after the second review of PR 40
+
+describe("what writing refuses, one guard at a time", () => {
+  // Each refusal has one guard and one test, and each test names the guard's
+  // own message: take any one guard out and its test fails.
+  const season = pinnedQuotes().find((p) => p.name.startsWith("3 of 7 days"))!;
+  const coupon = pinnedQuotes().find((p) => p.name.startsWith("a 10% coupon"))!;
+  const plain = () => input({ lines: [line("a", bike300())] });
+  const refused = (
+    quoteInput: QuoteInput,
+    context: SnapshotContext,
+    message: RegExp,
+  ) => {
+    let error: unknown;
+    try {
+      snapshotQuote(quoteInput, context);
+    } catch (caught) {
+      error = caught;
     }
+    expect(error).toBeInstanceOf(SnapshotError);
+    expect((error as Error).message).toMatch(message);
+  };
+
+  it("writes the plain invoice, the season and the coupon these tests start from", () => {
+    expect(() => snapshotQuote(plain(), contextFor(plain()))).not.toThrow();
+    expect(() => snapshotQuote(season.input, season.context)).not.toThrow();
+    expect(() => snapshotQuote(coupon.input, coupon.context)).not.toThrow();
+  });
+
+  it("a line the context says nothing about", () => {
+    refused(
+      plain(),
+      { ...contextFor(plain()), lines: {} },
+      /Line a: the snapshot needs its product's name and type/,
+    );
+    // A line id that is a name every object has is still not in the context.
+    const odd = input({ lines: [line("constructor", bike300())] });
+    refused(
+      odd,
+      { ...contextFor(odd), lines: {} },
+      /Line constructor: the snapshot needs its product's name and type/,
+    );
+  });
+
+  it("a product type that disagrees with the priced line", () => {
+    const context = contextFor(plain());
+    refused(
+      plain(),
+      { ...context, lines: { a: { ...context.lines.a, productType: "gear" } } },
+      /Line a: its product type and the priced line disagree/,
+    );
+    const gear = input({
+      lines: [line("a", fixed("100"), { vehicle: false })],
+    });
+    const gearContext = contextFor(gear);
+    refused(
+      gear,
+      {
+        ...gearContext,
+        lines: { a: { ...gearContext.lines.a, productType: "vehicle" } },
+      },
+      /Line a: its product type and the priced line disagree/,
+    );
+  });
+
+  it("a taxed line with no tax profile", () => {
+    const context = contextFor(plain());
+    refused(
+      plain(),
+      { ...context, lines: { a: { ...context.lines.a, taxProfile: null } } },
+      /Line a is taxed: the snapshot needs its tax profile/,
+    );
+    // A line that is not taxed needs none.
+    const untaxed = input({
+      lines: [line("a", bike300(), { taxRateBp: null })],
+    });
+    expect(() => snapshotQuote(untaxed, contextFor(untaxed))).not.toThrow();
+  });
+
+  it("a season that adjusted a line, with no name to keep", () => {
+    refused(
+      season.input,
+      { ...season.context, seasons: {} },
+      /Season low: the snapshot needs its name/,
+    );
+    refused(
+      season.input,
+      { ...season.context, seasons: undefined },
+      /Season low: the snapshot needs its name/,
+    );
+  });
+
+  it("a season whose id is a name every object has: still no name", () => {
+    // `{}.constructor` exists; it is not this shop's season.
+    const quoteInput = input({
+      lines: [line("a", perDay(thb("200")), { days: 7 })],
+      seasonRules: [
+        {
+          id: "constructor",
+          startsOn: "2027-10-15",
+          endsOn: "2027-11-30",
+          repeatsYearly: false,
+          adjustBp: 1000,
+          products: "all",
+        },
+      ],
+    });
+    refused(
+      quoteInput,
+      { ...contextFor(quoteInput), seasons: {} },
+      /Season constructor: the snapshot needs its name/,
+    );
+    expect(() =>
+      snapshotQuote(quoteInput, contextFor(quoteInput)),
+    ).not.toThrow();
+  });
+
+  it("a coupon with no id and code to keep", () => {
+    refused(
+      coupon.input,
+      { ...coupon.context, coupons: {} },
+      /the snapshot needs its id and code/,
+    );
+    refused(
+      coupon.input,
+      { ...coupon.context, coupons: undefined },
+      /the snapshot needs its id and code/,
+    );
+    // A discount that is not a coupon needs neither.
+    const staffOnly = input({
+      lines: [line("a", bike300())],
+      discounts: [{ id: "s", source: "staff", lines: "all", percentBp: 500 }],
+    });
+    expect(() =>
+      snapshotQuote(staffOnly, { ...contextFor(staffOnly), coupons: {} }),
+    ).not.toThrow();
+  });
+
+  it("a currency that is not three capitals", () => {
+    for (const currency of ["baht", "thb", "Thb", "TH", "THBX", ""]) {
+      refused(
+        plain(),
+        contextFor(plain(), { currency }),
+        /the quote\.currency: expected a currency code of three capitals/,
+      );
+    }
+  });
+
+  it("an exponent outside 0 to 4, or not whole", () => {
+    for (const exponent of [5, 9, -1, 2.5, Number.NaN]) {
+      refused(
+        plain(),
+        contextFor(plain(), { exponent }),
+        /the quote\.exponent: expected a whole number from 0 to 4/,
+      );
+    }
+    for (const exponent of [0, 2, 3, 4]) {
+      expect(() =>
+        snapshotQuote(plain(), contextFor(plain(), { exponent })),
+      ).not.toThrow();
+    }
+  });
+
+  it("a moment of pricing that is not one", () => {
+    refused(
+      plain(),
+      contextFor(plain(), { pricedAt: new Date("never") }),
+      /the quote\.pricedAt: expected a date and time/,
+    );
+    refused(
+      plain(),
+      contextFor(plain(), {
+        pricedAt: "2027-10-20T03:15:00.000Z" as unknown as Date,
+      }),
+      /the quote\.pricedAt: expected a date and time/,
+    );
+  });
+
+  it("two discounts that share an id: the invoice's totals would count both under one", () => {
+    // quote() takes them: each line would list the id twice. The snapshot
+    // names a discount by its id, so it can't hold two of one.
+    const twice = input({
+      lines: [line("a", bike300(), { days: 7 })],
+      discounts: [
+        { id: "d", source: "staff", lines: "all", percentBp: 1000 },
+        { id: "d", source: "staff", lines: "all", percentBp: 1000 },
+      ],
+    });
+    expect(priced(twice).lines[0].discounts.map((d) => d.discountId)).toEqual([
+      "d",
+      "d",
+    ]);
+    refused(twice, contextFor(twice), /Two discounts share the id d/);
+    // The same two under their own ids are fine, and add up.
+    const apart = input({
+      ...twice,
+      discounts: [
+        { id: "d1", source: "staff", lines: "all", percentBp: 1000 },
+        { id: "d2", source: "staff", lines: "all", percentBp: 1000 },
+      ],
+    });
+    const { read } = roundTrip(apart, contextFor(apart));
+    expect(read.discounts.map((d) => d.total)).toEqual([
+      thb("140"),
+      thb("126"),
+    ]);
+    expect(sum(read.discounts.map((d) => d.total))).toBe(read.totals.discount);
+  });
+});
+
+describe("an upgrade step must keep the lines", () => {
+  const first = pinnedQuotes()[0];
+  const v1 = () =>
+    JSON.parse(
+      JSON.stringify(snapshotQuote(first.input, first.context)),
+    ) as StoredSnapshot;
+  type Stored = { [key: string]: Json };
+
+  it("a step that drops them is an error, not an invoice with no lines", () => {
+    const drops = {
+      1: {
+        invoice: (older: Stored) => {
+          const { lines, ...rest } = older;
+          void lines;
+          return rest;
+        },
+      },
+    };
+    expect(() => upgradeSnapshot(v1(), drops, 2)).toThrow(SnapshotError);
+    expect(() => upgradeSnapshot(v1(), drops, 2)).toThrow(
+      /step from version 1 must keep the snapshot's lines/,
+    );
+  });
+
+  it("a step that renames them is an error too", () => {
+    const renames = {
+      1: {
+        invoice: (older: Stored) => {
+          const { lines, ...rest } = older;
+          return { ...rest, items: lines };
+        },
+      },
+    };
+    expect(() => upgradeSnapshot(v1(), renames, 2)).toThrow(
+      /must keep the snapshot's lines/,
+    );
+  });
+
+  it("and so is one that leaves something that is not a list of lines", () => {
+    for (const lines of [null, {}, "none", [null], ["line"], [[]]] as Json[]) {
+      expect(() =>
+        upgradeSnapshot(
+          v1(),
+          { 1: { invoice: (older: Stored) => ({ ...older, lines }) } },
+          2,
+        ),
+      ).toThrow(/must keep the snapshot's lines/);
+    }
+  });
+
+  it("in the second step of two as well, naming the step", () => {
+    expect(() =>
+      upgradeSnapshot(
+        v1(),
+        {
+          1: {},
+          2: {
+            invoice: (older: Stored) => {
+              const { lines, ...rest } = older;
+              void lines;
+              return rest;
+            },
+          },
+        },
+        3,
+      ),
+    ).toThrow(/step from version 2 must keep/);
+  });
+
+  it("a step that keeps them goes through, every line with it", () => {
+    const kept = upgradeSnapshot(
+      v1(),
+      { 1: { invoice: (older: Stored) => ({ ...older, channel: "walk_in" }) } },
+      2,
+    );
+    expect(kept.lines as Json[]).toHaveLength((v1().lines as Json[]).length);
+    expect((kept.lines as Stored[]).every((l) => l.version === 2)).toBe(true);
   });
 });
