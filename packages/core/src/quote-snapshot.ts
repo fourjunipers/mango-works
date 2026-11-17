@@ -14,9 +14,15 @@
  *  - every instant an ISO 8601 string in UTC;
  *  - a `version`.
  *
- * **This file prices nothing.** It copies what `quote()` returned and what
- * went into it, and takes each line's tax share and deposit from `quote.ts`.
- * The only sum here is a subtraction (a line's season total).
+ * **This file prices nothing itself.** `snapshotQuote()` calls `quote()` on
+ * the input it is given, so the snapshot can never disagree with its input,
+ * then copies what went in and what came out, and takes each line's tax share
+ * and deposit from `quote.ts`. Its only sums are additions and one
+ * subtraction (a line's season total; what a discount took over its lines):
+ * nothing here multiplies, divides or rounds.
+ *
+ * A line can be stored on its own (`snapshot jsonb` on an order line), so
+ * each stored line carries the `version` too: `readSnapshotLine()` reads one.
  *
  * Changing the stored shape: add a step to `UPGRADES` that turns the version
  * before into the new one, and raise `SNAPSHOT_VERSION`. A stored snapshot is
@@ -24,9 +30,9 @@
  */
 
 import {
-  depositSettingFor,
   lineDeposits,
   lineTaxShares,
+  quote as priceQuote,
   type DiscountSource,
   type Quote,
   type QuoteInput,
@@ -82,6 +88,8 @@ export type SnapshotContext = {
 // ------------------------------------------------------- the snapshot, read
 
 export type SnapshotLine = {
+  /** The snapshot's version, on the line too: a line can be stored alone. */
+  version: number;
   id: string;
   currency: string;
   exponent: number;
@@ -101,6 +109,14 @@ export type SnapshotLine = {
   quantity: number;
   includedQuantity: number;
   chargedQuantity: number;
+  /**
+   * An extra's allowance: how many units came free with each vehicle when it
+   * was priced (`extraOf.includedQuantity`). `includedQuantity` is capped at
+   * the line's quantity, so this is the only place the allowance is kept:
+   * 3 helmets taken where 2 scooters gave 4 reads 3 included and 2 here.
+   * Null for a line with no parent.
+   */
+  includedPerVehicle: number | null;
   /** The price of one unit and how it was worked out (the pricer's basis). */
   unitPrice: UnitPrice;
   /** Unit price × charged quantity. */
@@ -172,6 +188,27 @@ export type QuoteSnapshot = {
   }>;
   nonTaxable: bigint;
   credits: Array<{ id: string; amount: bigint; taxRateBp: number | null }>;
+  /**
+   * Every discount the invoice was priced with, in the order applied, one
+   * that took nothing included (a coupon on lines that came to 0 is still
+   * a use of the coupon).
+   */
+  discounts: Array<{
+    discountId: string;
+    source: DiscountSource;
+    couponId: string | null;
+    couponCode: string | null;
+    kind: "percent" | "fixed";
+    percentBp: number | null;
+    /** A fixed discount's whole amount, as it was given. */
+    fixedAmount: bigint | null;
+    /** True: it was aimed at every line. Then `lineIds` is empty. */
+    allLines: boolean;
+    /** The lines it was aimed at, when not all of them. */
+    lineIds: string[];
+    /** What it took over all its lines. May be 0. */
+    total: bigint;
+  }>;
   totals: {
     listPrice: bigint;
     /** Signed. */
@@ -207,7 +244,8 @@ export type StoredSnapshot = { version: number; [key: string]: Json };
 // drift apart without a test failing.
 
 type Shape =
-  | { is: "money" | "signed" | "int" | "text" | "bool" | "instant" }
+  | { is: "money" | "signed" | "text" | "bool" | "instant" | "currency" }
+  | { is: "int"; min?: number; max?: number }
   | { is: "one_of"; values: readonly string[] }
   | { is: "nullable"; of: Shape }
   | { is: "list"; of: Shape }
@@ -219,6 +257,13 @@ type Fields = Readonly<Record<string, Shape>>;
 const money: Shape = { is: "money" };
 const signed: Shape = { is: "signed" };
 const int: Shape = { is: "int" };
+/** A whole number in a range, both ends included. */
+const intIn = (min: number, max?: number): Shape => ({ is: "int", min, max });
+const count = intIn(0);
+const version = intIn(1);
+const currencyCode: Shape = { is: "currency" };
+const exponent = intIn(0, 4);
+const rateBp = intIn(0, 10000);
 const text: Shape = { is: "text" };
 const bool: Shape = { is: "bool" };
 const instant: Shape = { is: "instant" };
@@ -273,10 +318,21 @@ const unitPriceShape: Shape = record({
   },
 });
 
+const discountFields = {
+  discountId: text,
+  source: oneOf("coupon", "staff", "returning_customer", "other"),
+  couponId: nullable(text),
+  couponCode: nullable(text),
+  kind: oneOf("percent", "fixed"),
+  percentBp: nullable(int),
+  fixedAmount: nullable(money),
+};
+
 const lineShape = record({
+  version,
   id: text,
-  currency: text,
-  exponent: int,
+  currency: currencyCode,
+  exponent,
   productId: text,
   productName: text,
   productType: oneOf("vehicle", "gear", "sale_item", "service"),
@@ -285,10 +341,11 @@ const lineShape = record({
   end: instant,
   rentalStart: nullable(instant),
   timeZone: text,
-  periods: nullable(record({ unit: period, count: int })),
-  quantity: int,
-  includedQuantity: int,
-  chargedQuantity: int,
+  periods: nullable(record({ unit: period, count })),
+  quantity: intIn(1),
+  includedQuantity: count,
+  chargedQuantity: count,
+  includedPerVehicle: nullable(count),
   unitPrice: unitPriceShape,
   listPrice: money,
   pricing: pricingShape,
@@ -297,29 +354,18 @@ const lineShape = record({
       ruleId: text,
       name: text,
       adjustBp: int,
-      periodsInside: int,
-      periods: int,
+      periodsInside: count,
+      periods: count,
       amount: signed,
     }),
   ),
   seasonTotal: signed,
   seasonPrice: money,
-  discounts: list(
-    record({
-      discountId: text,
-      source: oneOf("coupon", "staff", "returning_customer", "other"),
-      couponId: nullable(text),
-      couponCode: nullable(text),
-      kind: oneOf("percent", "fixed"),
-      percentBp: nullable(int),
-      fixedAmount: nullable(money),
-      amount: money,
-    }),
-  ),
+  discounts: list(record({ ...discountFields, amount: money })),
   discountTotal: money,
   amount: money,
   taxable: bool,
-  taxRateBp: nullable(int),
+  taxRateBp: nullable(rateBp),
   taxProfileId: nullable(text),
   taxProfileName: nullable(text),
   taxInclusive: bool,
@@ -328,15 +374,15 @@ const lineShape = record({
 });
 
 const snapshotShape = record({
-  version: int,
-  currency: text,
-  exponent: int,
+  version,
+  currency: currencyCode,
+  exponent,
   pricedAt: instant,
   taxInclusive: bool,
   lines: list(lineShape),
   taxGroups: list(
     record({
-      rateBp: int,
+      rateBp,
       profileNames: list(text),
       base: money,
       net: money,
@@ -346,7 +392,17 @@ const snapshotShape = record({
     }),
   ),
   nonTaxable: money,
-  credits: list(record({ id: text, amount: money, taxRateBp: nullable(int) })),
+  credits: list(
+    record({ id: text, amount: money, taxRateBp: nullable(rateBp) }),
+  ),
+  discounts: list(
+    record({
+      ...discountFields,
+      allLines: bool,
+      lineIds: list(text),
+      total: money,
+    }),
+  ),
   totals: record({
     listPrice: money,
     seasons: signed,
@@ -373,6 +429,26 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const ZERO = BigInt(0);
 
+/** A whole number inside the shape's range. */
+function wholeIn(shape: { min?: number; max?: number }, value: unknown) {
+  return (
+    Number.isSafeInteger(value) &&
+    (shape.min === undefined || (value as number) >= shape.min) &&
+    (shape.max === undefined || (value as number) <= shape.max)
+  );
+}
+
+/** What a whole number must be, for an error message. */
+function wholeWords(shape: { min?: number; max?: number }): string {
+  if (shape.min === undefined) return "a whole number";
+  return shape.max === undefined
+    ? `a whole number of ${shape.min} or more`
+    : `a whole number from ${shape.min} to ${shape.max}`;
+}
+
+const isCurrency = (value: unknown) =>
+  typeof value === "string" && /^[A-Z]{3}$/.test(value);
+
 /** A value as the pricer has it → its stored form. */
 function encode(shape: Shape, value: unknown, at: string): Json {
   const wrong = (what: string): never =>
@@ -386,8 +462,11 @@ function encode(shape: Shape, value: unknown, at: string): Json {
       if (typeof value !== "bigint") wrong("an amount");
       return String(value);
     case "int":
-      if (!Number.isSafeInteger(value)) wrong("a whole number");
+      if (!wholeIn(shape, value)) wrong(wholeWords(shape));
       return value as number;
+    case "currency":
+      if (!isCurrency(value)) wrong("a currency code of three capitals");
+      return value as string;
     case "text":
       if (typeof value !== "string") wrong("text");
       return value as string;
@@ -453,16 +532,20 @@ function decode(shape: Shape, stored: unknown, at: string): unknown {
   const wrong = (what: string): never =>
     fail(`Can't read the snapshot at ${at}: expected ${what}`);
   switch (shape.is) {
+    // One spelling for one amount: no leading zeros, no "-0".
     case "money":
-      if (typeof stored !== "string" || !/^\d+$/.test(stored))
-        wrong("a string of digits");
+      if (typeof stored !== "string" || !/^(0|[1-9]\d*)$/.test(stored))
+        wrong("a string of digits with no leading zero");
       return BigInt(stored as string);
     case "signed":
-      if (typeof stored !== "string" || !/^-?\d+$/.test(stored))
-        wrong("a string of digits");
+      if (typeof stored !== "string" || !/^(0|-?[1-9]\d*)$/.test(stored))
+        wrong("a string of digits with no leading zero");
       return BigInt(stored as string);
     case "int":
-      if (!Number.isSafeInteger(stored)) wrong("a whole number");
+      if (!wholeIn(shape, stored)) wrong(wholeWords(shape));
+      return stored;
+    case "currency":
+      if (!isCurrency(stored)) wrong("a currency code of three capitals");
       return stored;
     case "text":
       if (typeof stored !== "string") wrong("text");
@@ -569,12 +652,6 @@ function buildSnapshot(
     context.exponent > 4
   )
     fail(`Not a currency exponent: ${context.exponent}`);
-  if (
-    quote.lines.length !== input.lines.length ||
-    quote.lines.some((line, index) => line.id !== input.lines[index].id)
-  ) {
-    fail("The quote is not the answer to this input");
-  }
 
   const discounts = new Map<
     string,
@@ -591,6 +668,28 @@ function buildSnapshot(
   const taxShares = lineTaxShares(quote.lines, quote.taxGroups);
   const deposits = lineDeposits(quote.deposit.setting, input.lines);
 
+  /** A discount as the record names it: on a line, and on the invoice. */
+  const named = (discount: NonNullable<QuoteInput["discounts"]>[number]) => {
+    const isCoupon = discount.source === "coupon";
+    const coupon = Object.hasOwn(context.coupons ?? {}, discount.id)
+      ? context.coupons![discount.id]
+      : null;
+    if (isCoupon && !coupon)
+      fail(`Coupon ${discount.id}: the snapshot needs its id and code`);
+    return {
+      discountId: discount.id,
+      source: discount.source,
+      couponId: isCoupon ? coupon!.couponId : null,
+      couponCode: isCoupon ? coupon!.code : null,
+      kind:
+        discount.percentBp !== undefined
+          ? ("percent" as const)
+          : ("fixed" as const),
+      percentBp: discount.percentBp ?? null,
+      fixedAmount: discount.amount ?? null,
+    };
+  };
+
   const lines: SnapshotLine[] = quote.lines.map((line, index) => {
     const from = input.lines[index];
     const about = Object.hasOwn(context.lines, line.id)
@@ -606,6 +705,7 @@ function buildSnapshot(
     const starts = chargedPeriodStarts(line.unit, from.span);
     const unit = periodUnit(line.unit);
     return {
+      version: SNAPSHOT_VERSION,
       id: line.id,
       currency: context.currency,
       exponent: context.exponent,
@@ -624,6 +724,7 @@ function buildSnapshot(
       quantity: line.quantity,
       includedQuantity: line.includedQuantity,
       chargedQuantity: line.chargedQuantity,
+      includedPerVehicle: from.extraOf ? from.extraOf.includedQuantity : null,
       unitPrice: line.unit,
       listPrice: line.listPrice,
       pricing: from.pricing,
@@ -647,20 +748,7 @@ function buildSnapshot(
         const discount =
           discounts.get(taken.discountId) ??
           fail(`Discount ${taken.discountId} is not in the input`);
-        const coupon = context.coupons?.[discount.id] ?? null;
-        if (discount.source === "coupon" && !coupon)
-          fail(`Coupon ${discount.id}: the snapshot needs its id and code`);
-        const isCoupon = discount.source === "coupon";
-        return {
-          discountId: discount.id,
-          source: discount.source,
-          couponId: isCoupon ? coupon!.couponId : null,
-          couponCode: isCoupon ? coupon!.code : null,
-          kind: discount.percentBp !== undefined ? "percent" : "fixed",
-          percentBp: discount.percentBp ?? null,
-          fixedAmount: discount.amount ?? null,
-          amount: taken.amount,
-        };
+        return { ...named(discount), amount: taken.amount };
       }),
       discountTotal: line.discount,
       amount: line.amount,
@@ -675,9 +763,6 @@ function buildSnapshot(
   });
 
   const setting = quote.deposit.setting;
-  // The input decides the deposit; the quote must be its answer.
-  if (depositSettingFor(input.deposit).from !== quote.deposit.from)
-    fail("The quote is not the answer to this input");
 
   return {
     version: SNAPSHOT_VERSION,
@@ -707,6 +792,20 @@ function buildSnapshot(
       amount: credit.amount,
       taxRateBp: credit.taxRateBp,
     })),
+    // Every discount given, in order: one that took nothing is still here.
+    discounts: [...discounts.values()].map((discount) => ({
+      ...named(discount),
+      allLines: discount.lines === "all",
+      lineIds: discount.lines === "all" ? [] : [...discount.lines],
+      // What it took, added up over the lines: an addition, nothing more.
+      total: quote.lines.reduce(
+        (sum, line) =>
+          line.discounts
+            .filter((taken) => taken.discountId === discount.id)
+            .reduce((all, taken) => all + taken.amount, sum),
+        ZERO,
+      ),
+    })),
     totals: { ...quote.totals },
     deposit: {
       amount: quote.deposit.amount,
@@ -722,16 +821,38 @@ function buildSnapshot(
 }
 
 /**
- * One priced invoice as plain data, ready to store. `input` is what
- * `quote()` was given and `quote` what it answered; `context` adds the names
- * and the currency. The answer shares nothing with its arguments: changing
- * them afterwards does not change it.
+ * One invoice, priced and turned into plain data, ready to store.
+ *
+ * It calls `quote()` on `input` itself (owner, 17 Nov 2026), so a snapshot
+ * can never hold one invoice's prices beside another's figures. `context`
+ * adds the names and the currency. The answer shares nothing with its
+ * arguments: changing them afterwards does not change it.
+ *
+ * Throws `SnapshotError` for an invoice with a line that can't be priced (a
+ * snapshot is of a priced invoice), and for a line whose span has charge
+ * rules: they are not in the stored shape yet, and must not be dropped
+ * silently on the day they are built. Bad input throws `QuoteError`, as
+ * `quote()` does.
  */
 export function snapshotQuote(
   input: QuoteInput,
-  quote: Extract<Quote, { ok: true }>,
   context: SnapshotContext,
 ): StoredSnapshot {
+  for (const line of input.lines) {
+    if (line.span.rules && Object.keys(line.span.rules).length > 0) {
+      fail(
+        `Line ${line.id} has charge rules: the snapshot does not store them yet`,
+      );
+    }
+  }
+  const quote = priceQuote(input);
+  if (!quote.ok) {
+    return fail(
+      `Can't snapshot an invoice that can't be priced: ${quote.unpriced
+        .map((line) => line.lineId)
+        .join(", ")}`,
+    );
+  }
   return encode(
     snapshotShape,
     buildSnapshot(input, quote, context),
@@ -741,28 +862,26 @@ export function snapshotQuote(
 
 // --------------------------------------------------------------------- read
 
+type StoredObject = { [key: string]: Json };
+type Step = (older: StoredObject) => StoredObject;
+
+/**
+ * How one version becomes the next. `invoice` changes the snapshot outside
+ * its lines; `line` changes one stored line, and is all a line stored on its
+ * own needs. Steps add or rename fields; none may work out an amount.
+ */
+export type Upgrade = { invoice?: Step; line?: Step };
+
 /**
  * One step per version that has been replaced: `UPGRADES[n]` turns a stored
  * snapshot of version n into version n + 1. Empty while version 1 is the
- * only one. Steps add or rename fields; none may work out an amount.
+ * only one.
  */
-type Upgrade = (older: { [key: string]: Json }) => { [key: string]: Json };
 const UPGRADES: Readonly<Record<number, Upgrade>> = {};
 
-/**
- * A stored snapshot of any version → the stored form of `current`. Throws
- * for a version newer than this code knows: it must not be guessed at.
- * (`upgrades` and `current` are arguments so the chain can be tested before
- * a second version exists.)
- */
-export function upgradeSnapshot(
-  stored: unknown,
-  upgrades: Readonly<Record<number, Upgrade>> = UPGRADES,
-  current: number = SNAPSHOT_VERSION,
-): StoredSnapshot {
-  if (!isObject(stored)) return fail("A snapshot is an object");
-  let data = stored as { [key: string]: Json };
-  let version = data.version;
+/** The version of a stored snapshot or line, checked against `current`. */
+function storedVersion(data: StoredObject, current: number): number {
+  const version = data.version;
   if (typeof version !== "number" || !Number.isInteger(version) || version < 1)
     return fail("A snapshot has a version");
   if (version > current) {
@@ -770,10 +889,73 @@ export function upgradeSnapshot(
       `This snapshot is version ${version}; this code reads up to ${current}`,
     );
   }
+  return version;
+}
+
+function stepFrom(
+  upgrades: Readonly<Record<number, Upgrade>>,
+  version: number,
+): Upgrade {
+  return Object.hasOwn(upgrades, version)
+    ? upgrades[version]
+    : fail(`No way to read a version ${version} snapshot`);
+}
+
+/**
+ * A stored snapshot of any version → the stored form of `current`, its lines
+ * with it. Throws for a version newer than this code knows: it must not be
+ * guessed at. (`upgrades` and `current` are arguments so the chain can be
+ * tested before a second version exists.)
+ */
+export function upgradeSnapshot(
+  stored: unknown,
+  upgrades: Readonly<Record<number, Upgrade>> = UPGRADES,
+  current: number = SNAPSHOT_VERSION,
+): StoredSnapshot {
+  if (!isObject(stored)) return fail("A snapshot is an object");
+  let data = stored as StoredObject;
+  let version = storedVersion(data, current);
+  // A snapshot and its lines are written together and upgraded together.
+  if (
+    !Array.isArray(data.lines) ||
+    data.lines.some((line) => !isObject(line) || line.version !== version)
+  ) {
+    return fail("Every line of a snapshot carries the snapshot's version");
+  }
   while (version < current) {
-    const step = Object.hasOwn(upgrades, version) ? upgrades[version] : null;
-    if (!step) return fail(`No way to read a version ${version} snapshot`);
-    data = { ...step(data), version: version + 1 };
+    const step = stepFrom(upgrades, version);
+    const next = step.invoice ? step.invoice(data) : data;
+    const lines = Array.isArray(next.lines) ? next.lines : [];
+    data = {
+      ...next,
+      lines: lines.map((line) => ({
+        ...(step.line
+          ? step.line(line as StoredObject)
+          : (line as StoredObject)),
+        version: version + 1,
+      })),
+      version: version + 1,
+    };
+    version += 1;
+  }
+  return data as StoredSnapshot;
+}
+
+/**
+ * One stored line of any version → the stored form of `current`: the line
+ * steps of the same chain, with no invoice around it.
+ */
+export function upgradeSnapshotLine(
+  stored: unknown,
+  upgrades: Readonly<Record<number, Upgrade>> = UPGRADES,
+  current: number = SNAPSHOT_VERSION,
+): StoredSnapshot {
+  if (!isObject(stored)) return fail("A snapshot line is an object");
+  let data = stored as StoredObject;
+  let version = storedVersion(data, current);
+  while (version < current) {
+    const step = stepFrom(upgrades, version);
+    data = { ...(step.line ? step.line(data) : data), version: version + 1 };
     version += 1;
   }
   return data as StoredSnapshot;
@@ -783,8 +965,14 @@ export function upgradeSnapshot(
  * Reads a stored snapshot back: amounts as `bigint`, instants as `Date`.
  * It takes the stored data and nothing else, so it can't look anything up:
  * what a profile, a price list, a season or a coupon says today is not its
- * business. Strict: a missing or unknown field, or an amount that is not a
- * string of digits, throws `SnapshotError`.
+ * business.
+ *
+ * Strict about the shape and about each value on its own: a missing or
+ * unknown field throws `SnapshotError`, and so does an amount that is not a
+ * string of digits or has a leading zero, a quantity under 1, an exponent
+ * outside 0 to 4, a tax rate outside 0 to 10000, or a currency that is not
+ * three capitals. It does not check that the lines add up to the totals:
+ * that is Phase 3's save check, by addition alone.
  */
 export function readSnapshot(stored: unknown): QuoteSnapshot {
   return decode(
@@ -792,4 +980,13 @@ export function readSnapshot(stored: unknown): QuoteSnapshot {
     upgradeSnapshot(stored),
     "snapshot",
   ) as QuoteSnapshot;
+}
+
+/**
+ * Reads one stored line on its own, as an order line keeps it
+ * (`snapshot jsonb`): the line carries its version, so it is upgraded and
+ * read without its invoice. As strict as `readSnapshot()`.
+ */
+export function readSnapshotLine(stored: unknown): SnapshotLine {
+  return decode(lineShape, upgradeSnapshotLine(stored), "line") as SnapshotLine;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   lineTaxShares,
   quote,
+  QuoteError,
   vatFor,
   type Quote,
   type QuoteInput,
@@ -29,10 +30,12 @@ import {
 } from "./quote-pinned.fixtures";
 import {
   readSnapshot,
+  readSnapshotLine,
   SNAPSHOT_VERSION,
   SnapshotError,
   snapshotQuote,
   upgradeSnapshot,
+  upgradeSnapshotLine,
   type Json,
   type QuoteSnapshot,
   type SnapshotContext,
@@ -57,8 +60,10 @@ function priced(quoteInput: QuoteInput): Priced {
 
 /** Priced, snapshotted, turned to JSON text, parsed and read back. */
 function roundTrip(quoteInput: QuoteInput, context: SnapshotContext) {
+  // snapshotQuote() prices the input itself; `q` is the same input priced
+  // here, to compare what was stored with.
   const q = priced(quoteInput);
-  const stored = snapshotQuote(quoteInput, q, context);
+  const stored = snapshotQuote(quoteInput, context);
   const json = JSON.stringify(stored);
   return { q, stored, json, read: readSnapshot(JSON.parse(json)) };
 }
@@ -155,7 +160,7 @@ describe("every pinned figure, snapshotted, turned to JSON and read back", () =>
 
       // The stored form is plain JSON: text and back changes nothing.
       expect(JSON.parse(json)).toEqual(stored);
-      expect(snapshotQuote(each.input, q, each.context)).toEqual(stored);
+      expect(snapshotQuote(each.input, each.context)).toEqual(stored);
       // Reading twice gives equal, separate copies.
       expect(readSnapshot(JSON.parse(json))).toEqual(read);
     },
@@ -186,7 +191,7 @@ describe("the stored form", () => {
       for (const [path, value] of numbers) {
         expect(Number.isSafeInteger(value), path).toBe(true);
         expect(path).toMatch(
-          /(version|exponent|quantity|_bp|count|days|months|hours|periods|periods_inside)$/,
+          /(version|exponent|quantity|included_per_vehicle|_bp|count|days|months|hours|periods|periods_inside)$/,
         );
       }
     }
@@ -229,6 +234,7 @@ describe("the stored form", () => {
     const { stored: s } = roundTrip(extras.input, extras.context);
     const helmet = (s.lines as Array<{ [key: string]: Json }>)[1];
     expect(helmet).toEqual({
+      version: 1,
       id: "helmet",
       currency: "THB",
       exponent: 2,
@@ -244,6 +250,7 @@ describe("the stored form", () => {
       quantity: 3,
       included_quantity: 2,
       charged_quantity: 1,
+      included_per_vehicle: 2,
       unit_price: {
         amount: "35000",
         basis: { kind: "periods", period: "day", count: 7 },
@@ -276,6 +283,7 @@ describe("the stored form", () => {
         "tax_groups",
         "non_taxable",
         "credits",
+        "discounts",
         "totals",
         "deposit",
       ].sort(),
@@ -806,8 +814,7 @@ describe("a snapshot does not change when the shop's settings do", () => {
 
   it("the profile renamed, re-rated and archived, the list repriced, the season deleted, the coupon archived: unchanged", () => {
     const { pricing, quoteInput, context } = build();
-    const q = priced(quoteInput);
-    const json = JSON.stringify(snapshotQuote(quoteInput, q, context));
+    const json = JSON.stringify(snapshotQuote(quoteInput, context));
     const before = readSnapshot(JSON.parse(json));
     expect(before.totals).toMatchObject({
       total: thb("1152"),
@@ -830,8 +837,6 @@ describe("a snapshot does not change when the shop's settings do", () => {
     (quoteInput.discounts as unknown[]).length = 0; // coupon archived
     delete (context.coupons as Record<string, unknown>).SONGKRAN;
     (quoteInput as { couponsEnabled: boolean }).couponsEnabled = false;
-    (q.lines[0] as { amount: bigint }).amount = 0n;
-    q.totals.total = 0n;
 
     // Today the same booking would cost something else entirely.
     const today = priced(quoteInput);
@@ -884,7 +889,7 @@ describe("a snapshot does not change when the shop's settings do", () => {
 
   it("what is read back shares nothing with the stored data either", () => {
     const { quoteInput, context } = build();
-    const stored = snapshotQuote(quoteInput, priced(quoteInput), context);
+    const stored = snapshotQuote(quoteInput, context);
     const read = readSnapshot(stored);
     (stored.totals as { total: string }).total = "1";
     (stored.lines as Array<{ amount: string }>)[0].amount = "1";
@@ -909,9 +914,7 @@ describe("a swap and an early return take their shares from the snapshot", () =>
     };
   };
   const snapshotOf = (quoteInput: QuoteInput) =>
-    JSON.stringify(
-      snapshotQuote(quoteInput, priced(quoteInput), contextFor(quoteInput)),
-    );
+    JSON.stringify(snapshotQuote(quoteInput, contextFor(quoteInput)));
 
   it("an early return on 15 Jan: ฿1,500 of the ฿3,000 paid is unused, under each of the shop's choices", () => {
     const json = snapshotOf(firstBooking());
@@ -1021,6 +1024,7 @@ describe("versions", () => {
     "tax_inclusive": true,
     "lines": [
       {
+        "version": 1,
         "id": "helmet",
         "currency": "THB",
         "exponent": 2,
@@ -1036,6 +1040,7 @@ describe("versions", () => {
         "quantity": 3,
         "included_quantity": 0,
         "charged_quantity": 3,
+        "included_per_vehicle": null,
         "unit_price": {
           "amount": "35000",
           "basis": { "kind": "periods", "period": "day", "count": 7 }
@@ -1090,6 +1095,20 @@ describe("versions", () => {
     ],
     "non_taxable": "0",
     "credits": [],
+    "discounts": [
+      {
+        "discount_id": "d1",
+        "source": "staff",
+        "coupon_id": null,
+        "coupon_code": null,
+        "kind": "fixed",
+        "percent_bp": null,
+        "fixed_amount": "8500",
+        "all_lines": true,
+        "line_ids": [],
+        "total": "8500"
+      }
+    ],
     "totals": {
       "list_price": "105000",
       "seasons": "10500",
@@ -1155,7 +1174,7 @@ describe("versions", () => {
       ],
       deposit: { shop: { mode: "fixed_per_order", amount: thb("2000") } },
     });
-    const stored = snapshotQuote(quoteInput, priced(quoteInput), {
+    const stored = snapshotQuote(quoteInput, {
       currency: "THB",
       exponent: 2,
       pricedAt: new Date("2027-10-20T03:15:00.000Z"),
@@ -1176,28 +1195,71 @@ describe("versions", () => {
     // version 2 and a version 3 would add.
     const v1 = JSON.parse(VERSION_1) as StoredSnapshot;
     const upgrades = {
-      1: (older: { [key: string]: Json }) => ({ ...older, channel: "walk_in" }),
-      2: (older: { [key: string]: Json }) => {
-        const { channel, ...rest } = older;
-        return { ...rest, booked_through: channel };
+      1: {
+        invoice: (older: { [key: string]: Json }) => ({
+          ...older,
+          channel: "walk_in",
+        }),
+        line: (older: { [key: string]: Json }) => ({ ...older, plate: "1กก" }),
+      },
+      2: {
+        invoice: (older: { [key: string]: Json }) => {
+          const { channel, ...rest } = older;
+          return { ...rest, booked_through: channel };
+        },
+        line: (older: { [key: string]: Json }) => {
+          const { plate, ...rest } = older;
+          return { ...rest, plate_number: plate };
+        },
       },
     };
     const v3 = upgradeSnapshot(v1, upgrades, 3);
     expect(v3.version).toBe(3);
     expect(v3.booked_through).toBe("walk_in");
     expect(v3).not.toHaveProperty("channel");
+    // Its lines go with it: each takes the line steps and the new version.
+    const v3Lines = v3.lines as Array<{ [key: string]: Json }>;
+    expect(v3Lines).toHaveLength(1);
+    expect(v3Lines[0].version).toBe(3);
+    expect(v3Lines[0].plate_number).toBe("1กก");
+    expect(v3Lines[0]).not.toHaveProperty("plate");
     // Nothing else moved, and the stored original was not touched.
-    expect({ ...v3, version: 1, booked_through: undefined }).toEqual({
-      ...v1,
-      booked_through: undefined,
+    const v1Lines = v1.lines as Array<{ [key: string]: Json }>;
+    expect({ ...v3Lines[0], version: 1, plate_number: undefined }).toEqual({
+      ...v1Lines[0],
+      plate_number: undefined,
     });
+    expect({
+      ...v3,
+      version: 1,
+      lines: v1.lines,
+      booked_through: undefined,
+    }).toEqual({ ...v1, booked_through: undefined });
     expect(v1.version).toBe(1);
     expect(v1).not.toHaveProperty("channel");
+    expect(v1Lines[0].version).toBe(1);
+    expect(v1Lines[0]).not.toHaveProperty("plate");
     // A version 2 snapshot takes only the second step.
     expect(
-      upgradeSnapshot({ ...v1, version: 2, channel: "phone" }, upgrades, 3)
-        .booked_through,
+      upgradeSnapshot(
+        {
+          ...v1,
+          version: 2,
+          channel: "phone",
+          lines: v1Lines.map((l) => ({ ...l, version: 2, plate: "2ขข" })),
+        },
+        upgrades,
+        3,
+      ).booked_through,
     ).toBe("phone");
+    // A step with nothing to do for a line (or for the invoice) is allowed.
+    expect(
+      (
+        upgradeSnapshot(v1, { 1: {} }, 2).lines as Array<{
+          [key: string]: Json;
+        }>
+      )[0].version,
+    ).toBe(2);
     // The current version passes through as it is.
     expect(upgradeSnapshot(v1)).toEqual(v1);
   });
@@ -1212,7 +1274,7 @@ describe("versions", () => {
     void _gone;
     expect(() => readSnapshot(unversioned)).toThrow(SnapshotError);
     // A gap in the chain is an error, not a skipped step.
-    expect(() => upgradeSnapshot(v1, { 2: (o) => o }, 3)).toThrow(/version 1/);
+    expect(() => upgradeSnapshot(v1, { 2: {} }, 3)).toThrow(/version 1/);
     for (const junk of [null, "text", 7, [v1]]) {
       expect(() => readSnapshot(junk)).toThrow(SnapshotError);
     }
@@ -1222,11 +1284,7 @@ describe("versions", () => {
 describe("what is refused", () => {
   const first = pinnedQuotes()[0];
   const good = () =>
-    JSON.parse(
-      JSON.stringify(
-        snapshotQuote(first.input, priced(first.input), first.context),
-      ),
-    );
+    JSON.parse(JSON.stringify(snapshotQuote(first.input, first.context)));
   const unreadable = (change: (stored: ReturnType<typeof good>) => void) => {
     const stored = good();
     change(stored);
@@ -1264,20 +1322,18 @@ describe("what is refused", () => {
   const unwritable = (
     change: (parts: {
       quoteInput: QuoteInput;
-      q: Priced;
       context: SnapshotContext;
     }) => void,
     quoteInput: QuoteInput = first.input,
   ) => {
     const parts = {
       quoteInput: { ...quoteInput },
-      q: priced(quoteInput),
       context: { ...contextFor(quoteInput) },
     };
     change(parts);
-    expect(() =>
-      snapshotQuote(parts.quoteInput, parts.q, parts.context),
-    ).toThrow(SnapshotError);
+    expect(() => snapshotQuote(parts.quoteInput, parts.context)).toThrow(
+      SnapshotError,
+    );
   };
 
   it("writing: a line with no product name, or a taxed line with no profile", () => {
@@ -1305,10 +1361,10 @@ describe("what is refused", () => {
     unwritable((p) => (p.context.coupons = {}), coupon.input);
   });
 
-  it("writing: a quote that is not this input's answer, or a currency that is not one", () => {
-    unwritable((p) => (p.q = priced(input({ lines: [line("z", bike300())] }))));
-    unwritable((p) => (p.q = priced(input({ lines: [] }))));
+  it("writing: a currency that is not one, an exponent or a moment that is not one", () => {
     unwritable((p) => (p.context.currency = "baht"));
+    unwritable((p) => (p.context.currency = "thb"));
+    unwritable((p) => (p.context.exponent = 5));
     unwritable((p) => (p.context.exponent = 2.5));
     unwritable((p) => (p.context.pricedAt = new Date("never")));
   });
@@ -1318,5 +1374,495 @@ describe("what is refused", () => {
     const { read } = roundTrip(empty, contextFor(empty));
     expect(read.lines).toEqual([]);
     expect(read.totals.total).toBe(0n);
+  });
+});
+
+// ------------------------------------------- after the review of PR 40
+
+describe("snapshotQuote() prices the input itself", () => {
+  it("takes the input and the context, and nothing that could disagree with them", () => {
+    expect(snapshotQuote.length).toBe(2);
+    const quoteInput = input({
+      lines: [line("a", bike300(), { quantity: 3 })],
+    });
+    const read = readSnapshot(
+      snapshotQuote(quoteInput, contextFor(quoteInput)),
+    );
+    const q = priced(quoteInput);
+    expect(read.lines[0].quantity).toBe(3);
+    expect(read.lines[0].listPrice).toBe(q.lines[0].listPrice);
+    expect(read.totals).toEqual(q.totals);
+  });
+
+  it("refuses an invoice with a line that can't be priced, naming the line", () => {
+    const quoteInput = input({
+      lines: [line("a", bike300()), line("b", null), line("c", null)],
+    });
+    expect(() => snapshotQuote(quoteInput, contextFor(quoteInput))).toThrow(
+      SnapshotError,
+    );
+    expect(() => snapshotQuote(quoteInput, contextFor(quoteInput))).toThrow(
+      /can't be priced: b, c/,
+    );
+  });
+
+  it("lets the pricer's own refusals through as they are", () => {
+    const off = input({
+      couponsEnabled: false,
+      lines: [line("a", bike300())],
+      discounts: [{ id: "X", source: "coupon", lines: "all", percentBp: 1000 }],
+    });
+    expect(() => snapshotQuote(off, contextFor(off))).toThrow(QuoteError);
+  });
+
+  it("refuses a line with charge rules, so they can't be dropped silently when they are built", () => {
+    const rules = { chargeFullReturnDay: true } as unknown as NonNullable<
+      QuoteLineInput["span"]["rules"]
+    >;
+    for (const pricing of [
+      bike300(),
+      fixed("100"),
+      { method: "free" } as const,
+    ]) {
+      const base = line("a", pricing, { days: 7 });
+      const quoteInput = input({
+        lines: [{ ...base, span: { ...base.span, rules } }],
+      });
+      expect(() => snapshotQuote(quoteInput, contextFor(quoteInput))).toThrow(
+        SnapshotError,
+      );
+      expect(() => snapshotQuote(quoteInput, contextFor(quoteInput))).toThrow(
+        /charge rules/,
+      );
+    }
+    // No rules, or an empty set, is what every line has today.
+    const base = line("a", bike300(), { days: 7 });
+    const empty = input({
+      lines: [{ ...base, span: { ...base.span, rules: {} } }],
+    });
+    expect(() => snapshotQuote(empty, contextFor(empty))).not.toThrow();
+  });
+});
+
+describe("a line stored on its own", () => {
+  const extras = pinnedQuotes().find((p) =>
+    p.name.includes("helmets included"),
+  )!;
+
+  it("carries the snapshot's version, and reads alone exactly as it reads in its invoice", () => {
+    for (const each of pinnedQuotes()) {
+      const { stored, read } = roundTrip(each.input, each.context);
+      const lines = stored.lines as Array<{ [key: string]: Json }>;
+      lines.forEach((storedLine, index) => {
+        expect(storedLine.version, each.name).toBe(SNAPSHOT_VERSION);
+        // As an order line keeps it: the line's JSON and nothing else.
+        const alone = readSnapshotLine(JSON.parse(JSON.stringify(storedLine)));
+        expect(alone, each.name).toEqual(read.lines[index]);
+        expect(alone.version).toBe(SNAPSHOT_VERSION);
+      });
+    }
+  });
+
+  it("is upgraded on its own, by the line steps of the same chain", () => {
+    const { stored } = roundTrip(extras.input, extras.context);
+    const v1 = (stored.lines as Array<{ [key: string]: Json }>)[1];
+    const upgrades = {
+      1: {
+        invoice: () => {
+          throw new Error("a line alone has no invoice to upgrade");
+        },
+        line: (older: { [key: string]: Json }) => ({ ...older, plate: "1กก" }),
+      },
+      2: {
+        line: (older: { [key: string]: Json }) => {
+          const { plate, ...rest } = older;
+          return { ...rest, plate_number: plate };
+        },
+      },
+    };
+    const v3 = upgradeSnapshotLine(v1, upgrades, 3);
+    expect(v3.version).toBe(3);
+    expect(v3.plate_number).toBe("1กก");
+    expect(v3).not.toHaveProperty("plate");
+    expect({ ...v3, version: 1, plate_number: undefined }).toEqual({
+      ...v1,
+      plate_number: undefined,
+    });
+    // The stored line was not touched, and a version 2 line takes one step.
+    expect(v1.version).toBe(1);
+    expect(v1).not.toHaveProperty("plate");
+    expect(
+      upgradeSnapshotLine({ ...v1, version: 2, plate: "2ขข" }, upgrades, 3)
+        .plate_number,
+    ).toBe("2ขข");
+    // A step with nothing for a line only raises its version.
+    expect(upgradeSnapshotLine(v1, { 1: {} }, 2)).toEqual({
+      ...v1,
+      version: 2,
+    });
+    // The current version passes through, and reads.
+    expect(upgradeSnapshotLine(v1)).toEqual(v1);
+    expect(readSnapshotLine(v1).id).toBe("helmet");
+  });
+
+  it("refuses a line with no version, a newer one, a gap in the chain, or one that is not its invoice's", () => {
+    const { stored } = roundTrip(extras.input, extras.context);
+    const v1 = (stored.lines as Array<{ [key: string]: Json }>)[1];
+    const { version: _gone, ...unversioned } = v1;
+    void _gone;
+    expect(() => readSnapshotLine(unversioned)).toThrow(SnapshotError);
+    expect(() => readSnapshotLine({ ...v1, version: 2 })).toThrow(
+      /reads up to 1/,
+    );
+    expect(() => readSnapshotLine({ ...v1, version: 0 })).toThrow(
+      SnapshotError,
+    );
+    expect(() => readSnapshotLine({ ...v1, version: "1" })).toThrow(
+      SnapshotError,
+    );
+    expect(() => upgradeSnapshotLine(v1, { 2: {} }, 3)).toThrow(/version 1/);
+    for (const junk of [null, "text", 7, [v1]]) {
+      expect(() => readSnapshotLine(junk)).toThrow(SnapshotError);
+    }
+    // A whole snapshot is not a line, and a line is not a snapshot.
+    expect(() => readSnapshotLine(stored)).toThrow(SnapshotError);
+    expect(() => readSnapshot(v1)).toThrow(SnapshotError);
+    // In an invoice, every line carries the invoice's version.
+    const mixed = JSON.parse(JSON.stringify(stored));
+    delete mixed.lines[0].version;
+    expect(() => readSnapshot(mixed)).toThrow(/carries the snapshot's version/);
+    const ahead = JSON.parse(JSON.stringify(stored));
+    ahead.lines[1].version = 2;
+    expect(() => readSnapshot(ahead)).toThrow(/carries the snapshot's version/);
+  });
+});
+
+describe("an extra's allowance per vehicle", () => {
+  const helmets = (scooters: number, taken: number, perVehicle: number) => {
+    const quoteInput = input({
+      lines: [
+        line("scooter", bike300(), { days: 7, quantity: scooters }),
+        line("helmet", perDay(thb("50")), {
+          days: 7,
+          quantity: taken,
+          vehicle: false,
+          extraOf: { lineId: "scooter", includedQuantity: perVehicle },
+        }),
+        line("box", fixed("300"), { vehicle: false }),
+      ],
+    });
+    return roundTrip(quoteInput, contextFor(quoteInput));
+  };
+
+  it("is stored as it was passed in, and empty for a line with no parent", () => {
+    const { read, stored } = helmets(1, 3, 2);
+    expect(read.lines.map((l) => l.includedPerVehicle)).toEqual([
+      null,
+      2,
+      null,
+    ]);
+    expect(
+      (stored.lines as Array<{ [key: string]: Json }>).map(
+        (l) => l.included_per_vehicle,
+      ),
+    ).toEqual([null, 2, null]);
+  });
+
+  it("3 helmets taken where 2 scooters give 4: 3 included, and the 2 each is still on record", () => {
+    const { read } = helmets(2, 3, 2);
+    expect(read.lines[1]).toMatchObject({
+      quantity: 3,
+      includedQuantity: 3,
+      chargedQuantity: 0,
+      includedPerVehicle: 2,
+      parentLineId: "scooter",
+    });
+    // The allowance Phase 3 needs when a fourth and a fifth helmet are added:
+    // 2 each × the parent's 2, from the snapshot alone.
+    expect(read.lines[0].quantity).toBe(2);
+  });
+
+  it("an allowance of none is 0, not empty", () => {
+    expect(helmets(1, 2, 0).read.lines[1].includedPerVehicle).toBe(0);
+  });
+
+  it("is refused below 0 when read", () => {
+    const stored = JSON.parse(JSON.stringify(helmets(1, 3, 2).stored));
+    stored.lines[1].included_per_vehicle = -1;
+    expect(() => readSnapshot(stored)).toThrow(SnapshotError);
+  });
+});
+
+describe("the invoice's discounts", () => {
+  it("lists each one: id, source, coupon, kind, value, the lines it was aimed at and what it took", () => {
+    const quoteInput = input({
+      couponsEnabled: true,
+      lines: [
+        line("bike", bike300(), { days: 7 }),
+        line("box", fixed("300"), { vehicle: false }),
+      ],
+      discounts: [
+        {
+          id: "back",
+          source: "returning_customer",
+          lines: ["bike"],
+          percentBp: 1000,
+        },
+        { id: "SAVE200", source: "coupon", lines: "all", amount: thb("200") },
+      ],
+    });
+    const { read, stored } = roundTrip(
+      quoteInput,
+      contextFor(quoteInput, {
+        coupons: { SAVE200: { couponId: "c-77", code: "SAVE200" } },
+      }),
+    );
+    expect(read.discounts).toEqual([
+      {
+        discountId: "back",
+        source: "returning_customer",
+        couponId: null,
+        couponCode: null,
+        kind: "percent",
+        percentBp: 1000,
+        fixedAmount: null,
+        allLines: false,
+        lineIds: ["bike"],
+        total: thb("140"),
+      },
+      {
+        discountId: "SAVE200",
+        source: "coupon",
+        couponId: "c-77",
+        couponCode: "SAVE200",
+        kind: "fixed",
+        percentBp: null,
+        fixedAmount: thb("200"),
+        allLines: true,
+        lineIds: [],
+        total: thb("200"),
+      },
+    ]);
+    expect((stored.discounts as Json[])[1]).toEqual({
+      discount_id: "SAVE200",
+      source: "coupon",
+      coupon_id: "c-77",
+      coupon_code: "SAVE200",
+      kind: "fixed",
+      percent_bp: null,
+      fixed_amount: "20000",
+      all_lines: true,
+      line_ids: [],
+      total: "20000",
+    });
+  });
+
+  it("keeps a coupon that took 0: it was still used", () => {
+    // Everything on the invoice is free, so 10% off comes to nothing.
+    const quoteInput = input({
+      couponsEnabled: true,
+      lines: [line("gift", { method: "free" }, { vehicle: false })],
+      discounts: [
+        { id: "FREEBIE", source: "coupon", lines: "all", percentBp: 1000 },
+      ],
+    });
+    const context = contextFor(quoteInput, {
+      coupons: { FREEBIE: { couponId: "c-9", code: "FREEBIE" } },
+    });
+    const { read } = roundTrip(quoteInput, context);
+    expect(read.lines[0].discounts).toEqual([]);
+    expect(read.discounts).toEqual([
+      {
+        discountId: "FREEBIE",
+        source: "coupon",
+        couponId: "c-9",
+        couponCode: "FREEBIE",
+        kind: "percent",
+        percentBp: 1000,
+        fixedAmount: null,
+        allLines: true,
+        lineIds: [],
+        total: 0n,
+      },
+    ]);
+    // Its id and code are needed even then.
+    expect(() =>
+      snapshotQuote(quoteInput, { ...context, coupons: {} }),
+    ).toThrow(/needs its id and code/);
+  });
+
+  it("a fixed coupon bigger than its lines: the value as given, and what it really took", () => {
+    const quoteInput = input({
+      couponsEnabled: true,
+      lines: [
+        line("bike", bike300(), { days: 7 }),
+        line("box", fixed("300"), { vehicle: false }),
+      ],
+      discounts: [
+        { id: "BIG", source: "coupon", lines: ["box"], amount: thb("500") },
+      ],
+    });
+    const { read } = roundTrip(quoteInput, contextFor(quoteInput));
+    expect(read.discounts[0]).toMatchObject({
+      fixedAmount: thb("500"),
+      allLines: false,
+      lineIds: ["box"],
+      total: thb("300"),
+    });
+  });
+
+  it("adds up, by addition alone, in every pinned case: each discount's lines to its total, and the discounts to the invoice's", () => {
+    let withDiscounts = 0;
+    for (const each of pinnedQuotes()) {
+      const { read } = roundTrip(each.input, each.context);
+      expect(
+        read.discounts.map((d) => d.discountId),
+        each.name,
+      ).toEqual((each.input.discounts ?? []).map((d) => d.id));
+      for (const discount of read.discounts) {
+        withDiscounts += 1;
+        const taken = read.lines.flatMap((l) =>
+          l.discounts.filter((d) => d.discountId === discount.discountId),
+        );
+        expect(sum(taken.map((d) => d.amount)), each.name).toBe(discount.total);
+        // A line it took from is one it was aimed at.
+        for (const l of read.lines) {
+          if (l.discounts.some((d) => d.discountId === discount.discountId)) {
+            expect(discount.allLines || discount.lineIds.includes(l.id)).toBe(
+              true,
+            );
+          }
+        }
+      }
+      expect(sum(read.discounts.map((d) => d.total)), each.name).toBe(
+        read.totals.discount,
+      );
+    }
+    expect(withDiscounts).toBeGreaterThan(5);
+  });
+});
+
+describe("what the reader refuses, value by value", () => {
+  const extras = pinnedQuotes().find((p) =>
+    p.name.includes("helmets included"),
+  )!;
+  const season = pinnedQuotes().find((p) => p.name.startsWith("3 of 7 days"))!;
+  const good = (from: Pinned = extras) =>
+    JSON.parse(JSON.stringify(snapshotQuote(from.input, from.context)));
+  type Stored = ReturnType<typeof good>;
+  const unreadable = (change: (stored: Stored) => void, from?: Pinned) => {
+    const stored = good(from);
+    change(stored);
+    expect(() => readSnapshot(stored)).toThrow(SnapshotError);
+    return stored;
+  };
+  /** The same change, on a line read alone. */
+  const lineUnreadable = (change: (line: Stored) => void) => {
+    const stored = good().lines[1];
+    expect(() => readSnapshotLine(stored)).not.toThrow();
+    change(stored);
+    expect(() => readSnapshotLine(stored)).toThrow(SnapshotError);
+  };
+
+  it("reads the good ones", () => {
+    expect(() => readSnapshot(good())).not.toThrow();
+    expect(() => readSnapshot(good(season))).not.toThrow();
+  });
+
+  it("an amount with a leading zero", () => {
+    unreadable((s) => (s.totals.total = "0175000"));
+    unreadable((s) => (s.totals.total = "00"));
+    unreadable((s) => (s.lines[0].list_price = "0140000"));
+    unreadable((s) => (s.lines[1].pricing.amount = "05000"));
+    unreadable((s) => (s.deposit.amount = "01"));
+    lineUnreadable((l) => (l.amount = "035000"));
+    // A plain zero is an amount.
+    const zero = good();
+    zero.lines[2].amount = "0";
+    expect(() => readSnapshot(zero)).not.toThrow();
+  });
+
+  it("a signed amount with a leading zero, or a minus zero", () => {
+    unreadable((s) => (s.totals.seasons = "-0"), season);
+    unreadable((s) => (s.totals.seasons = "-012000"), season);
+    unreadable((s) => (s.totals.seasons = "012000"), season);
+    unreadable((s) => (s.lines[0].season_total = "-0"), season);
+    unreadable((s) => (s.lines[0].seasons[0].amount = "--12000"), season);
+    // The real one reads, minus and all.
+    expect(readSnapshot(good(season)).totals.seasons).toBe(thb("-120"));
+  });
+
+  it("a quantity under 1", () => {
+    unreadable((s) => (s.lines[0].quantity = 0));
+    unreadable((s) => (s.lines[0].quantity = -1));
+    lineUnreadable((l) => (l.quantity = 0));
+  });
+
+  it("an included or charged quantity, or a count of periods, under 0", () => {
+    unreadable((s) => (s.lines[1].included_quantity = -1));
+    unreadable((s) => (s.lines[1].charged_quantity = -1));
+    unreadable((s) => (s.lines[1].periods.count = -7));
+    unreadable((s) => (s.lines[0].seasons[0].periods_inside = -1), season);
+    // 0 charged is what a fully included extra has.
+    const none = good();
+    none.lines[1].charged_quantity = 0;
+    expect(() => readSnapshot(none)).not.toThrow();
+  });
+
+  it("an exponent outside 0 to 4", () => {
+    unreadable((s) => (s.exponent = 5));
+    unreadable((s) => (s.exponent = 9));
+    unreadable((s) => (s.exponent = -1));
+    unreadable((s) => (s.lines[0].exponent = 5));
+    lineUnreadable((l) => (l.exponent = -1));
+    for (const exponent of [0, 2, 3, 4]) {
+      const stored = good();
+      stored.exponent = exponent;
+      expect(() => readSnapshot(stored)).not.toThrow();
+    }
+  });
+
+  it("a tax rate outside 0 to 10000", () => {
+    unreadable((s) => (s.lines[0].tax_rate_bp = 10001));
+    unreadable((s) => (s.lines[0].tax_rate_bp = 99999));
+    unreadable((s) => (s.lines[0].tax_rate_bp = -1));
+    unreadable((s) => (s.tax_groups[0].rate_bp = 10001));
+    unreadable((s) => (s.tax_groups[0].rate_bp = -700));
+    lineUnreadable((l) => (l.tax_rate_bp = 10001));
+    const swap = pinnedQuotes().find((p) =>
+      p.name.startsWith("a swap with a credit"),
+    )!;
+    unreadable((s) => (s.credits[0].tax_rate_bp = 10001), swap);
+    // Both ends are rates: 0% and 100%. So is none at all.
+    for (const rate of [0, 10000, null]) {
+      const stored = good();
+      stored.lines[0].tax_rate_bp = rate;
+      expect(() => readSnapshot(stored)).not.toThrow();
+    }
+  });
+
+  it("a currency that is not three capitals", () => {
+    for (const currency of ["zzz", "Thb", "TH", "THBX", "", "฿", 764, null]) {
+      unreadable((s) => (s.currency = currency));
+      unreadable((s) => (s.lines[0].currency = currency));
+      lineUnreadable((l) => (l.currency = currency));
+    }
+  });
+
+  it("a version under 1 on a line", () => {
+    lineUnreadable((l) => (l.version = 0));
+    lineUnreadable((l) => (l.version = 1.5));
+  });
+
+  it("and writing refuses the same values, so a bad one is never stored", () => {
+    const quoteInput = input({ lines: [line("a", bike300())] });
+    for (const context of [
+      contextFor(quoteInput, { currency: "thb" }),
+      contextFor(quoteInput, { currency: "BAHT" }),
+      contextFor(quoteInput, { exponent: 5 }),
+      contextFor(quoteInput, { exponent: -1 }),
+    ]) {
+      expect(() => snapshotQuote(quoteInput, context)).toThrow(SnapshotError);
+    }
   });
 });
