@@ -1505,6 +1505,8 @@ describe("pricing_inputs: the one read that feeds quote()", () => {
         settings: null,
         products: [],
         seasons: [],
+        // No extras are set up in this shop (stage 5 added the key).
+        extras: [],
       });
     }
   });
@@ -1515,6 +1517,7 @@ describe("pricing_inputs: the one read that feeds quote()", () => {
         settings: null,
         products: [],
         seasons: [],
+        extras: [],
       });
     }
     const signedOut = await anonClient().rpc("pricing_inputs", {

@@ -527,7 +527,7 @@ describe("booking core: reservations and its functions", () => {
     `);
     expect(rows).toEqual([
       'booking_roles false search_path=""',
-      'cancel_reservation true search_path=""',
+      'cancel_reservation true search_path="",lock_timeout=6s',
       'free_units false search_path=""',
       'json_time false search_path=""',
       'lock_products_stock false search_path=""',
@@ -560,14 +560,15 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
     `);
     expect(rows).toEqual([
       // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
-      // Staff's alone: the server never names units.
-      'platform.assign_units false true false false | true search_path=""',
+      // Staff's alone: the server never names units. (The lock timeout on
+      // this one, confirm_hold and move_unit is stage 5's.)
+      'platform.assign_units false true false false | true search_path="",lock_timeout=6s',
       // The read runs as its caller, under RLS.
       'platform.availability false true true false | false search_path=""',
-      'platform.confirm_hold false true true false | true search_path=""',
+      'platform.confirm_hold false true true false | true search_path="",lock_timeout=6s',
       // A booked unit's change of product or place: owners and managers
       // (checked inside), and the server.
-      'platform.move_unit false true true false | true search_path=""',
+      'platform.move_unit false true true false | true search_path="",lock_timeout=6s',
       // The sweep: the server's and the job's.
       'platform.release_expired_holds false false true false | true search_path=""',
       // Called only inside the booking functions, as their owner.
@@ -734,6 +735,76 @@ describe("booking rules: the stage 3 functions and columns", () => {
       "tenants.buffer_after_minutes false true false",
       "tenants.buffer_before_minutes false true false",
       "tenants.hold_minutes false true false",
+    ]);
+  });
+});
+
+/**
+ * Phase 2, stage 5 (20261117000100): product_extras, save_product_extras(),
+ * pricing_inputs() re-created, and the lock timeout on the four booking
+ * functions that did not have one.
+ */
+describe("extras: product_extras and the stage 5 functions", () => {
+  it("product_extras: members read, nobody signed in writes, signed-out visitors get nothing; the service role is granted on purpose", () => {
+    const rows = lines(`
+      select r || ' ' || coalesce(string_agg(p, ',' order by p)
+        filter (where has_table_privilege(r, 'platform.product_extras', p)), 'none')
+      from unnest(array['anon', 'authenticated']) r,
+           unnest(array['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger']) p
+      group by r order by r;
+    `);
+    expect(rows).toEqual(["anon none", "authenticated select"]);
+    const migrations = migrationsText();
+    expect(hasExplicitGrant(migrations, "platform.product_extras")).toBe(true);
+    expect(migrations).toMatch(
+      /grant select, insert, update, delete on platform\.product_extras to service_role/,
+    );
+  });
+
+  it("row level security is on, with one policy: members read their own shop's, through the helper and not auth.uid()", () => {
+    const rows = lines(`
+      select c.relrowsecurity::text from pg_class c
+      where c.oid = 'platform.product_extras'::regclass;
+      select polname || ' ' || polcmd::text || ' ' || polroles::regrole[]::text
+        || ' ' || (pg_get_expr(polqual, polrelid) like '%my_tenant_ids%')::text
+        || ' ' || (pg_get_expr(polqual, polrelid) like '%auth.uid%')::text
+      from pg_policy where polrelid = 'platform.product_extras'::regclass order by 1;
+    `);
+    expect(rows).toEqual([
+      "true",
+      "Members read product extras r {authenticated} true false",
+    ]);
+  });
+
+  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned; the five booking functions each have the 6-second lock timeout", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || has_function_privilege('service_role', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+        || ' | ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in (
+          'save_product_extras', 'extras_roles', 'pricing_inputs', 'reserve',
+          'confirm_hold', 'cancel_reservation', 'assign_units', 'move_unit')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
+      // Owner, manager and staff; not the server's (as stage 2 left it).
+      'platform.assign_units false true false false | true search_path="",lock_timeout=6s',
+      'platform.cancel_reservation false true true false | true search_path="",lock_timeout=6s',
+      'platform.confirm_hold false true true false | true search_path="",lock_timeout=6s',
+      'platform.move_unit false true true false | true search_path="",lock_timeout=6s',
+      // Re-created in stage 5, grants restated: the read runs as its caller.
+      'platform.pricing_inputs false true true false | false search_path=""',
+      'platform.reserve false true true false | true search_path="",lock_timeout=6s',
+      // Owners and managers (checked inside). Not the server's.
+      'platform.save_product_extras false true false false | true search_path=""',
+      // Read by the product_extras policy and by save_product_extras().
+      'platform_private.extras_roles false true false false | false search_path=""',
     ]);
   });
 });
