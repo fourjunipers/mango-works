@@ -13,6 +13,7 @@ import {
   type PricingDraft,
   type ProductType,
 } from "@/lib/pricing-form";
+import { pricingRowOf } from "@/lib/pricing-inputs";
 import { canPricing } from "@/lib/pricing-permissions";
 import type { Role } from "@/lib/roles";
 import { addCalendarDays, dateInZone } from "@/lib/shop-time";
@@ -49,7 +50,7 @@ export async function PricingTab({
     getCurrencyLocked(tenant.id),
   ]);
   const currency = tenant.currency;
-  const row = inputs.products.find((p) => p.product_id === productId);
+  const row = pricingRowOf(inputs, productId);
   const settings = inputs.settings;
   const step = settings?.rounding_step ?? String(suggestedStep(currency));
   const money = (value: string | null) =>

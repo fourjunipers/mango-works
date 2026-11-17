@@ -40,6 +40,8 @@ type Fixture = TestTenant & {
   templateId: string;
   taxProfileId: string;
   ruleId: string;
+  /** A service, offered with every vehicle (Phase 2, stage 5). */
+  serviceId: string;
 };
 
 let a: Fixture;
@@ -265,6 +267,27 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
       product_id: model.id,
     }),
   );
+  // Extras (Phase 2, stage 5): a service offered with every vehicle.
+  const extra = ok(
+    await service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        type: "service",
+        tracking: "none",
+        name: "Fixture delivery",
+      })
+      .select("id")
+      .single(),
+  )!;
+  ok(
+    await service.from("product_extras").insert({
+      tenant_id: tenant.id,
+      extra_product_id: extra.id,
+      extra_product_type: "service",
+      included_quantity: 1,
+    }),
+  );
   // audit_events: written by the triggers on the rows above.
   return {
     ...tenant,
@@ -275,6 +298,7 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
     templateId: template.id,
     taxProfileId: taxProfile.id,
     ruleId: rule.id,
+    serviceId: extra.id,
   };
 }
 
@@ -419,6 +443,14 @@ const payloads: Record<string, (t: Fixture, userId: string) => Row> = {
     rule_id: t.ruleId,
     product_id: t.itemId,
   }),
+  product_extras: (t) => ({
+    tenant_id: t.id,
+    product_id: t.modelId,
+    product_type: "vehicle",
+    extra_product_id: t.serviceId,
+    extra_product_type: "service",
+    included_quantity: 5,
+  }),
   audit_events: (t) => ({
     tenant_id: t.id,
     entity: "units",
@@ -452,6 +484,7 @@ const changes: Record<string, Row> = {
   product_pricing: { deposit: 0 },
   price_rules: { adjust_bp: -9999 },
   price_rule_products: { rule_id: "00000000-0000-4000-8000-000000000000" },
+  product_extras: { included_quantity: 99 },
   audit_events: { action: "hijacked" },
 };
 
@@ -511,6 +544,7 @@ describe("every tenant table", () => {
       "price_template_days",
       "price_templates",
       "pricing_settings",
+      "product_extras",
       "product_listings",
       "product_pricing",
       "product_year_bands",

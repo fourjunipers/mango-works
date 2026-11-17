@@ -27,6 +27,7 @@ import { planImport, type ImportError } from "@/lib/fleet-import";
 import { parseMoney } from "@/lib/money";
 import { canManageFleet, canWorkOnUnits } from "@/lib/roles";
 import { requireMembership } from "@/lib/session";
+import { moveUnit, type StaffDb } from "@/lib/staff-booking";
 import { fromLocalInput } from "@/lib/shop-time";
 import { checkCategories } from "@/lib/vehicle-kinds";
 import { createClient } from "@mango/db/platform-server";
@@ -314,17 +315,22 @@ export async function saveUnit(
   ) {
     const warned = field(formData, "upcoming_bookings");
     const { location_id, ...details } = parsed.data;
-    const { data: moved, error: moveError } = await supabase.rpc("move_unit", {
-      p_tenant_id: tenant.id,
-      p_unit_id: id,
-      p_product_id: modelId,
-      p_location_id: location_id,
-      p_expected_bookings: /^\d+$/.test(warned) ? Number(warned) : undefined,
-      p_expected_updated_at: field(formData, "updated_at"),
-      p_details: { ...details, current_odometer_km: odometer ?? 0 },
-    });
-    if (moveError) return unitError(moveError);
-    const answer = moved as { ok: boolean; reason?: string };
+    // moveUnit() answers `try_again` when a lock could not be had in time
+    // (a booking of this bike being saved): nothing moved, "Couldn't save.
+    // Please try again." is right.
+    let answer: Awaited<ReturnType<typeof moveUnit>>;
+    try {
+      answer = await moveUnit(supabase as unknown as StaffDb, tenant.id, {
+        unitId: id,
+        productId: modelId,
+        locationId: location_id,
+        expectedBookings: /^\d+$/.test(warned) ? Number(warned) : undefined,
+        expectedUpdatedAt: field(formData, "updated_at"),
+        details: { ...details, current_odometer_km: odometer ?? 0 },
+      });
+    } catch (moveError) {
+      return unitError(moveError as Parameters<typeof dbErrorKey>[0]);
+    }
     if (!answer.ok) {
       if (answer.reason === "not_allowed") return notAllowed;
       const key =

@@ -27,7 +27,7 @@ import {
   type PricingDraft,
   type ProductType,
 } from "@/lib/pricing-form";
-import type { PricingInputs } from "@/lib/pricing-inputs";
+import { seasonsFor, type PricingInputs } from "@/lib/pricing-inputs";
 import { percentLabel, seasonDates } from "@/lib/seasons";
 import { adjustmentParts } from "@mango/core/season";
 import {
@@ -106,6 +106,9 @@ export function PricingForm({
     formatMinor(value, currency, locale);
 
   const isVehicle = type === "vehicle";
+  // This product's seasons only: the read also returns the seasons of the
+  // gear and services offered with a vehicle.
+  const seasons = seasonsFor(inputs, productId);
   const showDeposit = asksProductDeposit(type, deposit.mode);
   const ctx: PricingContext = {
     type,
@@ -369,10 +372,10 @@ export function PricingForm({
             </Card>
           )}
 
-          {inputs.seasons.length > 0 && (
+          {seasons.length > 0 && (
             <Card title={t("seasons.title")}>
               <ul className="space-y-2 text-sm">
-                {inputs.seasons.map((season) => (
+                {seasons.map((season) => (
                   <li key={season.id}>
                     <span className="font-medium">{season.name}</span>
                     {" · "}

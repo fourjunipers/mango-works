@@ -299,6 +299,38 @@ isOneToOne: true
       referencedColumns: ["id"]
     }
                   ]
+                },"product_extras": {
+                  Row: {
+                    "created_at": string,"extra_product_id": string,"extra_product_type": string,"id": string,"included_quantity": number,"max_quantity": number | null,"product_id": string | null,"product_type": string,"sort_position": number,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"extra_product_id": string,"extra_product_type": string,"id"?: string,"included_quantity"?: number,"max_quantity"?: number | null,"product_id"?: string | null,"product_type"?: string,"sort_position"?: number,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"extra_product_id"?: string,"extra_product_type"?: string,"id"?: string,"included_quantity"?: number,"max_quantity"?: number | null,"product_id"?: string | null,"product_type"?: string,"sort_position"?: number,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "product_extras_tenant_id_extra_product_id_extra_product_ty_fkey"
+      columns: ["tenant_id","extra_product_id","extra_product_type"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id","type"]
+    },{
+      foreignKeyName: "product_extras_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "product_extras_tenant_id_product_id_product_type_fkey"
+      columns: ["tenant_id","product_id","product_type"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id","type"]
+    }
+                  ]
                 },"product_listings": {
                   Row: {
                     "created_at": string,"enabled": boolean,"instant_units": number,"lead_time_hours": number | null,"product_id": string,"product_type": string,"ready_now": number,"ready_updated_at": string | null,"request_units": number,"tenant_id": string,"updated_at": string
@@ -792,6 +824,9 @@ isOneToOne: false
                            },
 "save_pricing_settings":
 { Args: { "p_settings": Json,"p_tenant_id": string }; Returns: Json
+                           },
+"save_product_extras":
+{ Args: { "p_extras": Json,"p_product_id": string,"p_tenant_id": string }; Returns: Json
                            },
 "save_product_pricing":
 { Args: { "p_product_id": string,"p_settings": Json }; Returns: Json
