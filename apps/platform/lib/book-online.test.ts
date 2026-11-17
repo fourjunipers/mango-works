@@ -470,6 +470,110 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
     ]);
   });
 
+  it("the most per vehicle: an extra line above max_quantity × its vehicle line's quantity is refused and nothing is reserved; at the most it goes through", async () => {
+    const HELMET = "44444444-4444-4444-8444-444444444444";
+    const scene = inputs();
+    const helmets = (
+      maxQuantity: number | null,
+      offered = true,
+    ): Parameters<typeof spy>[0] => ({
+      inputs: {
+        ...scene,
+        products: [
+          ...scene.products,
+          { ...scene.products[0], product_id: HELMET, type: "gear" },
+        ],
+      },
+      availability: [
+        { ...stock(3)[0], stock: 3, free: 3, available: 3 },
+        { ...stock(20)[0], product_id: HELMET, type: "gear", stock: 20 },
+      ],
+      pricing: {
+        ...priced,
+        products: [
+          ...priced.products,
+          {
+            ...priced.products[0],
+            product_id: HELMET,
+            product_name: "Helmet",
+            product_type: "gear",
+            price_amount: "500",
+          },
+        ],
+        // An opted-out extra is not in pricing_inputs()'s answer at all.
+        extras: offered
+          ? [
+              {
+                product_id: SCOOTER,
+                extra_product_id: HELMET,
+                extra_product_type: "gear",
+                included_quantity: 1,
+                max_quantity: maxQuantity,
+                sort_position: 0,
+                every_vehicle: false,
+              },
+            ]
+          : [],
+      },
+    });
+    const booking = (scooters: number, helmetCount: number) =>
+      asked({
+        lines: [
+          {
+            productId: SCOOTER,
+            start: monday10,
+            end: wednesday10,
+            quantity: scooters,
+          },
+          {
+            productId: HELMET,
+            start: monday10,
+            end: wednesday10,
+            quantity: helmetCount,
+            parent: 0,
+          },
+        ],
+      });
+
+    // A most of 2: one scooter takes up to 2 helmets, two take up to 4.
+    for (const channel of ["booking_page", "marketplace", "api"] as const) {
+      const over = spy(helmets(2));
+      const request = { ...booking(1, 3), channel };
+      // Moto Mangos also needs its listing; the refusal comes before it.
+      expect(
+        await bookOnline(request, { db: over.db, now: () => now }),
+        channel,
+      ).toEqual({ ok: false, reason: "over_most_per_vehicle", line: 1 });
+      expect(over.reserved(), channel).toBe(false);
+    }
+    const twoOver = spy(helmets(2));
+    expect(
+      await bookOnline(booking(2, 5), { db: twoOver.db, now: () => now }),
+    ).toEqual({ ok: false, reason: "over_most_per_vehicle", line: 1 });
+    expect(twoOver.reserved()).toBe(false);
+
+    for (const [scooters, count] of [
+      [1, 2],
+      [2, 4],
+    ]) {
+      const atMost = spy(helmets(2));
+      const answer = await bookOnline(booking(scooters, count), {
+        db: atMost.db,
+        now: () => now,
+      });
+      expect(answer.ok, `${scooters} scooters, ${count} helmets`).toBe(true);
+      expect(atMost.reserved()).toBe(true);
+    }
+
+    // No limit, or not offered with this scooter: not bound.
+    for (const scene of [helmets(null), helmets(2, false)]) {
+      const free = spy(scene);
+      expect(
+        (await bookOnline(booking(1, 9), { db: free.db, now: () => now })).ok,
+      ).toBe(true);
+    }
+  });
+
   it("an extra goes with an earlier line, as reserve() requires: a later line, itself, a negative or a fractional index is refused before anything is read", async () => {
     const HELMET = "44444444-4444-4444-8444-444444444444";
     const line = (productId: string, parent?: number) => ({
