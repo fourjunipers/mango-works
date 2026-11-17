@@ -220,8 +220,10 @@ function unsaidRows(rows: AuditRow[]): (row: AuditRow) => boolean {
       .map((row) => `${row.entity_id} ${row.at}`),
   );
   return (row) =>
-    // Prices have lines of their own (lib/pricing-history.ts).
+    // Prices have lines of their own (lib/pricing-history.ts), and so do
+    // extras (lib/extras-history.ts).
     isPricingRow(row) ||
+    row.entity === "product_extras" ||
     (row.entity === "product_listings" && row.action === "delete") ||
     ((row.entity === "product_listings" ||
       row.action === "listing_on" ||

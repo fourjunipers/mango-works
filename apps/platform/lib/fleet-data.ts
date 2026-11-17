@@ -392,9 +392,14 @@ export async function getProductHistory(
       .from("audit_events")
       .select(columns)
       .eq("tenant_id", tenantId)
-      // Its Moto Mangos listing's rows and its pricing's are part of the
-      // product's story.
-      .in("entity", ["products", "product_listings", "product_pricing"])
+      // Its Moto Mangos listing's rows, its pricing's and its extras'
+      // (extras_change, on the vehicle's id) are part of the product's story.
+      .in("entity", [
+        "products",
+        "product_listings",
+        "product_pricing",
+        "product_extras",
+      ])
       .eq("entity_id", productId)
       .order("at", { ascending: false })
       .limit(limit),

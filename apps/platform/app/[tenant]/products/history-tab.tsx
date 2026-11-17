@@ -27,8 +27,11 @@ import {
   type PricingArg,
   type PricingEntry,
 } from "@/lib/pricing-history";
+import { getProductNames } from "@/lib/extras-data";
+import { extrasHistory, extrasNamed } from "@/lib/extras-history";
 import { formatInstant } from "@/lib/shop-time";
 import { humanizeKey } from "@/lib/vehicle-kinds";
+import { ExtrasHistoryItem, extrasWords } from "./extras-history";
 
 /**
  * Who changed what on a product and its units, newest first (owners and
@@ -113,6 +116,12 @@ export async function HistoryTab({
     .sort((a, b) => b.at.localeCompare(a.at) || b.id - a.id)
     .slice(0, limit);
   const entries = buildHistory(rows);
+  // The extras offered with it (lib/extras-history.ts): one line a save.
+  // A product deleted since is named from its own delete event.
+  const extrasEntries = extrasHistory(productRows);
+  const extrasSay = await extrasWords(
+    await getProductNames(tenantId, extrasNamed(extrasEntries)),
+  );
   // Both kinds of line, newest first, the latest `limit` of them.
   const timeline = [
     ...entries.map((entry) => ({
@@ -120,12 +129,21 @@ export async function HistoryTab({
       id: entry.id,
       entry,
       price: null,
+      extras: null,
     })),
     ...priceEntries.map((price) => ({
       at: price.at,
       id: price.rowId,
       entry: null,
       price,
+      extras: null,
+    })),
+    ...extrasEntries.map((extras) => ({
+      at: extras.at,
+      id: extras.id,
+      entry: null,
+      price: null,
+      extras,
     })),
   ]
     .sort((a, b) => b.at.localeCompare(a.at) || b.id - a.id)
@@ -199,6 +217,24 @@ export async function HistoryTab({
       ) : (
         <ol className="divide-y rounded-md border">
           {timeline.map((item) => {
+            if (item.extras) {
+              const extras = item.extras;
+              const who =
+                extras.actor === null
+                  ? t("system")
+                  : (names.get(extras.actor) ?? t("formerMember"));
+              const { line, sub } = extrasSay(extras, who);
+              return (
+                <ExtrasHistoryItem
+                  key={`extras-${extras.id}`}
+                  line={line}
+                  sub={sub}
+                  at={extras.at}
+                  timezone={timezone}
+                  locale={locale}
+                />
+              );
+            }
             if (item.price) {
               const price = item.price;
               const who =
