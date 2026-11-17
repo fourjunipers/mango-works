@@ -1,8 +1,10 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@mango/db/database.types";
+import type { createClient } from "@mango/db/platform-server";
 
-/** A signed-in member's client on the platform schema. */
-export type NamesDb = SupabaseClient<Database, "platform">;
+/**
+ * A signed-in member's client on the platform schema, from @mango/db (apps
+ * never import @supabase/* themselves: root CLAUDE.md, the Neon rules).
+ */
+export type NamesDb = Awaited<ReturnType<typeof createClient>>;
 
 export type ProductNames = Map<string, { name: string; deleted: boolean }>;
 
