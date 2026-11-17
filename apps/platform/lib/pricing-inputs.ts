@@ -9,6 +9,12 @@
  * It is the one feed for every caller in this app (the Pricing tab's "Check
  * a price", the Products list, later the order editor), so they all price
  * the same way. Pure functions: the database call is the caller's.
+ *
+ * Gear and services offered with a vehicle (platform.product_extras) arrive
+ * as `extras`: which extra goes with which vehicle and how many come free
+ * with each one. A line that says it is an extra of a vehicle's line takes
+ * that vehicle's dates unless it has its own, and its included quantity
+ * from those rows; quote() does step 4 with them.
  */
 
 import {
@@ -24,7 +30,9 @@ import type {
   QuoteLineInput,
 } from "@mango/core/quote";
 import type { Pricing, RentalSpan } from "@mango/core/rental-price";
+import type { SnapshotContext } from "@mango/core/quote-snapshot";
 import type { SeasonRule } from "@mango/core/season";
+import { currencyExponent } from "@mango/core/currency";
 
 /** platform.pricing_inputs() as it arrives: amounts are strings of digits. */
 export type PricingInputs = {
@@ -39,12 +47,39 @@ export type PricingInputs = {
     deposit_amount: string | null;
     default_tax_profile_id: string | null;
   } | null;
+  /**
+   * The products asked for, and the extras offered with the vehicles among
+   * them: one call prices a vehicle with what goes with it.
+   */
   products: ProductPricingRow[];
   seasons: SeasonRow[];
+  /** What is offered with each vehicle asked for. Readable by every member. */
+  extras: ExtraRow[];
+};
+
+/**
+ * A gear or service product offered with a vehicle. The database has
+ * already let a vehicle's own row win over the shop's "every vehicle" row
+ * for the same extra, so there is one row per vehicle and extra.
+ */
+export type ExtraRow = {
+  /** The vehicle product. */
+  product_id: string;
+  extra_product_id: string;
+  extra_product_type: "gear" | "service";
+  /** Free with each vehicle. */
+  included_quantity: number;
+  /** The most on an online booking; staff are not bound. Null: no limit. */
+  max_quantity: number | null;
+  sort_position: number;
+  /** True: it comes from the shop's "every vehicle" list. */
+  every_vehicle: boolean;
 };
 
 export type ProductPricingRow = {
   product_id: string;
+  /** As it is now. The quote snapshot keeps it. */
+  product_name: string;
   product_type: "vehicle" | "gear" | "sale_item" | "service";
   currency: string;
   pricing_method: "tiered" | "per_period" | "fixed" | "free" | null;
@@ -56,6 +91,12 @@ export type ProductPricingRow = {
   replacement_price: string | null;
   taxable: boolean;
   tax_rate_bp: number | null;
+  /**
+   * The profile in force: the product's own, else the shop's default. The
+   * rate and the name come from the same profile. Null: not taxable, or the
+   * shop charges no tax.
+   */
+  tax_profile_id: string | null;
   tax_profile_name: string | null;
   template: {
     id: string;
@@ -169,10 +210,47 @@ export type LineRequest = {
   id: string;
   productId: string;
   quantity: number;
-  span: RentalSpan;
+  /**
+   * When. An extra may leave it out: it then takes its vehicle's dates
+   * (helmets for the whole rental). With its own it is priced on them.
+   */
+  span?: RentalSpan;
   /** Set on a later period of a rental: the original pickup. */
   rentalStart?: Date | null;
+  /**
+   * Gear or a service taken with a vehicle: the id of that vehicle's line
+   * in this request. How many come free is read from the database's rows.
+   */
+  extraOf?: string | null;
 };
+
+/**
+ * The extras offered with a vehicle product, in the order to show them:
+ * the vehicle's own first, then the shop's "every vehicle" ones.
+ */
+export function extrasOf(
+  inputs: Pick<PricingInputs, "extras">,
+  vehicleProductId: string,
+): ExtraRow[] {
+  return inputs.extras.filter((row) => row.product_id === vehicleProductId);
+}
+
+/**
+ * How many units of an extra come free with each vehicle. 0 when the shop
+ * does not offer that product with that vehicle: staff may still add it to
+ * the vehicle's line, and every unit is charged.
+ */
+export function includedWith(
+  inputs: Pick<PricingInputs, "extras">,
+  vehicleProductId: string,
+  extraProductId: string,
+): number {
+  return (
+    extrasOf(inputs, vehicleProductId).find(
+      (row) => row.extra_product_id === extraProductId,
+    )?.included_quantity ?? 0
+  );
+}
 
 /**
  * quote()'s input for the lines billed together, from the database's rows.
@@ -190,18 +268,43 @@ export function quoteInputFor(
   } = {},
 ): QuoteInput {
   const byProduct = new Map(inputs.products.map((row) => [row.product_id, row]));
+  const byLine = new Map(lines.map((line) => [line.id, line]));
   const quoteLines: QuoteLineInput[] = lines.map((line) => {
     const row = byProduct.get(line.productId);
+    // An extra: its vehicle's line gives it its dates (unless it has its
+    // own) and, with the database's rows, how many come free. Whether the
+    // parent is a vehicle's line is quote()'s check, not this file's.
+    const parent = line.extraOf ? byLine.get(line.extraOf) : undefined;
+    if (line.extraOf && (!parent || parent.id === line.id)) {
+      throw new RangeError(
+        `Line ${line.id} names a vehicle line that isn't here: ${line.extraOf}`,
+      );
+    }
+    const span = line.span ?? parent?.span;
+    if (!span) throw new RangeError(`Line ${line.id} has no dates`);
     return {
       id: line.id,
       productId: line.productId,
       pricing: pricingOf(row),
       quantity: line.quantity,
-      span: line.span,
-      rentalStart: line.rentalStart ?? null,
+      span,
+      // On a later period of a rental, an extra that takes its vehicle's
+      // dates carries its vehicle's original pickup too.
+      rentalStart:
+        line.rentalStart ?? (line.span ? null : (parent?.rentalStart ?? null)),
       taxRateBp: row?.tax_rate_bp ?? null,
       vehicle: row?.product_type === "vehicle",
       deposit: row ? minorUnits(row.deposit) : null,
+      extraOf: parent
+        ? {
+            lineId: parent.id,
+            includedQuantity: includedWith(
+              inputs,
+              parent.productId,
+              line.productId,
+            ),
+          }
+        : null,
     };
   });
   return {
@@ -218,5 +321,50 @@ export function quoteInputFor(
       customer: more.customerDeposit,
       order: more.orderDeposit,
     },
+  };
+}
+
+/**
+ * What the quote snapshot needs beside quote()'s input (snapshotQuote()'s
+ * context), from the same rows: each line's product name and type, the tax
+ * profile its rate came from (the one in force, by id and name) and each
+ * season's name. The currency is the shop's; its decimal places come from
+ * @mango/core. Coupons are the caller's (stage 8).
+ *
+ * A line whose product has no pricing row can't be priced, so it can't be
+ * in a snapshot: it is left out here and snapshotQuote() says so.
+ */
+export function snapshotContextFor(
+  inputs: PricingInputs,
+  lines: readonly Pick<LineRequest, "id" | "productId">[],
+  more: { pricedAt: Date; coupons?: SnapshotContext["coupons"] },
+): SnapshotContext {
+  const byProduct = new Map(inputs.products.map((row) => [row.product_id, row]));
+  const currency =
+    inputs.settings?.currency ??
+    lines.map((line) => byProduct.get(line.productId)?.currency).find(Boolean);
+  if (!currency) throw new RangeError("No currency: nothing here has a price");
+  const context: Record<string, SnapshotContext["lines"][string]> = {};
+  for (const line of lines) {
+    const row = byProduct.get(line.productId);
+    if (!row) continue;
+    context[line.id] = {
+      productName: row.product_name,
+      productType: row.product_type,
+      taxProfile:
+        row.tax_profile_id !== null && row.tax_profile_name !== null
+          ? { id: row.tax_profile_id, name: row.tax_profile_name }
+          : null,
+    };
+  }
+  return {
+    currency,
+    exponent: currencyExponent(currency),
+    pricedAt: more.pricedAt,
+    lines: context,
+    seasons: Object.fromEntries(
+      inputs.seasons.map((season) => [season.id, { name: season.name }]),
+    ),
+    coupons: more.coupons,
   };
 }

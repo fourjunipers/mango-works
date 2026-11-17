@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import { quote } from "@mango/core/quote";
 import {
   depositOf,
+  extrasOf,
+  includedWith,
   listOf,
   minorUnits,
   pricingOf,
   quoteInputFor,
   seasonsOf,
+  snapshotContextFor,
   type PricingInputs,
   type ProductPricingRow,
 } from "./pricing-inputs";
@@ -20,6 +23,7 @@ const days = (first: number, step: number) =>
 
 const row = (more: Partial<ProductPricingRow> = {}): ProductPricingRow => ({
   product_id: "bike",
+  product_name: "Bike",
   product_type: "vehicle",
   currency: "THB",
   pricing_method: null,
@@ -31,6 +35,7 @@ const row = (more: Partial<ProductPricingRow> = {}): ProductPricingRow => ({
   replacement_price: null,
   taxable: true,
   tax_rate_bp: 700,
+  tax_profile_id: "p1",
   tax_profile_name: "VAT 7%",
   template: null,
   ...more,
@@ -171,6 +176,7 @@ describe("quoteInputFor: the database's rows through the one pricer", () => {
       }),
     ],
     seasons: [],
+    extras: [],
   };
 
   it("prices a month at ฿3,000 with VAT ฿196.26, and the deposit beside it", () => {
@@ -216,7 +222,12 @@ describe("quoteInputFor: the database's rows through the one pricer", () => {
   });
 
   it("gives a mechanic, who gets no rows, no price at all", () => {
-    const nothing: PricingInputs = { settings: null, products: [], seasons: [] };
+    const nothing: PricingInputs = {
+      settings: null,
+      products: [],
+      seasons: [],
+      extras: [],
+    };
     const input = quoteInputFor(nothing, [
       { id: "l1", productId: "bike", quantity: 1, span: month },
     ]);
@@ -250,5 +261,202 @@ describe("quoteInputFor: the database's rows through the one pricer", () => {
     // The second month is a continuation: ฿3,000 − ฿500 − ฿300.
     expect(result.ok && result.totals.total).toBe(BigInt(220000));
     expect(result.ok && result.deposit).toMatchObject({ amount: BigInt(0), from: "customer" });
+  });
+});
+
+describe("extras: gear and services taken with a vehicle", () => {
+  const perDay = (id: string, amount: string, more: Partial<ProductPricingRow> = {}) =>
+    row({
+      product_id: id,
+      product_name: id,
+      pricing_method: "per_period",
+      price_amount: amount,
+      price_period: "day",
+      ...more,
+    });
+  const extra = (
+    vehicle: string,
+    id: string,
+    included: number,
+    more: Partial<PricingInputs["extras"][number]> = {},
+  ): PricingInputs["extras"][number] => ({
+    product_id: vehicle,
+    extra_product_id: id,
+    extra_product_type: "gear",
+    included_quantity: included,
+    max_quantity: null,
+    sort_position: 0,
+    every_vehicle: false,
+    ...more,
+  });
+  // A scooter at ฿200 a day with 2 helmets included; helmets at ฿50 a day.
+  const inputs: PricingInputs = {
+    settings: { ...settings, deposit_mode: "none", deposit_amount: null },
+    products: [
+      perDay("scooter", "20000"),
+      perDay("tourer", "50000"),
+      perDay("helmet", "5000", { product_type: "gear" }),
+      perDay("cover", "3000", { product_type: "gear", taxable: false, tax_rate_bp: null, tax_profile_id: null, tax_profile_name: null }),
+    ],
+    seasons: [
+      {
+        id: "low",
+        name: "Low season",
+        starts_on: "2028-05-01",
+        ends_on: "2028-09-30",
+        repeats_yearly: false,
+        adjust_bp: -2000,
+        all_products: true,
+        product_ids: [],
+      },
+    ],
+    extras: [
+      extra("scooter", "helmet", 2, { max_quantity: 4 }),
+      extra("tourer", "helmet", 1, { every_vehicle: true }),
+    ],
+  };
+  const week = { start: bkk("2027-11-01"), end: bkk("2027-11-08"), timeZone: BANGKOK };
+
+  it("stage 4's pinned figures: 2 helmets included, 3 taken at ฿50 a day for 7 days is 1 charged, ฿350; two scooters and 5 helmets is 4 included, 1 charged", () => {
+    const one = quote(
+      quoteInputFor(inputs, [
+        { id: "s", productId: "scooter", quantity: 1, span: week },
+        { id: "h", productId: "helmet", quantity: 3, extraOf: "s" },
+      ]),
+    );
+    if (!one.ok) throw new Error("expected a price");
+    expect(one.lines[1]).toMatchObject({
+      parentLineId: "s",
+      includedQuantity: 2,
+      chargedQuantity: 1,
+      listPrice: BigInt(35000),
+    });
+    expect(one.totals.total).toBe(BigInt(175000));
+    const two = quote(
+      quoteInputFor(inputs, [
+        { id: "s", productId: "scooter", quantity: 2, span: week },
+        { id: "h", productId: "helmet", quantity: 5, extraOf: "s" },
+      ]),
+    );
+    if (!two.ok) throw new Error("expected a price");
+    expect(two.lines[1]).toMatchObject({
+      includedQuantity: 4,
+      chargedQuantity: 1,
+      listPrice: BigInt(35000),
+    });
+    expect(two.totals.total).toBe(BigInt(315000));
+  });
+
+  it("an extra with no dates takes its vehicle's, and its vehicle's original pickup on a later period; with its own dates it keeps them", () => {
+    const later = { start: bkk("2027-12-01"), end: bkk("2027-12-08"), timeZone: BANGKOK };
+    const input = quoteInputFor(inputs, [
+      { id: "s", productId: "scooter", quantity: 1, span: later, rentalStart: bkk("2027-11-01") },
+      { id: "h", productId: "helmet", quantity: 1, extraOf: "s" },
+      {
+        id: "c",
+        productId: "cover",
+        quantity: 1,
+        extraOf: "s",
+        span: { ...later, end: bkk("2027-12-04") },
+      },
+    ]);
+    expect(input.lines[1].span).toEqual(later);
+    expect(input.lines[1].rentalStart).toEqual(bkk("2027-11-01"));
+    expect(input.lines[2].span.end).toEqual(bkk("2027-12-04"));
+    expect(input.lines[2].rentalStart).toBeNull();
+    // A line that is no extra is as it always was.
+    expect(input.lines[0].extraOf).toBeNull();
+  });
+
+  it("the allowance is the one of the vehicle on the parent line: each vehicle's own, and none for a product not offered with it", () => {
+    const input = quoteInputFor(inputs, [
+      { id: "s", productId: "scooter", quantity: 1, span: week },
+      { id: "t", productId: "tourer", quantity: 1, span: week },
+      { id: "hs", productId: "helmet", quantity: 3, extraOf: "s" },
+      { id: "ht", productId: "helmet", quantity: 3, extraOf: "t" },
+      { id: "c", productId: "cover", quantity: 1, extraOf: "s" },
+      { id: "alone", productId: "helmet", quantity: 1, span: week },
+    ]);
+    expect(input.lines.map((l) => l.extraOf)).toEqual([
+      null,
+      null,
+      { lineId: "s", includedQuantity: 2 },
+      { lineId: "t", includedQuantity: 1 },
+      { lineId: "s", includedQuantity: 0 },
+      null,
+    ]);
+    expect(includedWith(inputs, "scooter", "helmet")).toBe(2);
+    expect(includedWith(inputs, "scooter", "cover")).toBe(0);
+    expect(extrasOf(inputs, "tourer").map((e) => e.every_vehicle)).toEqual([true]);
+    expect(extrasOf(inputs, "helmet")).toEqual([]);
+  });
+
+  it("refuses a line with no dates and no vehicle line to take them from, and an extra of a line that isn't there or of itself", () => {
+    expect(() =>
+      quoteInputFor(inputs, [{ id: "h", productId: "helmet", quantity: 1 }]),
+    ).toThrow(/no dates/);
+    expect(() =>
+      quoteInputFor(inputs, [
+        { id: "h", productId: "helmet", quantity: 1, span: week, extraOf: "gone" },
+      ]),
+    ).toThrow(/isn't here/);
+    expect(() =>
+      quoteInputFor(inputs, [
+        { id: "h", productId: "helmet", quantity: 1, span: week, extraOf: "h" },
+      ]),
+    ).toThrow(/isn't here/);
+    // An extra of an extra, or of gear: quote()'s own check.
+    expect(() =>
+      quote(
+        quoteInputFor(inputs, [
+          { id: "h", productId: "helmet", quantity: 1, span: week },
+          { id: "c", productId: "cover", quantity: 1, extraOf: "h" },
+        ]),
+      ),
+    ).toThrow(/vehicle/);
+  });
+
+  it("the snapshot's context comes from the same rows: names, the profile in force and each season's name", () => {
+    const lines = [
+      { id: "s", productId: "scooter", quantity: 1, span: week },
+      { id: "c", productId: "cover", quantity: 1, extraOf: "s" },
+      { id: "x", productId: "unknown", quantity: 1, span: week },
+    ];
+    const pricedAt = new Date("2027-10-01T00:00:00Z");
+    expect(snapshotContextFor(inputs, lines, { pricedAt })).toEqual({
+      currency: "THB",
+      exponent: 2,
+      pricedAt,
+      lines: {
+        s: {
+          productName: "scooter",
+          productType: "vehicle",
+          taxProfile: { id: "p1", name: "VAT 7%" },
+        },
+        // Not taxable: no profile. No pricing row: no entry at all.
+        c: { productName: "cover", productType: "gear", taxProfile: null },
+      },
+      seasons: { low: { name: "Low season" } },
+      coupons: undefined,
+    });
+    // No settings row: the currency is the priced products'. Dong has no decimals.
+    const dong = snapshotContextFor(
+      {
+        settings: null,
+        products: [perDay("scooter", "150000", { currency: "VND" })],
+        seasons: [],
+        extras: [],
+      },
+      lines.slice(0, 1),
+      { pricedAt },
+    );
+    expect([dong.currency, dong.exponent]).toEqual(["VND", 0]);
+    expect(() =>
+      snapshotContextFor(
+        { settings: null, products: [], seasons: [], extras: [] },
+        lines,
+        { pricedAt },
+      ),
+    ).toThrow(/No currency/);
   });
 });

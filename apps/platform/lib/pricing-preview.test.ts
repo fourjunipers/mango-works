@@ -59,6 +59,7 @@ const inputs: PricingInputs = {
   },
   products: [],
   seasons: [],
+  extras: [],
 };
 const span = (pickup: string, days: number) =>
   sampleSpan({ by: "days", pickup, days }, zone)!;
@@ -305,6 +306,7 @@ describe("Check a price: the form priced by quote()", () => {
 describe("the Products list's price", () => {
   const base = {
     product_id: "p",
+    product_name: "P",
     product_type: "vehicle" as const,
     currency: "THB",
     price_amount: null,
@@ -315,6 +317,7 @@ describe("the Products list's price", () => {
     replacement_price: null,
     taxable: true,
     tax_rate_bp: null,
+    tax_profile_id: null,
     tax_profile_name: null,
     template: null,
   };

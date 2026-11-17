@@ -56,6 +56,8 @@ export function draftRow(
 ): ProductPricingRow | null {
   const base: Omit<ProductPricingRow, "pricing_method" | "template"> = {
     product_id: productId,
+    // A draft is priced, never snapshotted: the name is not needed here.
+    product_name: "",
     product_type: ctx.type,
     currency: ctx.currency,
     price_amount: null,
@@ -66,6 +68,7 @@ export function draftRow(
     replacement_price: null,
     taxable: draft.tax !== "none",
     tax_rate_bp: null,
+    tax_profile_id: null,
     tax_profile_name: null,
   };
   if (draft.tax !== "none") {
@@ -73,6 +76,7 @@ export function draftRow(
     const profile = tax.profiles.find((p) => p.id === id);
     if (profile) {
       base.tax_rate_bp = profile.rate_bp;
+      base.tax_profile_id = profile.id;
       base.tax_profile_name = profile.name;
     }
   }
