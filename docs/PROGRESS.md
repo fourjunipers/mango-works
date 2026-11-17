@@ -528,7 +528,7 @@ On each invoice: its totals, its rate groups and `snapshot jsonb` (the whole sto
 
 ## Phase 2, stage 5: extras in the database (branch `platform/phase-2-stage-5-extras-db`, 17 Nov 2026)
 
-The fifth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §6, §8; the owner's answers in §10, Q16). **Database, the pricing adapter and the staff path to the booking functions: nothing on a screen changes** (the Extras tab and Settings › Extras are stage 6). **Applied locally only: not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The fifth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §6, §8; the owner's answers in §10, Q16). **Database, the pricing adapter and the staff path to the booking functions: nothing on a screen changes** (the Extras tab and Settings › Extras are stage 6). **On staging since 17 Nov 2026** (64 of 64; see "On staging" below); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
 
 **What changed**
 
@@ -622,6 +622,30 @@ Also in the same push: **`max_quantity` is the most per vehicle** (the owner, 17
 - A race test shows a race is closed for the timings it hit.
 
 **Before this goes to staging** (the owner's word each time, plan Q17): nothing to count first. The migration adds one empty table and one function, re-creates `pricing_inputs()` and sets a timeout on four functions. Migrations `20261116000100` to `20261116000300` must be there in their merged form, and `pricing_inputs()` on staging must have `main`'s body (the one from `20261115000100`). Afterwards: `product_extras` is empty; `pricing_inputs()` answers `extras: []` for every shop; the five booking functions each read `lock_timeout=6s`; `save_product_extras()` can be executed by `authenticated` only; counts of products, units, blocks, reservations, pricing rows and audit rows are unchanged.
+
+**On staging since 17 Nov 2026; not on live.** The migration (`20261117000100_platform_product_extras`) was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 10:46 UTC, from `main` at `4d435d0`, with `npx supabase db push --db-url` (never `--linked`). Staging records 64 of 64. Live was not touched.
+
+- **Read-only checks first**, in one read-only transaction; all six passed:
+  1. 63 migrations on record, newest `20261116000300`, none at or after `20261117000100`. The CLI's migration list showed 63 matching the repo and this one not yet on staging; the dry run listed exactly this one.
+  2. `pricing_inputs(uuid, uuid[])` had `main`'s body, by MD5 of the stored source against the body in `20261115000100`: `5da5271a…` both.
+  3. `confirm_hold(uuid, uuid)`, `cancel_reservation(uuid, uuid, uuid)`, `assign_units(uuid, uuid, uuid[])` and `move_unit(uuid, uuid, uuid, uuid, integer, timestamptz, jsonb)` each existed once with exactly those arguments and no lock timeout; `reserve()` already read `lock_timeout=6s`.
+  4. No `product_extras` table; no `save_product_extras` or `extras_roles` function.
+  5. `authenticated` `statement_timeout=8s`, `anon` `statement_timeout=3s`, `service_role` none; `authenticator` `statement_timeout=8s`, `lock_timeout=8s`. As on 16 Nov.
+  6. Postgres 17.11.
+- **The push** applied the one migration in about four seconds.
+- **After, read-only:**
+  - 64 migrations on record, newest `20261117000100`.
+  - `product_extras` exists, empty, RLS on, one policy: "Members read product extras" (select, `authenticated`), by `my_tenant_ids(extras_roles('read'))`. Table grants: `authenticated` select only; `service_role` all; `anon` none.
+  - `pricing_inputs()` has the migration's body (MD5 `6c662a4f…`, the same as the file's). It answers `extras: []` for all three shops, and each of BSR's 13 product rows has `product_name` and `tax_profile_id`. **`tax_profile_id` is empty on every row on staging** (no priced product is taxable under a profile there), so a filled one was not seen on staging; the database tests cover it.
+  - `confirm_hold`, `cancel_reservation`, `assign_units` and `move_unit` each read `lock_timeout=6s` in `pg_proc.proconfig`, with `reserve`. `save_product_extras` has none (stage 6).
+  - `save_product_extras()`: `authenticated` can execute; `anon` and `service_role` cannot. `extras_roles()` the same. `pricing_inputs()`: `authenticated` and `service_role`, not `anon`.
+- **Smoke test through the API, as BSR's demo users, then removed** (10:49 UTC):
+  - Signed out, a save is refused (401). **As `staff@bsr.demo.test` a save is refused with `only_owner_or_manager` (403), as designed**, so the two saves were made as `owner@bsr.demo.test` and everything was read as staff.
+  - Saved: "Drivers License Assistance" on Honda ADV 160 (2025-2026) with 2 included and at most 4; the same extra on the "every vehicle" list with 1 included. Staff read both rows.
+  - `pricing_inputs()` as staff: the ADV 160 got one row, its own (2 included, most 4, `every_vehicle` false); Honda Click 160 got the shop-wide row (1 included, `every_vehicle` true). The extra's own product row came back beside the vehicles'.
+  - `quote()` for the ADV 160, 3 days, no extras: the whole result was identical before the saves, with the extras saved, and after they were removed (total 90000 minor units, THB 900.00).
+  - Both lists were saved empty again: `product_extras` has 0 rows and `pricing_inputs()` answers `extras: []`.
+- **Counts, the same before and after** for every `platform` table (32 products, 205 units, 21 blocks, 0 reservations, 13 pricing rows, 3 shops), **except `audit_events`: 3,415 before, 3,419 after.** The four are the smoke test's `extras_change` events (two saves, two clears); audit rows are not removed by hand.
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s5` on ports 6532x, started with CI's service list. `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. The stacks of stage 3, stage 4 and the Next.js upgrade were stopped (not removed); another project's stack was left alone.
 
