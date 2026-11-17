@@ -1,10 +1,24 @@
 import { defineConfig } from "eslint/config";
 import { nextApp } from "@mango/config/eslint/next";
-import { appImportPatterns } from "@mango/config/eslint/boundaries";
+import {
+  appImportPatterns,
+  supabasePatterns,
+} from "@mango/config/eslint/boundaries";
+
+/** Files that still import @supabase/* themselves (docs/PROGRESS.md). */
+const supabaseAllowed = [
+  "proxy.ts",
+  "app/auth/confirm/route.ts",
+  "scripts/create-line-provider.mjs",
+  "tests/db/helpers.ts",
+  "lib/admin-queue.ts",
+  "lib/auth/sync-role.ts",
+  "lib/stations/merge.ts",
+];
 
 const eslintConfig = defineConfig([
-  // Next.js rules, Prettier, and "never import from another app".
-  ...nextApp("marketplace"),
+  // Next.js rules, Prettier, "never import from another app" or @supabase/*.
+  ...nextApp("marketplace", { supabaseAllowed }),
   // Marketplace rule (docs/INTEGRATION.md): customer pages, components and
   // API routes reach shop data only through "@/lib/data", never a database
   // client, so the Mango Works API can replace it without UI changes.
@@ -25,6 +39,7 @@ const eslintConfig = defineConfig([
           patterns: [
             // Repeated here because this block replaces the app-wide option.
             ...appImportPatterns("marketplace"),
+            ...supabasePatterns,
             {
               group: ["@mango/db", "@mango/db/*", "@/lib/data/current-db"],
               message:

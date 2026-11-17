@@ -511,7 +511,7 @@ On each invoice: its totals, its rate groups and `snapshot jsonb` (the whole sto
 
 **What does not follow the four "Not tied to Supabase" rules yet** (found by searching, not a full audit; nothing here was changed)
 
-- **Database access outside `packages/db`** (files that import `@supabase/*` themselves): both apps' `proxy.ts` and `app/auth/confirm/route.ts`; the marketplace's `lib/admin-queue.ts`, `lib/auth/sync-role.ts` and `lib/stations/merge.ts`; the platform's `scripts/seed.mts` and `scripts/load-bsr-pricing.mts`; and the test helpers (`tests/db/helpers.ts` in both apps, `e2e/shop-settings.ts`).
+- **Database access outside `packages/db`** (files that import `@supabase/*` themselves): both apps' `proxy.ts` and `app/auth/confirm/route.ts`; the marketplace's `lib/admin-queue.ts`, `lib/auth/sync-role.ts` and `lib/stations/merge.ts`; the platform's `scripts/seed.mts` and `scripts/load-bsr-pricing.mts`; both apps' `scripts/create-line-provider.mjs` (on `main` before this list; found by the lint rule's check, PR 45); and the test helpers (`tests/db/helpers.ts` in both apps, `e2e/shop-settings.ts`). **Since PR 45 ESLint refuses `@supabase/*` in `apps/`, type imports included**, except in these files (`supabaseAllowed` in each app's `eslint.config.mjs`).
 - **File storage** is called directly in four marketplace files (`app/admin/actions.ts`, `app/vendor/actions/fleet.ts`, `app/vendor/actions/shop.ts`, `components/photo-picker.tsx`). The platform stores no file yet, so the one module does not exist: the first platform feature that stores a file creates it.
 - **Sign-in** is called directly from each app's login form and its `auth/callback`, `auth/confirm` and `auth/signout` routes: there is no one helper yet.
 - **RLS:** one platform policy calls `auth.uid()` directly (a member reading their own membership row, `20261110000100_platform_schema.sql`). The helpers themselves, the audit function and the "who did it" columns read `auth.uid()` too, and several tables have keys to `auth.users`: those are the places the move changes. The marketplace's own policies (the 27 older migrations) were not looked at.
@@ -713,6 +713,7 @@ The sixth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §7, 
 6. The read-only "every vehicle" list has no intro (it repeated the heading); `everyIntroRead` is gone from both languages and the Thai list (63 lines now).
 7. A question for Korn at the top of `docs/platform/thai-review-products.md`: สูงสุดต่อคัน counts in คัน, boats in ลำ; keep คัน or a neutral word? The strings are not changed.
 8. The browser note above is corrected: this branch changes one assertion in `fleet.spec.ts`.
+9. **After the re-check:** `lib/extras-names.ts` imported `SupabaseClient` from `@supabase/supabase-js`, against the Neon rule; its client type now comes from `@mango/db/platform-server`. No other `@supabase` import was added on this branch. A lint rule now refuses `@supabase/*` in `apps/` (type imports too) outside the listed files (`packages/config/eslint/boundaries.mjs`, `next.mjs`).
 
 **Tests after the review**
 

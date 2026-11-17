@@ -36,5 +36,20 @@ const onePricer = {
   },
 };
 
-// Next.js rules, Prettier, "never import from another app", and one pricer.
-export default defineConfig([...nextApp("platform"), onePricer]);
+/** Files that still import @supabase/* themselves (docs/PROGRESS.md). */
+const supabaseAllowed = [
+  "proxy.ts",
+  "app/auth/confirm/route.ts",
+  "scripts/create-line-provider.mjs",
+  "tests/db/helpers.ts",
+  "scripts/seed.mts",
+  "scripts/load-bsr-pricing.mts",
+  "e2e/shop-settings.ts",
+];
+
+// Next.js rules, Prettier, "never import from another app" or @supabase/*,
+// and one pricer.
+export default defineConfig([
+  ...nextApp("platform", { supabaseAllowed }),
+  onePricer,
+]);
