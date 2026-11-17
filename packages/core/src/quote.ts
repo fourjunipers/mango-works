@@ -491,6 +491,15 @@ export function quote(input: QuoteInput): Quote {
     }
   }
 
+  // A discount names each of its lines once. Named twice, a line would lose
+  // the discount twice: 10% on ["bike", "bike"] would take 20%.
+  for (const discount of discounts) {
+    if (discount.lines === "all") continue;
+    if (new Set(discount.lines).size !== discount.lines.length) {
+      bad(`Discount ${discount.id} names a line more than once`);
+    }
+  }
+
   // Step 4 is worked out first, for every line and before the "can't be
   // priced" answer below, so a wrong parent is always `bad_input`: it is
   // never hidden behind another line that has no price yet.

@@ -3,6 +3,7 @@ import {
   includedQuantities,
   quote,
   QuoteError,
+  type Discount,
   type Quote,
   type QuoteInput,
   type QuoteLineInput,
@@ -589,5 +590,84 @@ describe("what step 4 refuses", () => {
       included: 0,
       charged: 1,
     });
+  });
+});
+
+// Not about extras, but kept here so quote.test.ts stays as stage D2 left it
+// (second review of PR 40).
+describe("a discount names each of its lines once", () => {
+  const two = () => [
+    line("bike", bike300(), { days: 7 }),
+    line("box", fixed("300"), { vehicle: false }),
+  ];
+  const refusedWith = (lines: QuoteLineInput[], discount: Discount) => {
+    let error: unknown;
+    try {
+      quote(input({ lines, discounts: [discount] }));
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(QuoteError);
+    expect((error as QuoteError).code).toBe("bad_input");
+    expect((error as QuoteError).message).toMatch(/more than once/);
+  };
+
+  it("10% on [bike, bike] is refused: it would take 20%", () => {
+    refusedWith(two(), {
+      id: "d",
+      source: "staff",
+      lines: ["bike", "bike"],
+      percentBp: 1000,
+    });
+  });
+
+  it("a fixed amount on a line named twice is refused: it could take more than the line comes to", () => {
+    refusedWith(two(), {
+      id: "d",
+      source: "staff",
+      lines: ["box", "box"],
+      amount: thb("500"),
+    });
+  });
+
+  it("a repeat anywhere in the list is refused, priced or not, coupon or not", () => {
+    refusedWith(two(), {
+      id: "d",
+      source: "returning_customer",
+      lines: ["bike", "box", "bike"],
+      percentBp: 1000,
+    });
+    // Before "can't be priced" is answered, like every other bad input.
+    refusedWith([...two(), line("unpriced", null)], {
+      id: "d",
+      source: "staff",
+      lines: ["box", "box"],
+      percentBp: 1000,
+    });
+  });
+
+  it("each line named once, in any order, is priced as before", () => {
+    const once = quote(
+      input({
+        lines: two(),
+        discounts: [
+          { id: "d", source: "staff", lines: ["box", "bike"], percentBp: 1000 },
+        ],
+      }),
+    );
+    if (!once.ok) throw new Error("expected a priced quote");
+    // 1,400 and 300, 10% off each.
+    expect(once.lines.map((l) => l.discount)).toEqual([thb("140"), thb("30")]);
+    expect(once.totals.discount).toBe(thb("170"));
+    const all = quote(
+      input({
+        lines: two(),
+        discounts: [
+          { id: "d", source: "staff", lines: "all", percentBp: 1000 },
+        ],
+      }),
+    );
+    if (!all.ok) throw new Error("expected a priced quote");
+    expect(all.totals).toEqual(once.totals);
   });
 });
