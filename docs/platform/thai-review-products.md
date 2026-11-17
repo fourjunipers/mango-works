@@ -911,3 +911,79 @@ Claude's translations, for Korn or BSR's admin (docs/products-redesign.md §9.12
 | `Fleet.unit.moveBookingsConfirm` | This vehicle has an upcoming booking. It will move with it to {destination}. / This vehicle has # upcoming bookings. They will move with it to {destination}. | {count, plural, other {รถคันนี้มีการจองที่กำลังจะมาถึง # รายการ การจองจะย้ายตามรถไปที่ {destination}}} |
 | `FormErrors.unit_has_bookings` | This vehicle has upcoming bookings. Change its product or location on its Details form, which moves the bookings with it. | รถคันนี้มีการจองที่กำลังจะมาถึง เปลี่ยนสินค้าหรือสาขาในฟอร์มรายละเอียดของรถ ซึ่งจะย้ายการจองตามไปด้วย |
 | `FormErrors.bookingsChanged` | This vehicle's bookings changed while this form was open. Reload the page to see them, then make your change again. | การจองของรถคันนี้เปลี่ยนไปขณะที่ฟอร์มนี้เปิดอยู่ โหลดหน้านี้ใหม่เพื่อดูข้อมูลล่าสุด แล้วแก้ไขอีกครั้ง |
+
+## Phase 2, stage 6: extras on screens (17 Nov 2026)
+
+Claude’s translations, for Korn or BSR’s admin: the Extras tab of a vehicle, Settings › Extras, the History lines and the save messages. 64 lines.
+
+- **Extras is ของเสริม** (the tab, the Settings section and the messages). The words already used for the products themselves stay: rental gear อุปกรณ์ให้เช่า, service บริการ.
+- **“Most per vehicle” is สูงสุดต่อคัน** (the owner’s label, 17 Nov 2026: up to N with each vehicle, not per booking). “Included free” is รวมให้ฟรี.
+- **“Not offered for this vehicle” is ไม่เสนอสำหรับรถรุ่นนี้**: รุ่น because the switch is on the vehicle product, which covers every bike of that model.
+- Thai has no plural: `{count}` is a number in a sentence. Names and numbers are never in a translation.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Settings.nav.extras` | Extras | ของเสริม |
+| `Settings.extras.title` | Extras | ของเสริม |
+| `Settings.extras.intro` | The rental gear and services offered with every vehicle of the shop. | อุปกรณ์ให้เช่าและบริการที่ร้านเสนอพร้อมรถทุกคัน |
+| `FormErrors.extrasTryAgain` | Someone is saving a booking for this vehicle right now, so nothing was saved. Please try again. | มีคนกำลังบันทึกการจองของรถรุ่นนี้อยู่ จึงยังไม่ได้บันทึก โปรดลองอีกครั้ง |
+| `FormErrors.extrasOnlyOwnerOrManager` | Only an owner or a manager can change extras. | เฉพาะเจ้าของหรือผู้จัดการเท่านั้นที่เปลี่ยนของเสริมได้ |
+| `FormErrors.extrasInvalid` | Check the extras and try again. | ตรวจสอบของเสริมแล้วลองอีกครั้ง |
+| `FormErrors.extrasProductNotFound` | This vehicle no longer exists. Reload the page. | ไม่มีรถรุ่นนี้แล้ว โหลดหน้านี้ใหม่ |
+| `FormErrors.extrasExtraNotFound` | One of these extras no longer exists, or isn't rental gear or a service. Reload the page. | ของเสริมบางรายการไม่มีอยู่แล้ว หรือไม่ใช่อุปกรณ์ให้เช่าหรือบริการ โหลดหน้านี้ใหม่ |
+| `FormErrors.extrasMostBelowIncluded` | The most per vehicle can't be below the number included. | จำนวนสูงสุดต่อคันต้องไม่น้อยกว่าจำนวนที่รวมให้ |
+| `FormErrors.extrasCheckLines` | Check the lines marked below. | ตรวจสอบรายการที่มีเครื่องหมายด้านล่าง |
+| `Products.tabs.extras` | Extras | ของเสริม |
+| `Products.history.extras.everyTitle` | History | ประวัติ |
+| `Products.history.extras.one` | {who} {what} | {who} {what} |
+| `Products.history.extras.oneEvery` | {who} {what} (every vehicle) | {who} {what} (รถทุกคัน) |
+| `Products.history.extras.many` | {who} changed the extras | {who} เปลี่ยนของเสริม |
+| `Products.history.extras.manyEvery` | {who} changed the extras offered with every vehicle | {who} เปลี่ยนของเสริมที่เสนอพร้อมรถทุกคัน |
+| `Products.history.extras.added` | added {name}: {included} included, no limit per vehicle | เพิ่ม {name}: รวมให้ {included} ไม่จำกัดต่อคัน |
+| `Products.history.extras.addedMost` | added {name}: {included} included, most {most} per vehicle | เพิ่ม {name}: รวมให้ {included} สูงสุด {most} ต่อคัน |
+| `Products.history.extras.removed` | removed {name} | นำ {name} ออก |
+| `Products.history.extras.notOffered` | set {name} to Not offered for this vehicle | ตั้ง {name} เป็นไม่เสนอสำหรับรถรุ่นนี้ |
+| `Products.history.extras.offeredAgain` | offered {name} again, as the list for every vehicle says | เสนอ {name} อีกครั้งตามรายการสำหรับรถทุกคัน |
+| `Products.history.extras.reordered` | changed the order of the extras | เปลี่ยนลำดับของเสริม |
+| `Products.history.extras.includedChanged` | changed {name}'s included from {from} to {to} | เปลี่ยนจำนวนที่รวมให้ของ {name} จาก {from} เป็น {to} |
+| `Products.history.extras.mostChanged` | changed {name}'s most per vehicle from {from} to {to} | เปลี่ยนจำนวนสูงสุดต่อคันของ {name} จาก {from} เป็น {to} |
+| `Products.history.extras.noLimit` | no limit | ไม่จำกัด |
+| `Products.history.extras.deletedName` | {name} (deleted) | {name} (ลบแล้ว) |
+| `Products.history.extras.removedProduct` | a deleted product | สินค้าที่ถูกลบ |
+| `Products.extras.intro` | The rental gear and services offered with this vehicle. Online bookings take up to the most per vehicle; staff can add more at the counter. | อุปกรณ์ให้เช่าและบริการที่เสนอพร้อมรถรุ่นนี้ การจองออนไลน์รับได้ไม่เกินจำนวนสูงสุดต่อคัน พนักงานที่หน้าร้านเพิ่มได้มากกว่านั้น |
+| `Products.extras.introRead` | The rental gear and services offered with this vehicle. | อุปกรณ์ให้เช่าและบริการที่เสนอพร้อมรถรุ่นนี้ |
+| `Products.extras.everyIntro` | Offered with every vehicle. A vehicle can set its own, or switch one off with "Not offered for this vehicle", on its Extras tab. | เสนอพร้อมรถทุกคัน รถแต่ละรุ่นตั้งค่าของตัวเองได้ หรือปิดรายการด้วย "ไม่เสนอสำหรับรถรุ่นนี้" ในแท็บของเสริมของรถรุ่นนั้น |
+| `Products.extras.everyIntroRead` | Offered with every vehicle. | เสนอพร้อมรถทุกคัน |
+| `Products.extras.ownTitle` | Offered with this vehicle | เสนอพร้อมรถรุ่นนี้ |
+| `Products.extras.everyTitle` | Offered with every vehicle | เสนอพร้อมรถทุกคัน |
+| `Products.extras.ownNone` | Nothing of its own yet. | ยังไม่มีรายการของรถรุ่นนี้เอง |
+| `Products.extras.everyNone` | Nothing is offered with every vehicle yet. | ยังไม่มีรายการที่เสนอพร้อมรถทุกคัน |
+| `Products.extras.shopTitle` | From the list for every vehicle | จากรายการสำหรับรถทุกคัน |
+| `Products.extras.shopIntro` | Offered with this vehicle too, unless you switch it off here. | เสนอพร้อมรถรุ่นนี้ด้วย เว้นแต่จะปิดไว้ที่นี่ |
+| `Products.extras.shopNone` | The shop offers nothing with every vehicle. | ร้านยังไม่มีรายการที่เสนอพร้อมรถทุกคัน |
+| `Products.extras.shopLink` | Settings › Extras: what every vehicle offers | การตั้งค่า › ของเสริม: รายการสำหรับรถทุกคัน |
+| `Products.extras.setAbove` | Set for this vehicle above. | ตั้งค่าสำหรับรถรุ่นนี้ไว้ด้านบนแล้ว |
+| `Products.extras.notOffered` | Not offered for this vehicle | ไม่เสนอสำหรับรถรุ่นนี้ |
+| `Products.extras.notOfferedHere` | Not offered for this vehicle. | ไม่เสนอสำหรับรถรุ่นนี้ |
+| `Products.extras.included` | Included free | รวมให้ฟรี |
+| `Products.extras.includedHelp` | Free with each vehicle. | ฟรีกับรถแต่ละคัน |
+| `Products.extras.most` | Most per vehicle | สูงสุดต่อคัน |
+| `Products.extras.mostHelp` | Online bookings take up to this many with each vehicle. Empty: no limit. | การจองออนไลน์รับได้ไม่เกินจำนวนนี้ต่อรถหนึ่งคัน เว้นว่าง: ไม่จำกัด |
+| `Products.extras.noLimit` | No limit | ไม่จำกัด |
+| `Products.extras.includedCount` | {count} included | รวมให้ {count} |
+| `Products.extras.mostCount` | Most per vehicle: {count} | สูงสุดต่อคัน: {count} |
+| `Products.extras.mostNone` | Most per vehicle: no limit | สูงสุดต่อคัน: ไม่จำกัด |
+| `Products.extras.addLabel` | Add rental gear or a service | เพิ่มอุปกรณ์ให้เช่าหรือบริการ |
+| `Products.extras.choose` | Choose… | เลือก… |
+| `Products.extras.add` | Add | เพิ่ม |
+| `Products.extras.save` | Save extras | บันทึกของเสริม |
+| `Products.extras.moveUp` | Move {name} up | เลื่อน {name} ขึ้น |
+| `Products.extras.moveDown` | Move {name} down | เลื่อน {name} ลง |
+| `Products.extras.remove` | Remove {name} | นำ {name} ออก |
+| `Products.extras.unknown` | A product that no longer exists | สินค้าที่ไม่มีอยู่แล้ว |
+| `Products.extras.retired` | Retired: not offered | ปลดระวาง: ไม่เสนอ |
+| `Products.extras.noPrice` | No price yet: not offered | ยังไม่มีราคา: ไม่เสนอ |
+| `Products.extras.noProducts` | The shop has no rental gear or services yet. Add them on the Products page. | ร้านยังไม่มีอุปกรณ์ให้เช่าหรือบริการ เพิ่มได้ที่หน้าสินค้า |
+| `Products.extras.readOnly` | Only an owner or a manager can change extras. | เฉพาะเจ้าของหรือผู้จัดการเท่านั้นที่เปลี่ยนของเสริมได้ |
+| `Products.extras.type.gear` | Rental gear | อุปกรณ์ให้เช่า |
+| `Products.extras.type.service` | Service | บริการ |
