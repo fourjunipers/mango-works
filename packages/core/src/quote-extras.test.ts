@@ -546,6 +546,38 @@ describe("what step 4 refuses", () => {
     ]);
   });
 
+  it("a wrong parent is bad input even when another line has no price yet", () => {
+    // "Can't be priced" must not hide it (review of PR 40, item 5).
+    const wrongParent = extra("helmet", HELMET, 1, 1, {
+      extraOf: { lineId: "nope", includedQuantity: 1 },
+    });
+    refused([scooter(), wrongParent, line("unpriced", null)]);
+    refused([line("scooter", null, { days: 7 }), wrongParent]);
+    // The extra itself has no price, and its parent is wrong.
+    refused([scooter(), { ...wrongParent, pricing: null }]);
+    // Twins are refused too, priced or not.
+    refused([
+      scooter(),
+      extra("h1", null, 2, 2, { productId: "helmet" }),
+      extra("h2", HELMET, 2, 2, { productId: "helmet" }),
+    ]);
+    // With the parents right, the answer is still "can't be priced".
+    expect(
+      quote(
+        input({
+          lines: [
+            scooter(),
+            extra("helmet", HELMET, 1, 1),
+            line("unpriced", null),
+          ],
+        }),
+      ),
+    ).toEqual({
+      ok: false,
+      unpriced: [{ lineId: "unpriced", reason: "no_price" }],
+    });
+  });
+
   it("and says so before pricing anything", () => {
     expect(() =>
       includedQuantities(extra("helmet", HELMET, 1, 1), [

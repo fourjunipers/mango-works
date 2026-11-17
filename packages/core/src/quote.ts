@@ -491,6 +491,13 @@ export function quote(input: QuoteInput): Quote {
     }
   }
 
+  // Step 4 is worked out first, for every line and before the "can't be
+  // priced" answer below, so a wrong parent is always `bad_input`: it is
+  // never hidden behind another line that has no price yet.
+  const quantities = input.lines.map((line) =>
+    includedQuantities(line, input.lines),
+  );
+
   // No price is not zero: say which lines can't be priced.
   const unpriced = input.lines.filter((line) => line.pricing === null);
   if (unpriced.length > 0) {
@@ -502,12 +509,6 @@ export function quote(input: QuoteInput): Quote {
       })),
     };
   }
-
-  // Step 4 is worked out first, and for every line, so a wrong parent is
-  // refused before anything is priced.
-  const quantities = input.lines.map((line) =>
-    includedQuantities(line, input.lines),
-  );
 
   // Steps 1 to 5: length, unit price, charged quantity, seasons.
   const lines: QuotedLine[] = input.lines.map((line, index) => {
