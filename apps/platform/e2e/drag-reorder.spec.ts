@@ -239,7 +239,9 @@ test("drag to reorder with a mouse, a finger and the keyboard; saved, shared by 
         await expect(p.locator("html")).toHaveClass(
           scheme === "dark" ? /\bdark\b/ : /^(?!.*\bdark\b)/,
         );
-        const shot = testInfo.outputPath(`reorder-${size.name}-${scheme}.png`);
+        const shot = testInfo.outputPath(
+          `reorder-${size.name}-${scheme}.png`,
+        );
         await p.screenshot({ path: shot });
         await testInfo.attach(`reorder-${size.name}-${scheme}`, {
           path: shot,
