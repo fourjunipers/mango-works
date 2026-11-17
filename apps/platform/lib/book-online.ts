@@ -13,11 +13,7 @@ import {
   type AvailabilityRow,
   type BookingInputs,
 } from "./booking-inputs";
-import {
-  extrasOf,
-  quoteInputFor,
-  type PricingInputs,
-} from "./pricing-inputs";
+import { extrasOf, quoteInputFor, type PricingInputs } from "./pricing-inputs";
 import { isTryAgain } from "./try-again";
 
 /**
@@ -146,18 +142,56 @@ async function read<T>(
  * the vehicle opts out of. An extra with no limit, or one not offered with
  * that vehicle (priced with nothing free, plan stage 5 item 6), is not
  * bound here. Two lines of one extra on one vehicle are quote()'s refusal.
+ *
+ * A line of the same product with no parent can't get round it (review of
+ * PR 45): when a vehicle line in the booking offers that extra with a
+ * limit, the extra's parentless units and its units attached to those
+ * vehicles are counted together against the sum of their mosts (each
+ * vehicle line's max_quantity × its quantity). Such a line is answered with
+ * its own index. Not bound: when no vehicle line offers it with a limit
+ * (none offers it, or each opted out), or when one offers it with no limit,
+ * which could take any number.
  */
 export function overMostPerVehicle(
   lines: OnlineBookingRequest["lines"],
   pricing: Pick<PricingInputs, "extras">,
 ): number | null {
+  /** The extra's row on that line's vehicle product, if it offers it. */
+  const rowOf = (vehicleLine: number, extraProductId: string) =>
+    extrasOf(pricing, lines[vehicleLine].productId).find(
+      (row) => row.extra_product_id === extraProductId,
+    );
+  const vehicleLines = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => line.parent === undefined);
+
   for (const [index, line] of lines.entries()) {
-    if (line.parent === undefined) continue;
-    const vehicle = lines[line.parent];
-    const most = extrasOf(pricing, vehicle.productId).find(
-      (row) => row.extra_product_id === line.productId,
-    )?.max_quantity;
-    if (most != null && line.quantity > most * vehicle.quantity) return index;
+    if (line.parent !== undefined) {
+      const most = rowOf(line.parent, line.productId)?.max_quantity;
+      if (most != null && line.quantity > most * lines[line.parent].quantity)
+        return index;
+      continue;
+    }
+    // A parentless line: an extra of a vehicle line here, with a limit?
+    const offering = vehicleLines
+      .map(({ index: at }) => ({ at, row: rowOf(at, line.productId) }))
+      .filter((o) => o.row !== undefined);
+    if (offering.length === 0) continue;
+    if (offering.some((o) => o.row!.max_quantity === null)) continue;
+    const limited = new Set(offering.map((o) => o.at));
+    const allowed = offering.reduce(
+      (sum, o) => sum + o.row!.max_quantity! * lines[o.at].quantity,
+      0,
+    );
+    const taken = lines.reduce(
+      (sum, other) =>
+        other.productId === line.productId &&
+        (other.parent === undefined || limited.has(other.parent))
+          ? sum + other.quantity
+          : sum,
+      0,
+    );
+    if (taken > allowed) return index;
   }
   return null;
 }
