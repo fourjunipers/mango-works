@@ -428,6 +428,8 @@ describe("who may read and change a vehicle's extras", () => {
             extra_product_id: helmet.id,
             included_quantity: 1,
             max_quantity: null,
+            // Stage 6: each row says whether it is offered.
+            offered: true,
           },
         ]);
         expect(everyVehicle.error, role).toBeNull();
@@ -603,8 +605,18 @@ describe("save_product_extras(): the whole list in one call", () => {
       { extra_product_id: helmet.id, included_quantity: 1, max_quantity: null },
     ]);
     expect(second.data).toEqual([
-      { extra_product_id: lock.id, included_quantity: 1, max_quantity: null },
-      { extra_product_id: helmet.id, included_quantity: 1, max_quantity: null },
+      {
+        extra_product_id: lock.id,
+        included_quantity: 1,
+        max_quantity: null,
+        offered: true,
+      },
+      {
+        extra_product_id: helmet.id,
+        included_quantity: 1,
+        max_quantity: null,
+        offered: true,
+      },
     ]);
     const after = await rowsOf(shop, scooter.id);
     expect(after.map((r) => r.extra_product_id)).toEqual([lock.id, helmet.id]);
@@ -1542,6 +1554,7 @@ describe("the lock order: a save against a booking and a move", () => {
           s.list.map((row) => ({
             included_quantity: 0,
             max_quantity: null,
+            offered: true,
             ...row,
           })),
         );
