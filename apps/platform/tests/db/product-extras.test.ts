@@ -662,7 +662,7 @@ describe("save_product_extras(): the whole list in one call", () => {
     await save(db("owner", rival), rival, scooter.id, []);
   }, 60_000);
 
-  it("refuses a most-per-booking below the included quantity, an extra of the wrong type, a parent that is not a vehicle, and every malformed list; all or nothing", async () => {
+  it("refuses a most per vehicle below the included quantity, an extra of the wrong type, a parent that is not a vehicle, and every malformed list; all or nothing", async () => {
     const scooter = await vehicle(0);
     const other = await vehicle(0);
     const [helmet, delivery, oil] = await Promise.all([

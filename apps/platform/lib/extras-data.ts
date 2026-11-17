@@ -92,7 +92,13 @@ export async function getExtrasScreen(
     offered: row.offered,
     sort_position: row.sort_position,
   }));
-  const strip = ({ product_id: _, ...row }: (typeof saved)[number]) => row;
+  const strip = (row: (typeof saved)[number]): SavedExtra => ({
+    extra_product_id: row.extra_product_id,
+    included_quantity: row.included_quantity,
+    max_quantity: row.max_quantity,
+    offered: row.offered,
+    sort_position: row.sort_position,
+  });
   return {
     own: saved
       .filter((row) => productId && row.product_id === productId)
