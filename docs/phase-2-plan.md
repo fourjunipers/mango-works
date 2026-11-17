@@ -349,16 +349,18 @@ Every setting is the vendor's. Nothing is preset.
 
 ### 5.4 The quote snapshot
 
-Stored by Phase 3; defined, built and tested now. `snapshotQuote(input, quote, context)` in `@mango/core` turns one priced invoice into plain data (amounts as strings of digits, like `pricing_inputs`), and `readSnapshot()` reads it back. An order never calls `quote()` on stored prices again and never re-reads a profile, a price list, a season or a coupon.
+Stored by Phase 3; defined, built and tested now. `snapshotQuote(input, context)` in `@mango/core` prices one invoice and turns it into plain data (amounts as strings of digits, like `pricing_inputs`). It calls `quote()` on the input itself, so a snapshot can never hold one invoice's prices beside another's figures (Mark, 17 Nov 2026; it took the quote as a third argument before). `readSnapshot()` reads it back, and `readSnapshotLine()` reads one stored line on its own. An order never calls `quote()` on stored prices again and never re-reads a profile, a price list, a season or a coupon.
 
 **On every line**
 
 | Field | Notes |
 | --- | --- |
+| `version` | The snapshot's version, on each line too: an order line keeps its line alone |
 | `currency` | With the exponent it was priced at |
 | Product | Id, name and type as they were. (For a Moto Mangos booking Phase 3 also keeps the list entry's make, model and years: §5.7 of the redesign) |
 | Dates | Start, end, the rental's original pickup if it is a continuation, the location's time zone, the charged periods and their unit |
-| `quantity`, `included_quantity`, `charged_quantity` | §5.2 |
+| `quantity`, `included_quantity`, `charged_quantity` | §5.2. `included_quantity` is the line's free units, never more than its quantity |
+| `included_per_vehicle` | An extra's allowance as it was priced: how many came free with each vehicle. Empty for a line with no parent. With the parent line's id, it is what adding a unit later is worked out from |
 | `unit_price` and how it was worked out | The pricer's `basis` |
 | `list_price` | Unit price × charged quantity |
 | The prices it was worked out from | The way of pricing as passed in: the list's 30 totals, hourly price, long-stay rate, or the flat fee. A swap takes its shares from these (§9.14 item 12 of the redesign) |
@@ -371,11 +373,11 @@ Stored by Phase 3; defined, built and tested now. `snapshotQuote(input, quote, c
 | `tax_amount` | **The line's share of its rate group's VAT** (below) |
 | `deposit` | Per-vehicle mode: this line's deposit. Other modes: empty, the deposit is on the invoice |
 
-**On the invoice:** the totals `quote()` returns; one entry per rate (rate, profile names, base, net, VAT, gross, style); the non-taxable part; credits; the deposit with its mode, number and whether it came from the order, the customer or the shop; `priced_at`; a `version`.
+**On the invoice:** the totals `quote()` returns; one entry per rate (rate, profile names, base, net, VAT, gross, style); the non-taxable part; credits; every discount the invoice was priced with (id, source, the coupon's id and code, its kind and value, all lines or the lines it was aimed at, and what it took in total, one that took 0 included); the deposit with its mode, number and whether it came from the order, the customer or the shop; `priced_at`; a `version`.
 
 **The line's tax amount.** Mark's note of 15 Nov asks for a tax amount on every line; decision 27 says VAT is worked out once per invoice and a line has none of its own. Both hold if the line stores its **share**: the group's VAT split over its lines in proportion to their amounts, leftover minor units to the largest remainders, so the shares add up to the invoice VAT exactly. The invoice's figure stays the one of record; the share is for per-bike reports, as decision 27 (8) has it. (Q9.)
 
-**Phase 3's columns, fixed now.** On each order line: `list_price`, `season_total`, `discount_total`, `amount`, `tax_rate_bp`, `tax_profile_id`, `tax_profile_name`, `tax_inclusive`, `tax_amount`, `deposit`, `currency`, and `snapshot jsonb` holding the whole line as above. On each invoice: its totals, its rate groups and `snapshot jsonb`. Phase 3's save function checks the snapshot's shape and that its lines add up to its totals (addition and comparison only, so the "no pricing function multiplies, divides or rounds" test still holds). That check is written with the columns in Phase 3; Phase 2 ships the TypeScript and its tests.
+**Phase 3's columns, fixed now.** On each order line: `list_price`, `season_total`, `discount_total`, `amount`, `tax_rate_bp`, `tax_profile_id`, `tax_profile_name`, `tax_inclusive`, `tax_amount`, `deposit`, `currency`, and `snapshot jsonb` holding the whole line as above, its `version` with it. On each invoice: its totals, its rate groups and `snapshot jsonb`. Phase 3's save function checks the snapshot's shape and that its lines add up to its totals (addition and comparison only, so the "no pricing function multiplies, divides or rounds" test still holds). That check is written with the columns in Phase 3; Phase 2 ships the TypeScript and its tests.
 
 **Tests that make "no pricer change in Phase 3" true:** every pinned figure of D2 and D3 (a first booking, an extension, a swap with a credit, a cheaper bike, an early return) is snapshotted, turned to JSON, read back and compared to the satang; each snapshot's line tax shares add up to its VAT lines; a snapshot read back after the profile is renamed, re-rated and archived, the list repriced, the season deleted and the coupon archived is unchanged; an older `version` still reads.
 
