@@ -649,7 +649,66 @@ Also in the same push: **`max_quantity` is the most per vehicle** (the owner, 17
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s5` on ports 6532x, started with CI's service list. `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. The stacks of stage 3, stage 4 and the Next.js upgrade were stopped (not removed); another project's stack was left alone.
 
-**Next:** stage 6, extras on screens: the Extras tab, Settings › Extras, History lines, Check a price with extras.
+**Next:** stage 6, extras on screens: the Extras tab, Settings › Extras, History lines, Check a price with extras. **Done, except Check a price with extras (carried to stage 9): see stage 6, above.**
+
+## Phase 2, stage 6: extras on screens (branch `platform/phase-2-stage-6-extras-screens`, 17 Nov 2026)
+
+The sixth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §7, §8; the owner's answers of 17 Nov 2026 under stage 5, "For stage 6"). **Not on staging, not on live**: this branch pushes its migration nowhere. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **One new migration, `20261117000200_platform_extras_opt_out`.** Stage 5's migration is not touched. An MD5 guard runs first: `pricing_inputs()` and `save_product_extras()` must still have the bodies `20261117000100` gave them, or it stops with nothing changed.
+  - **`product_extras.offered`** (`boolean not null default true`): a vehicle's own row with `offered = false` is **"Not offered for this vehicle"**. It still wins over the "every vehicle" row for the same extra.
+  - **`save_product_extras()` re-created** to take `offered` (its checks, answers and lock order as before), and given **`lock_timeout = '6s'`**, like the five booking functions.
+  - **`pricing_inputs()` re-created**: an extra a vehicle opted out of is not offered with that vehicle, so nothing comes free with it.
+- **The Extras tab** on a vehicle's page (`?tab=extras`): owners and managers add the shop's gear and services, set **Included free** and **Most per vehicle**, order and remove them, and switch a shop-wide extra off with **Not offered for this vehicle**. Everyone else who reads extras sees the same lists with no box, button or switch.
+- **Settings › Extras** (`/[tenant]/settings/extras`): the list offered with every vehicle. Owners and managers edit it and see its History; **staff read it**. Mechanics and drivers see a vehicle's extras on its Extras tab, not here.
+- **The Settings layout now lets staff in** (`lib/settings-access.ts`): owners and managers as before; staff for Settings › Extras alone, with no menu of sections. **Every other Settings page keeps its own `requireArea(slug, "settings")`**, now held by a test per page (below). A review focus in the PR.
+- **`lib/extras-save.ts`, the save path**: the editor's form is checked, sent to `save_product_extras()` as the signed-in member, and the answer put in words: `only_owner_or_manager` is "Only an owner or a manager can change extras."; a lock not had in time (`55P03`, `57014`) is "try again" (`lib/try-again.ts`).
+- **History lines** (`lib/extras-history.ts`): one line per save in the buttons' words ("added Helmet: 1 included, most 2 per vehicle", "set Rain gear to Not offered for this vehicle"), on the vehicle's History tab and on Settings › Extras. A product deleted since is named from its own delete event.
+- **The labels**: "Most per vehicle" / สูงสุดต่อคัน everywhere. The stage 5 test that said "most-per-booking" is renamed.
+- **Item 9, the most per vehicle, enforced in `bookOnline()`** (`lib/book-online.ts`). An extra line whose quantity is above its `max_quantity` × its vehicle line's quantity is refused with **`over_most_per_vehicle`** and the line's index, before `offer()` and before anything is reserved. `bookOnline()` is the only path to `reserve()` for every online channel (the booking page, **Moto Mangos** and the API), so all three are covered. **Not in `quote()` and not in `reserve()`**: staff use both, and staff are not bound (plan Q16, the owner: online only). An extra with no limit, or one not offered with that vehicle, is not bound; it is priced with nothing free (stage 5, item 6).
+- **Lint:** the unused binding in `lib/extras-data.ts` is gone (the row is copied field by field).
+
+**Where this differs from the plan or the brief, or decides what they left open** (say if any should change)
+
+1. **"Check a price with extras" is deferred, carried to stage 9.** The plan (§7) has the Pricing tab's Check a price gain extras, the coupon code and the returning-customer tick "from the same component". Stage 9 (coupons on screens) adds the code and the tick to that component; doing extras now would rebuild the panel's inputs twice. Nothing a customer pays depends on it: `quote()` prices extras today (stage 5's pinned figures) and `bookOnline()` passes each extra's parent.
+2. **The most-per-vehicle check runs before `offer()`.** A request that breaks both a rule (a closed day, say) and the most is answered `over_most_per_vehicle`. It is a fault in what was asked, cheaper to find, and its line is named.
+3. **Two saves of one vehicle's list at the same instant, behind a held row,** can make the second wait longer than 6 seconds: it queues behind the first one's row lock and its own timeout starts again there. It then ends as `57014` from the API's 8 seconds, which the save path also answers "try again". The same kind as stage 5's item 10. The test sends the two one after the other.
+4. **No Thai generator script is kept**: the lines were added to the review file once, from `th.json`.
+
+**Tests**
+
+- **Unit: 409 on the platform** (382 before), **522 in `@mango/core`**, **202 on the marketplace**. Typecheck and lint pass for every workspace, with no warnings.
+  - `lib/book-online.test.ts` (1 more): above the most on each online channel (a Moto Mangos request is refused before its listing is looked at); two scooters and five helmets refused; at the most (1 and 2, 2 and 4) booked; no limit, or not offered, not bound; `reserve()` never called when refused.
+  - `lib/extras.test.ts` (new, 15): the boxes to the payload (empty is 0 or no limit, 0 to 1000, a most below the included refused on its box); opt-outs as lines of their own; the editor's form read and refused; saved rows back to boxes; each refusal in words. The save path on a stand-in database: what is sent, the shop's list can't opt out, a wrong line sends nothing, staff's `only_owner_or_manager` and the two try-again codes. History changes: added, removed, changed, not offered, offered again, a new order, nothing. **The labels**: "Most per vehicle" and สูงสุดต่อคัน, "Not offered for this vehicle" and its Thai, no "most per booking" anywhere in English, every extras key in both languages with the same placeholders.
+  - `tests/settings-access.test.ts` (new, 11): the Settings pages on disk are the ones listed; **one test per page** (eight) that its first check is `requireArea(slug, "settings")`, with nothing read, returned or redirected before it; Settings › Extras turns away mechanics and drivers; the sections each role gets.
+- **Database: 594 of 595 on a freshly reset local database, the suite run on its own** (589 before; 6 new). The one failure is `tax-profile-in-use`'s "archive first, then making it the default: refused" (584 ms where over 700 were expected), a timing check this branch does not touch; the file passes alone (11 of 11). Stage 5's `product-extras.test.ts` now expects `offered: true` on each row `save_product_extras()` answers (two tests and the race's expectation); its 30 pass. New: `tests/db/extras-screens.test.ts` (6):
+  - **the save path by role**: owner and manager save through `lib/extras-save.ts`; staff, mechanic and driver get "Only an owner or a manager can change extras." and nothing is written, for a vehicle's list and the shop's;
+  - **opt-out in `pricing_inputs()`**: the shop offers a helmet and rain gear; one scooter opts out of the helmet; read as owner, staff and mechanic, that scooter gets the rain gear alone and another scooter both; the helmet priced as its extra has nothing free; switched back on, the shop's row applies again;
+  - **the 6-second lock timeout**: another session holds the vehicle's row for 15 seconds; a raw call and the save path each give up after more than 5.5 and less than 8 seconds with `55P03` / "try again", nothing is written, and the save goes through once the row is free;
+  - **the most per vehicle**: online above the most refused on the helmet's line for `booking_page`, `marketplace` and `api` (1 and 3, 2 and 5), with nothing written; two scooters and four helmets booked online (2 free, 2 charged); **staff at the counter book one scooter with five helmets.**
+  - `default-grants.test.ts`: `save_product_extras` now reads `lock_timeout=6s` (stage 5 expected none).
+  - Checked to fail when wrong: with the check in `bookOnline()` switched off, the unit test and the database test both fail.
+- **Browser:** the full suite on a freshly reset and seeded database, 375 px and 1280 px, two workers: 164 tests, **153 passed, 7 skipped, 4 failed**. The four were 5-second waits on the phone project (a "Saved" note, a panel, two redirects) in `fleet.spec.ts` and `foundations.spec.ts`, which this branch does not change; the two files pass alone, **52 of 52**. Before that run, the first full run found 14 failures: the new spec's gear could not be deleted while it had stock (the spec now makes it with none), and four older specs did not know the Extras tab (below); the five specs then passed, **72 of 72**. New: `e2e/extras.spec.ts`, at 375 px and 1280 px: the owner on a boat's Extras tab (a most below the included refused with Save off, saved, read back, the History line, no sideways scroll); Settings › Extras (added to the list for every vehicle and its History line; on the boat, Not offered for this vehicle switched on, kept, and in History), holding a lock on BSR's list and putting it back; **staff** on both screens (the lists, "Only an owner or a manager can change extras.", no button, box or menu, no History) and a mechanic (the tab, not Settings › Extras); **one test per other Settings page** (Shop, Pricing and tax, Seasons, a new season, a season, Price lists, a new price list, a price list): the owner sees it, staff get "Page not found". `products-stage-d6.spec.ts` now expects five sections; `products.spec.ts`, `fleet.spec.ts` and `products-stage-c.spec.ts` expect the Extras tab.
+- **Checked by eye at 375 px**, in Chromium through Playwright, signed in from `.env.local`: the Extras tab and Settings › Extras as the owner (a line with its two boxes and the error under the most, the History list) and as staff (read-only). No sideways scroll on any of the four.
+- **Order of the final run:** typecheck, lint and unit; then the database was reset and the database suite run on its own; then the demo seed and the browser suite on that same database (CI's order).
+
+**Known issues and follow-ups**
+
+- **Check a price with extras**: carried to stage 9 (item 1 above).
+- **The Thai lines need Korn's check**: 64 lines in `docs/platform/thai-review-products.md`, "Phase 2, stage 6".
+- **Known flake, carried: `tax-profile-in-use`'s timing check** ("archive first, then making it the default: refused" expects the second call to wait over 700 ms of a held lock; it saw 584 ms in this stage's full run, 620 ms under the Next.js upgrade). The wait is measured after a poll through `docker exec`, so a slow poll eats into it. It passes alone. Not touched here. Suggested for stage 10 (review follow-ups): measure the wait from when the lock is seen held.
+- **The other lock-timing tests are sensitive under load too**, as stage 5's are: in one run of `product-extras.test.ts` alone three of its held-lock tests failed once and passed on the next two runs. Run the database suite on its own.
+- **Staff on Settings › Extras read "Offered with every vehicle." twice** (the panel's intro and the heading under it). A wording polish, left with the Thai review.
+- **Every member now has the Extras tab**, so a mechanic and a driver see a tab menu (Units, Extras) on a product where they had none. Intended (plan §7: every member reads extras); `products.spec.ts`, `fleet.spec.ts` and `products-stage-c.spec.ts` expect it.
+- `bookOnline()` still has no caller (Phase 8's booking page, 3M's API), so `over_most_per_vehicle` has no screen words yet.
+
+**Before this goes to staging** (the owner's word each time, plan Q17): `20261117000100` must be there in its merged form (the guard checks both bodies by MD5). Afterwards: `product_extras.offered` exists and is true on every row; `save_product_extras` reads `lock_timeout=6s`; `pricing_inputs()` answers as before for every shop with no opted-out row.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s6`, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`).
+
+**Next:** stage 7, coupons: the rules (`@mango/core` only).
 
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 
