@@ -20,7 +20,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { quote } from "@mango/core/quote";
 import { bookOnline, type OnlineDb } from "@/lib/book-online";
+import { extrasHistory, extrasNamed } from "@/lib/extras-history";
+import { productNames } from "@/lib/extras-names";
 import { saveExtrasList, type ExtrasDb } from "@/lib/extras-save";
+import { exactAuditRows, type AuditRowText } from "@/lib/history";
 import {
   extrasOf,
   quoteInputFor,
@@ -112,9 +115,10 @@ const rowsOf = async (vehicleId: string | null) => {
     .eq("tenant_id", shop.id)
     .order("sort_position");
   return (
-    await (vehicleId
-      ? query.eq("product_id", vehicleId)
-      : query.is("product_id", null)
+    await (
+      vehicleId
+        ? query.eq("product_id", vehicleId)
+        : query.is("product_id", null)
     ).throwOnError()
   ).data!;
 };
@@ -441,5 +445,175 @@ describe("the most per vehicle: online bookings are bound, staff bookings are no
       .order("created_at")
       .throwOnError();
     expect(reserved.data!.map((row) => row.quantity)).toContain(5);
+  });
+
+  // The same extra on a line of its own, with no parent (review of PR 45).
+  const own = (day: number, quantity: number, productId = helmet) => ({
+    productId,
+    start: at(day),
+    end: at(day + 2),
+    quantity,
+  });
+  const vehicleLine = (day: number, productId = scooter, quantity = 1) => ({
+    productId,
+    start: at(day),
+    end: at(day + 2),
+    quantity,
+  });
+  const online = (lines: Parameters<typeof bookOnline>[0]["lines"]) =>
+    bookOnline(
+      {
+        tenantId: shop.id,
+        locationId: shop.locationId,
+        channel: "booking_page",
+        mode: "instant",
+        lines,
+      },
+      { db: server },
+    );
+
+  it("online, the helmets on a line of their own: counted with the attached ones and refused above the most, on that line, with nothing written", async () => {
+    const before = written();
+    // 1 scooter, a most of 2: 3 helmets with no parent.
+    expect(await online([vehicleLine(40), own(40, 3)])).toEqual({
+      ok: false,
+      reason: "over_most_per_vehicle",
+      line: 1,
+    });
+    // 2 attached and 1 on its own: 3 in all.
+    expect(
+      await online([vehicleLine(40), { ...own(40, 2), parent: 0 }, own(40, 1)]),
+    ).toEqual({ ok: false, reason: "over_most_per_vehicle", line: 2 });
+    for (const channel of ["marketplace", "api"] as const)
+      expect(
+        await bookOnline(
+          {
+            tenantId: shop.id,
+            locationId: shop.locationId,
+            channel,
+            mode: "instant",
+            lines: [vehicleLine(40), own(40, 3)],
+          },
+          { db: server },
+        ),
+        channel,
+      ).toMatchObject({ ok: false, reason: "over_most_per_vehicle", line: 1 });
+    expect(written()).toBe(before);
+  });
+
+  it("online, the helmets on a line of their own within the most: booked", async () => {
+    const answer = await online([vehicleLine(50), own(50, 2)]);
+    expect(answer).toMatchObject({ ok: true });
+  });
+
+  it("online, an extra the vehicle opted out of or that has no limit: a line of its own is not bound", async () => {
+    const [noLimit, optedOut, rain] = await Promise.all([
+      vehicle(1),
+      vehicle(1),
+      gear(30),
+    ]);
+    await Promise.all([
+      priceByDay(noLimit, 30_000),
+      priceByDay(optedOut, 30_000),
+      priceByDay(rain, 2_000),
+    ]);
+    // The shop offers rain gear with every vehicle, at most 1; one vehicle
+    // takes it with no limit, the other opts out.
+    const save = (vehicleId: string | null, f: string) =>
+      saveExtrasList(asExtrasDb("owner"), shop.id, vehicleId, f);
+    expect(
+      await save(
+        null,
+        form([{ extraProductId: rain, included: "0", most: "1" }]),
+      ),
+    ).toEqual({ ok: true });
+    try {
+      expect(
+        await save(
+          noLimit,
+          form([{ extraProductId: rain, included: "0", most: "" }]),
+        ),
+      ).toEqual({ ok: true });
+      expect(await save(optedOut, form([], [rain]))).toEqual({ ok: true });
+      for (const [what, bike] of [
+        ["no limit", noLimit],
+        ["opted out", optedOut],
+      ] as const) {
+        const answer = await online([vehicleLine(60, bike), own(60, 9, rain)]);
+        expect(answer, what).toMatchObject({ ok: true });
+      }
+    } finally {
+      expect(await save(null, form([]))).toEqual({ ok: true });
+    }
+  });
+
+  it("staff at the counter book the helmets on a line of their own above the most: taken", async () => {
+    const answer = await reserveAsStaff(
+      db("staff") as unknown as StaffDb,
+      shop.id,
+      {
+        channel: "walk_in",
+        lines: [vehicleLine(70), own(70, 5)].map((line) => ({
+          ...line,
+          locationId: shop.locationId,
+        })),
+      },
+    );
+    expect(answer).toMatchObject({ ok: true });
+  });
+});
+
+describe("History names an extra that has since been deleted", () => {
+  it("saved on a vehicle's list, then the product deleted: the vehicle's History line still carries its name, from the product's delete event", async () => {
+    const bike = await vehicle(1);
+    // No stock, so it can be deleted.
+    const gone = await gear(0);
+    const { data: named } = await service
+      .from("products")
+      .select("name")
+      .eq("id", gone)
+      .single()
+      .throwOnError();
+    expect(
+      await saveExtrasList(
+        asExtrasDb("owner"),
+        shop.id,
+        bike,
+        form([{ extraProductId: gone, included: "1", most: "2" }]),
+      ),
+    ).toEqual({ ok: true });
+    const removed = await db("owner")
+      .from("products")
+      .delete()
+      .eq("tenant_id", shop.id)
+      .eq("id", gone)
+      .select("id");
+    expect(removed.error).toBeNull();
+    expect(removed.data).toHaveLength(1);
+    // Its link went with it.
+    expect(await rowsOf(bike)).toEqual([]);
+
+    // The vehicle's History, read as the owner, as the History tab reads it.
+    const { data, error } = await db("owner")
+      .from("audit_events")
+      .select(
+        "id, entity, entity_id, action, actor, before::text, after::text, at",
+      )
+      .eq("tenant_id", shop.id)
+      .eq("entity", "product_extras")
+      .eq("entity_id", bike);
+    if (error) throw error;
+    const entries = extrasHistory(
+      exactAuditRows(data as unknown as AuditRowText[]),
+    );
+    expect(entries.map((entry) => entry.changes)).toEqual([
+      [{ kind: "added", extra: gone, included: 1, most: 2 }],
+    ]);
+    const names = await productNames(
+      db("owner"),
+      shop.id,
+      extrasNamed(entries),
+    );
+    expect(names.get(gone)).toEqual({ name: named!.name, deleted: true });
   });
 });

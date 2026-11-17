@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@mango/db/platform-server";
 import type { SavedExtra } from "./extras";
+import { productNames, type ProductNames } from "./extras-names";
 import { exactAuditRows, type AuditRow } from "./history";
 
 /**
@@ -152,37 +153,12 @@ export async function getExtrasAudit(
 }
 
 /**
- * Names for History lines: each product's name as it is now, and for a
- * product that has since been deleted, the name its own delete event kept.
- * An extras_change event holds ids only, and a product deleted with links
- * leaves no extras event of its own (PROGRESS, stage 5, item 8).
+ * Names for History lines, as the signed-in member (lib/extras-names.ts):
+ * a product deleted since is named from its own delete event.
  */
 export async function getProductNames(
   tenantId: string,
   ids: readonly string[],
-): Promise<Map<string, { name: string; deleted: boolean }>> {
-  const names = new Map<string, { name: string; deleted: boolean }>();
-  const wanted = [...new Set(ids)];
-  if (wanted.length === 0) return names;
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, name")
-    .eq("tenant_id", tenantId)
-    .in("id", wanted);
-  if (error) throw error;
-  for (const row of data) names.set(row.id, { name: row.name, deleted: false });
-  const gone = wanted.filter((id) => !names.has(id));
-  if (gone.length === 0) return names;
-  const deleted = await supabase
-    .from("audit_events")
-    .select("entity_id, before->>name")
-    .eq("tenant_id", tenantId)
-    .eq("entity", "products")
-    .eq("action", "delete")
-    .in("entity_id", gone);
-  if (deleted.error) throw deleted.error;
-  for (const row of deleted.data as { entity_id: string; name: string | null }[])
-    if (row.name) names.set(row.entity_id, { name: row.name, deleted: true });
-  return names;
+): Promise<ProductNames> {
+  return productNames(await createClient(), tenantId, ids);
 }
