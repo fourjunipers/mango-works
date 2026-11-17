@@ -42,7 +42,8 @@ export type PricingInputs = {
     rounding_step: string | null;
     tax_inclusive: boolean;
     coupons_enabled: boolean;
-    deposit_mode: "none" | "percent_of_order" | "fixed_per_order" | "per_product";
+    deposit_mode:
+      "none" | "percent_of_order" | "fixed_per_order" | "per_product";
     deposit_percent_bp: number | null;
     deposit_amount: string | null;
     default_tax_profile_id: string | null;
@@ -122,6 +123,33 @@ export type SeasonRow = {
   all_products: boolean;
   product_ids: string[];
 };
+
+/**
+ * One product's pricing row. Always by id, never by position: the read
+ * returns the rows in product-id order and, since extras, the pricing of a
+ * vehicle's extras beside the vehicle's own, so the first row of a read
+ * about one vehicle may be its helmet's.
+ */
+export function pricingRowOf(
+  inputs: Pick<PricingInputs, "products">,
+  productId: string,
+): ProductPricingRow | undefined {
+  return inputs.products.find((row) => row.product_id === productId);
+}
+
+/**
+ * The seasons that apply to one product: the ones for every product, and
+ * the ones that name it. The read also returns the seasons of a vehicle's
+ * extras, which are not the vehicle's.
+ */
+export function seasonsFor(
+  inputs: Pick<PricingInputs, "seasons">,
+  productId: string,
+): SeasonRow[] {
+  return inputs.seasons.filter(
+    (season) => season.all_products || season.product_ids.includes(productId),
+  );
+}
 
 /** A string of digits from the database → minor units. Null stays null. */
 export function minorUnits(value: string | null): bigint | null {
@@ -271,7 +299,9 @@ export function quoteInputFor(
     orderDeposit?: DepositSetting | null;
   } = {},
 ): QuoteInput {
-  const byProduct = new Map(inputs.products.map((row) => [row.product_id, row]));
+  const byProduct = new Map(
+    inputs.products.map((row) => [row.product_id, row]),
+  );
   const byLine = new Map(lines.map((line) => [line.id, line]));
   const quoteLines: QuoteLineInput[] = lines.map((line) => {
     const row = byProduct.get(line.productId);
@@ -343,7 +373,9 @@ export function snapshotContextFor(
   lines: readonly Pick<LineRequest, "id" | "productId">[],
   more: { pricedAt: Date; coupons?: SnapshotContext["coupons"] },
 ): SnapshotContext {
-  const byProduct = new Map(inputs.products.map((row) => [row.product_id, row]));
+  const byProduct = new Map(
+    inputs.products.map((row) => [row.product_id, row]),
+  );
   const currency =
     inputs.settings?.currency ??
     lines.map((line) => byProduct.get(line.productId)?.currency).find(Boolean);

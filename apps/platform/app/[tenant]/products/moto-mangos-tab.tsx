@@ -11,6 +11,7 @@ import {
 } from "@/lib/fleet-data";
 import { splitMakeModel } from "@/lib/known-models";
 import { getPricingInputs } from "@/lib/pricing-data";
+import { pricingRowOf } from "@/lib/pricing-inputs";
 import { catalogChoices } from "@/lib/model-options";
 import { formatInstant } from "@/lib/shop-time";
 import { cn } from "@/lib/utils";
@@ -74,7 +75,8 @@ export async function MotoMangosTab({
   const pricing = await getPricingInputs(tenantId, [model.id]);
   const noLengthPrice =
     model.marketplace_listed &&
-    pricing.products[0]?.pricing_method !== "tiered";
+    // By id: the read also returns the vehicle's extras, in id order.
+    pricingRowOf(pricing, model.id)?.pricing_method !== "tiered";
   const own = !model.catalog_id;
   const active = units.filter((unit) => unit.status === "active").length;
   const usable = Boolean(approved) && !model.retired_at;

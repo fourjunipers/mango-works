@@ -431,7 +431,12 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
     const answer = await bookOnline(
       asked({
         lines: [
-          { productId: SCOOTER, start: monday10, end: wednesday10, quantity: 1 },
+          {
+            productId: SCOOTER,
+            start: monday10,
+            end: wednesday10,
+            quantity: 1,
+          },
           {
             productId: HELMET,
             start: monday10,
@@ -457,12 +462,38 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
     ]);
     expect(answer.quote.totals.total).toBe(BigInt(10_000));
     // reserve() is still sent all three helmets: the free ones hold stock too.
-    const sent = withHelmets.calls.find((call) => call.fn === "reserve")!
-      .args.p_request as { lines: { quantity: number; parent?: number }[] };
+    const sent = withHelmets.calls.find((call) => call.fn === "reserve")!.args
+      .p_request as { lines: { quantity: number; parent?: number }[] };
     expect(sent.lines.map((line) => [line.quantity, line.parent])).toEqual([
       [1, undefined],
       [3, 0],
     ]);
+  });
+
+  it("an extra goes with an earlier line, as reserve() requires: a later line, itself, a negative or a fractional index is refused before anything is read", async () => {
+    const HELMET = "44444444-4444-4444-8444-444444444444";
+    const line = (productId: string, parent?: number) => ({
+      productId,
+      start: monday10,
+      end: wednesday10,
+      quantity: 1,
+      ...(parent === undefined ? {} : { parent }),
+    });
+    const cases: [string, ReturnType<typeof line>[]][] = [
+      ["a later line", [line(HELMET, 1), line(SCOOTER)]],
+      ["itself", [line(SCOOTER), line(HELMET, 1)]],
+      ["a line that isn't there", [line(SCOOTER), line(HELMET, 5)]],
+      ["a negative index", [line(SCOOTER), line(HELMET, -1)]],
+      ["a fractional index", [line(SCOOTER), line(SCOOTER), line(HELMET, 0.5)]],
+    ];
+    for (const [what, lines] of cases) {
+      const nothing = spy();
+      await expect(
+        bookOnline(asked({ lines }), { db: nothing.db, now: () => now }),
+        what,
+      ).rejects.toThrow(RangeError);
+      expect(nothing.called(), what).toEqual([]);
+    }
   });
 
   it("it is for online channels only: a counter or phone booking is refused before anything is read", async () => {

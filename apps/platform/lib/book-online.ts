@@ -141,6 +141,23 @@ export async function bookOnline(
     throw new RangeError("Ride today is a Moto Mangos booking");
   }
   if (request.lines.length === 0) throw new RangeError("No lines to book");
+  // An extra goes with an earlier line, as reserve() requires. quote()
+  // would take any vehicle line, so without this a later parent passed
+  // offer() and reserve() then raised invalid_request.
+  request.lines.forEach((line, index) => {
+    if (
+      line.parent !== undefined &&
+      !(
+        Number.isInteger(line.parent) &&
+        line.parent >= 0 &&
+        line.parent < index
+      )
+    ) {
+      throw new RangeError(
+        `Line ${index}: an extra goes with an earlier line, not ${line.parent}`,
+      );
+    }
+  });
 
   const db: OnlineDb =
     deps.db ?? (createAdminClient().schema("platform") as unknown as OnlineDb);

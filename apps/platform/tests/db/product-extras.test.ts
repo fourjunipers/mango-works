@@ -18,7 +18,9 @@ import { readSnapshot, snapshotQuote } from "@mango/core/quote-snapshot";
 import { extrasActions, extrasRoles } from "@/lib/extras-permissions";
 import {
   extrasOf,
+  pricingRowOf,
   quoteInputFor,
+  seasonsFor,
   snapshotContextFor,
   type PricingInputs,
 } from "@/lib/pricing-inputs";
@@ -474,17 +476,37 @@ describe("who may read and change a vehicle's extras", () => {
     const before = await allRows(rival);
     const one = (id: string) => [{ extra_product_id: id }];
 
-    const theirVehicle = await save(db("owner"), shop, theirs.id, one(myHelmet.id));
-    const madeUpVehicle = await save(db("owner"), shop, MADE_UP, one(myHelmet.id));
+    const theirVehicle = await save(
+      db("owner"),
+      shop,
+      theirs.id,
+      one(myHelmet.id),
+    );
+    const madeUpVehicle = await save(
+      db("owner"),
+      shop,
+      MADE_UP,
+      one(myHelmet.id),
+    );
     expect(theirVehicle.error?.message).toBe("product_not_found");
     expect(theirVehicle.error).toEqual(madeUpVehicle.error);
 
-    const theirExtra = await save(db("owner"), shop, mine.id, one(theirHelmet.id));
+    const theirExtra = await save(
+      db("owner"),
+      shop,
+      mine.id,
+      one(theirHelmet.id),
+    );
     const madeUpExtra = await save(db("owner"), shop, mine.id, one(MADE_UP));
     expect(theirExtra.error?.message).toBe("extra_not_found");
     expect(theirExtra.error).toEqual(madeUpExtra.error);
     // The same in the "every vehicle" list.
-    const everyVehicle = await save(db("owner"), shop, null, one(theirHelmet.id));
+    const everyVehicle = await save(
+      db("owner"),
+      shop,
+      null,
+      one(theirHelmet.id),
+    );
     expect(everyVehicle.error).toEqual(madeUpExtra.error);
 
     // Naming the other shop itself: not a member of it.
@@ -565,7 +587,11 @@ describe("save_product_extras(): the whole list in one call", () => {
     const stamp = rows.map((r) => r.updated_at);
     await save(db("manager"), shop, scooter.id, [
       { extra_product_id: helmet.id, included_quantity: 2, max_quantity: 4 },
-      { extra_product_id: delivery.id, included_quantity: 0, max_quantity: null },
+      {
+        extra_product_id: delivery.id,
+        included_quantity: 0,
+        max_quantity: null,
+      },
     ]);
     expect((await rowsOf(shop, scooter.id)).map((r) => r.updated_at)).toEqual(
       stamp,
@@ -600,7 +626,7 @@ describe("save_product_extras(): the whole list in one call", () => {
     expect(await rowsOf(shop, scooter.id)).toEqual([]);
   }, 60_000);
 
-  it("the \"every vehicle\" list is saved the same way and is a list of its own", async () => {
+  it('the "every vehicle" list is saved the same way and is a list of its own', async () => {
     const scooter = await vehicle(0, rival);
     const helmet = await general("gear", 5, rival);
     const delivery = await general("service", 0, rival);
@@ -653,7 +679,13 @@ describe("save_product_extras(): the whole list in one call", () => {
       [
         "most below included",
         scooter.id,
-        [{ extra_product_id: helmet.id, included_quantity: 3, max_quantity: 2 }],
+        [
+          {
+            extra_product_id: helmet.id,
+            included_quantity: 3,
+            max_quantity: 2,
+          },
+        ],
         "invalid_extras",
       ],
       [
@@ -692,10 +724,25 @@ describe("save_product_extras(): the whole list in one call", () => {
         [{ extra_product_id: helmet.id, price: 1 }],
         "invalid_extras",
       ],
-      ["no extra named", scooter.id, [{ included_quantity: 1 }], "invalid_extras"],
-      ["not a uuid", scooter.id, [{ extra_product_id: "helmet" }], "invalid_extras"],
+      [
+        "no extra named",
+        scooter.id,
+        [{ included_quantity: 1 }],
+        "invalid_extras",
+      ],
+      [
+        "not a uuid",
+        scooter.id,
+        [{ extra_product_id: "helmet" }],
+        "invalid_extras",
+      ],
       ["the same extra twice", scooter.id, [good, good], "invalid_extras"],
-      ["not a list", scooter.id, { extra_product_id: helmet.id }, "invalid_extras"],
+      [
+        "not a list",
+        scooter.id,
+        { extra_product_id: helmet.id },
+        "invalid_extras",
+      ],
       ["a list of text", scooter.id, [helmet.id], "invalid_extras"],
       [
         "more than 100",
@@ -704,13 +751,38 @@ describe("save_product_extras(): the whole list in one call", () => {
         "invalid_extras",
       ],
       // The wrong type: a vehicle, or an item for sale, as an extra.
-      ["a vehicle as an extra", scooter.id, [{ extra_product_id: other.id }], "not_an_extra"],
-      ["itself as an extra", scooter.id, [{ extra_product_id: scooter.id }], "not_an_extra"],
-      ["an item for sale as an extra", scooter.id, [{ extra_product_id: oil.id }], "not_an_extra"],
-      ["an item for sale, every vehicle", null, [{ extra_product_id: oil.id }], "not_an_extra"],
+      [
+        "a vehicle as an extra",
+        scooter.id,
+        [{ extra_product_id: other.id }],
+        "not_an_extra",
+      ],
+      [
+        "itself as an extra",
+        scooter.id,
+        [{ extra_product_id: scooter.id }],
+        "not_an_extra",
+      ],
+      [
+        "an item for sale as an extra",
+        scooter.id,
+        [{ extra_product_id: oil.id }],
+        "not_an_extra",
+      ],
+      [
+        "an item for sale, every vehicle",
+        null,
+        [{ extra_product_id: oil.id }],
+        "not_an_extra",
+      ],
       // The parent must be a vehicle.
       ["gear as the parent", helmet.id, [good], "not_a_vehicle"],
-      ["a service as the parent", delivery.id, [{ extra_product_id: helmet.id }], "not_a_vehicle"],
+      [
+        "a service as the parent",
+        delivery.id,
+        [{ extra_product_id: helmet.id }],
+        "not_a_vehicle",
+      ],
       // One bad row refuses the good ones beside it.
       [
         "a good row and a bad one",
@@ -755,7 +827,10 @@ describe("save_product_extras(): the whole list in one call", () => {
     );
     // A vehicle can't be an extra: not by its type, and not by lying about it.
     expect(
-      await insert({ extra_product_id: other.id, extra_product_type: "vehicle" }),
+      await insert({
+        extra_product_id: other.id,
+        extra_product_type: "vehicle",
+      }),
     ).toBe("23514 product_extras_extra_product_type_check");
     expect(await insert({ extra_product_id: other.id })).toBe(
       "23503 product_extras_tenant_id_extra_product_id_extra_product_ty_fkey",
@@ -797,7 +872,11 @@ describe("save_product_extras(): the whole list in one call", () => {
       { extra_product_id: delivery.id },
     ]);
     await save(db("owner"), shop, null, [{ extra_product_id: delivery.id }]);
-    await service.from("products").delete().eq("id", delivery.id).throwOnError();
+    await service
+      .from("products")
+      .delete()
+      .eq("id", delivery.id)
+      .throwOnError();
     expect(
       (await rowsOf(shop, scooter.id)).map((r) => r.extra_product_id),
     ).toEqual([helmet.id]);
@@ -879,7 +958,11 @@ describe("pricing_inputs() with extras, and quote() fed by the adapter", () => {
     // Its own profile, not the default.
     await price(
       delivery.id,
-      { pricing_method: "fixed", price_amount: 10_000, tax_profile_id: insurance },
+      {
+        pricing_method: "fixed",
+        price_amount: 10_000,
+        tax_profile_id: insurance,
+      },
       tenant,
     );
     // Not taxable. The lock has no price yet.
@@ -998,9 +1081,9 @@ describe("pricing_inputs() with extras, and quote() fed by the adapter", () => {
   });
 
   it("asked about gear or a service alone it returns no extras; a retired extra is not offered; an extra that is not a vehicle's is not there", async () => {
-    expect((await inputs(owner(), tenant, [helmet.id, delivery.id])).extras).toEqual(
-      [],
-    );
+    expect(
+      (await inputs(owner(), tenant, [helmet.id, delivery.id])).extras,
+    ).toEqual([]);
     expect((await inputs(owner(), tenant, [])).extras).toEqual([]);
     await service
       .from("products")
@@ -1008,9 +1091,9 @@ describe("pricing_inputs() with extras, and quote() fed by the adapter", () => {
       .eq("id", lock.id)
       .throwOnError();
     const got = await inputs(owner(), tenant, [scooter.id]);
-    expect(extrasOf(got, scooter.id).map((row) => row.extra_product_id)).toEqual(
-      [helmet.id, delivery.id],
-    );
+    expect(
+      extrasOf(got, scooter.id).map((row) => row.extra_product_id),
+    ).toEqual([helmet.id, delivery.id]);
     await service
       .from("products")
       .update({ retired_at: null })
@@ -1021,9 +1104,10 @@ describe("pricing_inputs() with extras, and quote() fed by the adapter", () => {
   it("by role: staff get what the owner gets; a mechanic and a driver get the extras and no price; the server reads it; another shop's member gets nothing", async () => {
     const asOwner = await inputs(owner(), tenant, [scooter.id]);
     for (const role of ["manager", "staff"] as const) {
-      expect(await inputs(db(role, tenant), tenant, [scooter.id]), role).toEqual(
-        asOwner,
-      );
+      expect(
+        await inputs(db(role, tenant), tenant, [scooter.id]),
+        role,
+      ).toEqual(asOwner);
     }
     for (const role of ["mechanic", "driver"] as const) {
       const got = await inputs(db(role, tenant), tenant, [scooter.id]);
@@ -1102,7 +1186,7 @@ describe("pricing_inputs() with extras, and quote() fed by the adapter", () => {
     expect(price3.totals.total).toBe(BigInt(280_000));
   });
 
-  it("the shop's \"every vehicle\" allowance prices a vehicle with no rows of its own; an extra with its own dates is priced on them; one that is not offered with the vehicle has nothing free", async () => {
+  it('the shop\'s "every vehicle" allowance prices a vehicle with no rows of its own; an extra with its own dates is priced on them; one that is not offered with the vehicle has nothing free', async () => {
     const got = await inputs(owner(), tenant, [tourer.id, cover.id]);
     const priced = quote(
       quoteInputFor(got, [
@@ -1117,7 +1201,12 @@ describe("pricing_inputs() with extras, and quote() fed by the adapter", () => {
           extraOf: "tourer",
           span: { ...week, end: bkk("2027-11-04") },
         },
-        { id: "delivery", productId: delivery.id, quantity: 1, extraOf: "tourer" },
+        {
+          id: "delivery",
+          productId: delivery.id,
+          quantity: 1,
+          extraOf: "tourer",
+        },
       ]),
     );
     if (!priced.ok) throw new Error("expected a price");
@@ -1138,12 +1227,102 @@ describe("pricing_inputs() with extras, and quote() fed by the adapter", () => {
     expect(priced.totals.total).toBe(BigInt(448_000));
   });
 
+  it("a priced extra whose id sorts before the vehicle's comes first in the read: the vehicle's row is found by id, and a season for the extra alone is not one of the vehicle's (review of PR 43)", async () => {
+    // An id that sorts before any random one, and a vehicle priced by
+    // rental length, as a Moto Mangos listing needs.
+    const firstId = `00000000-0000-4000-8000-${tag.padEnd(12, "0")}`.replace(
+      /[^0-9a-f-]/g,
+      "0",
+    );
+    await service
+      .from("products")
+      .insert({
+        id: firstId,
+        tenant_id: tenant.id,
+        type: "service",
+        tracking: "none",
+        name: name("Airport pickup"),
+      })
+      .throwOnError();
+    await price(
+      firstId,
+      { pricing_method: "fixed", price_amount: 30_000 },
+      tenant,
+    );
+    const bike = await vehicle(0, tenant);
+    await price(
+      bike.id,
+      {
+        pricing_method: "tiered",
+        own_list: {
+          days: Array.from({ length: 30 }, (_, i) => ({
+            day: i + 1,
+            value: 20_000 * (i + 1),
+            source: "manual",
+          })),
+        },
+      },
+      tenant,
+    );
+    await save(owner(), tenant, bike.id, [{ extra_product_id: firstId }]);
+    const rule = async (label: string, productIds: string[] | null) => {
+      const { error } = await owner().rpc("save_price_rule", {
+        p_tenant_id: tenant.id,
+        p_rule: {
+          name: label,
+          starts_on: "2028-01-01",
+          ends_on: "2028-01-31",
+          adjust_bp: 1000,
+          ...(productIds
+            ? { product_ids: productIds }
+            : { all_products: true }),
+        } as never,
+      });
+      if (error) throw error;
+    };
+    await rule("Pickups only", [firstId]);
+    await rule("This bike", [bike.id]);
+    await rule("Everything", null);
+
+    const got = await inputs(owner(), tenant, [bike.id]);
+    // The first row is the extra's, and it is not priced by rental length.
+    // (The shop's "every vehicle" helmet and delivery are in the read too.)
+    const ids = got.products.map((row) => row.product_id);
+    expect(ids[0]).toBe(firstId);
+    expect(ids.indexOf(bike.id)).toBeGreaterThan(0);
+    expect(got.products[0].pricing_method).toBe("fixed");
+    expect(pricingRowOf(got, bike.id)?.pricing_method).toBe("tiered");
+    // All three seasons come back (the extra's is needed to price it)...
+    expect(got.seasons.map((s) => s.name).sort()).toEqual([
+      "Everything",
+      "Pickups only",
+      "This bike",
+    ]);
+    // ...and the bike's own are two of them.
+    expect(
+      seasonsFor(got, bike.id)
+        .map((s) => s.name)
+        .sort(),
+    ).toEqual(["Everything", "This bike"]);
+    await service
+      .from("price_rules")
+      .delete()
+      .eq("tenant_id", tenant.id)
+      .throwOnError();
+    await service.from("products").delete().eq("id", firstId).throwOnError();
+  }, 60_000);
+
   it("the snapshot is made from the same rows: the product's name, the profile in force by id and name, and the allowance per vehicle", async () => {
     const got = await inputs(owner(), tenant, [scooter.id]);
     const lines = [
       { id: "scooter", productId: scooter.id, quantity: 1, span: week },
       { id: "helmet", productId: helmet.id, quantity: 3, extraOf: "scooter" },
-      { id: "delivery", productId: delivery.id, quantity: 1, extraOf: "scooter" },
+      {
+        id: "delivery",
+        productId: delivery.id,
+        quantity: 1,
+        extraOf: "scooter",
+      },
     ];
     const stored = snapshotQuote(
       quoteInputFor(got, lines),
@@ -1321,7 +1500,9 @@ describe("the lock order: a save against a booking and a move", () => {
       const tenant = tenantOf();
       for (let round = 0; round < ROUNDS; round++) {
         const s = await scene(tenant);
-        const shopWide = [{ extra_product_id: s.delivery.id, included_quantity: 1 }];
+        const shopWide = [
+          { extra_product_id: s.delivery.id, included_quantity: 1 },
+        ];
         const [savedOwn, savedShop, counter, online, moved, read] =
           await Promise.all([
             save(db("owner", tenant), tenant, s.scooter.id, s.list),
@@ -1358,7 +1539,11 @@ describe("the lock order: a save against a booking and a move", () => {
         expect(moved.data).toMatchObject({ ok: true });
         // Both lists are exactly what was sent, whichever order they landed in.
         expect(savedOwn.data).toEqual(
-          s.list.map((row) => ({ included_quantity: 0, max_quantity: null, ...row })),
+          s.list.map((row) => ({
+            included_quantity: 0,
+            max_quantity: null,
+            ...row,
+          })),
         );
         expect(
           (await rowsOf(tenant, s.scooter.id)).map((r) => r.extra_product_id),
@@ -1376,7 +1561,8 @@ describe("the lock order: a save against a booking and a move", () => {
           return result.data!.ok ? "ok" : result.data!.reason;
         });
         expect(outcomes).toContain("ok");
-        for (const out of outcomes) expect(["ok", "unavailable"]).toContain(out);
+        for (const out of outcomes)
+          expect(["ok", "unavailable"]).toContain(out);
         const blocks = (
           await service
             .from("unit_blocks")
