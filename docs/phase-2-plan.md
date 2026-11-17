@@ -258,7 +258,9 @@ product_extras
   product_id          the vehicle product; empty = offered with every vehicle
   extra_product_id    a gear or service product (type copied by composite key and checked)
   included_quantity   int >= 0   free with each vehicle
-  max_quantity        int > 0, or empty for no limit; never below included_quantity
+  max_quantity        int > 0, or empty for no limit; never below included_quantity.
+                      The most per vehicle: for a booking, max_quantity × the vehicles
+                      it is offered with, as included_quantity is counted (Mark, 17 Nov 2026)
   sort_position
   one row per (product or "every vehicle", extra)
 ```
@@ -282,7 +284,7 @@ list price       = unit price × charged quantity          (step 3 on the charge
 - From there the line is like any other: seasons if it is priced by time and a season covers it, discounts, its own tax rate, no deposit.
 - The quoted line gains `includedQuantity` and `chargedQuantity`. A line with no parent behaves exactly as today, and a test pins every D2 figure unchanged.
 - Gear extras hold stock: `reserve()` blocks every unit handed over, included ones too. Services hold none.
-- `max_quantity` is refused above the limit for online channels; staff are not bound by it.
+- `max_quantity` is **per vehicle** ("up to N per bike"; Mark, 17 Nov 2026): a booking may take up to `max_quantity` × the number of vehicles the extra is offered with, exactly like the included quantity. Above that it is refused for online channels; staff are not bound by it. Stored since stage 5; enforced with the online channels in stage 6 or 11.
 - The contract's `extras[]` shape (rental or time) is derived at 3M as §3.5 of the redesign says; the contract also needs extras availability then (§5.3 item 7 of the redesign).
 
 ### 5.3 Coupons and the returning-customer discount
@@ -425,7 +427,7 @@ Orders, the order editor and the calendar are Phase 3. Phase 2's screens are set
 | Screen | Address | Who | What |
 | --- | --- | --- | --- |
 | **Check availability and price** | `/[tenant]/new-order` (the tab that is a placeholder today) | Owner, manager, staff. Mechanic and driver: counts only, no prices | Pick a location, pickup and return. Each product: "3 of 8 free", its price for those dates from `quote()`, and why not when it can't be booked (closed, too soon, too short). Tap a vehicle: its extras with included quantities, a coupon code box, a "Returning customer" tick, and the full breakdown (list price, seasons, each discount, VAT lines, total, deposit). Read-only: nothing is reserved. Phase 3 continues this screen into the order |
-| **Extras tab** on a vehicle's page | `/[tenant]/products/[id]?tab=extras` | Owner and manager edit; staff, mechanic and driver read | The gear and services offered with it: add from the shop's gear and services, included quantity, most per booking, order. A line for what comes from "every vehicle" |
+| **Extras tab** on a vehicle's page | `/[tenant]/products/[id]?tab=extras` | Owner and manager edit; staff, mechanic and driver read | The gear and services offered with it: add from the shop's gear and services, included quantity, "Most per vehicle", order. A line for what comes from "every vehicle" |
 | **Settings › Extras** | `/[tenant]/settings/extras` | Owner, manager | The extras offered with every vehicle |
 | **Settings › Coupons** | `/[tenant]/settings/coupons` | Owner, manager (staff read a list from the price check only) | The list with uses ("12 of 50"), New coupon, edit, switch off, archive. The form: code, percentage or fixed amount, all or chosen products, valid dates, pickup dates, minimum days, minimum spend, total uses, uses per customer, channels, "can be combined with the returning-customer discount". A note when "Accept coupons" is off, with a link |
 | **Settings › Pricing and tax** | existing | Owner, manager | A new card: returning-customer discount (on or off, percentage, completed rentals needed). The coupons switch loses its "later update" line |

@@ -69,7 +69,11 @@ export type ExtraRow = {
   extra_product_type: "gear" | "service";
   /** Free with each vehicle. */
   included_quantity: number;
-  /** The most on an online booking; staff are not bound. Null: no limit. */
+  /**
+   * The most per vehicle ("up to N per bike"); for a booking, this times
+   * the number of vehicles it is offered with, as the included quantity is
+   * counted. Online channels only: staff are not bound. Null: no limit.
+   */
   max_quantity: number | null;
   sort_position: number;
   /** True: it comes from the shop's "every vehicle" list. */

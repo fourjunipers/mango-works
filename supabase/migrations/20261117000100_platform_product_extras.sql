@@ -67,8 +67,10 @@ create table platform.product_extras (
   included_quantity integer not null default 0
     constraint product_extras_included_quantity_check
     check (included_quantity between 0 and 1000),
-  -- The most that can be taken on an online booking. Empty: no limit. Staff
-  -- are not bound by it (Q16). Nothing enforces it yet: stage 6.
+  -- The most per vehicle ("up to N per bike"). Empty: no limit. For a
+  -- booking the most is max_quantity x the number of vehicles it is offered
+  -- with, exactly as the included quantity is counted. It binds online
+  -- channels only; staff are not bound by it (Q16). Not enforced yet.
   max_quantity integer
     constraint product_extras_max_quantity_check check (max_quantity between 1 and 1000),
   sort_position integer not null default 0,
