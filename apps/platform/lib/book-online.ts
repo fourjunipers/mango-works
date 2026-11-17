@@ -14,6 +14,7 @@ import {
   type BookingInputs,
 } from "./booking-inputs";
 import { quoteInputFor, type PricingInputs } from "./pricing-inputs";
+import { isTryAgain } from "./try-again";
 
 /**
  * The one server entry point for online bookings (docs/phase-2-plan.md §2.3,
@@ -103,15 +104,6 @@ export type OnlineDeps = {
   now?: () => Date;
 };
 
-/**
- * Postgres codes from reserve() that mean "nothing was written, send it
- * again". 55P03: a lock was not available in time; reserve() has its own
- * lock timeout (6 s), shorter than the API's statement timeout (8 s), so
- * this is the one that normally arrives. 57014: the statement timeout
- * itself, when several shorter waits added up to it.
- */
-const TRY_AGAIN_CODES = ["55P03", "57014"];
-
 type ReserveAnswer =
   | {
       ok: true;
@@ -196,7 +188,9 @@ export async function bookOnline(
     lineAvailabilityOf(availability),
     quoteInputFor(
       pricing,
-      lines.map((line) => ({
+      // An extra is priced as its vehicle's extra: the units that come
+      // free with the vehicle (product_extras) are not charged.
+      lines.map((line, index) => ({
         id: line.id,
         productId: line.productId,
         quantity: line.quantity,
@@ -205,6 +199,10 @@ export async function bookOnline(
           end: line.end,
           timeZone: inputs.location.timezone,
         },
+        extraOf:
+          request.lines[index].parent === undefined
+            ? null
+            : String(request.lines[index].parent),
       })),
     ),
     asked,
@@ -236,8 +234,8 @@ export async function bookOnline(
   if (error) {
     // A lock that could not be had in time, or a statement the API ended
     // while it waited, is the same to the caller as a deadlock Postgres
-    // broke: nothing was written, send it again.
-    if (error.code && TRY_AGAIN_CODES.includes(error.code)) {
+    // broke: nothing was written, send it again (lib/try-again.ts).
+    if (isTryAgain(error)) {
       return { ok: false, reason: "try_again", line: null };
     }
     throw Object.assign(new Error(error.message), { code: error.code });

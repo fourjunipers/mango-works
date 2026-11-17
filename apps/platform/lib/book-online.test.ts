@@ -102,6 +102,7 @@ const priced: PricingInputs = {
   products: [
     {
       product_id: SCOOTER,
+      product_name: "Scooter",
       product_type: "vehicle",
       currency: "USD",
       pricing_method: "per_period",
@@ -113,12 +114,19 @@ const priced: PricingInputs = {
       replacement_price: null,
       taxable: false,
       tax_rate_bp: null,
+      tax_profile_id: null,
       tax_profile_name: null,
       template: null,
     },
   ],
+  extras: [],
 };
-const unpriced: PricingInputs = { settings: null, seasons: [], products: [] };
+const unpriced: PricingInputs = {
+  settings: null,
+  seasons: [],
+  products: [],
+  extras: [],
+};
 
 type Reply = {
   data: unknown;
@@ -378,6 +386,83 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
     });
     // Two days at 45.00.
     expect(answer.ok && answer.quote.totals.total).toBe(BigInt(9000));
+  });
+
+  it("helmets booked with the scooter are priced as its extra: the ones that come free with it (product_extras) are not charged", async () => {
+    const HELMET = "44444444-4444-4444-8444-444444444444";
+    const scene = inputs();
+    const withHelmets = spy({
+      inputs: {
+        ...scene,
+        products: [
+          ...scene.products,
+          { ...scene.products[0], product_id: HELMET, type: "gear" },
+        ],
+      },
+      availability: [
+        ...stock(3),
+        { ...stock(10)[0], product_id: HELMET, type: "gear", stock: 10 },
+      ],
+      pricing: {
+        ...priced,
+        products: [
+          ...priced.products,
+          {
+            ...priced.products[0],
+            product_id: HELMET,
+            product_name: "Helmet",
+            product_type: "gear",
+            price_amount: "500",
+          },
+        ],
+        extras: [
+          {
+            product_id: SCOOTER,
+            extra_product_id: HELMET,
+            extra_product_type: "gear",
+            included_quantity: 2,
+            max_quantity: null,
+            sort_position: 0,
+            every_vehicle: false,
+          },
+        ],
+      },
+    });
+    const answer = await bookOnline(
+      asked({
+        lines: [
+          { productId: SCOOTER, start: monday10, end: wednesday10, quantity: 1 },
+          {
+            productId: HELMET,
+            start: monday10,
+            end: wednesday10,
+            quantity: 3,
+            parent: 0,
+          },
+        ],
+      }),
+      { db: withHelmets.db, now: () => now },
+    );
+    if (!answer.ok) throw new Error(`refused: ${answer.reason}`);
+    // Two days: the scooter 90.00; 3 helmets, 2 of them free, 1 × 2 × 5.00.
+    expect(
+      answer.quote.lines.map((line) => [
+        line.includedQuantity,
+        line.chargedQuantity,
+        line.listPrice,
+      ]),
+    ).toEqual([
+      [0, 1, BigInt(9000)],
+      [2, 1, BigInt(1000)],
+    ]);
+    expect(answer.quote.totals.total).toBe(BigInt(10_000));
+    // reserve() is still sent all three helmets: the free ones hold stock too.
+    const sent = withHelmets.calls.find((call) => call.fn === "reserve")!
+      .args.p_request as { lines: { quantity: number; parent?: number }[] };
+    expect(sent.lines.map((line) => [line.quantity, line.parent])).toEqual([
+      [1, undefined],
+      [3, 0],
+    ]);
   });
 
   it("it is for online channels only: a counter or phone booking is refused before anything is read", async () => {
