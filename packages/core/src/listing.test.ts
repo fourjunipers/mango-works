@@ -4,6 +4,7 @@ import {
   hasEnoughNotice,
   listingCap,
   listingOffer,
+  listingOfferFromPeaks,
   noticeHours,
   type ListingBooking,
   type ListingSettings,
@@ -199,5 +200,73 @@ describe("Instant or Request (docs/INTEGRATION.md §4.4)", () => {
   it("bookings outside the window don't use up a mode", () => {
     const earlier = [booking(1, 3, "instant"), booking(1, 3, "instant")];
     expect(offer(listing(), 8, earlier).mode).toBe("instant");
+  });
+});
+
+describe("the offer from counts already taken (the database's availability read)", () => {
+  const peaks = (held: number, instant: number, request: number) => ({
+    held,
+    instant,
+    request,
+  });
+
+  it("is the same answer listingOffer gives from the bookings themselves", () => {
+    const cases: ListingBooking[][] = [
+      [],
+      [booking(9, 12)],
+      [booking(9, 12), booking(11, 14)],
+      [booking(9, 12), booking(11, 14), booking(9, 12, "request")],
+      [booking(9, 12, "now"), booking(9, 12, "now"), booking(9, 12, "now")],
+    ];
+    const counted = [
+      peaks(0, 0, 0),
+      peaks(1, 1, 0),
+      peaks(2, 2, 0),
+      peaks(3, 2, 1),
+      peaks(0, 0, 0),
+    ];
+    cases.forEach((bookings, i) => {
+      for (const available of [0, 1, 8]) {
+        expect(
+          listingOfferFromPeaks({
+            settings: listing(),
+            available,
+            peaks: counted[i],
+          }),
+          `case ${i}, ${available} free`,
+        ).toEqual(offer(listing(), available, bookings));
+      }
+    });
+  });
+
+  it("several vehicles in one booking must all fit the mode", () => {
+    const two = (p: ReturnType<typeof peaks>, settings = listing()) =>
+      listingOfferFromPeaks({ settings, available: 8, peaks: p, quantity: 2 });
+    expect(two(peaks(0, 0, 0)).mode).toBe("instant");
+    // One Instant unit left and one Request unit: two fit neither.
+    expect(two(peaks(1, 1, 0)).mode).toBeNull();
+    expect(
+      two(peaks(1, 1, 0), listing({ instantUnits: 1, requestUnits: 2 })).mode,
+    ).toBe("request");
+    // Two wanted, one offered.
+    expect(two(peaks(2, 2, 0))).toEqual({ offered: 1, mode: null, held: 2 });
+  });
+
+  it("a listing that is off offers nothing; a quantity below one is refused", () => {
+    expect(
+      listingOfferFromPeaks({
+        settings: listing({ enabled: false }),
+        available: 8,
+        peaks: peaks(0, 0, 0),
+      }),
+    ).toEqual({ offered: 0, mode: null, held: 0 });
+    expect(() =>
+      listingOfferFromPeaks({
+        settings: listing(),
+        available: 8,
+        peaks: peaks(0, 0, 0),
+        quantity: 0,
+      }),
+    ).toThrow(RangeError);
   });
 });

@@ -13,9 +13,18 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Next.js security upgrade (branch `security/next-upgrade`, 17 Nov 2026)
+
+`next build` warned that the Next.js version is affected by a known security vulnerability.
+
+- **Advisory:** GHSA-mfr8-8qww-v76h (CVE-2026-119790), **medium**, published 16 Nov 2026. Information disclosure across root params: a `'use cache'` function that reads a root param and is called both directly and through `unstable_cache()` can, in a race on a cold process start, have its result stored without root params and served to requests for other root param values. Affects `next` 16.3.0 to 16.4.4; **first fixed 16.4.5**.
+- **Exposure:** the marketplace uses `'use cache'` (`cacheComponents: true`) but nothing in the repo calls `unstable_cache()`, so the affected path was not reachable.
+- **Change:** `next` and `eslint-config-next` 16.4.2 → **16.4.5** in both apps, and the `next` peer range in `packages/db` (it pinned 16.4.2, which kept a second, vulnerable copy installed). Lockfile: only the `next`, `@next/*` and `eslint-config-next` entries change. Same major line; no code change. `npm audit` no longer lists `next`. The other `npm audit` findings (hono, body-parser, typescript-eslint, shadcn's tree) are left as they are.
+- **Tests**, on this worktree's own local stack: typecheck and lint clean; unit 929 (marketplace 202, platform 364, core 363); database: marketplace 87, platform 556. In the full platform run, 4 lock-timing tests failed under load (timeouts in `availability`, `reservations`' cleanup hook, and a 620 ms wait where over 700 ms was expected in `tax-profile-in-use`); the three files pass when run alone (78, 68, 11). Browser, on a freshly reset and seeded database, 375 px and 1280 px, two workers: 142 tests, **135 passed, 7 skipped, 0 failed**. Production build of both apps on 16.4.5 succeeded with no vulnerability warning.
+
 ## Phase 2: plan only (branch `docs/phase-2-plan`, 16 Nov 2026)
 
-**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). Stages 1 and 2 are built (below).
+**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). Stages 1 to 4 are built (below).
 
 - **Already built by stage D:** price lists, seasons, VAT, deposits and `quote()` steps 1 to 3 and 5 to 8.
 - **Still to build:** the booking function (`reserve()`) with product locks, then unit locks sorted by their hash key, and a best-fit pick; the availability read; overbooking and the shortage rule; holds; booking rules (notice, cut-off, minimum days); `product_extras` and the pricer's included-quantity step; coupons and the returning-customer discount; the quote snapshot.
@@ -26,7 +35,7 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 ## Phase 2, stage 1: the booking core (branch `platform/phase-2-stage-1-booking-core`, 16 Nov 2026)
 
-The first build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.1, §3.1 to §3.4, §4, §8). **Database only: nothing on any screen changes.** Applied locally only; **not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The first build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.1, §3.1 to §3.4, §4, §8). **Database only: nothing on any screen changes.** **On staging since 16 Nov 2026** (pushed with stage 2's; see "On staging" under stage 2); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
 
 **The first test, before anything else: a rolled-back sub-transaction does give back its transaction-level advisory locks** (Postgres 17.11, the local stack). One session inside one open transaction; a second session trying each lock while it is still open:
 
@@ -115,7 +124,7 @@ So `reserve()` is built as the plan designed it (pick, lock the picked units in 
 
 ## Phase 2, stage 2: shortage, holds and the availability read (branch `platform/phase-2-stage-2-availability`, 16 Nov 2026)
 
-The second build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2 to §3.5, §4, §8). **Database only, apart from one thing on a screen: the vehicle's Details form warns before a booked vehicle is moved.** Applied locally only; **not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The second build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2 to §3.5, §4, §8). **Database only, apart from one thing on a screen: the vehicle's Details form warns before a booked vehicle is moved.** **On staging since 16 Nov 2026** (62 of 62; see "On staging" below); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
 
 **What changed**
 
@@ -170,8 +179,6 @@ The second build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2 to §
 7. **The "seen waiting for a product lock" checks are keyed to the session under test** (by the function it is running), in both test files.
 8. **Docs:** downtime added to the run-out-hold known issue; the two things a move leaves behind (below); the `expire` event comment; a root `CLAUDE.md` line on the two guards locking the row before the unit lock.
 
-The review comment itself is not on PR 37 (only Netlify's two are); these are the eight items as the owner relayed them.
-
 **Where this differs from the plan or the brief, or decides what they left open** (say if any should change)
 
 1. **The unit-delete trigger asks for the lock once and never waits.** A waiting lock there is a deadlock every time, not a fix: Postgres locks the unit's row before a `before delete` trigger runs, so the delete would hold the row and wait for the lock while a booking holds the lock and waits for the row. Tried on a scratch table before building: Postgres reported the deadlock. So when anything holds the unit's lock at that moment the delete is refused with `unit_busy` (`55P03`) and can be sent again; the app says "Someone is saving a booking or a block on this one right now. Please try again." A delete of several units in one statement can no longer cross a booking: it is refused at once, or it waits on a row holding nothing the booking still needs. The stock functions that delete units hold these locks already.
@@ -216,9 +223,308 @@ The review comment itself is not on PR 37 (only Netlify's two are); these are th
 
 **Before this goes to staging** (the owner's word each time, plan Q17): nothing to count first. The migration adds two columns with defaults and no check on existing rows; staging has no allocation, hold or reservation.
 
+**On staging since 16 Nov 2026; not on live.** Stage 1's and stage 2's migrations (`20261116000100_platform_reservations`, `20261116000200_platform_availability`) were pushed together to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 12:29 UTC, from `main` at `65cc20f`, with `npx supabase db push --db-url` (never `--linked`). Staging records 62 of 62. Live was not touched.
+
+Why then: `main`'s deployment (`mango-works-platform.netlify.app`) has run stage 2's code since PR 37 merged, and its vehicle form calls `move_unit()`. Staging did not have the function, so changing a vehicle's product or location failed there until this push.
+
+- **Read-only checks first**, in one read-only transaction; all six passed:
+  1. 60 migrations on record, newest `20261115000200`, neither of the two, and none that sorts after them. The CLI's migration list showed the same: 60 matching the repo, the two not yet on staging.
+  2. `unit_blocks` rows of kind allocation or hold: 0 (all 21 blocks are downtime).
+  3. The trigger `unit_blocks_audit` existed under that name. None of the 16 new function names existed in `platform` or `platform_private`; no `reservations` table, no `reservation_id`, `allow_overbooking` or `hold_minutes` column.
+  4. The two functions that existed and are re-created had `main`'s bodies, by MD5 of the stored source against the body in the last migration that wrote each: `unit_blocks_guard` `8269353f…` (from `20261113000300`), `units_guard` `51474742…` (from `20261114000100`). The other re-created functions (`booking_roles`, `free_units`, `reserve`, `cancel_reservation`) are made by the first of the two migrations, so they had no body on staging to compare.
+  5. `pg_cron` 1.6.4 is on, with one job: `platform-renewal-notifications` (`7 * * * *`, active).
+  6. `authenticator`: `session_preload_libraries=supautils, safeupdate`, `statement_timeout=8s`, `lock_timeout=8s`. Also `authenticated` `statement_timeout=8s`, `anon` `statement_timeout=3s`, `service_role` none.
+- **The dry run** listed exactly the two migrations. The push applied both in about five seconds.
+- **After, read-only:**
+  - 62 migrations on record, newest `20261116000200`.
+  - All three shops (`big-fleet`, `bsr`, `saigon-scooters`) read overbooking off and a hold of 15 minutes.
+  - Two cron jobs, both active: `platform-renewal-notifications` and `platform-release-expired-holds` (`* * * * *`). The new job's first three runs (12:30 to 12:32 UTC) all succeeded.
+  - The service role's execute list in `platform_private` is the expected eight, the same as `default-grants.test.ts`: `booking_roles`, `free_units`, `json_time`, `json_uuid`, `marketplace_peaks`, `norm`, `queue_renewal_notifications`, `shortage_demand`. The service role has usage on the schema; PUBLIC can execute nothing there.
+  - The one audit trigger on `unit_blocks` is now three (insert, update, delete); `units_busy_on_delete` is on `units`; all 17 new functions exist.
+- **Counts, the same before and after:** 32 products, 205 units, 21 blocks, 3,413 audit rows, 13 pricing rows (5 price lists with 150 days, 1 settings row), 3 shops; every other `platform` table the same too. The same checksums before and after over products, units, pricing rows, price lists and their days, the settings row, and over blocks and shops with the new columns left out. `reservations` is new and empty.
+- **On the deployed site**, as BSR's demo owner (`mango-works-platform.netlify.app`, `main`'s deployment): the test vehicle `E2E-MWBPU6LZ7871` was moved from Honda PCX 160 to Honda NX500 and saved (12:31:27 UTC), then moved back and saved (12:31:59 UTC). Both showed "Saved". The vehicle's row is as it was apart from its updated time (same checksum). The vehicle had no blocks, so no booking moved with it and the warning was not shown; `unit-move.spec.ts` covers that case and was not run against staging.
+- **Left on staging:** two audit rows for those two moves (3,415 in all), and the vehicle's new updated time.
+- **Not run against staging:** the browser suite. CI ran all of it on a clean local database.
+
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s2` on ports 6232x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Every other local stack was stopped (not removed).
 
 **Next:** stage 3, booking rules and `offer()` (migration 3): the rule columns, `save_booking_rules()`, `booking_inputs()`, `bookOnline()` with its test, and the Moto Mangos cap inside `reserve()`. Carried to it from the review of PR 36: `bookOnline()` treats `55P03` (`lock_timeout`) the same as `try_again`.
+
+## Phase 2, stage 3: booking rules and `offer()` (branch `platform/phase-2-stage-3-booking-rules`, 16 Nov 2026)
+
+The third build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §2.3, §2.6, §3.6, §4, §8; the owner's answers in §10, Q5 with its addition). **No screen changes: database, `@mango/core` and one server module.** **On staging since 16 Nov 2026** (63 of 63; see "On staging" below); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **One new migration, `20261116000300_platform_booking_rules`.** No earlier migration is touched. Functions that existed are re-created from their bodies in the database (`pg_get_functiondef`, compared line by line with stage 2's text first: identical) with the changes listed, and their grants restated.
+  - **The rule columns**, all empty to start ("not set" is no rule), each with its range held by the table: `locations.min_notice_hours` (0 to 720), `booking_cutoff_minutes` (0 to 1440), `min_days_advance` and `min_days_walkin` (1 to 365); `products.min_days_advance` and `min_days_walkin` (vehicles only; empty is the location's); `tenants.buffer_before_minutes` and `buffer_after_minutes` (the shop's default, 0 to 10080 like a product's).
+  - **`platform.save_booking_rules(p_tenant_id, p_rules)`**: owners and managers. **The first writer of `allow_overbooking`, `hold_minutes` and the shop's default buffers**, which no signed-in person can write directly; also a location's four rules and a vehicle's minimum days. Only what is named changes, null clears a rule, all or nothing. Not the server's (revoked from the service role).
+  - **`platform.booking_inputs(p_tenant_id, p_location_id, p_product_ids)`**: one read of everything the rules need: the location's time zone, hours, closures and rules; the shop's settings; each product's buffers in force, minimum days and listing. As its caller under RLS; every member, and the server.
+  - **`platform.reserve()` re-created**: the shop's default buffers widen a vehicle that has none of its own; and **the Moto Mangos cap** (below).
+  - **`platform.availability()` re-created**: the shop's default buffers, exactly as `reserve()` widens.
+  - **`platform_private.booking_roles()`** gains `rules`; `apps/platform/lib/booking-permissions.ts` is its copy.
+- **`@mango/core`**
+  - **`booking-rules.ts`**: `bookable(rules, start, end, how, now)` answers `ok` or `outside_hours`, `too_short`, `too_soon`, in the location's time zone with no fixed offset; `offer(inputs, availability, pricing, request)` composes bookable, then available (with the Moto Mangos cap and mode), then `quote()`, so no caller gets a price for something it can't book. A product with no price answers `cant_be_priced` and carries no price at all, never zero.
+  - **`time.ts` and `money.ts` are thin wrappers.** The rules are generic in `zoned.ts` (`fromWallClock`, `zonedDateTime`, `zonedParts`, `startOfZonedDay`, `addZonedDays`, `formatZoned`) and `currency.ts` (`toMinorUnits`, `fromMinorUnits`, `formatWholeAmount`, `currencyExponent`). The old names pass `Asia/Bangkok` and THB. The fixed UTC+7 arithmetic is gone.
+  - `listing.ts`: `listingOfferFromPeaks()`, the same offer rule from the counts the availability read already takes, for one or several vehicles.
+- **`apps/platform/lib/book-online.ts`: `bookOnline()`, the one server entry point for online channels.** It reads `booking_inputs`, `availability` and `pricing_inputs`, asks `offer()`, and calls `reserve()` only when the answer is bookable, available and priced. `lib/booking-inputs.ts` turns the rows into the rules' input and decides nothing. Nothing calls `bookOnline()` yet: Phase 8's booking page and 3M's `marketplace_api` will.
+- **Root `CLAUDE.md`**: the sentence on a unit delete against a mechanic editing a downtime block, and a line on the listing's row. **`docs/phase-2-plan.md` §4**: item 3 says how the listing's row is taken. Types regenerated.
+
+**The Moto Mangos cap inside `reserve()`** (channel `marketplace`)
+
+- In the rows phase, after the products' rows: the listings' rows of the booking's products, in product-id order, `for no key update`. Under it, for each vehicle line:
+  - a listing that is off or missing answers **`not_listed`**;
+  - an advance booking (mode `instant`) must fit the units to offer (`instant_units + request_units`) **and** the Instant units, counting the Moto Mangos advance bookings that hold a vehicle in the window (`marketplace_peaks`, stage 2) and the call's own earlier lines: else **`cap_reached`**;
+  - "Ride today" (mode `now`) is not counted and not refused by the cap.
+- Gear and services booked with the vehicle have no listing and no cap. A refusal writes nothing.
+- **Why the row lock is not `for share`:** the cap is per product, the advisory locks are per product and place. Two Moto Mangos bookings of one product for two places share no advisory lock, so with a shared row lock both would count the cap before either wrote. The listing's row makes them take turns. Tested held in place (the second booking is seen waiting for a row with its own product lock and unit lock in hand, then answers `cap_reached`) and as a race.
+
+**The three items carried in**
+
+1. **`bookOnline()` treats `55P03` (`lock_timeout`) the same as `try_again`.** `reserve()` does not catch it (tested: with another session holding the product's lock and a 300 ms lock timeout, the database raises `55P03` as it is); `bookOnline()` answers `{ok: false, reason: "try_again"}` with nothing written, and the same request goes through once the lock is free.
+2. **No booking-page or marketplace path reaches `reserve()` without passing `bookable()`**, in three legs:
+   - on a spy (`lib/book-online.test.ts`): a closed day, too little notice, too short a rental, nothing free, no price, not listed, the cap, request-only: each answers its reason and `reserve()` is never called;
+   - on the database (`tests/db/booking-rules.test.ts`): the same refusals leave reservations, blocks and audit rows unchanged, counted before and after;
+   - a static test over both apps: no file but `lib/book-online.ts` calls `reserve()` with the service role or names an online channel beside the call; the marketplace never calls it; no file with the service role imports a file that calls it; and the entry point itself calls `offer()` before its one `reserve()`. The detector is run on made-up files first (each way round is caught; a signed-in counter booking passes).
+   - and in the database, as before: a signed-out visitor can't execute `reserve()`, a signed-in Moto Mangos customer is answered `not_allowed`, and so is a member of the shop naming an online channel.
+3. **Docs from the re-check of PR 37:** the "review is not on PR 37" line is gone; root `CLAUDE.md` has the sentence on the unit delete and the downtime block.
+
+**Where this differs from the plan or the brief, or decides what they left open** (say if any should change)
+
+1. **A new refusal, `not_listed`**, in `reserve()` and in `offer()`: a Moto Mangos booking of a vehicle whose listing is off or missing, in any mode. The plan's step 5 reads "on a listed product" and names no answer for one that is not.
+2. **The listing's row is taken `for no key update`, not `for share`** (plan §4), and all the products' rows come before any listing's row. Reason above.
+3. **`reserve()` checks the cap for mode `instant` only, and it must fit the Instant units too.** A booking the listing would take only by request is refused there (`cap_reached`): request mode is 3M's. `offer()` does answer `request` as the mode; `bookOnline()` then answers **`request_only`** and does not call `reserve()`.
+4. **`bookable()`'s fourth argument is `{channel, mode}`**, not the channel alone: "Ride today" is a mode of the Moto Mangos channel. **`offer()` takes `quote()`'s input** for the same lines as its pricing argument and throws if the two differ.
+5. **The cut-off binds "Ride today" only** (contract §4.5): the location must be open now, and now must be no later than the cut-off before that day's closing. It is real minutes before the closing instant, so it is right through a night when the clocks change. A booking-page pickup later today is bound by the notice, not the cut-off.
+6. **Which minimum days:** the walk-in minimum for "Ride today" and for the counter (`walk_in`); the advance minimum for the phone and every online advance booking.
+7. **Staff are answered by `bookable()` but not bound by it.** Hours, closures and minimum days are checked for a staff channel (so Phase 3's screen can say why); notice is not. Nothing enforces it: staff call `reserve()` as themselves.
+8. **The `api` channel is treated as the shop's own page** (the shop's notice only).
+9. **An online advance booking can't start in the past**, with no notice set at all: it answers `too_soon`.
+10. **A location that has saved no opening hours has no hours rule, for staff; online it can't be booked at all** (changed after the review, below); one that has saved some is closed on a weekday it left out. Two of the three demo shops have no hours.
+11. **When several rules refuse, the answer is the first of: hours and closures, minimum days, notice.**
+12. **`save_booking_rules()` writes a vehicle's minimum days as well as the shop's and the locations' rules** (the plan's §6 table), answers `not_a_vehicle` for gear or a service, and is not the service role's.
+13. **The shop's default buffers apply side by side:** a vehicle with its own "before" and no "after" gets the shop's "after". Vehicles only.
+14. **`bookOnline()` books one place per booking**, modes `instant` and `now`, and takes its database client and its clock as optional arguments so it can be tested. Under Vitest the `server-only` marker package is aliased to an empty file (`tests/server-only-stub.ts`).
+15. **The static test reads `app/`, `components/` and `lib/` and the root files of both apps.** `scripts/` and tests are left out: the seed is run by hand with the service role, and stage 11's demo reservations will come from it.
+16. **Extras are priced as lines of their own in `offer()`** until stage 4 builds the included quantity. "Ride today" does not read or lower the listing's ready count (3M).
+17. **The best-fit pick is still written twice** (`reserve()`, `assign_units()`): the brief asked for minimal diffs, so stage 2's suggestion to fold them was not taken.
+18. **`docs/platform/MAPPING.md` is not changed** (the plan's §12 lists it; the columns are built as it names them).
+
+**Tests**
+
+- **Unit: 357 in `@mango/core`** (290 before), **363 on the platform** (347 before), **202 on the marketplace** (unchanged). Typecheck and lint pass for every workspace, the one-pricer (money) rule included.
+  - `booking-rules.test.ts` (44): every `bookable()` reason, with each place it can come from (pickup, return, now, the cut-off, a closure, a weekday left out); each channel's notice rule (Moto Mangos advance takes the stricter of shop and listing, both ways round; "Ride today" none; the booking page and the API the shop's; staff none); which minimum days apply to which channel; `offer()` in order (rules, stock, price), the cap and mode, "Ride today" past a full cap, gear with a scooter, and a product with no price answering `cant_be_priced` with no price in the answer, beside a free product that is priced at nothing.
+  - **New York across both clock changes of 2026** (8 March, 1 November), every instant written in UTC so the test does not lean on the code under test: the same UTC time inside the hours one day and outside the next; the skipped hour and the hour that happens twice; a closed date that is 23 and 25 hours long; the cut-off at 16:00 on the shop's clock on both days, and as real minutes through the night of each change; 10:00 to 10:00 as one rental day over 23 and over 25 hours; 24 hours of notice not met by the same clock time after a 23-hour day. **And in Bangkok:** the Bangkok weekday against the UTC one, Songkran every year by the Bangkok date, the cut-off from each day's own closing time, both minimums.
+  - `wrappers.test.ts` (10): each old name beside the code as it stood before (kept in the test as the reference), over some 8,900 instants from 2019 to 2035, every day of eight years at four times, and 40 amounts either side of zero with the ones that must throw: **the same answer every time, to the minute and to the baht.** `zoned-calendar.test.ts` (10): the generic functions in New York on both change days and in other zones.
+  - `lib/book-online.test.ts` (15): the spy tests and the static test of item 2 above; `55P03`.
+- **Database: 550 on the platform, all passing on a freshly reset local database** (509 before). New: `booking-rules.test.ts` (39) and 2 in `default-grants.test.ts`. Three stage 1 and 2 scenes were changed because they booked an unlisted vehicle through the Moto Mangos channel, which is now refused on purpose: the "online against online" race uses `api` for its second channel, one cross-shop scene lists its vehicle, and "who may book" expects `not_listed` there.
+  - `save_booking_rules()`: every one of the five roles; another shop's five roles, a stranger, a signed-out visitor and the server; another shop's location or vehicle answered exactly like a made-up id, and left unchanged; 27 things it refuses; all or nothing; the audit rows; overbooking switched on through it and then used.
+  - `booking_inputs()`: the whole answer pinned; every role, the server, and who is refused; cross-shop answers beside made-up ids.
+  - The shop's default buffers in `reserve()` and in the read, side by side with a product's own; a later change moves no block.
+  - The cap: not listed, off, full, by quantity, across two lines, with a hold and after it runs out, after a cancel, across two places, with gear, and never for "Ride today" or the shop's own channels.
+  - `bookOnline()` against the database: each refusal leaves reservations, blocks and audit rows unchanged; the New York shop's own clock decides on the day the clocks go forward (2032); the real `55P03`.
+- **Races: 120 rounds in this stage** (10 a shop in Bangkok THB, New York USD and Saigon VND, four races): two online bookings for the cap's last place at one place; the same at two places, where the bookings share no product lock; six at once for a cap of two; and a booking against the owner switching the listing off and a manager saving the scooter's rules. **Every round gave exactly the successes the cap allows.** With stage 1's 603 and stage 2's 270: **993 rounds.** **No deadlock:** no call answered `40P01` or `try_again`, and Postgres' own count of detected deadlocks did not move in any of the three files.
+- **The lock was checked both ways.** With the listing's row taken `for share` instead (put into the local database by hand, then restored), the held-in-place test and the two-place race both fail: both bookings succeed and the cap is passed in round 0.
+- **The migration on a seeded copy of `main`'s database** (reset to 62 migrations, the three demo shops seeded, then this one): 3 shops, 4 locations, 16 products, 170 units and 263 audit rows before and after, with the same checksums over products, units, locations and tenants (the new columns left out); no block, reservation, pricing row or listing either side. Every shop reads overbooking off, 15 minutes and no default buffer; no location has a rule.
+- **Browser:** the full suite on that database, 375 px and 1280 px, two workers: 142 tests, **135 passed, 7 skipped, 0 failed**, the same as stage 2. No new browser test: nothing on a screen changed.
+
+**After the review of PR 38 (16 Nov 2026).** Six items, all in this PR; the migration had not left this machine or CI's throwaway databases, so it was edited in place.
+
+1. **"Ride today" is Moto Mangos' alone, and only for a pickup that is now.** It skips the notice and the cap, and nothing stopped any channel, or a pickup next week, from calling itself that.
+   - `bookable()` throws for a channel and mode that don't go together (`assertHow()`): mode `now` on any channel but `marketplace`, a staff channel in an online mode, an online channel in mode `staff`.
+   - A "Ride today" pickup must be within **15 minutes either side of now** (`RIDE_TODAY_GRACE_MINUTES`: time to fill in the form and for the request to arrive; contract §4.5, "from now"). Anything else answers a new reason, **`not_now`**, with the earliest and latest pickup.
+   - `bookOnline()` refuses mode `now` on `booking_page` and `api` before it reads anything; `reserve()` raises `invalid_request` for it.
+   - **Five probes, each answered `ok` before:** the booking page as "Ride today" to skip its notice; the API and the staff channels the same; Moto Mangos "Ride today" for next week (it skipped a 72-hour lead time); for later today, and for a pickup long begun, with the 15 minutes checked to the minute; and through `offer()` with the cap full (a real walk-in is offered, one for next week is not, and as an advance booking it meets the cap). The same on the database through `bookOnline()`, with nothing written by any refusal.
+2. **`reserve()` has its own lock timeout, 6 seconds**, set on the function, shorter than the API's 8-second statement timeout, so a wait that runs out raises `55P03` and not `57014`. `bookOnline()` answers **`try_again` for `57014` from `reserve()` too** (several shorter waits can still add up to the 8 seconds); from one of its reads `57014` is an error, not an answer. **Tested through the API, not psql:** another session holds the product's lock for 9 seconds; a plain `reserve()` call and `bookOnline()`, both as the server through the API, come back after 6 seconds and before 8, the first with `55P03`, the second with `try_again`; nothing is written, and the booking goes through when sent again.
+3. **`confirm_hold()` for a Moto Mangos hold takes the listing's row** (the products' rows first, then the listings', as `reserve()` does) **and judges the expiry once it holds it**, by the clock. Before, a confirm begun just before the expiry could still be in flight when a booking begun just after no longer counted the hold: both kept their place and the cap was passed by one. That needs the booking to be for another place of the same shop; at the same place the product lock already made them take turns. Tests: a confirm that began in time and reaches the row after the expiry answers `hold_expired` (a booking-page hold is still judged by when the call began); a confirm in flight at the expiry, with a new booking at a second place seen waiting for a row and then answered `cap_reached`; and the booking first. **With the lock taken out again both of the first two fail.** Every other hold is judged as stage 2 decided.
+4. **The static test walks `packages/` too** (the service role's client is made in `packages/db`): a shared package that calls `reserve()` is a finding, by any client.
+5. **A location with no opening hours saved can't be booked online**: `bookable()` answers `outside_hours` (its detail says `no_hours`) on every online channel, before any other rule. Staff are unaffected: for them no hours saved is still no hours rule. Tested in `@mango/core` and on the database (Saigon's shop, which has none: refused on all three online channels with nothing written, booked at the counter, and booked online once hours are saved). **Two of the three demo shops have no hours, so nothing can be booked online at them until they do.**
+6. **Docs:** the currency-exponent note on the inventory below; this section's line on the timing-sensitive test (known issues); root `CLAUDE.md` and the runbook say production now publishes from the `release` branch.
+
+This replaces items 5 and 10 of the list above where they differ, and adds a reason (`not_now`) to item 1's.
+
+**Tests after the review, on a freshly reset database**
+
+- **Unit: 363 in `@mango/core`** (357 before the review), **364 on the platform** (363), **202 on the marketplace**. Typecheck and lint pass for every workspace, the money rule included.
+- **Database: 556 of 556** (550 before the review): `booking-rules.test.ts` is 45 tests (39).
+- **Races: 150 rounds in this stage** (120 before the review; the fifth race is a hold confirmed at its expiry instant against a new booking at a second place, 10 rounds a shop), **1,023 with stages 1 and 2**. No call answered `40P01` or `try_again`, and Postgres' own count of detected deadlocks did not move.
+- **Browser:** the full suite, 375 px and 1280 px, two workers: 142 tests, **135 passed, 7 skipped, 0 failed**.
+- Each suite was run on its own, one after the other.
+
+**Known issues and follow-ups**
+
+- **The lock-timeout test is timing-sensitive under load.** It expects `reserve()` to give up between 5.5 and 8 seconds after it was sent, while another session holds a lock for 9. On a machine busy with other work (typecheck, lint or the browser suite at the same time) the API call can start late or the statement timeout can win, and the test fails without anything being wrong. Run the database suite on its own; if it fails alone, that is a finding.
+- **The race for a hold confirmed at its expiry instant does not prove the fix by itself.** It depends on timing (it passes with and without the listing's row in `confirm_hold()`); the held-in-place tests are the proof.
+- **`bookOnline()` needs the service-role key where it runs.** The runbook says that key is never on Netlify, because the app did not use it. Nothing calls `bookOnline()` yet; when Phase 8 or 3M gives it a caller, the key goes to the server environment (never the browser) and the runbook's table changes.
+- **A location's rules and a vehicle's minimum days can also be written directly** by an owner or a manager, as every other column of those two tables can (their policies); the ranges are held by the tables. The shop's four settings can't: `save_booking_rules()` only.
+- **Nothing on a screen saves a rule or calls `bookOnline()` yet.** Settings › Booking rules is stage 11; the booking page is Phase 8; `marketplace_api` is 3M.
+- **`offer()` reads without a lock.** Stock and the cap can change between its read and `reserve()`, which has the last word: the caller then gets `unavailable` or `cap_reached` from `reserve()` instead.
+- **Request mode** still needs its own state and migration before Moto Mangos books through the platform (carried to 3M from PR 36).
+- A race test shows a race is closed for the timings it hit.
+
+**Before this goes to staging** (the owner's word each time, plan Q17): nothing to count first. The migration adds nullable columns with no default and re-creates two functions; migrations `20261116000100` and `20261116000200` must be there in their merged form. Afterwards: every location and product reads empty rules, every shop reads empty default buffers, and counts of products, units, blocks and audit rows are unchanged.
+
+**On staging since 16 Nov 2026; not on live.** The migration (`20261116000300_platform_booking_rules`) was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 15:15 UTC, from `main` at `9749bf4`, with `npx supabase db push --db-url` (never `--linked`). Staging records 63 of 63. Live was not touched.
+
+- **Read-only checks first**, in one read-only transaction; all four passed:
+  1. 62 migrations on record, newest `20261116000200`; `20261116000300` absent, and none that sorts after it.
+  2. The migration re-creates four functions that existed, not two. Each had `main`'s body as of `65cc20f` (just before PR 38 merged), by MD5 of the stored source against the body in `20261116000200`, the last migration that wrote each: `reserve` `3a3a1865…`, `confirm_hold` `be90036c…`, `availability` `c62fd4ec…`, `booking_roles` `6a2a6bd5…`. The three new functions (`save_booking_rules`, `booking_inputs`, `json_int_between`) did not exist.
+  3. None of the eight rule columns existed (four on `locations`, two on `products`, two on `tenants`), nor the check `products_min_days_vehicle_check`.
+  4. Counts taken of every `platform` table (below).
+- **The dry run** listed exactly this one migration. The push applied it in about eight seconds.
+- **After, read-only:**
+  - 63 migrations on record, newest `20261116000300`.
+  - Every rule column is empty: 4 locations, 32 products and 3 shops, no value in any of the eight.
+  - All three shops (`big-fleet`, `bsr`, `saigon-scooters`) read overbooking off, a hold of 15 minutes and no default buffers.
+  - `save_booking_rules()` can be executed by `authenticated` only: not by the service role, `anon` or PUBLIC.
+  - The four re-created functions now have this migration's bodies, by MD5 against `main`: `reserve` `d38413ff…`, `confirm_hold` `744aefe0…`, `availability` `ce99cff2…`, `booking_roles` `51a20ff2…`.
+  - Both cron jobs are still active: `platform-renewal-notifications` (`7 * * * *`) and `platform-release-expired-holds` (`* * * * *`). The second ran at 15:15 and 15:16 UTC, either side of the push, and succeeded both times.
+- **Counts, the same before and after:** 32 products, 205 units, 21 blocks, 0 reservations, 3,415 audit rows, 13 pricing rows (5 price lists with 150 days, 1 settings row), 3 shops, 4 locations; every other `platform` table the same too. The same checksums before and after over products, locations and shops with the new columns left out, and over units, blocks, pricing rows, price lists and their days, and the settings row.
+- **Two of the three demo shops have no opening hours on staging, so they can't be booked online until hours are saved.** `big-fleet` (2 locations) and `saigon-scooters` (1 location) have no row in `location_hours`; `bsr` has all seven days. A location with no hours saved answers `outside_hours` on every online channel (decision 10 above); staff bookings are unaffected.
+- **Not run against staging:** the browser suite. CI ran all of it on a clean local database.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s3` on ports 6332x; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Stage 2's stack was stopped (not removed).
+
+**Next:** stage 4, the pricer's included quantity and the quote snapshot (`@mango/core` only, no migration).
+
+## Phase 2, stage 4: the pricer's included quantity and the quote snapshot (branch `platform/phase-2-stage-4-pricer-snapshot`, 16 Nov 2026)
+
+The fourth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.1, §5.2 (step 4's pricing only), §5.4, §8; the owner's answers in §10, Q9). **`@mango/core` only: no migration, no database change, nothing on a screen.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **`quote()` step 4, the included quantity** (`packages/core/src/quote.ts`). A line for gear or a service taken with a vehicle names that vehicle's line and how many units come free with each one (`extraOf: { lineId, includedQuantity }`):
+  - allowance = included per vehicle × the vehicle line's quantity; charged = max(0, quantity − allowance); list price = unit price × charged quantity.
+  - The plan's examples are tests: a scooter with 2 helmets included, 3 taken at ฿50 a day for 7 days: 1 charged, ฿350; two scooters and 5 helmets: 4 included, 1 charged.
+  - Quoted lines gain `parentLineId`, `includedQuantity` and `chargedQuantity`. A line with no parent reads 0 included and every unit charged, and is priced exactly as before.
+  - Included units are not a discount: they are in no discount total. From the list price on, an extra is a line like any other: seasons on its charged units, discounts, its own tax rate, no deposit.
+- **`lineTaxShares()`**: each line's share of its rate group's VAT, in proportion to what the line comes to, leftover minor units to the largest remainders, so the shares add up to the invoice's VAT lines exactly (Q9). VAT is still worked out once per invoice and rate; the invoice's figure is the one of record. Three lines of ฿350: VAT ฿68.69, shared 22.90, 22.90, 22.89 (line by line it would have been ฿68.70).
+- **`lineDeposits()`**: each vehicle line's own deposit in the per-vehicle mode; `depositAmount()` is now their sum, the same figure as before.
+- **`packages/core/src/quote-snapshot.ts`** (new; exported as `@mango/core/quote-snapshot`):
+  - **`snapshotQuote(input, context)`** prices the invoice itself (it calls `quote()` on the input: review of PR 40, below) and turns it into plain JSON: keys in snake_case, every amount a string of digits in minor units (a season amount may lead with "-"; nothing else is signed), every instant an ISO string in UTC, and `version` 1. `context` adds what the pricer never needed: the currency and its exponent, `pricedAt`, each line's product name and type, the tax profile's id and name, each season's name, each coupon's id and code. A name that is missing is an error, not an empty field. An invoice with a line that can't be priced, or a line with charge rules, is refused.
+  - **`readSnapshot(stored)`** reads it back with amounts as `bigint` and instants as `Date`. It takes the stored data and nothing else, so it can't look up a profile, a price list, a season or a coupon. It is strict about the shape and about each value on its own: a missing field, an unknown field, an amount that is a number, has a decimal point or a leading zero, a quantity under 1, an exponent outside 0 to 4, a tax rate outside 0 to 10000, or a currency that is not three capitals throws `SnapshotError`. It does not check that the lines add up: that is Phase 3's save check.
+  - **`readSnapshotLine(stored)`** reads one stored line on its own, as an order line's `snapshot jsonb` keeps it. Each stored line carries the `version`, so it is upgraded and read without its invoice.
+  - **Every field of §5.4, and three more** (review of PR 40). On each line: the version; currency and exponent; product id, name and type; start, end, the original pickup for a continuation, the time zone, the charged periods and their unit; quantity, included and charged; **the allowance per vehicle** (`included_per_vehicle`: what `extraOf.includedQuantity` was, empty for a line with no parent); the unit price with the pricer's basis; the list price; **the way of pricing as it was passed in** (the list's 30 totals, the hourly price, the long-stay rate, or the flat fee); each season (rule id, name, percentage, periods inside and in all, amount); the season total and price; each discount (id, source, the coupon's id and code, percentage or fixed and its value, what it took from this line); the discount total; the amount; taxable, rate, profile id and name, the shop's style; the tax share; the line's deposit. On the invoice: the totals; one entry per rate (rate, profile names, base, net, VAT, gross, style); the non-taxable part; credits; **every discount the invoice was priced with** (`discounts`: id, source, the coupon's id and code, percentage or fixed and its value, all lines or the lines it was aimed at, and what it took in total, a coupon that took 0 included); the deposit with its mode, its number and whether it came from the order, the customer or the shop; `priced_at`; `version`.
+  - **It prices nothing itself.** It calls `quote()`, copies what went in and what came out, and takes the tax share and the line deposit from `quote.ts`. Its only sums are additions and one subtraction (a line's season total; what a discount took over its lines).
+  - **Versions.** `UPGRADES[n]` turns a stored version n into n + 1 as it is read, in two parts: one for the invoice and one for a line, so a line stored alone takes the line part. A stored snapshot is never rewritten. A version newer than the code knows is refused, not guessed at, and so is an invoice whose lines don't carry its version.
+- **`offer()` needed no change**: it passes `quote()`'s input through, so an extra with included units is priced that way (one new test). Stage 3's item 16 ("extras are priced as lines of their own until stage 4") is done for the pricer; stage 5's adapter fills `extraOf` from `product_extras`.
+- Root `CLAUDE.md`: a new section, "Not tied to Supabase" (below). `packages/core/README.md` names the new module.
+
+**Phase 3's columns, confirmed** (plan §5.4, "fixed now"). No column added or dropped. Each order-line column is a field of the stored line under the same name, and a test holds that:
+
+| On each order line | From the snapshot line | Notes |
+| --- | --- | --- |
+| `list_price` | `list_price` | Unit price × charged quantity |
+| `season_total` | `season_total` | Signed: negative when seasons lower the price |
+| `discount_total` | `discount_total` | |
+| `amount` | `amount` | |
+| `tax_rate_bp` | `tax_rate_bp` | Empty for a line that is not taxable |
+| `tax_profile_id`, `tax_profile_name` | the same | Empty for a line that is not taxable. Reference only |
+| `tax_inclusive` | `tax_inclusive` | |
+| `tax_amount` | `tax_amount` | The share; 0, not empty, for a line that is not taxable |
+| `deposit` | `deposit` | Empty unless the mode is per vehicle and the line is a vehicle |
+| `currency` | `currency` | The line also has `exponent` |
+| `snapshot jsonb` | the whole stored line | With its `version`; read with `readSnapshotLine()` |
+
+On each invoice: its totals, its rate groups and `snapshot jsonb` (the whole stored snapshot). **Phase 3's save check needs addition and comparison only**, and a test runs it on every pinned invoice: list price + season total = season price; season price − discount total = amount; a line's discounts add up to its discount total; each discount's amounts over the lines add up to its total on the invoice, and those totals to the invoice's discount; included + charged = quantity; the lines add up to each total; each rate group's base is its lines less its credits; net + VAT = gross; the groups' gross + the non-taxable part = the total; the lines' tax shares add up to each VAT line; the lines' deposits add up to the invoice's in the per-vehicle mode.
+
+**Also in this stage**
+
+1. **Four standing rules in the root `CLAUDE.md`** ("Not tied to Supabase": the owner plans to move from Supabase to Neon after Phase 3): all database access goes through `packages/db`; file storage sits behind one module; sign-in goes through one helper with no Supabase-only features; RLS uses the `my_tenant_ids()`-style helpers and not `auth.uid()` directly. What does not follow them yet is listed at the end of this section.
+2. **The line saying the review is not on PR 38 is gone** from stage 3's section.
+3. **The "other way round" `confirm_hold()` test is strengthened** (`apps/platform/tests/db/booking-rules.test.ts`). As it was, the confirm began after the expiry and the booking was at the same place, so it passed with or without the listing's row in `confirm_hold()` (checked: it passes with the lock taken out). Now:
+   - the confirm's transaction begins **before** the expiry (the session prints that its `now()` is earlier) and gets to its work five seconds on;
+   - a new Moto Mangos booking at a **second place** of the shop, begun after the expiry, takes the cap's one place and is left unsaved. It shares no product lock with the confirm, and it does not release the hold (another place's), so only the listing's row stands between them;
+   - the confirm is **seen in `pg_locks` waiting at the listing's row** (it has that row's tuple lock and waits for a transaction), and `pg_blocking_pids` names the booking's session as the one it waits for;
+   - the booking saves; the confirm answers `hold_expired`, judged by the clock after the expiry; one reservation is `reserved` (the new one), the hold is still a run-out hold, and Postgres counts no deadlock.
+   - **With the fix removed it fails.** `confirm_hold()` was put into the local database without the listing block (the products' and listings' rows and `clock_timestamp()`), by hand, then restored from the migration's text. The test failed on three counts: the confirm answered without ever waiting at the listing's row; it was not waiting for the booking; and it answered `ok`, so the cap of one was passed by one. Restored, it passed five times in a row.
+4. **Carried to stage 5** is below.
+
+**Where this differs from the plan or the brief, or decides what they left open** (say if any should change)
+
+1. **`includedQuantity` on a quoted line is how many of that line's units are free, never more than its quantity.** Two scooters with 2 helmets each and 3 helmets taken reads "3 included, 0 charged", not the plan's formula taken literally ("4 included"). So included + charged = quantity on every line, which Phase 3's save check can add up. The allowance is stored beside it, per vehicle (`included_per_vehicle`: 2), with the parent line's id, so adding a helmet later needs no look at `product_extras` as it is by then.
+2. **The pricer does not default an extra's dates to its vehicle's.** A line's dates stay required; stage 5's adapter gives an extra its vehicle's dates. An extra with its own dates (helmets for 3 of the 7 days) is priced on them.
+3. **What step 4 refuses** (`bad_input`): a parent that is not on the invoice, is the line itself, is not a vehicle, or is itself an extra; a vehicle as an extra; an included quantity that is negative or not whole; and **two lines of the same product naming the same parent**, which would each take the free units. These are checked before "can't be priced" is answered, so a wrong parent is `bad_input` even when another line has no price yet.
+4. **A season on a line whose units are all included** still lists the rule, with an amount of 0.
+5. **An older version still reads, tested two ways, because only version 1 exists.** A version 1 snapshot is written out by hand in the test: it reads to the satang, and it is exactly what the code writes today for that invoice, so the stored shape can't change without that test failing and a version being added. And the upgrade chain is run with made-up steps for a version 2 and a version 3 (a field added, then renamed): a version 1 snapshot comes out as version 3, a version 2 takes only the second step, and a gap in the chain is an error. The first real step is written with version 2.
+6. **An early return has no invoice of its own**, so its pinned figures (฿1,500 of ฿3,000; ฿1,250 of ฿2,500) are tested the way Phase 3 will work them out: the period is rebuilt from **the stored snapshot of the period the return falls in**, and `earlyReturn()` is run on that. For a rental that was never extended or swapped that is the first booking's invoice; after an extension or a swap it is the continuation's invoice, whose line carries the rental's original pickup. (See "For Phase 3" below: what an early return leaves to be stored.) The swap and the cheaper bike are tested the same way, and the swap's own invoice is snapshotted too. One more test changes the shop's list after the snapshot: the shares still come from the list as it was.
+7. **The stored keys are snake_case** (`list_price`, `tax_rate_bp`), as the plan's column list and the database's own rows are; what `readSnapshot()` returns is camelCase like the rest of `@mango/core`.
+8. **A rate group stores `profile_names`**, a list: two profiles at one rate share a VAT line.
+9. **Charge rules are not in the snapshot.** `RentalSpan.rules` is an empty type today (charge rules come after Phase 3). When they are built the line gains them and the version goes to 2. Until then `snapshotQuote()` refuses a line whose rules have any key, so they can't be dropped without anyone noticing.
+10. **Nothing calls `snapshotQuote()` yet.** Phase 3 stores it. `offer()` and `bookOnline()` are unchanged.
+11. **The older test files are not changed** (`quote.test.ts`, `rental-period.test.ts`): they are the proof that a line with no parent is priced as before. Their invoices are restated in `quote-pinned.fixtures.ts` so the snapshot is tested on the same ones.
+12. **`snapshotQuote(input, context)` calls `quote()` itself** (the owner, 17 Nov 2026), where the plan had `snapshotQuote(input, quote, context)`; §5.4 of the plan now has the two-argument form. Given a quote from outside it could only check the line ids: a quote of three bikes beside an input of one was stored with the one's prices. Now the two can't disagree.
+13. **The invoice has a `discounts` list of its own**, which §5.4 did not name (it does now, with the line's `version` and `included_per_vehicle`). A line lists only the discounts that took something from it, so a coupon's target lines, and a coupon that took 0, were nowhere.
+
+**Tests**
+
+- **Unit: 522 in `@mango/core`** (363 before; 480 before the review of PR 40, 506 after the first), **364 on the platform** and **202 on the marketplace** (both unchanged). Typecheck and lint pass for every workspace, the one-pricer (money) rule included.
+  - `quote-extras.test.ts` (42): included quantity with one vehicle and with several; more included than taken; an extra priced each way (a flat fee per hour, day, week and month, by rental length, a fixed price); a free service; an extra with no price yet answering "can't be priced" even when all of it is included; in a currency with no decimals; included units in no discount total and no VAT base; seasons, a percentage and a fixed discount on the charged units; its own tax rate; no deposit; every refusal; and **every D2 and D3 pinned figure unchanged for lines with no parent** (31 invoices from D2, 8 from D3).
+  - `quote-snapshot.test.ts` (116): **every pinned figure snapshotted, turned to JSON text, parsed, read back and compared to the satang** (43 invoices: D2's 31, D3's 8, and four of Phase 2's own: a scooter with helmets included and a free drop-off, a dong shop with a season and a fixed coupon, a dong shop with VAT on top, a New York shop across the night the clocks go forward). Every amount of the quote is compared with the same amount read back, not only the pinned ones.
+  - **Tax shares add up to the VAT lines in every one of the 43**, and in 1,500 made-up invoices (a fixed sequence) in two-decimal and zero-decimal amounts, both tax styles, six rates, with percentage and fixed discounts and credits; more than 250 of them needed the leftover rule. In dong: ₫10,001 over three lines is 3,334, 3,333 and 3,334.
+  - **A snapshot read back after the profile is renamed, re-rated and archived, the list repriced, the season deleted and the coupon archived is unchanged**: the changes are made in place in the very objects the snapshot was made from, the same booking priced again comes to ฿2,800 where it was ฿1,152, and the stored snapshot reads exactly as before.
+  - The stored form (every amount a string of digits; the only numbers are counts, basis points, the exponent and the version); every field of §5.4 on a line, pinned whole; Phase 3's columns and its check by addition; versions; and what reading and writing refuse.
+  - One more in `booking-rules.test.ts`: `offer()` with an extra's included units.
+  - **The new tests fail when the code is wrong** (tried, then put back): with step 3 on the whole quantity, 25 tests fail; with the tax share rounded line by line, 5 fail.
+- **Database: 556 of 556 on the platform, on a freshly reset local database** (the same count as stage 3: one test rewritten, none added).
+- **Browser:** the full suite on a freshly reset and seeded database, 375 px and 1280 px, two workers: 142 tests, **135 passed, 7 skipped, 0 failed**, the same as stage 3. No new browser test: nothing on a screen changed.
+- Each suite was run on its own, one after the other.
+
+**After the review of PR 40 (17 Nov 2026).** The review is a comment on the PR. Its verdict: the pricer, step 4 and the tax shares are right; the snapshot lacked four things Phase 3 needs. Seven items and one decision of the owner's, all in this PR. Nothing is stored yet, so the shape changed in place and the version is still 1.
+
+1. **Each stored line carries the `version`**, and `readSnapshotLine()` / `upgradeSnapshotLine()` read and upgrade a line stored alone. An upgrade step has an invoice part and a line part. Tests: every line of every pinned invoice reads alone exactly as it reads in its invoice; a line goes from version 1 to 3 by made-up line steps with no invoice; an invoice whose lines don't carry its version is refused.
+2. **The allowance per vehicle is stored** on an extra's line (`included_per_vehicle`), empty for a line with no parent.
+3. **`snapshotQuote()` refuses a line whose `span.rules` has any key.**
+4. **The invoice lists every discount** it was priced with: id, source, the coupon's id and code, kind, value, all lines or the lines aimed at, and the total taken. A coupon that took 0 is there. A coupon's id and code are now needed for every coupon passed in, not only one that took something from a line.
+5. **Step 4's checks run before "can't be priced"**, and the comment says so.
+6. **The reader is tighter**: no leading zeros (and no "-0"), quantity ≥ 1, counts ≥ 0, exponent 0 to 4, rate 0 to 10000, currency three capitals, each refusal tested. Writing refuses the same values.
+7. This section's item 6, the stage 5 carry and "For Phase 3" below.
+8. **The owner's decision on the input and the quote not matching:** `snapshotQuote()` takes the input and the context and calls `quote()` itself.
+
+**After the second review of PR 40 (17 Nov 2026).** All eight items of the first were closed; a second reader found four more, all in this PR.
+
+1. **An upgrade step that drops or renames `lines` is an error.** It fell back to an empty list, so the invoice read as a valid one with no lines. A step must leave a list of line objects.
+2. **`quote()` refuses a discount that names a line more than once** (`bad_input`). 10% on `["bike", "bike"]` took 20%, and a fixed amount named twice could take more than the line came to. It was so since stage D2; nothing built a list with a repeat. Checked before "can't be priced" is answered. The test is in `quote-extras.test.ts`, so `quote.test.ts` is still as D2 left it.
+3. **The guard against two discounts sharing an id is tested.** `quote()` accepts them (each line lists the id twice); the snapshot names a discount by its id, so `snapshotQuote()` refuses.
+4. **Each write-side refusal has one guard and one test that names its message**: a line the context says nothing about, a product type that disagrees with the priced line, a taxed line with no profile, a season or a coupon with no name to keep, the currency, the exponent, `pricedAt`, two discounts with one id, charge rules, an invoice that can't be priced. The currency and the exponent were checked twice (once in `buildSnapshot`, once as they are written), so taking either check out failed nothing: they are checked once now, as they are written, by the reader's own rules.
+5. Also: **a season's name is looked up as the context's own key**, as a line's and a coupon's already were (a rule whose id is `constructor` got the name "Object").
+6. **Each fix broken once, then put back:** 18 breaks, one guard at a time, and each failed at least one test.
+
+**For Phase 3** (from the two reviews; none of it is built here)
+
+- **Lines are never re-sorted, and their tax shares never recomputed, after storing.** Where two lines' remainders tie, the spare minor unit goes to the earlier line, so the same lines in another order give different shares (weights 5, 3, 5 and 3, 5, 5). The stored share is the one of record for that line; the order of the stored lines is the invoice's order.
+- **A refund's credit note needs VAT figures of its own.** `earlyReturn()` and `settleSwap()` answer how much is left over, and nothing in `@mango/core` works out or stores the VAT in a refund. On a shop that adds tax on top, a line's `amount` is net, so the figure they give leaves out the VAT the customer paid: the refund must include it. That is pricer work (a rate group's VAT on the refunded amount, rounded once) and a stored document, so "no pricer change in Phase 3" does not hold for a refund. A credit kept, or "no charge", needs neither.
+- **An early return's outcome is stored when it happens, never recomputed**: the return time, the period's list price, the used and unused parts, the money carried, the shop's choice and what became of it. Working it out again later would run `unitPrice()` on the stored prices with whatever the code is by then (charge rules, for one).
+- **A vehicle line of more than one unit** holds several bikes in one amount, one tax share and one deposit. A swap or an early return of one of them, and a per-bike report, need that line's figures per unit, which is a division. Phase 3 decides: one line per unit, or a split made in `@mango/core`.
+
+- **What `readSnapshot()` still does not check belongs in Phase 3's save check**, beside the adding-up. It checks the shape and each of the values listed above on its own, and no more:
+  - **Unbounded numbers:** a discount's `percent_bp` (on a line and on the invoice) and the deposit's; the counts inside the unit price's basis (`hours`, `days`, `months`, `leftover_days`, `count`); a season's `adjust_bp`.
+  - **Nothing across fields:** a line's currency and exponent matching the invoice's; a parent line that is on the invoice (and `included_per_vehicle` set exactly when there is one); `end` after `start`. The same goes for a percentage discount with no percentage, a taxable line with no rate, and two lines, discounts or rate groups with one id.
+  - An amount has no length limit here; the column's type sets one.
+- **A line's season amounts need not add up to its season total, so that sum must not be checked.** The season price is held at 0: two rules of −60% on ฿1,400 store −840 and −840 with a season total of −1,400 and a season price of 0. What does hold, and is checked, is list price + season total = season price.
+
+**Carried to stage 5** (the owner's, 16 Nov 2026, and two found here)
+
+- **`confirm_hold()`, `cancel_reservation()`, `assign_units()` and `move_unit()` get their own lock timeout, like `reserve()`'s 6 seconds**, so a lock wait that runs out answers `55P03` and not `57014`. **Staff callers of `reserve()` handle `55P03`** (today only `bookOnline()` does).
+- Found here: **`pricing_inputs()` returns a product's tax profile name but not its id, and no product name.** The snapshot needs both. Stage 5 re-creates `pricing_inputs()` for extras; they can go in then, or Phase 3's caller reads them itself. **The id is the effective tax profile id: `coalesce(product's, shop default)`**, the same profile the name and the rate already come from (the join in `pricing_inputs()`), not the product's own column, which is empty for a product on the shop's default. Nothing else is missing: the product type, the profile's name, each season's name and the currency are there, and the exponent is `currencyExponent()` in `@mango/core`.
+- Found here: stage 5's adapter (`lib/pricing-inputs.ts`) fills `extraOf` and gives an extra its vehicle's dates (item 2 above).
+
+**What does not follow the four "Not tied to Supabase" rules yet** (found by searching, not a full audit; nothing here was changed)
+
+- **Database access outside `packages/db`** (files that import `@supabase/*` themselves): both apps' `proxy.ts` and `app/auth/confirm/route.ts`; the marketplace's `lib/admin-queue.ts`, `lib/auth/sync-role.ts` and `lib/stations/merge.ts`; the platform's `scripts/seed.mts` and `scripts/load-bsr-pricing.mts`; and the test helpers (`tests/db/helpers.ts` in both apps, `e2e/shop-settings.ts`).
+- **File storage** is called directly in four marketplace files (`app/admin/actions.ts`, `app/vendor/actions/fleet.ts`, `app/vendor/actions/shop.ts`, `components/photo-picker.tsx`). The platform stores no file yet, so the one module does not exist: the first platform feature that stores a file creates it.
+- **Sign-in** is called directly from each app's login form and its `auth/callback`, `auth/confirm` and `auth/signout` routes: there is no one helper yet.
+- **RLS:** one platform policy calls `auth.uid()` directly (a member reading their own membership row, `20261110000100_platform_schema.sql`). The helpers themselves, the audit function and the "who did it" columns read `auth.uid()` too, and several tables have keys to `auth.users`: those are the places the move changes. The marketplace's own policies (the 27 older migrations) were not looked at.
+
+**Known issues and follow-ups**
+
+- The strengthened `confirm_hold()` test depends on timing in one place: the booking must hold the listing's row before the confirm's five seconds are up. It checks that itself and says so ("timing, run again") rather than report a false finding. It also waits to be clear of the minute's sweep, so it can take up to 20 seconds to start.
+- `quote-pinned.fixtures.ts` restates the older tests' invoices; if a D2 or D3 figure is ever changed on purpose, both places change.
+- A race test shows a race is closed for the timings it hit.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s4` on ports 6432x, started with CI's service list (`supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,storage-api,postgres-meta,supavisor`): with stage 3's stack and another project's still running, the full list timed out on the analytics container. `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Stage 3's stack was left running.
+
+**Next:** stage 5, extras in the database (migration 4): `product_extras`, `save_product_extras()`, `pricing_inputs()` with extras, the adapter in `lib/pricing-inputs.ts`, and the carried list above.
 
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 
@@ -1732,16 +2038,11 @@ Marketplace paths are relative to `apps/marketplace/`. Line numbers are as of th
 
 | File:line | What | Target |
 | --- | --- | --- |
-| `packages/core/src/time.ts:12` | `BANGKOK_TIME_ZONE = "Asia/Bangkok"` | P2 |
-| `packages/core/src/time.ts:16` | `BANGKOK_OFFSET_MS = 7 h`: fixed UTC+7 arithmetic, no DST support | P2 |
-| `packages/core/src/time.ts:35-83` | `toBangkok`, `bangkokDateString`, `bangkokWeekday`, `startOfBangkokDay`, `bangkokDateTime`: Bangkok-only, no time-zone argument | P2 |
-| `packages/core/src/time.ts:86-93` | `addDays` / `addHours` assume no DST ("exact, since Bangkok has no DST") | P2 |
-| `packages/core/src/time.ts:100-108` | `formatBangkok`: `en-GB` format in Asia/Bangkok, not the viewer's locale | P2 |
-| `packages/core/src/availability.ts:57` | Repair back-on dates compared as Bangkok calendar days | P2 |
-| `packages/core/src/availability.ts:75` | "Bangkok midnight = 17:00 UTC the day before" boundary | P2 |
-| `packages/core/src/money.ts:7-22` | `SATANG_PER_BAHT = 100`, `bahtToSatang`, `satangToBaht`: THB only, not by ISO 4217 exponent | P2 |
-| `packages/core/src/money.ts:25-32` | `formatBaht`: `฿` symbol and `en-US` grouping, not by currency and locale | P2 |
-| `packages/core/src/money.ts:34-37` | `assertWholeBaht`: whole major units only | P2 |
+| `packages/core/src/time.ts` | **Done in Phase 2, stage 3.** The rules are generic in `zoned.ts` (a time-zone argument, no fixed offset, daylight saving handled). `time.ts` keeps the marketplace's names (`toBangkok`, `bangkokDateTime`, `addDays`, `formatBangkok` and the rest) as thin wrappers that pass `Asia/Bangkok`; the fixed UTC+7 arithmetic is gone. The wrappers go when the marketplace gets markets | 3M |
+| `packages/core/src/availability.ts:57` | Repair back-on dates compared as Bangkok calendar days. Stays with the pool rule, which is retired at 3M (phase-2-plan §2.6) | 3M |
+| `packages/core/src/availability.ts:75` | "Bangkok midnight = 17:00 UTC the day before" boundary. The same | 3M |
+| `packages/core/src/money.ts` | **Done in Phase 2, stage 3.** The rules are generic in `currency.ts` (`toMinorUnits`, `fromMinorUnits`, `formatWholeAmount`, by the currency's ISO 4217 exponent and the viewer's locale). `money.ts` keeps `bahtToSatang`, `satangToBaht`, `formatBaht` and `assertWholeBaht` as thin wrappers that pass THB, until the marketplace's money moves to minor units | 3M |
+| `packages/core/src/currency.ts` (`currencyExponent`), `apps/platform/lib/money.ts` (`minorExponent`) | **Not Thailand, but the same kind of assumption: the number of decimal places is read from `Intl`, which does not always agree with ISO 4217.** For IDR, HUF, COP, PKR, LAK and MMK, `Intl` (CLDR) answers 0 decimal places, where ISO 4217 and the payment providers use 2 (checked on Node 24: all six answer 0; THB 2, JPY 0, VND 0, KWD 3 are right). A shop in one of those currencies would have its amounts stored and sent 100 times too small or too large at the payment boundary. Nothing takes payments yet. **To fix before a shop in any of those six currencies takes payments:** a table of ISO 4217 exponents in `currency.ts`, used by both functions, with `Intl` kept for display only | Before payments (Phase 7) |
 | `packages/core/src/pricing.ts` | Day tables require whole baht (`assertWholeBaht`) and a ฿10 step. Since stage D1 the arithmetic is the currency-neutral one in `price-list.ts`; only the marketplace's wrapper keeps baht, until 3M | 3M |
 | `packages/core/src/pricing.ts:61,79` | Autofill rounds to the nearest ฿10, a THB-sized step | P2 |
 

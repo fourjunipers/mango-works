@@ -3,7 +3,8 @@ import type { Role } from "./roles";
 /**
  * Who may do what with bookings (docs/phase-2-plan.md §6): everyone in a
  * shop sees reservations (dates, product, units; no money); owners, managers
- * and staff make, confirm, cancel and re-assign them.
+ * and staff make, confirm, cancel and re-assign them; owners and managers
+ * set the booking rules.
  *
  * The one place in the app: every screen and every server action asks
  * canBooking(). It mirrors platform_private.booking_roles() in the database,
@@ -21,6 +22,7 @@ export const bookingActions = [
   "cancel",
   "confirm",
   "assign",
+  "rules",
 ] as const;
 export type BookingAction = (typeof bookingActions)[number];
 
@@ -35,6 +37,11 @@ const allowed: Record<BookingAction, readonly Role[]> = {
   confirm: ["owner", "manager", "staff"],
   /** Name a reservation's units, move it to other units, fill a shortage. */
   assign: ["owner", "manager", "staff"],
+  /**
+   * Booking rules: a location's notice, cut-off and minimum days, a vehicle's
+   * minimum days, the shop's default buffers, hold length and overbooking.
+   */
+  rules: ["owner", "manager"],
 };
 
 export function bookingRoles(action: BookingAction): readonly Role[] {

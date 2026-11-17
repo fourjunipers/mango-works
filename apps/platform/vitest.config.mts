@@ -3,7 +3,14 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
-    alias: { "@": fileURLToPath(new URL(".", import.meta.url)) },
+    alias: {
+      "@": fileURLToPath(new URL(".", import.meta.url)),
+      // A marker package that throws outside a Server Component build. Tests
+      // of server modules (lib/book-online.ts) run in plain Node.
+      "server-only": fileURLToPath(
+        new URL("./tests/server-only-stub.ts", import.meta.url),
+      ),
+    },
   },
   test: {
     include: ["**/*.test.ts", "**/*.test.tsx"],

@@ -1,91 +1,69 @@
 /**
- * Time helpers. Timestamps are stored in UTC; every business rule (shop hours,
- * cut-offs, "today", the 3-days-before payment date) runs in Asia/Bangkok.
+ * Time helpers for the marketplace. Timestamps are stored in UTC; the
+ * marketplace's business rules (shop hours, cut-offs, "today", the
+ * 3-days-before payment date) run in Asia/Bangkok until Phase 3M gives it
+ * markets.
+ *
+ * Since Phase 2 (docs/phase-2-plan.md §2.6) every function here is a thin
+ * wrapper: the rule itself is in zoned.ts, takes the time zone as an
+ * argument and assumes no fixed offset. These names stay so the marketplace
+ * does not change, and time.test.ts holds the two to the same answers.
+ * **New code calls zoned.ts with the location's time zone, never these.**
  *
  * This is the only module allowed to call `new Date()` for the current time.
  * Everything else asks `now()`, so tests can control the clock.
- *
- * Thailand has used a fixed UTC+7 offset with no daylight saving since 1920,
- * so plain offset arithmetic is exact here and no timezone library is needed.
  */
+
+import {
+  addZonedDays,
+  formatZoned,
+  startOfZonedDay,
+  zonedDateString,
+  zonedDateTime,
+  zonedParts,
+  zonedWeekday,
+  type ZonedParts,
+} from "./zoned";
 
 export const BANGKOK_TIME_ZONE = "Asia/Bangkok";
 
 const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-const BANGKOK_OFFSET_MS = 7 * HOUR_MS;
 
 /** The current instant. */
 export function now(): Date {
   return new Date();
 }
 
-export type BangkokParts = {
-  year: number;
-  /** 1–12 */
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  /** 0 = Sunday … 6 = Saturday */
-  weekday: number;
-};
+export type BangkokParts = ZonedParts;
 
 /** Calendar fields of an instant as seen on a clock in Bangkok. */
 export function toBangkok(instant: Date): BangkokParts {
-  const shifted = new Date(instant.getTime() + BANGKOK_OFFSET_MS);
-  return {
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate(),
-    hour: shifted.getUTCHours(),
-    minute: shifted.getUTCMinutes(),
-    weekday: shifted.getUTCDay(),
-  };
+  return zonedParts(instant, BANGKOK_TIME_ZONE);
 }
 
 /** The Bangkok calendar date of an instant, as "YYYY-MM-DD". */
 export function bangkokDateString(instant: Date): string {
-  const { year, month, day } = toBangkok(instant);
-  return `${year}-${pad(month)}-${pad(day)}`;
+  return zonedDateString(instant, BANGKOK_TIME_ZONE);
 }
 
 /** 0 = Sunday … 6 = Saturday, in Bangkok. */
 export function bangkokWeekday(instant: Date): number {
-  return toBangkok(instant).weekday;
+  return zonedWeekday(instant, BANGKOK_TIME_ZONE);
 }
 
 /** The instant of 00:00 Bangkok time on the day containing `instant`. */
 export function startOfBangkokDay(instant: Date): Date {
-  return bangkokDateTime(bangkokDateString(instant), "00:00");
+  return startOfZonedDay(instant, BANGKOK_TIME_ZONE);
 }
 
 /** The instant of a Bangkok wall-clock time, e.g. ("2026-11-03", "10:00"). */
 export function bangkokDateTime(date: string, time: string): Date {
-  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  const timeMatch = /^(\d{2}):(\d{2})$/.exec(time);
-  if (!dateMatch || !timeMatch) {
-    throw new RangeError(`Invalid Bangkok date/time: ${date} ${time}`);
-  }
-  const [, y, mo, d] = dateMatch.map(Number);
-  const [, h, mi] = timeMatch.map(Number);
-  const utc = Date.UTC(y, mo - 1, d, h, mi);
-  const check = new Date(utc);
-  if (
-    check.getUTCFullYear() !== y ||
-    check.getUTCMonth() !== mo - 1 ||
-    check.getUTCDate() !== d ||
-    h > 23 ||
-    mi > 59
-  ) {
-    throw new RangeError(`Invalid Bangkok date/time: ${date} ${time}`);
-  }
-  return new Date(utc - BANGKOK_OFFSET_MS);
+  return zonedDateTime(date, time, BANGKOK_TIME_ZONE);
 }
 
-/** Moves an instant by whole days (exact, since Bangkok has no DST). */
+/** Moves an instant by whole days on the clock in Bangkok. */
 export function addDays(instant: Date, days: number): Date {
-  return new Date(instant.getTime() + days * DAY_MS);
+  return addZonedDays(instant, days, BANGKOK_TIME_ZONE);
 }
 
 /** Moves an instant by hours, e.g. for pickup and return buffers. */
@@ -93,17 +71,7 @@ export function addHours(instant: Date, hours: number): Date {
   return new Date(instant.getTime() + hours * HOUR_MS);
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-const bangkokFormat = new Intl.DateTimeFormat("en-GB", {
-  timeZone: BANGKOK_TIME_ZONE,
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
 /** "4 Nov 2026, 08:30" in Bangkok time, for admin lists. Null → "". */
 export function formatBangkok(iso: string | null): string {
-  return iso ? bangkokFormat.format(new Date(iso)) : "";
+  return formatZoned(iso, BANGKOK_TIME_ZONE, "en-GB");
 }
