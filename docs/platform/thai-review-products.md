@@ -1,5 +1,7 @@
 # Thai lines to review: products, stage A (13 Nov 2026)
 
+**Question for Korn (Phase 2, stage 6, 17 Nov 2026):** "สูงสุดต่อคัน uses คัน (land vehicles); boats use ลำ. Keep คัน or use neutral wording (e.g. สูงสุดต่อยานพาหนะ)?" The strings are not changed until you answer: `Products.extras.most`, `mostCount`, `mostNone`, `mostHelp` and the History lines in the stage 6 table below.
+
 New or changed Thai texts in `apps/platform/messages/th.json` on the branch `platform/products-stage-a`. They are Claude's translations and need a native check by Korn or BSR's admin. Correct them in `th.json` (the key is in the first column); this file can be deleted once they are approved.
 
 **The word for "product" is สินค้า, provisional** (owner, 13 Nov 2026). It is used for things that are rented, not only sold. If another word is chosen, it is one find-and-replace of สินค้า in `th.json`; the lines that use it are all in this list or in `docs/platform/thai-review-fleet-rework.md`.
@@ -914,7 +916,7 @@ Claude's translations, for Korn or BSR's admin (docs/products-redesign.md §9.12
 
 ## Phase 2, stage 6: extras on screens (17 Nov 2026)
 
-Claude’s translations, for Korn or BSR’s admin: the Extras tab of a vehicle, Settings › Extras, the History lines and the save messages. 64 lines.
+Claude’s translations, for Korn or BSR’s admin: the Extras tab of a vehicle, Settings › Extras, the History lines and the save messages. 63 lines.
 
 - **Extras is ของเสริม** (the tab, the Settings section and the messages). The words already used for the products themselves stay: rental gear อุปกรณ์ให้เช่า, service บริการ.
 - **“Most per vehicle” is สูงสุดต่อคัน** (the owner’s label, 17 Nov 2026: up to N with each vehicle, not per booking). “Included free” is รวมให้ฟรี.
@@ -953,7 +955,6 @@ Claude’s translations, for Korn or BSR’s admin: the Extras tab of a vehicle,
 | `Products.extras.intro` | The rental gear and services offered with this vehicle. Online bookings take up to the most per vehicle; staff can add more at the counter. | อุปกรณ์ให้เช่าและบริการที่เสนอพร้อมรถรุ่นนี้ การจองออนไลน์รับได้ไม่เกินจำนวนสูงสุดต่อคัน พนักงานที่หน้าร้านเพิ่มได้มากกว่านั้น |
 | `Products.extras.introRead` | The rental gear and services offered with this vehicle. | อุปกรณ์ให้เช่าและบริการที่เสนอพร้อมรถรุ่นนี้ |
 | `Products.extras.everyIntro` | Offered with every vehicle. A vehicle can set its own, or switch one off with "Not offered for this vehicle", on its Extras tab. | เสนอพร้อมรถทุกคัน รถแต่ละรุ่นตั้งค่าของตัวเองได้ หรือปิดรายการด้วย "ไม่เสนอสำหรับรถรุ่นนี้" ในแท็บของเสริมของรถรุ่นนั้น |
-| `Products.extras.everyIntroRead` | Offered with every vehicle. | เสนอพร้อมรถทุกคัน |
 | `Products.extras.ownTitle` | Offered with this vehicle | เสนอพร้อมรถรุ่นนี้ |
 | `Products.extras.everyTitle` | Offered with every vehicle | เสนอพร้อมรถทุกคัน |
 | `Products.extras.ownNone` | Nothing of its own yet. | ยังไม่มีรายการของรถรุ่นนี้เอง |

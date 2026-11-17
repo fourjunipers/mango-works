@@ -86,7 +86,7 @@ export async function ExtrasPanel({
     </li>
   );
   return (
-    <Panel intro={t(vehicle ? "introRead" : "everyIntroRead")} className="max-w-3xl">
+    <Panel intro={vehicle ? t("introRead") : undefined} className="max-w-3xl">
       <div className="space-y-6">
         <section className="space-y-3">
           <h2 className="font-semibold">

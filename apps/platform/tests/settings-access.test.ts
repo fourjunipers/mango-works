@@ -32,6 +32,17 @@ function pagesUnder(dir: string): string[] {
   });
 }
 
+/**
+ * A page's source with its comments taken out, so a check that is only in
+ * a comment (commented out) does not count.
+ */
+function stripComments(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+}
+const code = (path: string) => stripComments(readFileSync(path, "utf8"));
+
 const pages = pagesUnder(settingsDir)
   .map((full) => relative(settingsDir, full).split(sep).join("/"))
   .sort();
@@ -55,7 +66,7 @@ describe("every Settings page but Extras refuses anyone but an owner or a manage
 
   for (const page of OWNER_OR_MANAGER) {
     it(`settings/${page}: its first check is requireArea(slug, "settings")`, () => {
-      const source = readFileSync(join(settingsDir, page), "utf8");
+      const source = code(join(settingsDir, page));
       // The page's own function: before the check it waits only for its
       // params, and it reads, returns or redirects nothing.
       const body = source.slice(source.indexOf("export default"));
@@ -73,8 +84,24 @@ describe("every Settings page but Extras refuses anyone but an owner or a manage
     });
   }
 
+  it("a check that is only in a comment does not count", () => {
+    const commented = [
+      "export default async function Page({ params }) {",
+      "  const { tenant: slug } = await params;",
+      '  // const { membership } = await requireArea(slug, "settings");',
+      '  /* await requireArea(slug, "settings"); */',
+      "  return null;",
+      "}",
+    ].join("\n");
+    expect(stripComments(commented)).not.toContain("requireArea");
+    // A URL in a string keeps its "//".
+    expect(stripComments('const a = "https://x.test";')).toBe(
+      'const a = "https://x.test";',
+    );
+  });
+
   it("settings/extras/page.tsx: owners, managers and staff; mechanics and drivers are not found", () => {
-    const source = readFileSync(join(settingsDir, "extras/page.tsx"), "utf8");
+    const source = code(join(settingsDir, "extras/page.tsx"));
     expect(source).toContain("if (!canSeeExtrasSettings(role)) notFound();");
   });
 });
