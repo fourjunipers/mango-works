@@ -75,6 +75,15 @@ A booking reads prices before its transaction and never locks a pricing row, a p
 
 Never push migrations to live from a branch. Stripe stays in test mode until the owner says otherwise. Never commit secrets: keys live in each app's `.env.local` (git-ignored), and each app's `.env.example` lists every variable.
 
+## Not tied to Supabase
+
+The owner plans to move the database from Supabase to Neon after Phase 3. Four standing rules keep that move small. They bind all new code; code that does not follow them yet is listed in `docs/PROGRESS.md`, so don't spread it.
+
+- **All database access goes through `packages/db`.** An app or another package gets its client from `@mango/db` and never creates one itself or imports `@supabase/*`. Queries and RPC calls are made with that client.
+- **File storage sits behind one module.** Uploading, deleting and making the address of a stored file go through that module and nothing else calls `.storage`.
+- **Sign-in goes through one helper, with no Supabase-only features.** Signing in, signing out, the session and "who is this" are asked of that helper. Use only what any sign-in provider offers (email and password or link, OAuth, a session); nothing that exists on Supabase alone.
+- **RLS uses the `my_tenant_ids()`-style helpers, not `auth.uid()` directly.** A policy asks `platform_private.my_tenant_ids()`, `my_role()` or `has_role()`. Who the caller is, is read in those helpers and nowhere else in a policy, so moving changes the helpers and not every policy.
+
 ## Built for any country
 
 The platform works for a shop in any country; Moto Mangos goes live market by market (docs/platform/SPEC.md › Built for any country).

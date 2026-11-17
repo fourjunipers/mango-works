@@ -1527,37 +1527,130 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
     expect(await blockCount(bike.id)).toBe(1);
   }, 60_000);
 
-  it("the other way round: the new booking is first, and the confirm that waited for it is refused", async () => {
+  it("the other way round: the confirm begins before the expiry; a new booking at a second place, begun after it, takes the listing's row first; the confirm is seen waiting at that row and is then refused; the cap is not passed", async () => {
     const bike = await listedVehicle(3, { instant: 1 });
+    // The new booking is for another place of the same shop: it shares no
+    // product lock with the confirm, only the listing. (At the same place
+    // the product lock alone would make the two take turns.)
+    const second = await branch(shop, "Asia/Bangkok");
+    await addUnits(bike.id, 2, shop, second);
     const hold = booked(
       await mmBook([{ product_id: bike.id, ...window }], { hold: true }),
     );
-    const expires = await setExpiry(hold.booking_id, 300);
+    // Clear of the minute's sweep, which would release the hold itself and
+    // so refuse the confirm for another reason.
+    while (new Date().getSeconds() > 44 || new Date().getSeconds() < 2)
+      await new Promise((r) => setTimeout(r, 200));
+    const before = deadlocks();
+    const expires = await setExpiry(hold.booking_id, 2_000);
+
+    // The confirm: its transaction begins now, in time, and gets to its
+    // work five seconds on, after the booking below has the listing's row.
+    const began = `confirm-begun-${tag}`;
+    const confirm = sqlBackground(`
+      begin;
+      select 'began in time: ' || (now() < min(hold_expires_at))
+        from platform.reservations where booking_id = '${hold.booking_id}';
+      ${asServer}
+      select pg_sleep(5) /* ${began} */;
+      ${confirmSql(hold.booking_id)}
+      select 'judged at: ' || (clock_timestamp() > '${expires.toISOString()}'::timestamptz);
+      commit;
+    `);
+    await holding(began);
     await past(expires);
+
+    // The booking, begun after the expiry: to it the hold has run out, so
+    // it does not count it, takes the cap's one place and is not yet saved.
     const marker = `booking-in-flight-${tag}`;
     const body = JSON.stringify(
       request(shop, "marketplace", "instant", [
-        { product_id: bike.id, ...window },
+        { product_id: bike.id, location_id: second, ...window },
       ]).p_request,
     );
-    const holder = sqlBackground(`
+    const booking = sqlBackground(`
       begin;
       ${asServer}
       select 'booking: ' || (platform.reserve('${shop.id}', '${body}'::jsonb) ->> 'ok');
-      select pg_sleep(3) /* ${marker} */;
+      select pg_sleep(6) /* ${marker} */;
       commit;
     `);
     await holding(marker);
-    const confirmed = await service.rpc("confirm_hold", {
-      p_tenant_id: shop.id,
-      p_booking_id: hold.booking_id,
-    });
-    expect((await holder).out).toContain("booking: true");
-    expect(confirmed.data).toMatchObject({ ok: false, reason: "hold_expired" });
-    expect((await reservationsOf(bike.id)).map((r) => r.state).sort()).toEqual([
-      "expired",
-      "reserved",
+    // The confirm has not got to its work yet: the booking was first.
+    expect(
+      sql(
+        `select count(*) from pg_stat_activity where state = 'active' and query like '%${began}%' and pid <> pg_backend_pid();`,
+      ).out,
+      "the booking was not in place before the confirm woke: timing, run again",
+    ).toBe("1");
+    // The booking did not release the hold (it is another place's), so the
+    // only thing between the confirm and the cap is the listing's row.
+    expect((await reservationsOf(bike.id)).map((r) => r.state)).toEqual([
+      "held",
     ]);
+
+    // The confirm reaches its work and stops at the listing's row: it has
+    // the row's tuple lock and waits for the booking's transaction.
+    // (Polled until it is seen, or until the confirm has answered without
+    // ever waiting, which is what it does with the listing's row left out.)
+    let answered = false;
+    void confirm.then(() => (answered = true));
+    let seen = "";
+    while (!seen && !answered) {
+      seen = sql(`
+      select 'waiting at the listing''s row'
+      from pg_locks w
+      join pg_stat_activity a on a.pid = w.pid
+      where not w.granted
+        and a.query like '%confirm_hold%'
+        and a.pid <> pg_backend_pid()
+        and (
+          (w.locktype = 'tuple'
+            and w.relation = 'platform.product_listings'::regclass)
+          or (w.locktype = 'transactionid' and exists (
+            select 1 from pg_locks t
+            where t.pid = w.pid and t.granted and t.locktype = 'tuple'
+              and t.relation = 'platform.product_listings'::regclass))
+        )
+      limit 1;
+    `).out;
+      if (!seen) await new Promise((r) => setTimeout(r, 50));
+    }
+    expect
+      .soft(seen, "the confirm answered without waiting at the listing's row")
+      .toBe("waiting at the listing's row");
+    // And it waits for that booking, not for anything else.
+    expect
+      .soft(
+        sql(`
+        select count(*) from pg_stat_activity a
+        where a.query like '%confirm_hold%' and a.pid <> pg_backend_pid()
+          and pg_blocking_pids(a.pid) = array(
+            select b.pid from pg_stat_activity b
+            where b.query like '%${marker}%' and b.pid <> pg_backend_pid());
+      `).out,
+        "the confirm is not waiting for the booking",
+      )
+      .toBe("1");
+
+    const booked_ = await booking;
+    expect(booked_.failed).toBe("");
+    expect(booked_.out).toContain("booking: true");
+    const confirmed = await confirm;
+    expect(confirmed.failed).toBe("");
+    expect(confirmed.out).toContain("began in time: true");
+    expect(confirmed.out).toContain("judged at: true");
+    expect(confirmed.out).toContain("confirm: hold_expired");
+    expect(confirmed.out).not.toContain("confirm: ok");
+    expect(deadlocks()).toBe(before);
+
+    // One place under the cap, one booking: the new one. The hold is still
+    // a run-out hold for the sweep to release; it was never confirmed.
+    const rows = await reservationsOf(bike.id);
+    expect(
+      rows.map((r) => `${r.location_id === second} ${r.state}`).sort(),
+    ).toEqual(["false held", "true reserved"]);
+    expect(rows.filter((r) => r.state === "reserved")).toHaveLength(1);
   }, 60_000);
 });
 

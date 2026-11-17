@@ -11,8 +11,9 @@
  * The fixed order, per line unless it says otherwise:
  *   1. charged length            rental-days.ts
  *   2. unit price                rental-price.ts
- *   3. × quantity = list price
- *   4. included quantity         (Phase 2)
+ *   3. × charged quantity = list price
+ *   4. included quantity         here: an extra's units that come free with
+ *                                its vehicle are taken off before step 3
  *   5. season rules              season.ts
  *   6. discounts                 here
  *   7. VAT, once per invoice and rate group   here
@@ -84,6 +85,12 @@ export type QuoteLineInput = {
   vehicle: boolean;
   /** The product's own deposit per unit, when it has one. */
   deposit?: bigint | null;
+  /**
+   * Set on gear or a service taken with a vehicle (step 4): the vehicle's
+   * line on this invoice, and how many units come free with each one.
+   * Empty: the line stands alone and every unit is charged.
+   */
+  extraOf?: { lineId: string; includedQuantity: number } | null;
 };
 
 /** Who or what a discount comes from. Only a coupon is stopped by the switch. */
@@ -144,8 +151,18 @@ export type QuotedLine = {
   id: string;
   productId: string;
   quantity: number;
+  /** The vehicle line this one is an extra of, or null. */
+  parentLineId: string | null;
+  /**
+   * How many of `quantity` come free with the vehicle (step 4). Never more
+   * than the quantity: 3 helmets taken where 4 would be free is 3 included.
+   * 0 for a line with no parent.
+   */
+  includedQuantity: number;
+  /** quantity − includedQuantity: the units that are paid for. */
+  chargedQuantity: number;
   unit: UnitPrice;
-  /** Unit price × quantity. */
+  /** Unit price × charged quantity. */
   listPrice: bigint;
   seasons: SeasonAdjustment[];
   /** The list price after season rules. */
@@ -340,20 +357,113 @@ export function depositAmount(
     case "fixed_per_order":
       if (setting.amount < ZERO) bad("A deposit can't be negative");
       return setting.amount;
-    case "per_product": {
-      const fallback = setting.amount ?? ZERO;
-      if (fallback < ZERO) bad("A deposit can't be negative");
-      let sum = ZERO;
-      for (const line of lines) {
-        // Vehicles only: gear, services and items for sale add nothing.
-        if (!line.vehicle) continue;
-        const each = line.deposit ?? fallback;
-        if (each < ZERO) bad("A deposit can't be negative");
-        sum += each * BigInt(line.quantity);
-      }
-      return sum;
-    }
+    case "per_product":
+      return lineDeposits(setting, lines).reduce<bigint>(
+        (sum, each) => sum + (each ?? ZERO),
+        ZERO,
+      );
   }
+}
+
+/**
+ * Each line's own deposit, for the order's record: its deposit per unit ×
+ * its quantity in the per-product mode, for a vehicle. Null for gear, a
+ * service or an item for sale, and for every line in the other modes, where
+ * the deposit belongs to the invoice and not to a line.
+ */
+export function lineDeposits(
+  setting: DepositSetting,
+  lines: readonly QuoteLineInput[],
+): Array<bigint | null> {
+  if (setting.mode !== "per_product") return lines.map(() => null);
+  const fallback = setting.amount ?? ZERO;
+  if (fallback < ZERO) bad("A deposit can't be negative");
+  return lines.map((line) => {
+    // Vehicles only: gear, services and items for sale add nothing.
+    if (!line.vehicle) return null;
+    const each = line.deposit ?? fallback;
+    if (each < ZERO) bad("A deposit can't be negative");
+    return each * BigInt(line.quantity);
+  });
+}
+
+/**
+ * Each line's share of its rate group's VAT (docs/phase-2-plan.md §5.4, Q9).
+ * VAT is still worked out once per invoice and rate (`vatFor`); this shares
+ * that figure over the group's lines in proportion to what each comes to,
+ * leftover minor units to the largest remainders, so the shares add up to
+ * the invoice's VAT exactly. The invoice's figure is the one of record: a
+ * share is for per-bike reports. A line that is not taxable has none.
+ *
+ * In the lines' order.
+ */
+export function lineTaxShares(
+  lines: readonly Pick<QuotedLine, "amount" | "taxRateBp">[],
+  taxGroups: readonly TaxGroup[],
+): bigint[] {
+  const shares = lines.map(() => ZERO);
+  for (const group of taxGroups) {
+    const members = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => line.taxRateBp === group.rateBp);
+    const split = splitProportionally(
+      group.vat,
+      members.map(({ line }) => line.amount),
+    );
+    members.forEach(({ index }, i) => {
+      shares[index] = split[i];
+    });
+  }
+  return shares;
+}
+
+/**
+ * Step 4, the included quantity (docs/phase-2-plan.md §5.2). An extra's line
+ * names its vehicle's line and how many units come free with each vehicle:
+ *
+ *   allowance = included per vehicle × the vehicle line's quantity
+ *   charged   = max(0, quantity − allowance)
+ *
+ * The free units are "included", not a discount: they are in no discount
+ * total. A scooter with 2 helmets included and 3 taken: 2 included, 1
+ * charged. Two scooters and 5 helmets: 4 included, 1 charged.
+ */
+export function includedQuantities(
+  line: QuoteLineInput,
+  lines: readonly QuoteLineInput[],
+): { parentLineId: string | null; included: number; charged: number } {
+  const extra = line.extraOf;
+  if (!extra) {
+    return { parentLineId: null, included: 0, charged: line.quantity };
+  }
+  if (!Number.isInteger(extra.includedQuantity) || extra.includedQuantity < 0) {
+    bad(`Line ${line.id}: the included quantity must be a whole number ≥ 0`);
+  }
+  if (line.vehicle) bad(`Line ${line.id}: a vehicle can't be an extra`);
+  const parent = lines.find((other) => other.id === extra.lineId);
+  if (!parent || parent.id === line.id) {
+    bad(`Line ${line.id} names a parent line that isn't here: ${extra.lineId}`);
+  }
+  if (!parent.vehicle || parent.extraOf) {
+    bad(`Line ${line.id}: an extra goes with a vehicle's line`);
+  }
+  // Two lines of one extra on one vehicle would each take the free units.
+  const twin = lines.find(
+    (other) =>
+      other !== line &&
+      other.productId === line.productId &&
+      other.extraOf?.lineId === extra.lineId,
+  );
+  if (twin) {
+    bad(`Lines ${line.id} and ${twin.id} are the same extra of one line`);
+  }
+  const allowance = extra.includedQuantity * parent.quantity;
+  const included = allowance < line.quantity ? allowance : line.quantity;
+  return {
+    parentLineId: parent.id,
+    included,
+    charged: line.quantity - included,
+  };
 }
 
 // ------------------------------------------------------------------ quote()
@@ -381,6 +491,22 @@ export function quote(input: QuoteInput): Quote {
     }
   }
 
+  // A discount names each of its lines once. Named twice, a line would lose
+  // the discount twice: 10% on ["bike", "bike"] would take 20%.
+  for (const discount of discounts) {
+    if (discount.lines === "all") continue;
+    if (new Set(discount.lines).size !== discount.lines.length) {
+      bad(`Discount ${discount.id} names a line more than once`);
+    }
+  }
+
+  // Step 4 is worked out first, for every line and before the "can't be
+  // priced" answer below, so a wrong parent is always `bad_input`: it is
+  // never hidden behind another line that has no price yet.
+  const quantities = input.lines.map((line) =>
+    includedQuantities(line, input.lines),
+  );
+
   // No price is not zero: say which lines can't be priced.
   const unpriced = input.lines.filter((line) => line.pricing === null);
   if (unpriced.length > 0) {
@@ -393,12 +519,13 @@ export function quote(input: QuoteInput): Quote {
     };
   }
 
-  // Steps 1 to 5: length, unit price, quantity, seasons.
-  const lines: QuotedLine[] = input.lines.map((line) => {
+  // Steps 1 to 5: length, unit price, charged quantity, seasons.
+  const lines: QuotedLine[] = input.lines.map((line, index) => {
     const unit = line.rentalStart
       ? continuationPrice(line.pricing!, line.span, line.rentalStart)
       : unitPrice(line.pricing!, line.span);
-    const listPrice = unit.amount * BigInt(line.quantity);
+    const { parentLineId, included, charged } = quantities[index];
+    const listPrice = unit.amount * BigInt(charged);
     const starts = chargedPeriodStarts(unit, line.span);
     const seasons =
       starts === null
@@ -410,6 +537,9 @@ export function quote(input: QuoteInput): Quote {
       id: line.id,
       productId: line.productId,
       quantity: line.quantity,
+      parentLineId,
+      includedQuantity: included,
+      chargedQuantity: charged,
       unit,
       listPrice,
       seasons,
