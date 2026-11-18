@@ -20,6 +20,9 @@ describe("settingsDraft", () => {
       depositPercent: "",
       depositAmount: "",
       couponsEnabled: false,
+      returningEnabled: false,
+      returningPercent: "",
+      returningRentals: "1",
     });
   });
 
@@ -46,6 +49,9 @@ describe("settingsDraft", () => {
       depositPercent: "12.5",
       depositAmount: "",
       couponsEnabled: true,
+      returningEnabled: false,
+      returningPercent: "",
+      returningRentals: "1",
     });
   });
 });
@@ -63,6 +69,9 @@ describe("settingsPayload", () => {
         deposit_mode: "none",
         rounding_step: null,
         default_tax_profile_id: null,
+        returning_enabled: false,
+        returning_percent_bp: null,
+        returning_rentals_needed: 1,
       },
     });
   });

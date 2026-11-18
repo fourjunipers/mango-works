@@ -110,7 +110,7 @@ async function depositFor45DaysForTwo(page: Page, address: string) {
   return checkRow(page, "Deposit");
 }
 
-test("Settings has five sections for owners; staff, mechanics and drivers can't open the first four; old price list links redirect", async ({
+test("Settings has six sections for owners; staff, mechanics and drivers can't open the first four; old price list links redirect", async ({
   page,
   browser,
 }) => {
@@ -121,6 +121,7 @@ test("Settings has five sections for owners; staff, mechanics and drivers can't 
     "Pricing and tax",
     "Seasons",
     "Price lists",
+    "Coupons",
     "Extras",
   ])
     await expect(
@@ -477,9 +478,15 @@ test("a season: made for one product, on its Pricing tab, in Check a price and i
       const card = page.getByRole("region", { name: "Seasons" });
       await expect(card).toContainText(season);
       await expect(card).toContainText("20% off");
-      await pickup(page, "2027-04-01T10:00");
-      await checkPrice(page).getByLabel("Days", { exact: true }).fill("7");
-      await expect(checkRow(page, `Season: ${season}`)).toHaveText(/^−\D*280$/);
+      // Typed again if the page was still starting and put its own pickup back.
+      await expect(async () => {
+        await pickup(page, "2027-04-01T10:00");
+        await checkPrice(page).getByLabel("Days", { exact: true }).fill("7");
+        await expect(checkRow(page, `Season: ${season}`)).toHaveText(
+          /^−\D*280$/,
+          { timeout: 2_000 },
+        );
+      }).toPass({ timeout: 15_000 });
       await expect(checkRow(page, "Total")).toHaveText(/^\D*1,120$/);
       // Outside it, the list price.
       await pickup(page, "2027-01-01T10:00");
