@@ -231,9 +231,10 @@ create table platform.coupon_redemptions (
   foreign key (tenant_id, coupon_id) references platform.coupons (tenant_id, id)
 );
 
--- One coupon per booking.
+-- One coupon per booking. Per shop: one shop's rows never stand in the
+-- way of another's.
 create unique index coupon_redemptions_booking_key
-  on platform.coupon_redemptions (booking_id) where released_at is null;
+  on platform.coupon_redemptions (tenant_id, booking_id) where released_at is null;
 create index coupon_redemptions_coupon_idx
   on platform.coupon_redemptions (coupon_id) where released_at is null;
 create index coupon_redemptions_tenant_idx on platform.coupon_redemptions (tenant_id);
