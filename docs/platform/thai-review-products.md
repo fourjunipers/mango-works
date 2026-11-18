@@ -988,3 +988,185 @@ Claude’s translations, for Korn or BSR’s admin: the Extras tab of a vehicle,
 | `Products.extras.readOnly` | Only an owner or a manager can change extras. | เฉพาะเจ้าของหรือผู้จัดการเท่านั้นที่เปลี่ยนของเสริมได้ |
 | `Products.extras.type.gear` | Rental gear | อุปกรณ์ให้เช่า |
 | `Products.extras.type.service` | Service | บริการ |
+
+## Phase 2, stage 9: coupon screens (18 Nov 2026)
+
+New Thai lines on the branch `platform/phase-2-stage-9-coupon-screens`: Settings › Coupons (list, form, History), the returning-customer card on Settings › Pricing and tax, Check a price with extras, a coupon code and the "Returning customer" tick, and the words for every coupon refusal. Claude's translations; please check. Words chosen: คูปอง (coupon), ส่วนลดลูกค้าเก่า (returning-customer discount), เก็บถาวร (archive), นำกลับมา (bring back), ใช้ร่วมกับ (combined with). Gone: `Settings.pricing.coupons.later`.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Settings.nav.coupons` | Coupons | คูปอง |
+| `Settings.coupons.title` | Coupons | คูปอง |
+| `Settings.coupons.intro` | Codes a customer gives for a discount. Each one says how much it takes off, on what, and when. | รหัสที่ลูกค้าใช้รับส่วนลด แต่ละรหัสกำหนดว่าลดเท่าไร ใช้กับอะไร และใช้ได้เมื่อไร |
+| `Settings.coupons.new` | New coupon | คูปองใหม่ |
+| `Settings.coupons.none` | No coupons yet. Start with “New coupon”. | ยังไม่มีคูปอง เริ่มที่ “คูปองใหม่” |
+| `Settings.coupons.listLabel` | Coupons | คูปอง |
+| `Settings.coupons.notAccepting` | The shop doesn’t accept coupons right now, so no code takes anything off. You can still create and edit coupons. Switch on “Accept coupons” in <link>Settings › Pricing and tax</link>. | ขณะนี้ร้านไม่รับคูปอง จึงไม่มีรหัสใดลดราคาได้ แต่ยังสร้างและแก้ไขคูปองได้ เปิด “รับคูปอง” ได้ที่ <link>การตั้งค่า › ราคาและภาษี</link> |
+| `Settings.coupons.status_on` | On | เปิด |
+| `Settings.coupons.status_off` | Off | ปิด |
+| `Settings.coupons.status_archived` | Archived | เก็บถาวร |
+| `Settings.coupons.percentOff` | {percent} off | ลด {percent} |
+| `Settings.coupons.amountOff` | {amount} off | ลด {amount} |
+| `Settings.coupons.usesOf` | Used {used} of {limit} | ใช้แล้ว {used} จาก {limit} |
+| `Settings.coupons.usesNoLimit` | Used {used} | ใช้แล้ว {used} |
+| `Settings.coupons.usesUnknown` | Uses: not shown (its code is used by a newer coupon) | จำนวนที่ใช้: ไม่แสดง (คูปองใหม่ใช้รหัสนี้แล้ว) |
+| `Settings.coupons.edit` | Edit | แก้ไข |
+| `Settings.coupons.view` | View | ดู |
+| `Settings.coupons.switchOn` | Switch on | เปิด |
+| `Settings.coupons.switchOff` | Switch off | ปิด |
+| `Settings.coupons.archive` | Archive | เก็บถาวร |
+| `Settings.coupons.restore` | Bring back | นำกลับมา |
+| `Settings.coupons.archiveConfirm` | Archive {code}? It can no longer be used, and its code becomes free for a new coupon. Bookings that used it keep their discount. | เก็บ {code} ถาวรหรือไม่ จะใช้คูปองนี้ไม่ได้อีก และรหัสนี้จะนำไปใช้กับคูปองใหม่ได้ การจองที่ใช้ไปแล้วยังได้ส่วนลดเหมือนเดิม |
+| `Settings.coupons.newTitle` | New coupon | คูปองใหม่ |
+| `Settings.coupons.newIntro` | Only the code and the discount are needed. Leave a box empty for no limit. | ต้องกรอกเพียงรหัสและส่วนลด เว้นช่องว่างไว้หากไม่จำกัด |
+| `Settings.coupons.editTitle` | Coupon | คูปอง |
+| `Settings.coupons.editIntro` | This coupon is on: customers can use its code. | คูปองนี้เปิดอยู่: ลูกค้าใช้รหัสนี้ได้ |
+| `Settings.coupons.offIntro` | This coupon is off: its code takes nothing off until it is switched on. | คูปองนี้ปิดอยู่: รหัสนี้จะไม่ลดราคาจนกว่าจะเปิด |
+| `Settings.coupons.archivedIntro` | This coupon is archived and can’t be changed. “Bring back” makes it usable again, unless another coupon has its code now. | คูปองนี้ถูกเก็บถาวรและแก้ไขไม่ได้ “นำกลับมา” จะทำให้ใช้ได้อีกครั้ง เว้นแต่มีคูปองอื่นใช้รหัสนี้อยู่ |
+| `Settings.coupons.added` | Coupon created. | สร้างคูปองแล้ว |
+| `Settings.coupons.save` | Save coupon | บันทึกคูปอง |
+| `Settings.coupons.create` | Create coupon | สร้างคูปอง |
+| `Settings.coupons.code` | Code | รหัส |
+| `Settings.coupons.codeHelp` | What the customer types. Letters A to Z and numbers 0 to 9, up to 40. Spaces are taken out and small letters made capitals. | สิ่งที่ลูกค้าพิมพ์ ใช้ตัวอักษร A ถึง Z และตัวเลข 0 ถึง 9 ไม่เกิน 40 ตัว ระบบจะตัดช่องว่างออกและเปลี่ยนตัวพิมพ์เล็กเป็นตัวพิมพ์ใหญ่ |
+| `Settings.coupons.codeStoredAs` | Saved as {code} | จะบันทึกเป็น {code} |
+| `Settings.coupons.codeCantSave` | This code can’t be saved: use only the letters A to Z and the numbers 0 to 9. Thai letters and full-width characters (such as Ａ or ０) can’t be used. | บันทึกรหัสนี้ไม่ได้: ใช้ได้เฉพาะตัวอักษร A ถึง Z และตัวเลข 0 ถึง 9 ใช้อักษรไทยและอักขระแบบเต็มความกว้าง (เช่น Ａ หรือ ０) ไม่ได้ |
+| `Settings.coupons.name` | Name (for the shop) | ชื่อ (สำหรับร้าน) |
+| `Settings.coupons.nameHelp` | Your own note, such as “Songkran flyer”. Customers don’t see it. | บันทึกของร้านเอง เช่น “ใบปลิวสงกรานต์” ลูกค้าไม่เห็น |
+| `Settings.coupons.value` | Discount | ส่วนลด |
+| `Settings.coupons.kind` | Kind | ประเภท |
+| `Settings.coupons.kindPercent` | Percentage | เปอร์เซ็นต์ |
+| `Settings.coupons.kindFixed` | Fixed amount | จำนวนเงินคงที่ |
+| `Settings.coupons.percent` | Percentage off | ลดกี่เปอร์เซ็นต์ |
+| `Settings.coupons.percentHelp` | Such as 10 or 12.5. Taken off each of the coupon’s lines after seasonal prices. | เช่น 10 หรือ 12.5 หักจากแต่ละรายการของคูปองหลังคิดราคาตามฤดูกาล |
+| `Settings.coupons.amount` | Amount off ({currency}) | จำนวนเงินที่ลด ({currency}) |
+| `Settings.coupons.amountHelp` | Off the coupon’s lines together, never more than they come to. Never off a deposit. | หักจากรายการของคูปองรวมกัน ไม่เกินยอดของรายการเหล่านั้น และไม่หักจากเงินมัดจำ |
+| `Settings.coupons.products` | Products | สินค้า |
+| `Settings.coupons.productsIntro` | The lines it takes money off. A coupon for chosen scooters does not reduce the helmets beside them. | รายการที่คูปองนี้ลดราคา คูปองสำหรับสกู๊ตเตอร์ที่เลือกจะไม่ลดราคาหมวกกันน็อกที่เช่าพร้อมกัน |
+| `Settings.coupons.scopeAll` | All products | สินค้าทั้งหมด |
+| `Settings.coupons.scopeChosen` | Chosen products | สินค้าที่เลือก |
+| `Settings.coupons.search` | Find a product | ค้นหาสินค้า |
+| `Settings.coupons.retired` | (retired) | (เลิกใช้แล้ว) |
+| `Settings.coupons.valid` | Valid dates | ช่วงวันที่ใช้ได้ |
+| `Settings.coupons.validIntro` | The days a booking can be made with it, on the shop’s calendar. Leave empty for any day. | วันที่ทำการจองด้วยคูปองนี้ได้ ตามปฏิทินของร้าน เว้นว่างไว้หากใช้ได้ทุกวัน |
+| `Settings.coupons.validFrom` | First day | วันแรก |
+| `Settings.coupons.validTo` | Last day | วันสุดท้าย |
+| `Settings.coupons.pickup` | Pickup dates | ช่วงวันรับรถ |
+| `Settings.coupons.pickupIntro` | The rental must start between these days. Leave empty for any pickup. | การเช่าต้องเริ่มระหว่างวันเหล่านี้ เว้นว่างไว้หากรับรถวันใดก็ได้ |
+| `Settings.coupons.pickupFrom` | Pickup from | รับรถตั้งแต่ |
+| `Settings.coupons.pickupTo` | Pickup until | รับรถถึง |
+| `Settings.coupons.limits` | Limits | เงื่อนไข |
+| `Settings.coupons.minDays` | Minimum days | จำนวนวันขั้นต่ำ |
+| `Settings.coupons.minDaysHelp` | The rental must be at least this many days. Empty: any length. | ต้องเช่าอย่างน้อยกี่วัน เว้นว่าง: กี่วันก็ได้ |
+| `Settings.coupons.minSpend` | Minimum spend ({currency}) | ยอดขั้นต่ำ ({currency}) |
+| `Settings.coupons.minSpendHelp` | Counts only this coupon’s own lines, after seasonal prices and before any discount. Empty: no minimum. | นับเฉพาะรายการของคูปองนี้ หลังคิดราคาตามฤดูกาลและก่อนหักส่วนลดใดๆ เว้นว่าง: ไม่มีขั้นต่ำ |
+| `Settings.coupons.maxUses` | Total uses | จำนวนครั้งที่ใช้ได้ทั้งหมด |
+| `Settings.coupons.maxUsesHelp` | How many bookings can use it, in all. A cancelled booking gives its use back. Empty: no limit. | ใช้ได้กี่การจองทั้งหมด การจองที่ยกเลิกจะคืนสิทธิ์ เว้นว่าง: ไม่จำกัด |
+| `Settings.coupons.channels` | Where it can be used | ใช้ได้ที่ไหน |
+| `Settings.coupons.channelsIntro` | Choose at least one. | เลือกอย่างน้อยหนึ่งช่องทาง |
+| `Settings.coupons.channel_staff` | By staff, at the counter or on the phone | พนักงาน ที่หน้าร้านหรือทางโทรศัพท์ |
+| `Settings.coupons.channel_booking_page` | On the shop’s booking page | บนหน้าจองของร้าน |
+| `Settings.coupons.channel_marketplace` | On Moto Mangos | บน Moto Mangos |
+| `Settings.coupons.combining` | With other discounts | ใช้ร่วมกับส่วนลดอื่น |
+| `Settings.coupons.withReturning` | Can be combined with the returning-customer discount | ใช้ร่วมกับส่วนลดลูกค้าเก่าได้ |
+| `Settings.coupons.withReturningHelp` | Off: a returning customer gets whichever of the two takes more off. | ปิด: ลูกค้าเก่าจะได้ส่วนลดที่ลดได้มากกว่าระหว่างสองอย่าง |
+| `Settings.coupons.withSeason` | Can be used on season discounts | ใช้กับราคาที่ลดตามฤดูกาลได้ |
+| `Settings.coupons.withSeasonHelp` | Off: the coupon takes nothing off a rental that a season has already made cheaper. | ปิด: คูปองจะไม่ลดราคาการเช่าที่ลดราคาตามฤดูกาลอยู่แล้ว |
+| `Settings.coupons.history.title` | History | ประวัติ |
+| `Settings.coupons.history.noValue` | no discount | ไม่มีส่วนลด |
+| `Settings.coupons.history.percentOff` | {percent} off | ลด {percent} |
+| `Settings.coupons.history.amountOff` | {amount} off | ลด {amount} |
+| `Settings.coupons.history.between` | {from} to {to} | {from} ถึง {to} |
+| `Settings.coupons.history.fromDay` | from {from} | ตั้งแต่ {from} |
+| `Settings.coupons.history.untilDay` | until {to} | จนถึง {to} |
+| `Settings.coupons.history.anyDay` | any day | ทุกวัน |
+| `Settings.coupons.history.created` | {who} created coupon {code}: {value}, all products | {who} สร้างคูปอง {code}: {value} สินค้าทั้งหมด |
+| `Settings.coupons.history.createdChosen` | {who} created coupon {code}: {value}, {count, plural, one {# chosen product} other {# chosen products}} | {who} สร้างคูปอง {code}: {value} สินค้าที่เลือก {count, plural, other {#}} รายการ |
+| `Settings.coupons.history.switchedOn` | {who} switched on {code} | {who} เปิด {code} |
+| `Settings.coupons.history.switchedOff` | {who} switched off {code} | {who} ปิด {code} |
+| `Settings.coupons.history.archived` | {who} archived {code} | {who} เก็บ {code} ถาวร |
+| `Settings.coupons.history.restored` | {who} brought back {code} | {who} นำ {code} กลับมา |
+| `Settings.coupons.history.allProducts` | {who} set {code} to all products | {who} ตั้ง {code} ให้ใช้กับสินค้าทั้งหมด |
+| `Settings.coupons.history.chosenProducts` | {who} set {code} to {count, plural, one {# chosen product} other {# chosen products}} | {who} ตั้ง {code} ให้ใช้กับสินค้าที่เลือก {count, plural, other {#}} รายการ |
+| `Settings.coupons.history.codeChanged` | {who} changed the code {from} to {to} | {who} เปลี่ยนรหัส {from} เป็น {to} |
+| `Settings.coupons.history.renamed` | {who} named {code} “{name}” | {who} ตั้งชื่อ {code} ว่า “{name}” |
+| `Settings.coupons.history.nameCleared` | {who} took the name off {code} | {who} ลบชื่อของ {code} |
+| `Settings.coupons.history.valueChanged` | {who} changed {code} from {from} to {to} | {who} เปลี่ยน {code} จาก {from} เป็น {to} |
+| `Settings.coupons.history.validDates` | {who} set the valid dates of {code}: {range} | {who} ตั้งช่วงวันที่ใช้ได้ของ {code}: {range} |
+| `Settings.coupons.history.pickupDates` | {who} set the pickup dates of {code}: {range} | {who} ตั้งช่วงวันรับรถของ {code}: {range} |
+| `Settings.coupons.history.minDays` | {who} set the minimum days of {code} to {days} | {who} ตั้งจำนวนวันขั้นต่ำของ {code} เป็น {days} |
+| `Settings.coupons.history.minDaysCleared` | {who} took the minimum days off {code} | {who} ยกเลิกจำนวนวันขั้นต่ำของ {code} |
+| `Settings.coupons.history.minSpend` | {who} set the minimum spend of {code} to {amount} | {who} ตั้งยอดขั้นต่ำของ {code} เป็น {amount} |
+| `Settings.coupons.history.minSpendCleared` | {who} took the minimum spend off {code} | {who} ยกเลิกยอดขั้นต่ำของ {code} |
+| `Settings.coupons.history.maxUses` | {who} set the total uses of {code} to {uses} | {who} ตั้งจำนวนครั้งที่ใช้ได้ของ {code} เป็น {uses} |
+| `Settings.coupons.history.maxUsesCleared` | {who} set the total uses of {code} to no limit | {who} ตั้งจำนวนครั้งที่ใช้ได้ของ {code} เป็นไม่จำกัด |
+| `Settings.coupons.history.channels` | {who} set where {code} can be used: {channels} | {who} ตั้งช่องทางที่ใช้ {code} ได้: {channels} |
+| `Settings.coupons.history.channelsNone` | {who} took every channel off {code} | {who} ยกเลิกทุกช่องทางของ {code} |
+| `Settings.coupons.history.channel_staff` | staff | พนักงาน |
+| `Settings.coupons.history.channel_booking_page` | booking page | หน้าจอง |
+| `Settings.coupons.history.channel_marketplace` | Moto Mangos | Moto Mangos |
+| `Settings.coupons.history.withReturningOn` | {who} let {code} be combined with the returning-customer discount | {who} ให้ {code} ใช้ร่วมกับส่วนลดลูกค้าเก่าได้ |
+| `Settings.coupons.history.withReturningOff` | {who} stopped {code} being combined with the returning-customer discount | {who} ไม่ให้ {code} ใช้ร่วมกับส่วนลดลูกค้าเก่า |
+| `Settings.coupons.history.withSeasonOn` | {who} let {code} be used on season discounts | {who} ให้ {code} ใช้กับราคาที่ลดตามฤดูกาลได้ |
+| `Settings.coupons.history.withSeasonOff` | {who} stopped {code} being used on season discounts | {who} ไม่ให้ {code} ใช้กับราคาที่ลดตามฤดูกาล |
+| `Settings.pricing.coupons.help` | Off: no code takes anything off, on any channel. Coupons are made in Settings › Coupons. | ปิด: ไม่มีรหัสใดลดราคาได้ในทุกช่องทาง สร้างคูปองได้ที่การตั้งค่า › คูปอง |
+| `Settings.pricing.returning.title` | Returning-customer discount | ส่วนลดลูกค้าเก่า |
+| `Settings.pricing.returning.intro` | Taken off rentals automatically for a customer who has rented here before. Not off items for sale or services, and not stopped by the coupons switch. | หักจากค่าเช่าโดยอัตโนมัติสำหรับลูกค้าที่เคยเช่าที่ร้านมาก่อน ไม่หักจากสินค้าขายหรือบริการ และไม่ขึ้นกับสวิตช์รับคูปอง |
+| `Settings.pricing.returning.label` | Give returning customers a discount | ให้ส่วนลดแก่ลูกค้าเก่า |
+| `Settings.pricing.returning.percent` | Percentage off | ลดกี่เปอร์เซ็นต์ |
+| `Settings.pricing.returning.percentHelp` | Such as 10 or 12.5. | เช่น 10 หรือ 12.5 |
+| `Settings.pricing.returning.rentals` | Completed rentals needed | จำนวนการเช่าที่เสร็จสิ้นแล้วที่ต้องมี |
+| `Settings.pricing.returning.rentalsHelp` | How many rentals at this shop make a customer “returning”. Usually 1. | ต้องเช่าที่ร้านนี้กี่ครั้งจึงนับเป็น “ลูกค้าเก่า” ปกติคือ 1 |
+| `FormErrors.couponInvalidCode` | Use only the letters A to Z and the numbers 0 to 9, up to 40 of them (spaces are taken out). Thai letters and full-width characters (such as Ａ or ０) can’t be used in a code. | ใช้ได้เฉพาะตัวอักษร A ถึง Z และตัวเลข 0 ถึง 9 ไม่เกิน 40 ตัว (ระบบตัดช่องว่างออก) ใช้อักษรไทยและอักขระแบบเต็มความกว้าง (เช่น Ａ หรือ ０) ในรหัสไม่ได้ |
+| `FormErrors.couponCodeTaken` | Another coupon already uses the code {code}. Archive it first, or choose another code. | มีคูปองอื่นใช้รหัส {code} อยู่แล้ว เก็บคูปองนั้นถาวรก่อน หรือเลือกรหัสอื่น |
+| `FormErrors.couponCodeTakenBy` | The coupon “{name}” already uses the code {code}. Archive it first, or choose another code. | คูปอง “{name}” ใช้รหัส {code} อยู่แล้ว เก็บคูปองนั้นถาวรก่อน หรือเลือกรหัสอื่น |
+| `FormErrors.couponOnlyOwnerOrManager` | Only an owner or a manager can change coupons. | เฉพาะเจ้าของหรือผู้จัดการเท่านั้นที่เปลี่ยนคูปองได้ |
+| `FormErrors.couponInvalid` | Check the coupon’s details and save again. | ตรวจสอบรายละเอียดของคูปองแล้วบันทึกอีกครั้ง |
+| `FormErrors.couponNotFound` | This coupon no longer exists. Reload the page. | ไม่มีคูปองนี้แล้ว โปรดโหลดหน้าใหม่ |
+| `FormErrors.couponProductNotFound` | One of the chosen products no longer exists. Reload the page and choose again. | สินค้าที่เลือกบางรายการไม่มีอยู่แล้ว โปรดโหลดหน้าใหม่แล้วเลือกอีกครั้ง |
+| `FormErrors.couponTryAgain` | Someone is making a booking with this coupon right now, so nothing was saved. Please save again. | มีผู้กำลังจองด้วยคูปองนี้อยู่ จึงยังไม่ได้บันทึก โปรดบันทึกอีกครั้ง |
+| `FormErrors.couponPercentTooLarge` | At most 100%. | สูงสุด 100% |
+| `FormErrors.couponAmountZero` | Enter an amount above 0. | กรอกจำนวนเงินมากกว่า 0 |
+| `FormErrors.couponNoProducts` | Choose at least one product, or All products. | เลือกสินค้าอย่างน้อยหนึ่งรายการ หรือสินค้าทั้งหมด |
+| `FormErrors.couponDatesOrder` | The last day is before the first. | วันสุดท้ายอยู่ก่อนวันแรก |
+| `FormErrors.couponMinDaysRange` | Enter a whole number of days from 1 to 1,000, or leave it empty. | กรอกจำนวนวันเป็นจำนวนเต็มตั้งแต่ 1 ถึง 1,000 หรือเว้นว่างไว้ |
+| `FormErrors.couponMaxUsesRange` | Enter a whole number from 1, or leave it empty for no limit. | กรอกจำนวนเต็มตั้งแต่ 1 ขึ้นไป หรือเว้นว่างไว้หากไม่จำกัด |
+| `FormErrors.couponNoChannels` | Choose at least one place this code can be used. | เลือกช่องทางที่ใช้รหัสนี้ได้อย่างน้อยหนึ่งช่องทาง |
+| `FormErrors.returningPercentRequired` | Enter the percentage to switch the discount on. | กรอกเปอร์เซ็นต์เพื่อเปิดส่วนลดนี้ |
+| `FormErrors.returningRentalsRange` | Enter a whole number from 1 to 1,000. | กรอกจำนวนเต็มตั้งแต่ 1 ถึง 1,000 |
+| `FormErrors.hold_expired` | This hold has run out; make the booking again. | การกันไว้นี้หมดเวลาแล้ว โปรดทำการจองใหม่ |
+| `FormErrors.coupon_not_valid` | This coupon can’t be used right now; send it again. | ใช้คูปองนี้ไม่ได้ในขณะนี้ โปรดส่งอีกครั้ง |
+| `FormErrors.coupon_used_up` | This coupon has been used as many times as it allows, so nothing was booked. Send the booking again without the code. | คูปองนี้ถูกใช้ครบจำนวนแล้ว จึงยังไม่ได้จอง โปรดส่งการจองอีกครั้งโดยไม่ใส่รหัส |
+| `Pricing.check.extras` | Extras taken with it | ของเสริมที่เช่าพร้อมกัน |
+| `Pricing.check.extraIncluded` | {count} included with each | รวมให้ {count} ต่อคัน |
+| `Pricing.check.extraLine` | {name} × {count} | {name} × {count} |
+| `Pricing.check.extraLineIncluded` | {count} of them included | รวมให้ {count} |
+| `Pricing.check.coupon` | Coupon code | รหัสคูปอง |
+| `Pricing.check.couponApply` | Apply | ใช้ |
+| `Pricing.check.couponChecking` | Checking… | กำลังตรวจสอบ… |
+| `Pricing.check.couponRemove` | Remove the code | ลบรหัส |
+| `Pricing.check.returning` | Returning customer | ลูกค้าเก่า |
+| `Pricing.check.returningHelp` | {percent} off rentals for a customer with {count, plural, one {# completed rental} other {# completed rentals}} here. | ลด {percent} จากค่าเช่าสำหรับลูกค้าที่เช่าที่ร้านนี้เสร็จสิ้นแล้ว {count, plural, other {#}} ครั้ง |
+| `Pricing.check.returningOff` | The shop’s returning-customer discount is off (Settings › Pricing and tax). | ส่วนลดลูกค้าเก่าของร้านปิดอยู่ (การตั้งค่า › ราคาและภาษี) |
+| `Pricing.check.breakdown` | Price breakdown | รายละเอียดราคา |
+| `Pricing.check.discountReturning` | Returning-customer discount | ส่วนลดลูกค้าเก่า |
+| `Pricing.check.discountCoupon` | Coupon {code} | คูปอง {code} |
+| `Pricing.coupon.lookupFailed` | The code couldn’t be checked. Please try again. | ตรวจสอบรหัสไม่ได้ โปรดลองอีกครั้ง |
+| `Pricing.coupon.applied` | Coupon {code} applied. | ใช้คูปอง {code} แล้ว |
+| `Pricing.coupon.appliedInstead` | Coupon {code} applied. It can’t be combined with the returning-customer discount, and the larger discount applies: the coupon takes more off. | ใช้คูปอง {code} แล้ว คูปองนี้ใช้ร่วมกับส่วนลดลูกค้าเก่าไม่ได้ จึงใช้ส่วนลดที่มากกว่า: คูปองลดได้มากกว่า |
+| `Pricing.coupon.notApplied.takesNothing` | Coupon {code} not applied: there is nothing left for it to take off. | ไม่ได้ใช้คูปอง {code}: ไม่มียอดเหลือให้ลด |
+| `Pricing.coupon.notApplied.returningIsLarger` | Coupon {code} not applied: it can’t be combined with the returning-customer discount, and the larger discount applies. The returning-customer discount takes off at least as much. The code isn’t used up. | ไม่ได้ใช้คูปอง {code}: คูปองนี้ใช้ร่วมกับส่วนลดลูกค้าเก่าไม่ได้ จึงใช้ส่วนลดที่มากกว่า ส่วนลดลูกค้าเก่าลดได้เท่ากันหรือมากกว่า รหัสนี้จึงยังไม่ถูกใช้ |
+| `Pricing.coupon.refused.couponsOff` | Not applied: the shop doesn’t accept coupons. Switch on “Accept coupons” in Settings › Pricing and tax. | ไม่ได้ใช้: ร้านไม่รับคูปอง เปิด “รับคูปอง” ได้ที่การตั้งค่า › ราคาและภาษี |
+| `Pricing.coupon.refused.unknown` | Not applied: no coupon has this code. | ไม่ได้ใช้: ไม่มีคูปองที่ใช้รหัสนี้ |
+| `Pricing.coupon.refused.notActive` | Not applied: this coupon is switched off or archived. | ไม่ได้ใช้: คูปองนี้ปิดอยู่หรือถูกเก็บถาวร |
+| `Pricing.coupon.refused.wrongChannel` | Not applied: this coupon can’t be used by staff. | ไม่ได้ใช้: พนักงานใช้คูปองนี้ไม่ได้ |
+| `Pricing.coupon.refused.tooEarly` | Not applied: this coupon can be used from {from}. | ไม่ได้ใช้: คูปองนี้ใช้ได้ตั้งแต่ {from} |
+| `Pricing.coupon.refused.expired` | Not applied: this coupon could be used until {to}. | ไม่ได้ใช้: คูปองนี้ใช้ได้ถึง {to} |
+| `Pricing.coupon.refused.usedUp` | Not applied: this coupon has been used as many times as it allows. | ไม่ได้ใช้: คูปองนี้ถูกใช้ครบจำนวนแล้ว |
+| `Pricing.coupon.refused.customerUsedUp` | Not applied: this customer has used this coupon as many times as it allows. | ไม่ได้ใช้: ลูกค้ารายนี้ใช้คูปองนี้ครบจำนวนแล้ว |
+| `Pricing.coupon.refused.notTheseProducts` | Not applied: this coupon isn’t for these products, or it can’t be used on a season discount. | ไม่ได้ใช้: คูปองนี้ไม่ได้ใช้กับสินค้าเหล่านี้ หรือใช้กับราคาที่ลดตามฤดูกาลไม่ได้ |
+| `Pricing.coupon.refused.wrongDates` | Not applied: the pickup isn’t inside this coupon’s pickup dates. | ไม่ได้ใช้: วันรับรถไม่อยู่ในช่วงวันรับรถของคูปองนี้ |
+| `Pricing.coupon.refused.wrongDatesBetween` | Not applied: the pickup must be from {from} to {to}. | ไม่ได้ใช้: ต้องรับรถระหว่าง {from} ถึง {to} |
+| `Pricing.coupon.refused.wrongDatesFrom` | Not applied: the pickup must be on or after {from}. | ไม่ได้ใช้: ต้องรับรถตั้งแต่ {from} |
+| `Pricing.coupon.refused.wrongDatesUntil` | Not applied: the pickup must be on or before {to}. | ไม่ได้ใช้: ต้องรับรถไม่เกิน {to} |
+| `Pricing.coupon.refused.tooShort` | Not applied: the rental must be at least {days, plural, one {# day} other {# days}}. | ไม่ได้ใช้: ต้องเช่าอย่างน้อย {days, plural, other {#}} วัน |
+| `Pricing.coupon.refused.belowMinimum` | Not applied: this coupon’s products must come to at least {amount} after seasonal prices. | ไม่ได้ใช้: สินค้าของคูปองนี้ต้องมียอดอย่างน้อย {amount} หลังคิดราคาตามฤดูกาล |
