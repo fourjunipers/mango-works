@@ -20,6 +20,7 @@ import {
 import { isGeneralType } from "@/lib/general-products";
 import { minutesToHours } from "@/lib/fleet";
 import { backTarget, keptBack, withBack } from "@/lib/product-list";
+import { canExtras } from "@/lib/extras-permissions";
 import { canPricing } from "@/lib/pricing-permissions";
 import { canManageFleet } from "@/lib/roles";
 import { humanizeKey } from "@/lib/vehicle-kinds";
@@ -27,6 +28,7 @@ import { formatInstant } from "@/lib/shop-time";
 import { cn } from "@/lib/utils";
 import { setModelRetired } from "../../fleet/actions";
 import { DeleteProductButton } from "../delete-product";
+import { ExtrasPanel } from "../extras-tab";
 import { GeneralProductPage } from "../general-product";
 import { HistoryTab } from "../history-tab";
 import { MotoMangosTab } from "../moto-mangos-tab";
@@ -41,13 +43,21 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const text = (value: number | null) => (value === null ? "" : String(value));
 
-const tabs = ["details", "units", "pricing", "moto-mangos", "history"] as const;
+const tabs = [
+  "details",
+  "units",
+  "pricing",
+  "extras",
+  "moto-mangos",
+  "history",
+] as const;
 type Tab = (typeof tabs)[number];
 
 const tabLabel = {
   details: "tabs.details",
   units: "tabs.units",
   pricing: "tabs.pricing",
+  extras: "tabs.extras",
   "moto-mangos": "tabs.motoMangos",
   history: "tabs.history",
 } as const;
@@ -59,6 +69,8 @@ const tabLabel = {
  * - Units: its vehicles (everyone);
  * - Pricing: how it is priced, its deposit and tax, "Check a price"
  *   (owners and managers edit, staff read), §9.12;
+ * - Extras: the gear and services offered with it (owners and managers
+ *   edit; every other member reads), docs/phase-2-plan.md §7;
  * - Moto Mangos: its list entry and listing (motorbikes only; owners and
  *   managers), §5.11;
  * - History: who changed what (owners and managers).
@@ -119,12 +131,14 @@ export default async function ProductPage({
   // Moto Mangos lists motorbikes only (any of their categories).
   const motorbike = model.vehicle_type === "motorbike";
   // Prices: owners and managers edit, staff read, mechanics and drivers
-  // see none (decision 12).
+  // see none (decision 12). Extras: every member reads (they hold no
+  // amount); owners and managers edit.
+  const extras: readonly Tab[] = canExtras(role, "read") ? ["extras"] : [];
   const allowed: readonly Tab[] = manage
     ? tabs.filter((name) => name !== "moto-mangos" || motorbike)
     : canPricing(role, "read")
-      ? ["units", "pricing"]
-      : ["units"];
+      ? ["units", "pricing", ...extras]
+      : ["units", ...extras];
   const tab: Tab = (allowed as readonly string[]).includes(asked)
     ? (asked as Tab)
     : allowed[0];
@@ -291,6 +305,15 @@ export default async function ProductPage({
           role={role}
           productId={model.id}
           type="vehicle"
+        />
+      )}
+
+      {tab === "extras" && (
+        <ExtrasPanel
+          slug={slug}
+          tenantId={tenant.id}
+          role={role}
+          productId={model.id}
         />
       )}
 

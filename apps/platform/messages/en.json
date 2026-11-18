@@ -207,7 +207,8 @@
       "shop": "Shop",
       "pricing": "Pricing and tax",
       "seasons": "Seasons",
-      "priceLists": "Price lists"
+      "priceLists": "Price lists",
+      "extras": "Extras"
     },
     "pricing": {
       "title": "Pricing and tax",
@@ -322,6 +323,10 @@
       "activeHelp": "Switched off, it stays saved and changes no price.",
       "delete": "Delete season",
       "deleteConfirm": "Delete this season? This can't be undone."
+    },
+    "extras": {
+      "title": "Extras",
+      "intro": "The rental gear and services offered with every vehicle of the shop."
     }
   },
   "Me": {
@@ -452,7 +457,14 @@
     "profileNameExists": "A tax profile with this name already exists.",
     "depositNumberRequired": "Enter the deposit's percentage or amount.",
     "invalidSeason": "Check the season's details and try again.",
-    "profileAddedNotDefault": "The profile was added but couldn't be made the default. Choose it above and save."
+    "profileAddedNotDefault": "The profile was added but couldn't be made the default. Choose it above and save.",
+    "extrasTryAgain": "Someone is saving a booking for this vehicle right now, so nothing was saved. Please try again.",
+    "extrasOnlyOwnerOrManager": "Only an owner or a manager can change extras.",
+    "extrasInvalid": "Check the extras and try again.",
+    "extrasProductNotFound": "This vehicle no longer exists. Reload the page.",
+    "extrasExtraNotFound": "One of these extras no longer exists, or isn't rental gear or a service. Reload the page.",
+    "extrasMostBelowIncluded": "The most per vehicle can't be below the number included.",
+    "extrasCheckLines": "Check the lines marked below."
   },
   "Fleet": {
     "title": "Fleet",
@@ -833,7 +845,8 @@
       "history": "History",
       "stock": "Stock",
       "motoMangos": "Moto Mangos",
-      "pricing": "Pricing"
+      "pricing": "Pricing",
+      "extras": "Extras"
     },
     "added": "Product saved. Add its vehicles on the Units tab.",
     "readOnly": "You can view this product but not change it.",
@@ -991,6 +1004,24 @@
         "seasonMore": "{percent} more",
         "seasonYearly": "{from} to {to}, every year",
         "seasonOnce": "{from} to {to}"
+      },
+      "extras": {
+        "everyTitle": "History",
+        "one": "{who} {what}",
+        "oneEvery": "{who} {what} (every vehicle)",
+        "many": "{who} changed the extras",
+        "manyEvery": "{who} changed the extras offered with every vehicle",
+        "added": "added {name}: {included} included, no limit per vehicle",
+        "addedMost": "added {name}: {included} included, most {most} per vehicle",
+        "removed": "removed {name}",
+        "notOffered": "set {name} to Not offered for this vehicle",
+        "offeredAgain": "offered {name} again, as the list for every vehicle says",
+        "reordered": "changed the order of the extras",
+        "includedChanged": "changed {name}'s included from {from} to {to}",
+        "mostChanged": "changed {name}'s most per vehicle from {from} to {to}",
+        "noLimit": "no limit",
+        "deletedName": "{name} (deleted)",
+        "removedProduct": "a deleted product"
       }
     },
     "duplicate": "Duplicate",
@@ -1143,6 +1174,46 @@
       "per_month": "{amount} / month",
       "free": "Free",
       "none": "No price yet"
+    },
+    "extras": {
+      "intro": "The rental gear and services offered with this vehicle. Online bookings take up to the most per vehicle; staff can add more at the counter.",
+      "introRead": "The rental gear and services offered with this vehicle.",
+      "everyIntro": "Offered with every vehicle. A vehicle can set its own, or switch one off with \"Not offered for this vehicle\", on its Extras tab.",
+      "ownTitle": "Offered with this vehicle",
+      "everyTitle": "Offered with every vehicle",
+      "ownNone": "Nothing of its own yet.",
+      "everyNone": "Nothing is offered with every vehicle yet.",
+      "shopTitle": "From the list for every vehicle",
+      "shopIntro": "Offered with this vehicle too, unless you switch it off here.",
+      "shopNone": "The shop offers nothing with every vehicle.",
+      "shopLink": "Settings › Extras: what every vehicle offers",
+      "setAbove": "Set for this vehicle above.",
+      "notOffered": "Not offered for this vehicle",
+      "notOfferedHere": "Not offered for this vehicle.",
+      "included": "Included free",
+      "includedHelp": "Free with each vehicle.",
+      "most": "Most per vehicle",
+      "mostHelp": "Online bookings take up to this many with each vehicle. Empty: no limit.",
+      "noLimit": "No limit",
+      "includedCount": "{count} included",
+      "mostCount": "Most per vehicle: {count}",
+      "mostNone": "Most per vehicle: no limit",
+      "addLabel": "Add rental gear or a service",
+      "choose": "Choose…",
+      "add": "Add",
+      "save": "Save extras",
+      "moveUp": "Move {name} up",
+      "moveDown": "Move {name} down",
+      "remove": "Remove {name}",
+      "unknown": "A product that no longer exists",
+      "retired": "Retired: not offered",
+      "noPrice": "No price yet: not offered",
+      "noProducts": "The shop has no rental gear or services yet. Add them on the Products page.",
+      "readOnly": "Only an owner or a manager can change extras.",
+      "type": {
+        "gear": "Rental gear",
+        "service": "Service"
+      }
     }
   },
   "Locations": {

@@ -584,7 +584,14 @@ test("a manager adds a product with a kind and a name, buffers in hours, a bike,
     page
       .getByRole("navigation", { name: "Sections of this product" })
       .getByRole("link"),
-  ).toHaveText(["Details", /^Units/, "Pricing", "Moto Mangos", "History"]);
+  ).toHaveText([
+    "Details",
+    /^Units/,
+    "Pricing",
+    "Extras",
+    "Moto Mangos",
+    "History",
+  ]);
   await expect(panel(page, "Moto Mangos")).toHaveCount(0);
   await tab(page, "Moto Mangos").click();
   await expect(page).toHaveURL(/\?tab=moto-mangos/);

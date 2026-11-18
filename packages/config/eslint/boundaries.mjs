@@ -11,6 +11,20 @@ export function appImportPatterns(allowedApp) {
   }));
 }
 
+/**
+ * Apps never import @supabase/* themselves (root CLAUDE.md, the Neon
+ * rules): their client comes from @mango/db. Type-only imports count too.
+ * The files that still do are listed in docs/PROGRESS.md and allowed by
+ * each app's `supabaseAllowed` (eslint/next.mjs); don't add to them.
+ */
+export const supabasePatterns = [
+  {
+    group: ["@supabase/*"],
+    message:
+      "Apps get their database client from @mango/db, never @supabase/* (root CLAUDE.md, the Neon rules).",
+  },
+];
+
 /** packages/core is pure TypeScript: no React, Next.js or Supabase. */
 export const pureCorePatterns = [
   {

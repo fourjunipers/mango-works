@@ -776,7 +776,7 @@ describe("extras: product_extras and the stage 5 functions", () => {
     ]);
   });
 
-  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned; the five booking functions each have the 6-second lock timeout", () => {
+  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned; the five booking functions and save_product_extras() (stage 6) each have the 6-second lock timeout", () => {
     const rows = lines(`
       select n.nspname || '.' || p.proname || ' '
         || has_function_privilege('anon', p.oid, 'execute') || ' '
@@ -801,8 +801,9 @@ describe("extras: product_extras and the stage 5 functions", () => {
       // Re-created in stage 5, grants restated: the read runs as its caller.
       'platform.pricing_inputs false true true false | false search_path=""',
       'platform.reserve false true true false | true search_path="",lock_timeout=6s',
-      // Owners and managers (checked inside). Not the server's.
-      'platform.save_product_extras false true false false | true search_path=""',
+      // Owners and managers (checked inside). Not the server's. Its
+      // 6-second lock timeout came with stage 6 (20261117000200).
+      'platform.save_product_extras false true false false | true search_path="",lock_timeout=6s',
       // Read by the product_extras policy and by save_product_extras().
       'platform_private.extras_roles false true false false | false search_path=""',
     ]);

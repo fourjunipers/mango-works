@@ -13,7 +13,7 @@ import {
   type AvailabilityRow,
   type BookingInputs,
 } from "./booking-inputs";
-import { quoteInputFor, type PricingInputs } from "./pricing-inputs";
+import { extrasOf, quoteInputFor, type PricingInputs } from "./pricing-inputs";
 import { isTryAgain } from "./try-again";
 
 /**
@@ -26,7 +26,8 @@ import { isTryAgain } from "./try-again";
  * first, which runs bookable(), and goes on to reserve() only when the
  * answer is bookable, available and priced. The database checks stock and
  * the Moto Mangos cap under its locks; opening hours, closures, notice, the
- * cut-off and minimum days are checked here and nowhere else, so a path
+ * cut-off, minimum days and an extra's most per vehicle are checked here
+ * and nowhere else, so a path
  * round this function would skip them. lib/book-online.test.ts fails if any
  * other file could be such a path.
  *
@@ -64,6 +65,11 @@ export type OnlineRefusal =
   | OfferRefusal
   /** The listing would take this booking only by request (3M). */
   | "request_only"
+  /**
+   * An extra line asks for more than the shop allows online: above its
+   * "Most per vehicle" × its vehicle line's quantity. Staff are not bound.
+   */
+  | "over_most_per_vehicle"
   /** reserve(): someone else got there first, or it could not get its locks. */
   | "try_again"
   | "not_allowed";
@@ -126,6 +132,70 @@ async function read<T>(
   return data as T;
 }
 
+/**
+ * The first extra line above the most the shop allows with its vehicle, or
+ * null. The most is per vehicle ("up to N per bike", the owner, 17 Nov
+ * 2026): the extra's max_quantity for that vehicle product × the vehicle
+ * line's quantity, counted as the included quantity is (2 scooters and a
+ * most of 2: up to 4 helmets). pricing_inputs() has already let the
+ * vehicle's own row win over the "every vehicle" row and left out an extra
+ * the vehicle opts out of. An extra with no limit, or one not offered with
+ * that vehicle (priced with nothing free, plan stage 5 item 6), is not
+ * bound here. Two lines of one extra on one vehicle are quote()'s refusal.
+ *
+ * A line of the same product with no parent can't get round it (review of
+ * PR 45): when a vehicle line in the booking offers that extra with a
+ * limit, the extra's parentless units and its units attached to those
+ * vehicles are counted together against the sum of their mosts (each
+ * vehicle line's max_quantity × its quantity). Such a line is answered with
+ * its own index. Not bound: when no vehicle line offers it with a limit
+ * (none offers it, or each opted out), or when one offers it with no limit,
+ * which could take any number.
+ */
+export function overMostPerVehicle(
+  lines: OnlineBookingRequest["lines"],
+  pricing: Pick<PricingInputs, "extras">,
+): number | null {
+  /** The extra's row on that line's vehicle product, if it offers it. */
+  const rowOf = (vehicleLine: number, extraProductId: string) =>
+    extrasOf(pricing, lines[vehicleLine].productId).find(
+      (row) => row.extra_product_id === extraProductId,
+    );
+  const vehicleLines = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => line.parent === undefined);
+
+  for (const [index, line] of lines.entries()) {
+    if (line.parent !== undefined) {
+      const most = rowOf(line.parent, line.productId)?.max_quantity;
+      if (most != null && line.quantity > most * lines[line.parent].quantity)
+        return index;
+      continue;
+    }
+    // A parentless line: an extra of a vehicle line here, with a limit?
+    const offering = vehicleLines
+      .map(({ index: at }) => ({ at, row: rowOf(at, line.productId) }))
+      .filter((o) => o.row !== undefined);
+    if (offering.length === 0) continue;
+    if (offering.some((o) => o.row!.max_quantity === null)) continue;
+    const limited = new Set(offering.map((o) => o.at));
+    const allowed = offering.reduce(
+      (sum, o) => sum + o.row!.max_quantity! * lines[o.at].quantity,
+      0,
+    );
+    const taken = lines.reduce(
+      (sum, other) =>
+        other.productId === line.productId &&
+        (other.parent === undefined || limited.has(other.parent))
+          ? sum + other.quantity
+          : sum,
+      0,
+    );
+    if (taken > allowed) return index;
+  }
+  return null;
+}
+
 export async function bookOnline(
   request: OnlineBookingRequest,
   deps: OnlineDeps = {},
@@ -185,6 +255,14 @@ export async function bookOnline(
       p_product_ids: productIds,
     }),
   ]);
+
+  // The most per vehicle (product_extras.max_quantity), before anything
+  // else is weighed: online channels only, so here and not in quote() or
+  // reserve(), which staff use too (plan Q16).
+  const over = overMostPerVehicle(request.lines, pricing);
+  if (over !== null) {
+    return { ok: false, reason: "over_most_per_vehicle", line: over };
+  }
 
   // offer() first: bookable, available, priced. Only then reserve().
   const lines = request.lines.map((line, index) => ({

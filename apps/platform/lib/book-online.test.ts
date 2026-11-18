@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   bookOnline,
+  overMostPerVehicle,
   type OnlineBookingRequest,
   type OnlineDb,
 } from "./book-online";
@@ -468,6 +469,241 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
       [1, undefined],
       [3, 0],
     ]);
+  });
+
+  it("the most per vehicle: an extra line above max_quantity × its vehicle line's quantity is refused and nothing is reserved; at the most it goes through", async () => {
+    const HELMET = "44444444-4444-4444-8444-444444444444";
+    const scene = inputs();
+    const helmets = (
+      maxQuantity: number | null,
+      offered = true,
+    ): Parameters<typeof spy>[0] => ({
+      inputs: {
+        ...scene,
+        products: [
+          ...scene.products,
+          { ...scene.products[0], product_id: HELMET, type: "gear" },
+        ],
+      },
+      availability: [
+        { ...stock(3)[0], stock: 3, free: 3, available: 3 },
+        { ...stock(20)[0], product_id: HELMET, type: "gear", stock: 20 },
+      ],
+      pricing: {
+        ...priced,
+        products: [
+          ...priced.products,
+          {
+            ...priced.products[0],
+            product_id: HELMET,
+            product_name: "Helmet",
+            product_type: "gear",
+            price_amount: "500",
+          },
+        ],
+        // An opted-out extra is not in pricing_inputs()'s answer at all.
+        extras: offered
+          ? [
+              {
+                product_id: SCOOTER,
+                extra_product_id: HELMET,
+                extra_product_type: "gear",
+                included_quantity: 1,
+                max_quantity: maxQuantity,
+                sort_position: 0,
+                every_vehicle: false,
+              },
+            ]
+          : [],
+      },
+    });
+    const booking = (scooters: number, helmetCount: number) =>
+      asked({
+        lines: [
+          {
+            productId: SCOOTER,
+            start: monday10,
+            end: wednesday10,
+            quantity: scooters,
+          },
+          {
+            productId: HELMET,
+            start: monday10,
+            end: wednesday10,
+            quantity: helmetCount,
+            parent: 0,
+          },
+        ],
+      });
+
+    // A most of 2: one scooter takes up to 2 helmets, two take up to 4.
+    for (const channel of ["booking_page", "marketplace", "api"] as const) {
+      const over = spy(helmets(2));
+      const request = { ...booking(1, 3), channel };
+      // Moto Mangos also needs its listing; the refusal comes before it.
+      expect(
+        await bookOnline(request, { db: over.db, now: () => now }),
+        channel,
+      ).toEqual({ ok: false, reason: "over_most_per_vehicle", line: 1 });
+      expect(over.reserved(), channel).toBe(false);
+    }
+    const twoOver = spy(helmets(2));
+    expect(
+      await bookOnline(booking(2, 5), { db: twoOver.db, now: () => now }),
+    ).toEqual({ ok: false, reason: "over_most_per_vehicle", line: 1 });
+    expect(twoOver.reserved()).toBe(false);
+
+    for (const [scooters, count] of [
+      [1, 2],
+      [2, 4],
+    ]) {
+      const atMost = spy(helmets(2));
+      const answer = await bookOnline(booking(scooters, count), {
+        db: atMost.db,
+        now: () => now,
+      });
+      expect(answer.ok, `${scooters} scooters, ${count} helmets`).toBe(true);
+      expect(atMost.reserved()).toBe(true);
+    }
+
+    // No limit, or not offered with this scooter: not bound.
+    for (const scene of [helmets(null), helmets(2, false)]) {
+      const free = spy(scene);
+      expect(
+        (await bookOnline(booking(1, 9), { db: free.db, now: () => now })).ok,
+      ).toBe(true);
+    }
+
+    // The same helmets on a line of their own, with no parent (review of
+    // PR 45): counted with the ones attached to the scooter.
+    const helmetLine = (quantity: number) => ({
+      productId: HELMET,
+      start: monday10,
+      end: wednesday10,
+      quantity,
+    });
+    const scooterLine = (quantity: number) => ({
+      productId: SCOOTER,
+      start: monday10,
+      end: wednesday10,
+      quantity,
+    });
+    const asks: [string, OnlineBookingRequest["lines"], number | null][] = [
+      // The bypass: 3 helmets on their own line, 1 scooter, a most of 2.
+      ["3 on their own line", [scooterLine(1), helmetLine(3)], 1],
+      // 2 attached and 1 on its own: 3 in all.
+      [
+        "2 attached and 1 on its own",
+        [scooterLine(1), { ...helmetLine(2), parent: 0 }, helmetLine(1)],
+        2,
+      ],
+      // A parentless line before the scooter's: the same count.
+      ["before the scooter", [helmetLine(3), scooterLine(1)], 0],
+      // Within the limit: 2 on their own, or 1 and 1, or 4 with two scooters.
+      ["2 on their own line", [scooterLine(1), helmetLine(2)], null],
+      [
+        "1 attached and 1 on its own",
+        [scooterLine(1), { ...helmetLine(1), parent: 0 }, helmetLine(1)],
+        null,
+      ],
+      ["4 with two scooters", [scooterLine(2), helmetLine(4)], null],
+    ];
+    // One availability answer per line, as the database gives.
+    const perLine = (
+      scene: Parameters<typeof spy>[0],
+      lines: OnlineBookingRequest["lines"],
+    ): Parameters<typeof spy>[0] => ({
+      ...scene,
+      availability: lines.map((line) =>
+        scene!.availability!.find((row) => row.product_id === line.productId)!,
+      ),
+    });
+    for (const [what, lines, refused] of asks) {
+      const s = spy(perLine(helmets(2), lines));
+      const answer = await bookOnline(asked({ lines }), {
+        db: s.db,
+        now: () => now,
+      });
+      if (refused === null) {
+        expect(answer.ok, what).toBe(true);
+        expect(s.reserved(), what).toBe(true);
+      } else {
+        expect(answer, what).toEqual({
+          ok: false,
+          reason: "over_most_per_vehicle",
+          line: refused,
+        });
+        expect(s.reserved(), what).toBe(false);
+      }
+    }
+    // Opted out of (not in pricing_inputs()' answer) or no limit: not bound.
+    for (const [what, scene] of [
+      ["opted out", helmets(2, false)],
+      ["no limit", helmets(null)],
+    ] as const) {
+      const lines = [scooterLine(1), helmetLine(9)];
+      const s = spy(perLine(scene, lines));
+      expect(
+        (
+          await bookOnline(asked({ lines }), {
+            db: s.db,
+            now: () => now,
+          })
+        ).ok,
+        what,
+      ).toBe(true);
+    }
+  });
+
+  it("overMostPerVehicle(): a parentless extra is counted against every vehicle line that offers it with a limit; one with no limit frees it; one that doesn't offer it adds nothing", () => {
+    const BIKE = "55555555-5555-4555-8555-555555555555";
+    const CAR = "66666666-6666-4666-8666-666666666666";
+    const HELMET = "44444444-4444-4444-8444-444444444444";
+    const row = (vehicle: string, most: number | null) => ({
+      product_id: vehicle,
+      extra_product_id: HELMET,
+      extra_product_type: "gear" as const,
+      included_quantity: 0,
+      max_quantity: most,
+      sort_position: 0,
+      every_vehicle: false,
+    });
+    const line = (productId: string, quantity: number, parent?: number) => ({
+      productId,
+      start: monday10,
+      end: wednesday10,
+      quantity,
+      ...(parent === undefined ? {} : { parent }),
+    });
+    // Scooter most 2 (×1), bike most 1 (×2): 4 in all; the car offers none.
+    const pricing = { extras: [row(SCOOTER, 2), row(BIKE, 1)] };
+    const base = [line(SCOOTER, 1), line(BIKE, 2), line(CAR, 1)];
+    expect(overMostPerVehicle([...base, line(HELMET, 4)], pricing)).toBeNull();
+    expect(overMostPerVehicle([...base, line(HELMET, 5)], pricing)).toBe(3);
+    // Attached to the car (not offered there): not counted, not bound.
+    expect(
+      overMostPerVehicle(
+        [...base, line(HELMET, 9, 2), line(HELMET, 4)],
+        pricing,
+      ),
+    ).toBeNull();
+    // Attached to the bike: counted with the parentless ones.
+    expect(
+      overMostPerVehicle(
+        [...base, line(HELMET, 2, 1), line(HELMET, 3)],
+        pricing,
+      ),
+    ).toBe(4);
+    // A vehicle line offering it with no limit frees the parentless line.
+    expect(
+      overMostPerVehicle([...base, line(HELMET, 50)], {
+        extras: [...pricing.extras, row(CAR, null)],
+      }),
+    ).toBeNull();
+    // No vehicle line offers it: not bound.
+    expect(
+      overMostPerVehicle([line(CAR, 1), line(HELMET, 50)], pricing),
+    ).toBeNull();
   });
 
   it("an extra goes with an earlier line, as reserve() requires: a later line, itself, a negative or a fractional index is refused before anything is read", async () => {

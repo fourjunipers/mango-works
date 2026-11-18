@@ -134,6 +134,7 @@ test("products list: one row per product, filters, and a product's tabs", async 
     "Details",
     /^Units\s*\d+$/,
     "Pricing",
+    "Extras",
     "Moto Mangos",
     "History",
   ]);
@@ -309,7 +310,8 @@ test("a mechanic and a driver read products and can't change them; staff neither
     await expect(row.getByText(/Moto Mangos$/)).toHaveCount(0);
     await productTitle(page, "Honda PCX 160").click();
     // Its vehicles, and nothing to set up: no form, no history. Staff also
-    // read its prices (stage D5); a mechanic and a driver have no tabs.
+    // read its prices (stage D5). Every member reads its extras (Phase 2
+    // stage 6), so a mechanic and a driver have Units and Extras.
     await expect(
       page.getByRole("heading", { name: "Vehicles of this product" }),
     ).toBeVisible();
@@ -317,8 +319,13 @@ test("a mechanic and a driver read products and can't change them; staff neither
       await expect(tabs(page).getByRole("link")).toHaveText([
         /^Units/,
         "Pricing",
+        "Extras",
       ]);
-    else await expect(tabs(page)).toHaveCount(0);
+    else
+      await expect(tabs(page).getByRole("link")).toHaveText([
+        /^Units/,
+        "Extras",
+      ]);
     await expect(page.getByLabel("Name")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Add vehicle" })).toHaveCount(
       0,

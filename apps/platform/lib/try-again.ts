@@ -2,7 +2,8 @@
  * "Nothing was written, send it again."
  *
  * The booking functions (reserve, confirm_hold, cancel_reservation,
- * assign_units, move_unit) each have their own lock timeout, 6 seconds,
+ * assign_units, move_unit) and save_product_extras (its caller is
+ * lib/extras-save.ts) each have their own lock timeout, 6 seconds,
  * shorter than the API's statement timeout of 8. A wait for a lock that
  * runs out raises one of two Postgres codes, and to a caller both mean the
  * same as the `try_again` those functions answer when Postgres broke a

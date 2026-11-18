@@ -566,3 +566,4 @@ The table is kept as it was asked; the "Recommended" column is now the decision.
 - `docs/INTEGRATION.md`, at 3M, not now: free units by assigned unit (§4.3), the stricter notice (§4.6), extras availability, `discount` in `getQuote` from coupons.
 - `docs/platform/MAPPING.md`: `shop_extras` → gear and service products plus `product_extras`; promotions as §5.3; the booking-rule columns marked built; inclusions and deposit methods moved to their later phases if Q13 is accepted.
 - `docs/PROGRESS.md`: an entry per stage, and a line for this plan.
+- Plan §7: Settings › Extras is readable by staff (History owner/manager only). Mark's decision, built in stage 6; §7's table still lists Settings › Extras for owners and managers alone.

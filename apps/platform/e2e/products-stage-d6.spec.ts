@@ -110,13 +110,19 @@ async function depositFor45DaysForTwo(page: Page, address: string) {
   return checkRow(page, "Deposit");
 }
 
-test("Settings has four sections for owners; staff, mechanics and drivers can't open them; old price list links redirect", async ({
+test("Settings has five sections for owners; staff, mechanics and drivers can't open the first four; old price list links redirect", async ({
   page,
   browser,
 }) => {
   await signIn(page, demo.bsrOwner);
   await page.goto("/bsr/settings");
-  for (const section of ["Shop", "Pricing and tax", "Seasons", "Price lists"])
+  for (const section of [
+    "Shop",
+    "Pricing and tax",
+    "Seasons",
+    "Price lists",
+    "Extras",
+  ])
     await expect(
       settingsNav(page).getByRole("link", { name: section }),
     ).toBeVisible();
