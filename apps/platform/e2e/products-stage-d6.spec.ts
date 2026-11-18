@@ -97,16 +97,13 @@ async function ownPrices(page: Page, address: string) {
 /** Check a price for two, 45 days from 1 Jan 2027: what the deposit row says. */
 async function depositFor45DaysForTwo(page: Page, address: string) {
   await page.goto(`${address}?tab=pricing`);
-  // Typed again if the page was still starting and put its own pickup back.
-  await expect(async () => {
-    await pickup(page);
-    await checkPrice(page).getByLabel("Days", { exact: true }).fill("45");
-    await checkPrice(page).getByLabel("How many").fill("2");
-    // 2 × (฿3,000 + 14 × ฿100), whatever the deposit.
-    await expect(checkRow(page, "Total")).toHaveText(/^\D*8,800$/, {
-      timeout: 2_000,
-    });
-  }).toPass({ timeout: 15_000 });
+  // Check a price's boxes stay disabled until the page has started, so what
+  // is typed is what is priced (review of PR 50).
+  await pickup(page);
+  await checkPrice(page).getByLabel("Days", { exact: true }).fill("45");
+  await checkPrice(page).getByLabel("How many").fill("2");
+  // 2 × (฿3,000 + 14 × ฿100), whatever the deposit.
+  await expect(checkRow(page, "Total")).toHaveText(/^\D*8,800$/);
   return checkRow(page, "Deposit");
 }
 
@@ -478,15 +475,9 @@ test("a season: made for one product, on its Pricing tab, in Check a price and i
       const card = page.getByRole("region", { name: "Seasons" });
       await expect(card).toContainText(season);
       await expect(card).toContainText("20% off");
-      // Typed again if the page was still starting and put its own pickup back.
-      await expect(async () => {
-        await pickup(page, "2027-04-01T10:00");
-        await checkPrice(page).getByLabel("Days", { exact: true }).fill("7");
-        await expect(checkRow(page, `Season: ${season}`)).toHaveText(
-          /^−\D*280$/,
-          { timeout: 2_000 },
-        );
-      }).toPass({ timeout: 15_000 });
+      await pickup(page, "2027-04-01T10:00");
+      await checkPrice(page).getByLabel("Days", { exact: true }).fill("7");
+      await expect(checkRow(page, `Season: ${season}`)).toHaveText(/^−\D*280$/);
       await expect(checkRow(page, "Total")).toHaveText(/^\D*1,120$/);
       // Outside it, the list price.
       await pickup(page, "2027-01-01T10:00");

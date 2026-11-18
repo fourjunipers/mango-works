@@ -21,12 +21,15 @@ export async function CouponHistory({
   currency,
   couponId,
   limit = 50,
+  codes,
 }: {
   tenantId: string;
   timezone: string;
   currency: string;
   couponId?: string;
   limit?: number;
+  /** Each coupon's code now, by id. */
+  codes?: ReadonlyMap<string, string>;
 }) {
   const [t, tHistory, locale, rows, members] = await Promise.all([
     getTranslations("Settings.coupons.history"),
@@ -35,7 +38,7 @@ export async function CouponHistory({
     getCouponAudit(tenantId, couponId),
     getMemberNames(tenantId),
   ]);
-  const lines = couponHistory(rows).slice(0, limit);
+  const lines = couponHistory(rows, codes).slice(0, limit);
   const value = (v: CouponValue | null) =>
     v === null
       ? t("noValue")

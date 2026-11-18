@@ -382,7 +382,7 @@
       "percent": "Percentage off",
       "percentHelp": "Such as 10 or 12.5. Taken off each of the coupon’s lines after seasonal prices.",
       "amount": "Amount off ({currency})",
-      "amountHelp": "Off the coupon’s lines together, never more than they come to. Never off a deposit.",
+      "amountHelp": "Off the coupon’s lines together, never more than they come to. Never off a deposit. Use a dot for decimals.",
       "products": "Products",
       "productsIntro": "The lines it takes money off. A coupon for chosen scooters does not reduce the helmets beside them.",
       "scopeAll": "All products",
@@ -610,7 +610,10 @@
     "returningRentalsRange": "Enter a whole number from 1 to 1,000.",
     "hold_expired": "This hold has run out; make the booking again.",
     "coupon_not_valid": "This coupon can’t be used right now; send it again.",
-    "coupon_used_up": "This coupon has been used as many times as it allows, so nothing was booked. Send the booking again without the code."
+    "coupon_used_up": "This coupon has been used as many times as it allows, so nothing was booked. Send the booking again without the code.",
+    "couponInvalidAmount": "Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has.",
+    "couponInvalidPercent": "Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma.",
+    "couponAmountTooLong": "That amount is too long: 18 digits at most."
   },
   "Fleet": {
     "title": "Fleet",

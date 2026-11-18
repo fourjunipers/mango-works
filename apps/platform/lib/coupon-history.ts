@@ -139,7 +139,11 @@ function updateLines(
  * Every coupon line, newest first. `rows` are the `coupons` audit rows of
  * the shop or of one coupon, in any order.
  */
-export function couponHistory(rows: readonly AuditRow[]): CouponHistoryLine[] {
+export function couponHistory(
+  rows: readonly AuditRow[],
+  /** Each coupon's code now: for a coupon whose "created" row was not read. */
+  codes: ReadonlyMap<string, string> = new Map(),
+): CouponHistoryLine[] {
   const byCoupon = new Map<string, AuditRow[]>();
   for (const row of rows) {
     if (row.entity !== "coupons") continue;
@@ -183,7 +187,7 @@ export function couponHistory(rows: readonly AuditRow[]): CouponHistoryLine[] {
         if (products > 0)
           changes.push({ kind: "chosenProducts", count: products });
       } else continue;
-      const code = text(state.code) ?? "";
+      const code = text(state.code) ?? codes.get(couponId) ?? "";
       changes.forEach((change, n) =>
         out.push({
           key: `${row.id}:${n}`,

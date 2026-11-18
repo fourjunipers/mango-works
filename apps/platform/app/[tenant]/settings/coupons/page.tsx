@@ -180,6 +180,7 @@ export default async function CouponsPage({
           tenantId={tenant.id}
           timezone={tenant.timezone}
           currency={tenant.currency}
+          codes={new Map(coupons.map((c) => [c.id, c.code]))}
         />
       </div>
     </>

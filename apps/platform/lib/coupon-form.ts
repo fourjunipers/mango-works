@@ -18,8 +18,8 @@
 
 import { isCouponCode, normalizeCouponCode } from "@mango/core/discounts";
 import type { CouponPayload, CouponSaveReason } from "./coupon-save";
-import { minorDecimal, parseMinorUnits } from "./money";
-import { parsePercentBp, percentInput } from "./seasons";
+import { minorDecimal, minorExponent } from "./money";
+import { percentInput } from "./seasons";
 
 export const couponChannels = ["staff", "booking_page", "marketplace"] as const;
 export type CouponChannelChoice = (typeof couponChannels)[number];
@@ -80,6 +80,58 @@ export type CouponRecord = {
   active: boolean;
   archived_at: string | null;
 };
+
+// ------------------------------------------------------ numbers as typed
+
+/**
+ * The coupon form's number rule (review of PR 50): a dot is the decimal
+ * point. A comma is allowed only between thousands, in groups of three
+ * with digits on both sides ("1,234.56", "50,000"). Anything else with a
+ * comma is refused, and so are spaces, underscores and a minus sign, so
+ * "2,50" can't be read as 250 or as 2.5. Seasons and price lists still
+ * read numbers their own way (lib/seasons.ts, lib/money.ts): one rule for
+ * every screen is stage 10.
+ */
+const NUMBER = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?$/;
+
+/** The most digits an amount may have: a bigint column holds 18 safely. */
+export const COUPON_AMOUNT_MAX_DIGITS = 18;
+
+/**
+ * An amount as typed, in the currency's minor units by its ISO 4217
+ * exponent (THB ×100, KWD ×1000, VND ×1). Null: blank. "invalid": not the
+ * rule above, or more decimal places than the currency has. "tooLong":
+ * more than 18 digits.
+ */
+export function parseCouponAmount(
+  input: string,
+  currency: string,
+): bigint | null | "invalid" | "tooLong" {
+  const text = input.trim();
+  if (!text) return null;
+  const match = NUMBER.exec(text);
+  if (!match) return "invalid";
+  const exponent = minorExponent(currency);
+  const fraction = match[2] ?? "";
+  if (fraction.length > exponent) return "invalid";
+  const digits = (
+    match[1].replace(/,/g, "") + fraction.padEnd(exponent, "0")
+  ).replace(/^0+(?=\d)/, "");
+  if (digits.length > COUPON_AMOUNT_MAX_DIGITS) return "tooLong";
+  return BigInt(digits);
+}
+
+/** A percentage as typed, in basis points (two decimal places at most). */
+export function parseCouponPercent(input: string): number | null | "invalid" {
+  const text = input.trim().replace(/%$/, "").trimEnd();
+  if (!text) return null;
+  const match = NUMBER.exec(text);
+  if (!match) return "invalid";
+  const fraction = match[2] ?? "";
+  const whole = match[1].replace(/,/g, "");
+  if (fraction.length > 2 || whole.length > 6) return "invalid";
+  return Number(whole + fraction.padEnd(2, "0"));
+}
 
 /**
  * A new coupon. Nothing is preset but what the database itself starts
@@ -191,17 +243,18 @@ export function couponPayload(
   let percentBp: number | null = null;
   let amount: string | null = null;
   if (draft.kind === "percent") {
-    const bp = parsePercentBp(draft.percent);
+    const bp = parseCouponPercent(draft.percent);
     if (bp === null) errors.percent = "required";
-    else if (bp === "invalid") errors.percent = "invalidPercent";
+    else if (bp === "invalid") errors.percent = "couponInvalidPercent";
     else if (bp === 0) errors.percent = "percentZero";
     else if (bp > COUPON_PERCENT_MAX_BP)
       errors.percent = "couponPercentTooLarge";
     else percentBp = bp;
   } else {
-    const value = parseMinorUnits(draft.amount, currency);
+    const value = parseCouponAmount(draft.amount, currency);
     if (value === null) errors.amount = "required";
-    else if (value === "invalid") errors.amount = "invalidMoney";
+    else if (value === "invalid") errors.amount = "couponInvalidAmount";
+    else if (value === "tooLong") errors.amount = "couponAmountTooLong";
     else if (value === BigInt(0)) errors.amount = "couponAmountZero";
     else amount = String(value);
   }
@@ -229,8 +282,9 @@ export function couponPayload(
   const minDays = parseWhole(draft.minDays, COUPON_MIN_DAYS_MAX);
   if (minDays === "invalid") errors.minDays = "couponMinDaysRange";
 
-  const minSpend = parseMinorUnits(draft.minSpend, currency);
-  if (minSpend === "invalid") errors.minSpend = "invalidMoney";
+  const minSpend = parseCouponAmount(draft.minSpend, currency);
+  if (minSpend === "invalid") errors.minSpend = "couponInvalidAmount";
+  else if (minSpend === "tooLong") errors.minSpend = "couponAmountTooLong";
   else if (minSpend === BigInt(0)) errors.minSpend = "couponAmountZero";
 
   const maxUses = parseWhole(draft.maxUses, COUPON_MAX_USES_MAX);
@@ -258,8 +312,7 @@ export function couponPayload(
       pickup_from: pickupFrom,
       pickup_to: pickupTo,
       min_days: minDays as number | null,
-      min_spend:
-        minSpend === null || minSpend === "invalid" ? null : String(minSpend),
+      min_spend: typeof minSpend === "bigint" ? String(minSpend) : null,
       max_uses: maxUses as number | null,
       channels,
       with_returning_discount: draft.withReturningDiscount,

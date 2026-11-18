@@ -1170,3 +1170,12 @@ New Thai lines on the branch `platform/phase-2-stage-9-coupon-screens`: Settings
 | `Pricing.coupon.refused.wrongDatesUntil` | Not applied: the pickup must be on or before {to}. | ไม่ได้ใช้: ต้องรับรถไม่เกิน {to} |
 | `Pricing.coupon.refused.tooShort` | Not applied: the rental must be at least {days, plural, one {# day} other {# days}}. | ไม่ได้ใช้: ต้องเช่าอย่างน้อย {days, plural, other {#}} วัน |
 | `Pricing.coupon.refused.belowMinimum` | Not applied: this coupon’s products must come to at least {amount} after seasonal prices. | ไม่ได้ใช้: สินค้าของคูปองนี้ต้องมียอดอย่างน้อย {amount} หลังคิดราคาตามฤดูกาล |
+
+**After the review of PR 50 (18 Nov 2026):** new or changed lines.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `FormErrors.couponInvalidAmount` | Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has. | กรอกจำนวนเงิน เช่น 200 หรือ 1,234.50 ใช้จุดสำหรับทศนิยม ใช้จุลภาคเฉพาะคั่นหลักพัน (1,000) ห้ามเว้นวรรค และทศนิยมต้องไม่เกินที่สกุลเงินนี้มี |
+| `FormErrors.couponInvalidPercent` | Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma. | กรอกเปอร์เซ็นต์ เช่น 10 หรือ 12.5 ใช้จุดสำหรับทศนิยม ไม่ใช่จุลภาค |
+| `FormErrors.couponAmountTooLong` | That amount is too long: 18 digits at most. | จำนวนเงินยาวเกินไป: ไม่เกิน 18 หลัก |
+| `Settings.coupons.amountHelp` | Off the coupon’s lines together, never more than they come to. Never off a deposit. Use a dot for decimals. | หักจากรายการของคูปองรวมกัน ไม่เกินยอดของรายการเหล่านั้น และไม่หักจากเงินมัดจำ ใช้จุดสำหรับทศนิยม |

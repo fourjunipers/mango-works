@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
@@ -80,11 +80,15 @@ export function CheckPrice({
   const [applied, setApplied] = useState<{
     code: string;
     read: CouponInputs;
+    /** "Today" for its valid dates: the moment Apply was pressed. */
+    at: Date;
   } | null>(null);
   const [lookupFailed, setLookupFailed] = useState(false);
   const [looking, startLooking] = useTransition();
-  // "Today" for a coupon's valid dates: when the screen was opened.
-  const [now] = useState(() => new Date());
+  // Every box stays disabled until the component has started: typed into
+  // before then, a box would keep the text while the price was worked out
+  // from the defaults (review of PR 50).
+  const started = useStarted();
   const money = (value: bigint) => formatMinor(value, currency, locale);
 
   // The extras offered with this vehicle that have a price.
@@ -123,7 +127,10 @@ export function CheckPrice({
         code: applied?.code ?? null,
         coupon: applied?.read ?? null,
         returning,
-        now,
+        // A coupon's valid dates are judged at the moment Apply was pressed
+        // (on the shop's clock, in decideDiscounts); with no code, "now"
+        // decides nothing.
+        now: applied?.at ?? new Date(),
       })
     : null;
   const result = checked?.quote ?? null;
@@ -145,7 +152,7 @@ export function CheckPrice({
     }
     startLooking(async () => {
       const answer = await lookUpCoupon(slug, code);
-      if (answer.ok) setApplied({ code, read: answer.read });
+      if (answer.ok) setApplied({ code, read: answer.read, at: new Date() });
       else {
         setApplied(null);
         setLookupFailed(true);
@@ -164,7 +171,11 @@ export function CheckPrice({
       <p className="mt-1 text-sm text-muted-foreground">
         {t(changed ? "check.introUnsaved" : "check.intro")}
       </p>
-      <div className="mt-4 space-y-4">
+      <fieldset
+        disabled={!started}
+        data-started={started ? "yes" : "no"}
+        className="mt-4 min-w-0 space-y-4"
+      >
         <div
           role="radiogroup"
           aria-label={t("check.by")}
@@ -258,6 +269,9 @@ export function CheckPrice({
                   >
                     <input
                       id={id}
+                      aria-describedby={
+                        e.included_quantity > 0 ? `${id}-help` : undefined
+                      }
                       type="number"
                       min={0}
                       max={99}
@@ -437,7 +451,7 @@ export function CheckPrice({
             </dl>
           )}
         </div>
-      </div>
+      </fieldset>
     </section>
   );
 }
@@ -511,6 +525,20 @@ function CouponNote({
     >
       {text}
     </p>
+  );
+}
+
+const noSubscribe = () => () => {};
+
+/**
+ * False in the server's HTML and while the page is starting, true once this
+ * component runs in the browser: the boxes are usable only then.
+ */
+function useStarted(): boolean {
+  return useSyncExternalStore(
+    noSubscribe,
+    () => true,
+    () => false,
   );
 }
 

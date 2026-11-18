@@ -103,6 +103,7 @@ export default async function CouponPage({
           timezone={tenant.timezone}
           currency={tenant.currency}
           couponId={coupon.id}
+          codes={new Map([[coupon.id, coupon.code]])}
         />
       </div>
     </>

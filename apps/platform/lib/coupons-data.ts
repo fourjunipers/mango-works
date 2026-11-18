@@ -130,7 +130,10 @@ const auditColumns =
 /**
  * The audit rows of the shop's coupons (owners and managers, by RLS), or of
  * one coupon: the row events and the `coupon_change` events of its product
- * links. Oldest first: lib/coupon-history.ts replays them.
+ * links. The newest 2,000, read newest first so a long history keeps its
+ * latest changes (review of PR 50); lib/coupon-history.ts sorts and replays
+ * them. A coupon whose "created" row is older than those is named by its
+ * code now.
  */
 export async function getCouponAudit(
   tenantId: string,
@@ -143,7 +146,10 @@ export async function getCouponAudit(
     .eq("tenant_id", tenantId)
     .eq("entity", "coupons");
   if (couponId) query = query.eq("entity_id", couponId);
-  const { data, error } = await query.order("at").order("id").limit(2000);
+  const { data, error } = await query
+    .order("at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(2000);
   if (error) throw error;
   return exactAuditRows(data);
 }

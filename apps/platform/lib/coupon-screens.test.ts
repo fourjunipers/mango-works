@@ -11,7 +11,10 @@ import { COUPON_CODE_CASES } from "@mango/core/coupon-code.cases";
 import en from "../messages/en.json";
 import th from "../messages/th.json";
 import {
+  COUPON_AMOUNT_MAX_DIGITS,
   codePreview,
+  parseCouponAmount,
+  parseCouponPercent,
   couponDraft,
   couponPayload,
   couponSaveError,
@@ -106,9 +109,9 @@ describe("the coupon form: what is checked before saving", () => {
       "3000",
     ]);
     // Yen has no minor unit: a decimal is refused.
-    expect(couponPayload(draft({ kind: "fixed", amount: "5.5" }), "JPY")).toEqual(
-      { ok: false, errors: { amount: "invalidMoney" } },
-    );
+    expect(
+      couponPayload(draft({ kind: "fixed", amount: "5.5" }), "JPY"),
+    ).toEqual({ ok: false, errors: { amount: "couponInvalidAmount" } });
     // A percentage coupon sends no amount, a fixed one no percentage.
     const fixed = couponPayload(draft({ kind: "fixed", amount: "1" }), "THB");
     expect(fixed.ok && fixed.payload.percent_bp).toBeNull();
@@ -159,13 +162,16 @@ describe("the coupon form: what is checked before saving", () => {
       [{ code: "A".repeat(41) }, { code: "couponInvalidCode" }],
       [{ name: "x".repeat(121) }, { name: "tooLong" }],
       [{ percent: "" }, { percent: "required" }],
-      [{ percent: "abc" }, { percent: "invalidPercent" }],
+      [{ percent: "abc" }, { percent: "couponInvalidPercent" }],
       [{ percent: "0" }, { percent: "percentZero" }],
       [{ percent: "100.01" }, { percent: "couponPercentTooLarge" }],
       [{ kind: "fixed", amount: "" }, { amount: "required" }],
       [{ kind: "fixed", amount: "0" }, { amount: "couponAmountZero" }],
-      [{ kind: "fixed", amount: "1.234" }, { amount: "invalidMoney" }],
-      [{ allProducts: false, productIds: [] }, { products: "couponNoProducts" }],
+      [{ kind: "fixed", amount: "1.234" }, { amount: "couponInvalidAmount" }],
+      [
+        { allProducts: false, productIds: [] },
+        { products: "couponNoProducts" },
+      ],
       [{ validFrom: "2027-02-30" }, { validFrom: "invalidDate" }],
       [
         { validFrom: "2027-02-01", validTo: "2027-01-31" },
@@ -179,15 +185,16 @@ describe("the coupon form: what is checked before saving", () => {
       [{ minDays: "1001" }, { minDays: "couponMinDaysRange" }],
       [{ minDays: "2.5" }, { minDays: "couponMinDaysRange" }],
       [{ minSpend: "0" }, { minSpend: "couponAmountZero" }],
-      [{ minSpend: "x" }, { minSpend: "invalidMoney" }],
+      [{ minSpend: "x" }, { minSpend: "couponInvalidAmount" }],
       [{ maxUses: "0" }, { maxUses: "couponMaxUsesRange" }],
       [{ maxUses: "2000000001" }, { maxUses: "couponMaxUsesRange" }],
       [{ channels: [] }, { channels: "couponNoChannels" }],
     ];
     for (const [change, errors] of cases)
-      expect(couponPayload(draft(change), "THB"), JSON.stringify(change)).toEqual(
-        { ok: false, errors },
-      );
+      expect(
+        couponPayload(draft(change), "THB"),
+        JSON.stringify(change),
+      ).toEqual({ ok: false, errors });
     // At the edges: 100%, 1,000 days, the same first and last day.
     expect(
       couponPayload(
@@ -294,9 +301,145 @@ describe("the coupon form: what is checked before saving", () => {
     expect(couponStatus({ active: true, archived_at: "2027-01-01" })).toBe(
       "archived",
     );
-    expect(couponUsesText(12, 50)).toEqual({ kind: "ofLimit", used: 12, limit: 50 });
+    expect(couponUsesText(12, 50)).toEqual({
+      kind: "ofLimit",
+      used: 12,
+      limit: 50,
+    });
     expect(couponUsesText(12, null)).toEqual({ kind: "noLimit", used: 12 });
     expect(couponUsesText(null, 50)).toEqual({ kind: "unknown" });
+  });
+});
+
+describe("the coupon form's numbers: a dot is the decimal point, a comma only between thousands", () => {
+  it("amounts in THB (×100), KWD (×1000) and VND (×1)", () => {
+    expect(parseCouponAmount("200", "THB")).toBe(n(20000));
+    expect(parseCouponAmount("1,234.56", "THB")).toBe(n(123456));
+    expect(parseCouponAmount("50,000", "THB")).toBe(n(5000000));
+    expect(parseCouponAmount("1,234,567.5", "THB")).toBe(n(123456750));
+    expect(parseCouponAmount("0.005", "KWD")).toBe(n(5));
+    expect(parseCouponAmount("1.25", "KWD")).toBe(n(1250));
+    expect(parseCouponAmount("0.0005", "KWD")).toBe("invalid");
+    expect(parseCouponAmount("50,000", "VND")).toBe(n(50000));
+    expect(parseCouponAmount("50000.5", "VND")).toBe("invalid");
+    expect(parseCouponAmount("", "THB")).toBeNull();
+    expect(parseCouponAmount("  ", "THB")).toBeNull();
+  });
+
+  it("refused: a comma as a decimal point, groups not of three, spaces, underscores, a minus sign", () => {
+    for (const typed of [
+      "2,50",
+      "12,5",
+      "1,23",
+      "1,2345",
+      ",500",
+      "500,",
+      "1,,000",
+      "1.000,50",
+      "1 000",
+      "1_000",
+      "1 000.50",
+      "-200",
+      "−200",
+      "+200",
+      "2.",
+      ".5",
+      "1e3",
+      "200 THB",
+      "฿200",
+      "２００",
+    ])
+      expect(parseCouponAmount(typed, "THB"), typed).toBe("invalid");
+  });
+
+  it("more than 18 digits is refused on its box, with its own words", () => {
+    // 16 baht digits are 18 satang digits: the most.
+    expect(parseCouponAmount("9".repeat(16), "THB")).toBe(
+      BigInt("9".repeat(16) + "00"),
+    );
+    expect(parseCouponAmount("9".repeat(17), "THB")).toBe("tooLong");
+    expect(parseCouponAmount("9".repeat(COUPON_AMOUNT_MAX_DIGITS), "VND")).toBe(
+      BigInt("9".repeat(18)),
+    );
+    expect(parseCouponAmount("9".repeat(19), "VND")).toBe("tooLong");
+    // Leading zeros are not digits that count.
+    expect(parseCouponAmount("0".repeat(30) + "1", "VND")).toBe(n(1));
+    expect(
+      couponPayload(draft({ kind: "fixed", amount: "9".repeat(17) }), "THB"),
+    ).toEqual({
+      ok: false,
+      errors: { amount: "couponAmountTooLong" },
+    });
+    expect(couponPayload(draft({ minSpend: "9".repeat(19) }), "VND")).toEqual({
+      ok: false,
+      errors: { minSpend: "couponAmountTooLong" },
+    });
+    expect(en.FormErrors.couponAmountTooLong).toContain("18 digits");
+  });
+
+  it("percentages: 12.5 is 1250 basis points; 12,5 is refused", () => {
+    expect(parseCouponPercent("12.5")).toBe(1250);
+    expect(parseCouponPercent("12.5%")).toBe(1250);
+    expect(parseCouponPercent("100")).toBe(10000);
+    for (const typed of ["12,5", "1 0", "1_0", "-10", "12.345", "10,0"])
+      expect(parseCouponPercent(typed), typed).toBe("invalid");
+    expect(couponPayload(draft({ percent: "12,5" }), "THB")).toEqual({
+      ok: false,
+      errors: { percent: "couponInvalidPercent" },
+    });
+    expect(en.FormErrors.couponInvalidPercent).toMatch(/dot for decimals/);
+    expect(en.FormErrors.couponInvalidAmount).toMatch(/dot for decimals/);
+  });
+
+  it("the form in KWD: 0.005 saves as 5 and shows as 0.005; a minimum spend of 1,000.250", () => {
+    const result = couponPayload(
+      draft({ kind: "fixed", amount: "0.005", minSpend: "1,000.250" }),
+      "KWD",
+    );
+    expect(
+      result.ok && [result.payload.amount, result.payload.min_spend],
+    ).toEqual(["5", "1000250"]);
+    const shown = couponDraft({
+      id: "k",
+      code: "K",
+      name: "",
+      currency: "KWD",
+      kind: "fixed",
+      percent_bp: null,
+      amount: "5",
+      all_products: true,
+      product_ids: [],
+      valid_from: null,
+      valid_to: null,
+      pickup_from: null,
+      pickup_to: null,
+      min_days: null,
+      min_spend: "1000250",
+      max_uses: null,
+      channels: ["staff"],
+      with_returning_discount: false,
+      with_season_discount: true,
+      active: true,
+      archived_at: null,
+    });
+    expect([shown.amount, shown.minSpend]).toEqual(["0.005", "1000.250"]);
+    expect(couponPayload(shown, "KWD", "k").ok).toBe(true);
+  });
+
+  it("the form in VND: whole dong only; 50,000 saves as 50000", () => {
+    const result = couponPayload(
+      draft({ kind: "fixed", amount: "50,000", minSpend: "200000" }),
+      "VND",
+    );
+    expect(
+      result.ok && [result.payload.amount, result.payload.min_spend],
+    ).toEqual(["50000", "200000"]);
+    expect(
+      couponPayload(draft({ kind: "fixed", amount: "50000.5" }), "VND"),
+    ).toEqual({
+      ok: false,
+      errors: { amount: "couponInvalidAmount" },
+    });
   });
 });
 
@@ -311,15 +454,22 @@ describe("the words for every coupon answer", () => {
       expect(en.Pricing.coupon.refused[key], reason).toMatch(/^Not applied/);
       expect(th.Pricing.coupon.refused[key], reason).toBeTruthy();
     }
-    for (const because of ["takes_nothing", "returning_discount_is_better"] as const) {
-      const key = notAppliedKey(because) as keyof typeof en.Pricing.coupon.notApplied;
+    for (const because of [
+      "takes_nothing",
+      "returning_discount_is_better",
+    ] as const) {
+      const key = notAppliedKey(
+        because,
+      ) as keyof typeof en.Pricing.coupon.notApplied;
       expect(en.Pricing.coupon.notApplied[key]).toMatch(/not applied/);
       expect(th.Pricing.coupon.notApplied[key]).toBeTruthy();
     }
     expect(en.Pricing.coupon.notApplied.returningIsLarger).toMatch(
       /the larger discount applies/,
     );
-    expect(en.Pricing.coupon.appliedInstead).toMatch(/the larger discount applies/);
+    expect(en.Pricing.coupon.appliedInstead).toMatch(
+      /the larger discount applies/,
+    );
   });
 
   it("a refusal names what the coupon itself set: its days, its pickup dates, its minimum", () => {
@@ -335,7 +485,9 @@ describe("the words for every coupon answer", () => {
       key: "tooEarly",
       values: { from: "2027-01-01" },
     });
-    expect(refusalWords("expired", coupon).values).toEqual({ to: "2027-01-31" });
+    expect(refusalWords("expired", coupon).values).toEqual({
+      to: "2027-01-31",
+    });
     expect(refusalWords("wrong_dates", coupon)).toEqual({
       key: "wrongDatesFrom",
       values: { from: "2027-02-01" },
@@ -344,21 +496,36 @@ describe("the words for every coupon answer", () => {
       refusalWords("wrong_dates", { ...coupon, pickupTo: "2027-02-28" }).key,
     ).toBe("wrongDatesBetween");
     expect(
-      refusalWords("wrong_dates", { ...coupon, pickupFrom: null, pickupTo: "2027-02-28" }).key,
+      refusalWords("wrong_dates", {
+        ...coupon,
+        pickupFrom: null,
+        pickupTo: "2027-02-28",
+      }).key,
     ).toBe("wrongDatesUntil");
     expect(refusalWords("too_short", coupon).values).toEqual({ days: 3 });
     expect(refusalWords("below_minimum", coupon).values).toEqual({
       amount: n(100000),
     });
-    expect(refusalWords("unknown", null)).toEqual({ key: "unknown", values: {} });
-    for (const key of ["wrongDatesBetween", "wrongDatesFrom", "wrongDatesUntil"] as const) {
+    expect(refusalWords("unknown", null)).toEqual({
+      key: "unknown",
+      values: {},
+    });
+    for (const key of [
+      "wrongDatesBetween",
+      "wrongDatesFrom",
+      "wrongDatesUntil",
+    ] as const) {
       expect(en.Pricing.coupon.refused[key]).toBeTruthy();
       expect(th.Pricing.coupon.refused[key]).toBeTruthy();
     }
   });
 
   it("reserve() and confirm_hold(): hold_expired, coupon_not_valid and coupon_used_up have shared words", () => {
-    expect(bookingRefusals).toEqual(["hold_expired", "coupon_not_valid", "coupon_used_up"]);
+    expect(bookingRefusals).toEqual([
+      "hold_expired",
+      "coupon_not_valid",
+      "coupon_used_up",
+    ]);
     for (const reason of bookingRefusals) {
       expect(bookingRefusalKey(reason)).toBe(reason);
       expect(en.FormErrors[reason]).toBeTruthy();
@@ -397,7 +564,11 @@ describe("the words for every coupon answer", () => {
     ];
     for (const [english, thai] of groups) {
       const theirs = new Map(flat(thai));
-      expect([...theirs.keys()].sort()).toEqual(flat(english).map(([k]) => k).sort());
+      expect([...theirs.keys()].sort()).toEqual(
+        flat(english)
+          .map(([k]) => k)
+          .sort(),
+      );
       for (const [key, text] of flat(english))
         expect(holes(theirs.get(key) ?? ""), key).toEqual(holes(text));
     }
@@ -423,7 +594,16 @@ const audit = (
   before: unknown,
   after: unknown,
   entity_id = "c1",
-): AuditRow => ({ id, entity: "coupons", entity_id, action, actor: "u1", before, after, at });
+): AuditRow => ({
+  id,
+  entity: "coupons",
+  entity_id,
+  action,
+  actor: "u1",
+  before,
+  after,
+  at,
+});
 
 describe("coupon History: the buttons' words, one action a line", () => {
   const created = {
@@ -437,21 +617,72 @@ describe("coupon History: the buttons' words, one action a line", () => {
   };
   const rows: AuditRow[] = [
     audit(1, "2027-01-01T00:00:00Z", "insert", null, created),
-    audit(2, "2027-01-01T00:00:00Z", "coupon_change", { products: [] }, { products: ["a", "b"] }),
-    audit(3, "2027-01-02T00:00:00Z", "update", { active: true }, { active: false }),
-    audit(4, "2027-01-03T00:00:00Z", "update", { active: false }, { active: true }),
+    audit(
+      2,
+      "2027-01-01T00:00:00Z",
+      "coupon_change",
+      { products: [] },
+      { products: ["a", "b"] },
+    ),
+    audit(
+      3,
+      "2027-01-02T00:00:00Z",
+      "update",
+      { active: true },
+      { active: false },
+    ),
+    audit(
+      4,
+      "2027-01-03T00:00:00Z",
+      "update",
+      { active: false },
+      { active: true },
+    ),
     audit(
       5,
       "2027-01-04T00:00:00Z",
       "update",
-      { kind: "percent", percent_bp: 1000, amount: null, max_uses: null, name: "" },
-      { kind: "fixed", percent_bp: null, amount: 20000, max_uses: 50, name: "Flyer" },
+      {
+        kind: "percent",
+        percent_bp: 1000,
+        amount: null,
+        max_uses: null,
+        name: "",
+      },
+      {
+        kind: "fixed",
+        percent_bp: null,
+        amount: 20000,
+        max_uses: 50,
+        name: "Flyer",
+      },
     ),
-    audit(6, "2027-01-05T00:00:00Z", "coupon_change", { products: ["a", "b"] }, { products: ["a"] }),
-    audit(7, "2027-01-06T00:00:00Z", "update", { code: "SUMMER10" }, { code: "SUMMER11" }),
-    audit(8, "2027-01-07T00:00:00Z", "update", { archived_at: null }, { archived_at: "2027-01-07T00:00:00Z" }),
+    audit(
+      6,
+      "2027-01-05T00:00:00Z",
+      "coupon_change",
+      { products: ["a", "b"] },
+      { products: ["a"] },
+    ),
+    audit(
+      7,
+      "2027-01-06T00:00:00Z",
+      "update",
+      { code: "SUMMER10" },
+      { code: "SUMMER11" },
+    ),
+    audit(
+      8,
+      "2027-01-07T00:00:00Z",
+      "update",
+      { archived_at: null },
+      { archived_at: "2027-01-07T00:00:00Z" },
+    ),
     // Another table's rows are not this History's.
-    { ...audit(9, "2027-01-08T00:00:00Z", "insert", null, {}), entity: "coupon_redemptions" },
+    {
+      ...audit(9, "2027-01-08T00:00:00Z", "insert", null, {}),
+      entity: "coupon_redemptions",
+    },
   ];
 
   it("created with its value and chosen products, switched off and on, changed, archived: newest first", () => {
@@ -473,11 +704,13 @@ describe("coupon History: the buttons' words, one action a line", () => {
       allProducts: false,
       products: 2,
     });
-    expect(lines.find((l) => l.change.kind === "valueChanged")!.change).toEqual({
-      kind: "valueChanged",
-      from: { kind: "percent", bp: 1000 },
-      to: { kind: "fixed", amount: "20000" },
-    });
+    expect(lines.find((l) => l.change.kind === "valueChanged")!.change).toEqual(
+      {
+        kind: "valueChanged",
+        from: { kind: "percent", bp: 1000 },
+        to: { kind: "fixed", amount: "20000" },
+      },
+    );
     expect(lines.find((l) => l.change.kind === "codeChanged")!.change).toEqual({
       kind: "codeChanged",
       from: "SUMMER10",
@@ -487,7 +720,10 @@ describe("coupon History: the buttons' words, one action a line", () => {
 
   it("every other setting gets its own line; brought back; all products again", () => {
     const lines = couponHistory([
-      audit(1, "2027-01-01T00:00:00Z", "insert", null, { ...created, all_products: true }),
+      audit(1, "2027-01-01T00:00:00Z", "insert", null, {
+        ...created,
+        all_products: true,
+      }),
       audit(
         2,
         "2027-01-02T00:00:00Z",
@@ -503,8 +739,20 @@ describe("coupon History: the buttons' words, one action a line", () => {
           with_season_discount: false,
         },
       ),
-      audit(3, "2027-01-03T00:00:00Z", "update", { archived_at: "x" }, { archived_at: null }),
-      audit(4, "2027-01-04T00:00:00Z", "update", { all_products: false }, { all_products: true }),
+      audit(
+        3,
+        "2027-01-03T00:00:00Z",
+        "update",
+        { archived_at: "x" },
+        { archived_at: null },
+      ),
+      audit(
+        4,
+        "2027-01-04T00:00:00Z",
+        "update",
+        { all_products: false },
+        { all_products: true },
+      ),
     ]);
     expect(lines.map((l) => l.change)).toEqual([
       { kind: "allProducts" },
@@ -527,12 +775,32 @@ describe("coupon History: the buttons' words, one action a line", () => {
 
   it("each kind of line has words in both languages", () => {
     const keys = [
-      "created", "createdChosen", "switchedOn", "switchedOff", "archived",
-      "restored", "allProducts", "chosenProducts", "codeChanged", "renamed",
-      "nameCleared", "valueChanged", "validDates", "pickupDates", "minDays",
-      "minDaysCleared", "minSpend", "minSpendCleared", "maxUses",
-      "maxUsesCleared", "channels", "channelsNone", "withReturningOn",
-      "withReturningOff", "withSeasonOn", "withSeasonOff",
+      "created",
+      "createdChosen",
+      "switchedOn",
+      "switchedOff",
+      "archived",
+      "restored",
+      "allProducts",
+      "chosenProducts",
+      "codeChanged",
+      "renamed",
+      "nameCleared",
+      "valueChanged",
+      "validDates",
+      "pickupDates",
+      "minDays",
+      "minDaysCleared",
+      "minSpend",
+      "minSpendCleared",
+      "maxUses",
+      "maxUsesCleared",
+      "channels",
+      "channelsNone",
+      "withReturningOn",
+      "withReturningOff",
+      "withSeasonOn",
+      "withSeasonOff",
     ] as const;
     for (const key of keys) {
       expect(en.Settings.coupons.history[key], key).toContain("{who}");
@@ -561,7 +829,12 @@ describe("Settings › Pricing and tax: the returning-customer card", () => {
       returning_rentals_needed: 1,
     });
     const on = settingsPayload(
-      { ...base, returningEnabled: true, returningPercent: "12.5", returningRentals: "2" },
+      {
+        ...base,
+        returningEnabled: true,
+        returningPercent: "12.5",
+        returningRentals: "2",
+      },
       "THB",
       [],
     );
@@ -574,18 +847,31 @@ describe("Settings › Pricing and tax: the returning-customer card", () => {
 
   it("what is refused: on with no percentage, 0%, over 100%, 0 or 1,001 rentals", () => {
     const cases: [Partial<typeof base>, Record<string, string>][] = [
-      [{ returningEnabled: true }, { returningPercent: "returningPercentRequired" }],
+      [
+        { returningEnabled: true },
+        { returningPercent: "returningPercentRequired" },
+      ],
       [{ returningPercent: "0" }, { returningPercent: "percentZero" }],
-      [{ returningPercent: "101" }, { returningPercent: "couponPercentTooLarge" }],
+      [
+        { returningPercent: "101" },
+        { returningPercent: "couponPercentTooLarge" },
+      ],
       [{ returningPercent: "x" }, { returningPercent: "invalidPercent" }],
-      [{ returningRentals: "0" }, { returningRentals: "returningRentalsRange" }],
-      [{ returningRentals: "1001" }, { returningRentals: "returningRentalsRange" }],
+      [
+        { returningRentals: "0" },
+        { returningRentals: "returningRentalsRange" },
+      ],
+      [
+        { returningRentals: "1001" },
+        { returningRentals: "returningRentalsRange" },
+      ],
       [{ returningRentals: "" }, { returningRentals: "returningRentalsRange" }],
     ];
     for (const [change, errors] of cases)
-      expect(settingsPayload({ ...base, ...change }, "THB", []), JSON.stringify(change)).toEqual(
-        { ok: false, errors },
-      );
+      expect(
+        settingsPayload({ ...base, ...change }, "THB", []),
+        JSON.stringify(change),
+      ).toEqual({ ok: false, errors });
   });
 
   it("a saved setting comes back on the form", () => {
@@ -637,7 +923,12 @@ const vehicle = draftRow(
     sharedId: "",
     baseAmount: "",
     list: {
-      boxes: { ...emptyBoxes(), daily: "300", twoWeeks: "2100", monthly: "3000" },
+      boxes: {
+        ...emptyBoxes(),
+        daily: "300",
+        twoWeeks: "2100",
+        monthly: "3000",
+      },
       manual: {},
     },
     longStay: "100",
@@ -668,7 +959,9 @@ const helmet: ProductPricingRow = {
   tax_profile_name: "VAT 7%",
   template: null,
 };
-const inputs = (settings: Partial<NonNullable<PricingInputs["settings"]>> = {}): PricingInputs => ({
+const inputs = (
+  settings: Partial<NonNullable<PricingInputs["settings"]>> = {},
+): PricingInputs => ({
   settings: {
     currency: "THB",
     rounding_step: "1000",
@@ -734,10 +1027,18 @@ const now = new Date("2026-12-01T00:00:00Z");
 
 describe("Check a price: extras, a coupon code and the returning-customer tick", () => {
   it("no code, no tick: as before, the list price and VAT", () => {
-    const checked = checkPrice({ inputs: inputs(), row: vehicle, sample: oneDay, now })!;
+    const checked = checkPrice({
+      inputs: inputs(),
+      row: vehicle,
+      sample: oneDay,
+      now,
+    })!;
     expect(checked.quote.totals.total).toBe(n(30000));
     expect(checked.discounts).toEqual([]);
-    expect(checked.decision).toMatchObject({ outcome: "decided", coupon: null });
+    expect(checked.decision).toMatchObject({
+      outcome: "decided",
+      coupon: null,
+    });
   });
 
   it("extras taken with the vehicle: two helmets, one included", () => {
@@ -749,7 +1050,11 @@ describe("Check a price: extras, a coupon code and the returning-customer tick",
       now,
     })!;
     const line = checked.quote.lines.find((l) => l.productId === "helmet")!;
-    expect(line).toMatchObject({ quantity: 2, includedQuantity: 1, seasonPrice: n(5000) });
+    expect(line).toMatchObject({
+      quantity: 2,
+      includedQuantity: 1,
+      seasonPrice: n(5000),
+    });
     expect(checked.quote.totals.total).toBe(n(35000));
     // 0 helmets: no line.
     expect(
@@ -842,7 +1147,12 @@ describe("Check a price: extras, a coupon code and the returning-customer tick",
       row: vehicle,
       sample: oneDay,
       code: "SAVE",
-      coupon: coupon({ kind: "fixed", percent_bp: null, amount: "5000", with_returning_discount: true }),
+      coupon: coupon({
+        kind: "fixed",
+        percent_bp: null,
+        amount: "5000",
+        with_returning_discount: true,
+      }),
       returning: true,
       now,
     })!;
@@ -854,7 +1164,11 @@ describe("Check a price: extras, a coupon code and the returning-customer tick",
   });
 
   it("a coupon that would take ฿0 is not applied", () => {
-    const free = { ...vehicle, pricing_method: "free" as const, template: null };
+    const free = {
+      ...vehicle,
+      pricing_method: "free" as const,
+      template: null,
+    };
     const checked = checkPrice({
       inputs: inputs(),
       row: free,
@@ -871,7 +1185,11 @@ describe("Check a price: extras, a coupon code and the returning-customer tick",
   });
 
   it("each refusal comes back with its reason and the price without the code", () => {
-    const cases: [CouponInputs | null, Partial<NonNullable<PricingInputs["settings"]>>, string][] = [
+    const cases: [
+      CouponInputs | null,
+      Partial<NonNullable<PricingInputs["settings"]>>,
+      string,
+    ][] = [
       [null, {}, "unknown"],
       [coupon(), { coupons_enabled: false }, "coupons_off"],
       [coupon({ active: false }), {}, "not_active"],
@@ -880,7 +1198,11 @@ describe("Check a price: extras, a coupon code and the returning-customer tick",
       [coupon({ valid_from: "2027-01-01" }), {}, "too_early"],
       [coupon({ valid_to: "2026-11-30" }), {}, "expired"],
       [coupon({ max_uses: 3 }, 3), {}, "used_up"],
-      [coupon({ all_products: false, product_ids: ["other"] }), {}, "not_these_products"],
+      [
+        coupon({ all_products: false, product_ids: ["other"] }),
+        {},
+        "not_these_products",
+      ],
       [coupon({ pickup_from: "2027-02-01" }), {}, "wrong_dates"],
       [coupon({ min_days: 3 }), {}, "too_short"],
       [coupon({ min_spend: "50000" }), {}, "below_minimum"],
@@ -894,18 +1216,124 @@ describe("Check a price: extras, a coupon code and the returning-customer tick",
         coupon: read,
         now,
       })!;
-      expect(checked.decision, reason).toMatchObject({ outcome: "refused", reason });
+      expect(checked.decision, reason).toMatchObject({
+        outcome: "refused",
+        reason,
+      });
       expect(checked.quote.totals.total, reason).toBe(n(30000));
     }
   });
 
   it("nothing to price: no row, a return before the pickup, no quantity", () => {
-    expect(checkPrice({ inputs: inputs(), row: null, sample: oneDay, now })).toBeNull();
     expect(
-      checkPrice({ inputs: inputs(), row: vehicle, sample: { ...oneDay, end: oneDay.start }, now }),
+      checkPrice({ inputs: inputs(), row: null, sample: oneDay, now }),
     ).toBeNull();
     expect(
-      checkPrice({ inputs: inputs(), row: vehicle, sample: { ...oneDay, quantity: 0 }, now }),
+      checkPrice({
+        inputs: inputs(),
+        row: vehicle,
+        sample: { ...oneDay, end: oneDay.start },
+        now,
+      }),
     ).toBeNull();
+    expect(
+      checkPrice({
+        inputs: inputs(),
+        row: vehicle,
+        sample: { ...oneDay, quantity: 0 },
+        now,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("Check a price in New York: a coupon's valid dates on the shop's clock, across both clock changes", () => {
+  const ny = "America/New_York";
+  const usd = (
+    settings: Partial<NonNullable<PricingInputs["settings"]>> = {},
+  ) => inputs({ currency: "USD", ...settings });
+  const row = { ...vehicle, currency: "USD" };
+  const sample = {
+    ...sampleSpan({ by: "days", pickup: "2027-12-01T10:00", days: 1 }, ny)!,
+    quantity: 1,
+    timeZone: ny,
+  };
+  const judge = (now: string, change: Partial<CouponRow>) =>
+    checkPrice({
+      inputs: usd(),
+      row,
+      sample,
+      code: "SAVE",
+      coupon: coupon({ currency: "USD", ...change }),
+      now: new Date(now),
+    })!.decision;
+
+  it("spring forward (14 Mar 2027): the last valid day ends at midnight New York time, then UTC−4", () => {
+    // 23:30 on 14 Mar in New York (EDT, UTC−4) is 03:30 UTC on the 15th.
+    expect(
+      judge("2027-03-15T03:30:00Z", { valid_to: "2027-03-14" }),
+    ).toMatchObject({
+      outcome: "decided",
+      coupon: { applied: true },
+    });
+    // 00:30 on the 15th: the day after. A fixed UTC−5 would still say the 14th.
+    expect(
+      judge("2027-03-15T04:30:00Z", { valid_to: "2027-03-14" }),
+    ).toMatchObject({
+      outcome: "refused",
+      reason: "expired",
+    });
+    // The night of the change itself: 01:30 EST and 03:30 EDT are both the 14th.
+    expect(
+      judge("2027-03-14T06:30:00Z", {
+        valid_from: "2027-03-14",
+        valid_to: "2027-03-14",
+      }).outcome,
+    ).toBe("decided");
+    expect(
+      judge("2027-03-14T07:30:00Z", {
+        valid_from: "2027-03-14",
+        valid_to: "2027-03-14",
+      }).outcome,
+    ).toBe("decided");
+  });
+
+  it("fall back (7 Nov 2027): the first valid day starts at midnight New York time, still UTC−4", () => {
+    // 23:30 on 6 Nov (EDT) is 03:30 UTC on the 7th: too early.
+    expect(
+      judge("2027-11-07T03:30:00Z", { valid_from: "2027-11-07" }),
+    ).toMatchObject({
+      outcome: "refused",
+      reason: "too_early",
+    });
+    // 00:30 on the 7th (EDT) is 04:30 UTC: valid. A fixed UTC−5 would say the 6th.
+    expect(
+      judge("2027-11-07T04:30:00Z", { valid_from: "2027-11-07" }),
+    ).toMatchObject({
+      outcome: "decided",
+      coupon: { applied: true },
+    });
+    // 01:30 happens twice that night; both are the 7th, and 23:59 EST is still the 7th.
+    expect(
+      judge("2027-11-07T05:30:00Z", {
+        valid_from: "2027-11-07",
+        valid_to: "2027-11-07",
+      }).outcome,
+    ).toBe("decided");
+    expect(
+      judge("2027-11-07T06:30:00Z", {
+        valid_from: "2027-11-07",
+        valid_to: "2027-11-07",
+      }).outcome,
+    ).toBe("decided");
+    expect(
+      judge("2027-11-08T04:59:00Z", { valid_to: "2027-11-07" }).outcome,
+    ).toBe("decided");
+    expect(
+      judge("2027-11-08T05:00:00Z", { valid_to: "2027-11-07" }),
+    ).toMatchObject({
+      outcome: "refused",
+      reason: "expired",
+    });
   });
 });

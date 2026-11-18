@@ -188,6 +188,12 @@ export function CouponForm({
               placeholder={t("search")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              // A filter, not a save: Enter (or a phone's Search key) must not
+              // send the form.
+              enterKeyHint="search"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
               className={inputClass}
             />
             <ul className="max-h-80 divide-y overflow-y-auto rounded-md border">
