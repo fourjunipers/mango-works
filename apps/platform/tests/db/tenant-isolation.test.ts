@@ -40,6 +40,7 @@ type Fixture = TestTenant & {
   templateId: string;
   taxProfileId: string;
   ruleId: string;
+  couponId: string;
   /** A service, offered with every vehicle (Phase 2, stage 5). */
   serviceId: string;
 };
@@ -288,6 +289,36 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
       included_quantity: 1,
     }),
   );
+  // Coupons (Phase 2, stage 8): a coupon for one product, used once.
+  const coupon = ok(
+    await service
+      .from("coupons")
+      .insert({
+        tenant_id: tenant.id,
+        currency: tenant.currency,
+        code: "FIXTURE10",
+        kind: "percent",
+        percent_bp: 1000,
+        all_products: false,
+      })
+      .select("id")
+      .single(),
+  )!;
+  ok(
+    await service.from("coupon_products").insert({
+      tenant_id: tenant.id,
+      coupon_id: coupon.id,
+      product_id: model.id,
+    }),
+  );
+  ok(
+    await service.from("coupon_redemptions").insert({
+      tenant_id: tenant.id,
+      coupon_id: coupon.id,
+      booking_id: "00000000-0000-4000-8000-0000000000c1",
+      amount: 100,
+    }),
+  );
   // audit_events: written by the triggers on the rows above.
   return {
     ...tenant,
@@ -298,6 +329,7 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
     templateId: template.id,
     taxProfileId: taxProfile.id,
     ruleId: rule.id,
+    couponId: coupon.id,
     serviceId: extra.id,
   };
 }
@@ -451,6 +483,24 @@ const payloads: Record<string, (t: Fixture, userId: string) => Row> = {
     extra_product_type: "service",
     included_quantity: 5,
   }),
+  coupons: (t) => ({
+    tenant_id: t.id,
+    currency: t.currency,
+    code: "FORGED100",
+    kind: "percent",
+    percent_bp: 10000,
+  }),
+  coupon_products: (t) => ({
+    tenant_id: t.id,
+    coupon_id: t.couponId,
+    product_id: t.itemId,
+  }),
+  coupon_redemptions: (t) => ({
+    tenant_id: t.id,
+    coupon_id: t.couponId,
+    booking_id: "00000000-0000-4000-8000-0000000000c2",
+    amount: 1,
+  }),
   audit_events: (t) => ({
     tenant_id: t.id,
     entity: "units",
@@ -485,6 +535,9 @@ const changes: Record<string, Row> = {
   price_rules: { adjust_bp: -9999 },
   price_rule_products: { rule_id: "00000000-0000-4000-8000-000000000000" },
   product_extras: { included_quantity: 99 },
+  coupons: { percent_bp: 10000 },
+  coupon_products: { coupon_id: "00000000-0000-4000-8000-000000000000" },
+  coupon_redemptions: { released_at: "2027-01-01T00:00:00Z" },
   audit_events: { action: "hijacked" },
 };
 
@@ -534,6 +587,9 @@ describe("every tenant table", () => {
   it("is found by the report", () => {
     expect(tables.map((t) => t.table_name)).toEqual([
       "audit_events",
+      "coupon_products",
+      "coupon_redemptions",
+      "coupons",
       "location_closures",
       "location_hours",
       "locations",

@@ -1438,7 +1438,11 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
       await new Promise((r) => setTimeout(r, 50));
   };
 
-  it("a confirm that began before the expiry and reaches the row after it is refused, by the clock; a hold of the shop's own page is still judged by when the call began", async () => {
+  // Since stage 8 (20261118000100, review of PR 48) every hold is judged by
+  // the clock once the locks are held: a hold that has run out holds no
+  // coupon use, so one confirmed after that moment would bring a use back.
+  // Before, a hold of the shop's own page was judged by when the call began.
+  it("a confirm that began before the expiry and reaches the row after it is refused, by the clock, for a Moto Mangos hold and for a hold of the shop's own page alike", async () => {
     const bike = await listedVehicle(3, { instant: 1 });
     const mm = booked(
       await mmBook([{ product_id: bike.id, ...window }], { hold: true }),
@@ -1468,14 +1472,11 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
     expect(mmAnswer.failed).toBe("");
     expect(mmAnswer.out).toContain("confirm: hold_expired");
     expect(pageAnswer.failed).toBe("");
-    expect(pageAnswer.out).toContain("confirm: ok");
+    expect(pageAnswer.out).toContain("confirm: hold_expired");
     const states = (await reservationsOf(bike.id)).map(
       (r) => `${r.channel} ${r.state}`,
     );
-    expect(states.sort()).toEqual([
-      "booking_page reserved",
-      "marketplace held",
-    ]);
+    expect(states.sort()).toEqual(["booking_page held", "marketplace held"]);
   }, 60_000);
 
   it("a confirm in flight at the expiry instant: a new booking begun after the expiry waits at the listing's row, then counts the confirmed hold and is refused; the cap is not passed", async () => {

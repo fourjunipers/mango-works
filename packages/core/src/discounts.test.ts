@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { COUPON_CODE_CASES } from "./coupon-code.cases";
 import {
   couponChannelFor,
   couponDiscountId,
   decideDiscounts,
+  isCouponCode,
   isRentalLine,
   normalizeCouponCode,
   RETURNING_DISCOUNT_ID,
@@ -181,6 +183,84 @@ describe("why a code is refused", () => {
     expect(
       reason({ lines: [scooter()], coupon: coupon(), code: "SAVE20" }),
     ).toBe("unknown");
+  });
+
+  it("the one normaliser: every shared case gives the stored form, character for character, and says whether it can be saved (the database runs the same list)", () => {
+    expect(COUPON_CODE_CASES.length).toBeGreaterThanOrEqual(30);
+    for (const each of COUPON_CODE_CASES) {
+      const normalized = normalizeCouponCode(each.typed);
+      expect([...normalized], each.what).toEqual([...each.normalized]);
+      expect(isCouponCode(normalized), each.what).toBe(each.accepted);
+      // Normalising what is stored changes nothing.
+      expect(normalizeCouponCode(normalized), each.what).toBe(normalized);
+    }
+    // The cases the list must not lose.
+    const what = COUPON_CODE_CASES.map((each) => each.typed).join("|");
+    for (const character of ["\u00a0", "\u200b", "\u00df", "\uff33"]) {
+      expect(what).toContain(character);
+    }
+  });
+
+  it("every code point in all 17 planes: exactly the 26 letters and the 29 removed characters change, and nothing else; a NUL and a lone surrogate are left as they are", () => {
+    const removed = [
+      0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002,
+      0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028,
+      0x2029, 0x202f, 0x205f, 0x3000, 0xfeff, 0x200b, 0x200c, 0x200d, 0x2060,
+    ];
+    expect(new Set(removed).size).toBe(29);
+    const changed: number[] = [];
+    for (let point = 0; point <= 0x10ffff; point++) {
+      const typed =
+        point >= 0xd800 && point <= 0xdfff
+          ? String.fromCharCode(point)
+          : String.fromCodePoint(point);
+      const stored = normalizeCouponCode(typed);
+      if (stored === typed) continue;
+      changed.push(point);
+      if (point >= 0x61 && point <= 0x7a) {
+        expect(stored).toBe(String.fromCodePoint(point - 0x20));
+      } else {
+        expect(stored, point.toString(16)).toBe("");
+      }
+    }
+    const letters = Array.from({ length: 26 }, (_, i) => 0x61 + i);
+    expect(changed).toEqual([...letters, ...removed].sort((a, b) => a - b));
+    // Each removed character is removed from inside a code too.
+    for (const point of removed) {
+      expect(
+        normalizeCouponCode(`save${String.fromCodePoint(point)}200`),
+        point.toString(16),
+      ).toBe("SAVE200");
+    }
+  });
+
+  it("the invisible characters are written as escapes, never as literal bytes: the cases file and the list of removed characters are plain ASCII", () => {
+    const cases = readFileSync(
+      new URL("./coupon-code.cases.ts", import.meta.url),
+      "utf8",
+    );
+    expect([...cases].filter((ch) => ch.charCodeAt(0) > 0x7e)).toEqual([]);
+    const source = readFileSync(
+      new URL("./discounts.ts", import.meta.url),
+      "utf8",
+    );
+    const from = source.indexOf("const REMOVED =");
+    const list = source.slice(from, source.indexOf(";", from));
+    expect(list.length).toBeGreaterThan(29 * 6);
+    expect([...list].filter((ch) => ch.charCodeAt(0) > 0x7e)).toEqual([]);
+    // Nothing but line breaks, spaces, quotes, plus signs and escapes.
+    expect(list.replace("const REMOVED =", "")).toMatch(
+      new RegExp('^[\\s"+]*(?:\\\\u[0-9a-f]{4}[\\s"+]*){29}$'),
+    );
+  });
+
+  it("the normaliser maps a to z alone: no locale's upper case is asked (a sharp s is not SS, a full-width letter is not folded)", () => {
+    expect(normalizeCouponCode("stra\u00dfe")).toBe("STRA\u00dfE");
+    expect("stra\u00dfe".toUpperCase()).toBe("STRASSE");
+    expect(normalizeCouponCode("\uff53")).toBe("\uff53");
+    expect(isCouponCode("STRASSE")).toBe(true);
+    expect(isCouponCode("STRA\u00dfE")).toBe(false);
+    expect(isCouponCode("")).toBe(false);
   });
 
   it("compares the code in upper case with spaces removed", () => {

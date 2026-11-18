@@ -5,6 +5,7 @@ import {
   type OfferRefusal,
   type OfferRequest,
 } from "@mango/core/booking-rules";
+import type { CouponOutcome, CouponRefusal } from "@mango/core/discounts";
 import type { Quote } from "@mango/core/quote";
 import { createAdminClient } from "@mango/db/admin";
 import {
@@ -13,6 +14,15 @@ import {
   type AvailabilityRow,
   type BookingInputs,
 } from "./booking-inputs";
+import {
+  codeGiven,
+  couponOutcomeOf,
+  couponRequestOf,
+  couponUseOf,
+  decideFor,
+  readCoupon,
+  type CouponInputs,
+} from "./coupons";
 import { extrasOf, quoteInputFor, type PricingInputs } from "./pricing-inputs";
 import { isTryAgain } from "./try-again";
 
@@ -30,6 +40,14 @@ import { isTryAgain } from "./try-again";
  * and nowhere else, so a path
  * round this function would skip them. lib/book-online.test.ts fails if any
  * other file could be such a path.
+ *
+ * A coupon code and the returning-customer discount are decided here too,
+ * before the price: decideDiscounts() in @mango/core (through
+ * lib/coupons.ts) says which discounts the booking gets, quote() prices it
+ * with them inside offer(), and reserve() is handed the coupon and what the
+ * quote says it took. It counts the use under the coupon's row and writes
+ * it with the booking. A code that is refused refuses the booking, with the
+ * reason, so nobody is booked at a price they did not expect.
  *
  * Phase 8's booking page and 3M's `marketplace_api` call this. Staff book as
  * themselves (Phase 3), never through here.
@@ -58,6 +76,15 @@ export type OnlineBookingRequest = {
     /** An extra: the index of the earlier vehicle line it goes with. */
     parent?: number;
   }[];
+  /** The coupon code the customer typed. Empty: none. */
+  couponCode?: string | null;
+  /**
+   * Rentals this customer has completed at this shop, for the
+   * returning-customer discount, and who they are, for a coupon's uses per
+   * customer. Inputs until customers exist (Phase 3): 0 and nobody.
+   */
+  completedRentals?: number;
+  customerId?: string | null;
 };
 
 export type OnlineRefusal =
@@ -70,6 +97,14 @@ export type OnlineRefusal =
    * "Most per vehicle" × its vehicle line's quantity. Staff are not bound.
    */
   | "over_most_per_vehicle"
+  /** decideDiscounts() refused the code: `coupon` says why. */
+  | "coupon_refused"
+  /**
+   * reserve(), under the coupon's row: its last use went to another booking,
+   * or it was switched off, archived or changed since it was read.
+   */
+  | "coupon_used_up"
+  | "coupon_not_valid"
   /** reserve(): someone else got there first, or it could not get its locks. */
   | "try_again"
   | "not_allowed";
@@ -84,18 +119,33 @@ export type OnlineBookingAnswer =
       holdExpiresAt: string | null;
       /** The price it was offered at. */
       quote: Extract<Quote, { ok: true }>;
+      /**
+       * What became of the code: applied, or good but not used (no use is
+       * written then). Null: no code was given.
+       */
+      coupon: CouponOutcome | null;
     }
   | {
       ok: false;
       reason: OnlineRefusal;
       /** The index of the line that was refused, when one was. */
       line: number | null;
+      /** With `coupon_refused`: why the code was refused. */
+      coupon?: CouponRefusal;
     };
 
-/** The database calls this needs: three reads and reserve(). */
+/**
+ * The database calls this needs: three reads, a fourth when a code was
+ * given, and reserve().
+ */
 export type OnlineDb = {
   rpc(
-    fn: "booking_inputs" | "availability" | "pricing_inputs" | "reserve",
+    fn:
+      | "booking_inputs"
+      | "availability"
+      | "pricing_inputs"
+      | "coupon_inputs"
+      | "reserve",
     args: Record<string, unknown>,
   ): PromiseLike<{
     data: unknown;
@@ -235,7 +285,7 @@ export async function bookOnline(
   const productIds = [...new Set(request.lines.map((line) => line.productId))];
 
   // The reads. None takes a lock; reserve() checks stock again under its own.
-  const [inputs, availability, pricing] = await Promise.all([
+  const [inputs, availability, pricing, coupon] = await Promise.all([
     read<BookingInputs>(db, "booking_inputs", {
       p_tenant_id: request.tenantId,
       p_location_id: request.locationId,
@@ -254,6 +304,12 @@ export async function bookOnline(
       p_tenant_id: request.tenantId,
       p_product_ids: productIds,
     }),
+    // The coupon the code finds, and its uses so far: only when one was typed.
+    codeGiven(request.couponCode)
+      ? readCoupon(db, request.tenantId, request.couponCode, {
+          customerId: request.customerId,
+        })
+      : Promise.resolve<CouponInputs | null>(null),
   ]);
 
   // The most per vehicle (product_extras.max_quantity), before anything
@@ -278,10 +334,12 @@ export async function bookOnline(
     now,
     lines,
   };
-  const answer = offer(
-    offerInputsOf(inputs),
-    lineAvailabilityOf(availability),
-    quoteInputFor(
+  // Which discounts the booking gets, decided before the price: the
+  // returning-customer discount, then the coupon. A code that is refused
+  // refuses the booking. (A line with no price is offer()'s to answer.)
+  const discounts = decideFor({
+    pricing,
+    quote: quoteInputFor(
       pricing,
       // An extra is priced as its vehicle's extra: the units that come
       // free with the vehicle (product_extras) are not charged.
@@ -300,6 +358,26 @@ export async function bookOnline(
             : String(request.lines[index].parent),
       })),
     ),
+    now,
+    timeZone: inputs.location.timezone,
+    channel: request.channel,
+    code: request.couponCode,
+    coupon,
+    completedRentals: request.completedRentals,
+  });
+  if (discounts.decision.outcome === "refused") {
+    return {
+      ok: false,
+      reason: "coupon_refused",
+      line: null,
+      coupon: discounts.decision.reason,
+    };
+  }
+
+  const answer = offer(
+    offerInputsOf(inputs),
+    lineAvailabilityOf(availability),
+    discounts.quote,
     asked,
   );
   if (!answer.ok) {
@@ -309,6 +387,13 @@ export async function bookOnline(
     const first = answer.lines.findIndex((line) => line.mode === "request");
     return { ok: false, reason: "request_only", line: first };
   }
+  // The coupon's use, with what the quote says it took. None when no code
+  // was given or the coupon was not applied: then no redemption is written.
+  const use = couponUseOf(
+    discounts.decision,
+    answer.quote,
+    request.customerId,
+  );
 
   const { data, error } = await db.rpc("reserve", {
     p_tenant_id: request.tenantId,
@@ -324,6 +409,7 @@ export async function bookOnline(
         quantity: line.quantity,
         ...(line.parent === undefined ? {} : { parent: line.parent }),
       })),
+      ...(use ? { coupon: couponRequestOf(use) } : {}),
     },
   });
   if (error) {
@@ -354,5 +440,6 @@ export async function bookOnline(
     })),
     holdExpiresAt: reserved.hold_expires_at ?? null,
     quote: answer.quote,
+    coupon: couponOutcomeOf(discounts.decision),
   };
 }

@@ -827,7 +827,183 @@ The sixth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §7, 
 
 - **Extend the money lint to `packages/core`.** The rule that refuses `*`, `/` and `%` on amounts covers `apps/platform` only (`one-pricer.test.ts`). In core it has to let the pricer's own files through and hold every other file; until then `discounts.ts` is held by its static test (item 6 above).
 
-**Next:** stage 8, coupons in the database (the three tables with `with_season_discount`, the returning-customer settings columns, `save_coupon`, `coupon_inputs`, redemption inside `reserve()`).
+**Next:** stage 8, coupons in the database (the three tables with `with_season_discount`, the returning-customer settings columns, `save_coupon`, `coupon_inputs`, redemption inside `reserve()`). **Done: see stage 8, below.**
+
+## Phase 2, stage 8: coupons in the database (branch `platform/phase-2-stage-8-coupons-db`, 18 Nov 2026)
+
+The eighth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2, §4, §5.3, §6, §8). From `main` at `3c3b4bd` (PR 47 merged). **Database, the two booking paths and their tests: nothing on a screen changes** (Settings › Coupons, the returning-customer card and "Check a price" with a code are stage 9). **Applied locally only: not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**What changed**
+
+- **One new migration, `20261118000100_platform_coupons`** (migration 5 of the plan). No earlier migration is touched.
+  - **A guard first.** The eight functions it re-creates must still have the bodies `main` gave them, by MD5 of the stored source (as `20261117000200` does): `reserve()`, `cancel_reservation()`, `confirm_hold()` (added after the review, below), `expire_holds()`, `save_pricing_settings()`, `pricing_inputs()`, `tenants_lock_currency()` and `currency_locked()`. On a mismatch it raises before anything is changed. Each body was read from the database (`pg_get_functiondef`) and patched by a script that fails unless every edit matches exactly once; none was retyped.
+  - **`platform.coupons`**: `currency`, `code`, `name`, `kind` (`percent` | `fixed`), `percent_bp` (1 to 10000), `amount` (more than 0), `all_products`, `valid_from` / `valid_to`, `pickup_from` / `pickup_to`, `min_days`, `min_spend`, `max_uses`, `max_uses_per_customer`, `channels` (any of `staff`, `booking_page`, `marketplace`; no `api`), `with_returning_discount`, `with_season_discount` (default true), `active`, `archived_at`. Only the number of the kind in force is kept.
+  - **`platform.coupon_products`**: `tenant_id`, `coupon_id`, `product_id`. A deleted product takes its links with it.
+  - **`platform.coupon_redemptions`**: `tenant_id`, `coupon_id`, `booking_id`, `customer_id` (empty until Phase 3), `amount` (more than 0; it was 0 or more before the review, below), `redeemed_at`, `released_at`. One live use per booking in a shop.
+  - All three: parents by `(tenant_id, id)`, RLS, grants written on purpose (`service_role` too), `updated_at`, audit (a row event for every change to a coupon and every use; a coupon's product links are one `coupon_change` event, as a season's are), and a fixture row per tenant in the isolation tests.
+  - **`platform_private.normalize_coupon_code()`**: the code's one normaliser (below).
+  - **`platform.save_coupon(p_tenant_id, p_coupon)`**: owners and managers. Names only what is to change; a new coupon needs a code and a kind with its number. `"archived": true` archives, `false` brings it back. 6-second lock timeout, set with `alter function`. Not the server's.
+  - **`platform.coupon_inputs(p_tenant_id, p_code, p_booking_id, p_customer_id)`**: one read, as its caller under RLS, of what `decideDiscounts` needs about a code: the coupon's settings, its product ids and its uses (in total and by one customer). Amounts are strings of digits.
+  - **Three settings on `pricing_settings`**: `returning_enabled` (off to start), `returning_percent_bp`, `returning_rentals_needed` (default 1). `save_pricing_settings()` takes them and `pricing_inputs()` returns them in `settings`.
+  - **`reserve()`** takes `"coupon": {"coupon_id", "amount", "customer_id"}`; **`cancel_reservation()`** and **the hold sweep** (`expire_holds()`, which `release_expired_holds()`, `reserve()` and `assign_units()` all run) give the use back. `reserve()` keeps its 6-second lock timeout and every guard it had.
+  - **The currency lock** counts a coupon that holds an amount of money.
+- **`@mango/core`**: `normalizeCouponCode()` rewritten to the database's rule, `isCouponCode()`, and `coupon-code.cases.ts`, the one list of cases both sides are tested against. The stale comment in `quote-snapshot.ts` is fixed (a coupon that would take 0 is not applied and is not a use).
+- **`apps/platform/lib`**
+  - **`coupons.ts` (new), the one feed**: `readCoupon()` (the read), `couponFoundOf()` and `returningCustomerOf()` (rows to `decideDiscounts`' input), `decideFor()` (builds the request and puts the decided discounts on the invoice for `quote()`), `couponUseOf()` (what the coupon took, added up from the quote's lines by `discountId`).
+  - **`book-online.ts`**: a code (`couponCode`), the customer's completed rentals and id are inputs. Order: the reads, `decideDiscounts`, `offer()` (which calls `quote()` with the discounts), then `reserve()` with the coupon and its amount. It is still the only file that calls `reserve()` for an online channel, and still calls it once, after `offer()`.
+  - **`staff-booking.ts`**: `bookAsStaff()`, a counter or phone booking priced with its coupon (`decideDiscounts` → `quote()` → `reserve()`); `reserveAsStaff()` passes a coupon when given one.
+  - **`coupon-save.ts` (new)**: `saveCoupon()`, which answers `try_again` for `55P03` and `57014` and names the database's refusals. Stage 9's form calls it.
+  - All database access is through the client from `@mango/db`; `quote()` is still the only pricer (the coupon's amount is read from the quote and added, nothing more).
+- **Root `CLAUDE.md`**: coupon rows in the lock order, how a use is counted and given back, `save_coupon()`'s locks and timeout. **`docs/phase-2-plan.md`**: §4's `save_coupon` and hold-sweep rows say how they are built; §12 lists what §5.3 needs. Types regenerated.
+
+**The code: one normaliser**
+
+- Two steps and nothing else: the spaces and invisible characters in a fixed list are removed (tab, line breaks, space, no-break space, U+1680, U+2000 to U+200A, line and paragraph separator, U+202F, U+205F, the ideographic space, the byte order mark, the zero-width space, non-joiner, joiner and word joiner); then **a to z become A to Z**.
+- **No locale's upper case is asked**, so the database and TypeScript can't disagree: a sharp s stays as it is (JavaScript's `toUpperCase()` would make it `SS`), full-width letters are not folded, the fi ligature and the Kelvin sign are left alone. Any such character is then refused by the next rule.
+- `save_coupon()` accepts only **A to Z and 0 to 9, 1 to 40 characters,** after normalising (`invalid_code`), and stores that form. The table has the same check. The lookup compares by equality.
+- 31 shared cases (no-break space, zero-width space, sharp s, full-width letters and digits, accents, a dotless i, Greek and Cyrillic look-alikes, an emoji, Thai, a quote) run through both functions: a unit test in `@mango/core`, and a database test that sends each code as hex and compares the stored form byte for byte.
+
+**Lock order, as built** (root `CLAUDE.md`)
+
+1. `reserve()`: product-and-location locks, unit locks, unit rows, product rows, listing rows (Moto Mangos), **the coupon's row `for update`**, then the sweep's reservations and blocks, then the inserts (the redemption with the reservations).
+2. `cancel_reservation()`: product-and-location locks, unit locks, **the coupon's row**, reservations, blocks, the redemption.
+3. The hold sweep: reservations, blocks, then the redemption's `released_at`. **No coupon row.**
+4. `save_coupon()`: no advisory lock. The coupon's row, then its product links in product-id order.
+
+**Where this differs from the plan or the brief, or decides what they left open** (say if any should change)
+
+1. **An archived code can be used again** (the brief's recommendation). The code is unique among coupons that are not archived (a partial unique index). The lookup finds the live coupon first, else the one archived last, so an archived code still answers `not_active` and not `unknown`. Bringing an archived coupon back while a live one has its code is refused (`code_taken`).
+2. **The hold sweep takes no coupon row** (the plan's §4 gave it none; the brief did not say). Inside `reserve()` the sweep runs with that call's own coupon row held; locking the swept holds' coupons there would be a second coupon lock out of id order, and two bookings could cross. It is safe without: a use is only ever added under the coupon's row, so a use given back without it can only make a count read high for a moment.
+3. **A hold that has run out holds no use, swept or not.** `coupon_uses()` leaves out a redemption whose booking is only expired holds. Otherwise a coupon's last use would stay taken until the sweep reached that product (the sweep inside `reserve()` only covers the products being booked). An expired hold can't be confirmed, so the use can't come back to it.
+4. **A booking cancelled in part keeps its use.** It is given back when nothing of the booking is left (every row cancelled or expired).
+5. **`reserve()` also refuses a fixed coupon said to have taken more than its amount** (`coupon_not_valid`). The amount is the quote's and the database does not work it out, but a staff member calls `reserve()` as themselves, and this is the one bound it can hold. No such coupon, or another shop's, is `coupon_not_valid` too, before any lock.
+6. **The currency recheck can't fail today.** `coupons` has a foreign key to the shop's `(id, currency)`, so a coupon can't be in another currency than its shop. `reserve()` checks it under the lock all the same, as asked.
+7. **The currency lock counts a minimum spend as well as a fixed amount** (the plan: "a fixed-amount coupon"). Both are amounts of money in the shop's currency. A percentage coupon with no minimum spend holds none: the currency can still change, and the coupon follows the shop (`on update cascade`). An archived coupon still counts.
+8. **A refused code refuses the booking**, on both paths (`coupon_refused`, with the reason), rather than booking at the price without it. Nobody is booked at a price they did not expect; the screen says why and the booking is sent again without the code.
+9. **`customer_id` is carried now** (in `reserve()`'s coupon, `coupon_inputs()` and the redemption), so "uses per customer" is counted under the lock from the day customers exist. Until Phase 3 nobody sends one.
+10. **Per customer, the refusal under the lock is `coupon_used_up`** (the plan gives `reserve()` two reasons only). `decideDiscounts` says `customer_used_up` before the transaction.
+11. **Two kinds of answer, as in stage 1.** `save_coupon()` raises: `only_owner_or_manager` (42501), `invalid_coupon` and `invalid_code` (22023), `coupon_not_found`, `product_not_found` and `code_taken` (P0001; another shop's coupon or product is answered exactly like a made-up id). `reserve()` answers `coupon_not_valid` and `coupon_used_up`; a coupon it can't read at all is `invalid_request`.
+12. **A coupon for chosen products must name at least one** (`invalid_coupon`): it could never be used. A retired product may stay linked.
+13. **`save_coupon()` leaves the links that stay alone** (it deletes the ones no longer named and adds the new ones), where `save_price_rule()` deletes and re-inserts them all.
+14. **Changed after the review (below): `reserve()` now refuses a coupon on the `api` channel.** As first built, the `api` channel was not rechecked in `reserve()`: the channel is one of the rules that ran before the transaction (`wrong_channel`), and nothing can change it meanwhile but a save, which the brief's list of rechecks does not include. Say if it should be.
+15. **The one-coupon-per-booking index is per shop** (`(tenant_id, booking_id)`). Found by the isolation test: two shops' fixture rows with the same booking id.
+
+**Tests**
+
+- **Database: 644 tests on the platform** (600 before). On a freshly reset local database, the suite run on its own: **640 passed, 4 failed, all four in older lock-timing tests this PR does not touch** (`reservations`: three "held in place" tests that timed out; `product-listings`: "save_listing waits for whoever holds the product's row", 44 ms where over 700 ms is expected). **The two files pass when run alone: 107 of 107.** They are the load-sensitive kind recorded under stage 5 and the Next.js upgrade. New: `coupons.test.ts` (41), 3 in `default-grants.test.ts`, and the isolation harness has a fixture row, a forged row and a change to try for each of the three tables.
+  - **The normaliser, TypeScript against SQL**: the 31 shared cases through both, byte for byte; `save_coupon()` storing that form and refusing the rest; the lookup finding a code however it is typed; the table's own check for a row written by hand.
+  - **Who may**: `save_coupon()` by each of the five roles; another shop's five roles, a stranger, a signed-out visitor and the server refused, with the shop's coupons unchanged; owners, managers and staff reading the three tables and mechanics, drivers and outsiders seeing none; every direct write refused.
+  - **Cross-tenant**: shop A naming shop B's coupon in `save_coupon()` and in `reserve()` (as a member and as the server), B's product in a coupon, and B's code in `coupon_inputs()`: each answered exactly like a made-up one, beside the same call with one, and B's rows untouched.
+  - **`save_coupon()`**: every setting; only what is named changing; the kind's other number cleared; 35 malformed payloads each `invalid_coupon` or `invalid_code` with nothing written; a bad change leaving an existing coupon whole; each table check by name; the code unique among live coupons, an archived code used again, and the lookup finding the right row at each step; the audit events.
+  - **`coupon_inputs()`**: every setting, an amount past what a JSON number holds arriving whole, uses in total and by customer, by role; real rows through the adapter and `decideDiscounts` (an archived or switched-off code is `not_active`, never `unknown`); **no coupon function multiplies, divides or rounds**.
+  - **The returning-customer settings**: off to start, saved, carried by `pricing_inputs()`, kept when another setting is saved; what is refused; the table's checks.
+  - **`reserve()`**: one redemption with the booking for the amount sent, from the counter and online; none without a coupon; refused under the lock with nothing written (switched off, archived, a fixed coupon taking more than its amount; the last use gone in total and by customer); a coupon that can't be read; a booking refused for stock using no use.
+  - **A use given back**: by a cancel (and the last use had again); kept by a booking cancelled in part; held and kept by a confirmed hold; back at once when a hold runs out, for a booking of another product too; marked by the scheduled sweep and by the sweep inside `reserve()`.
+  - **A held booking priced again** does not count its own use: `used_up` without its booking id, applied with it.
+  - **Both paths end to end on real rows**: `bookAsStaff()` and `bookOnline()` at ฿300 a day for two days with a ฿200 coupon: ฿400, and the redemption holds 20000. **A coupon that is not applied writes no redemption** (the returning discount is better; it would take nothing). **A coupon archived, switched off or used up between the quote and `reserve()`** is refused under the lock with nothing written, both ways round.
+  - **The lock order, held in place** (one side unsaved, the other seen in `pg_locks`): a save unsaved, and a booking seen waiting for a row with its product and unit locks in hand, then refused `coupon_not_valid`; a booking unsaved, and a save seen waiting with no advisory lock, and a second booking refused `coupon_used_up`; a cancel unsaved, and a booking that waits behind it and gets the use that came back.
+  - **`save_coupon()`'s lock timeout, through the API**: another session holds the coupon's row for 9 seconds; the save comes back after 6 and before 8 with `55P03`, `saveCoupon()` answers `try_again`, nothing is written, and the same save goes through when sent again.
+  - **The races: 120 rounds** (8 a shop for each of five races, in Bangkok THB, New York USD and Saigon VND): two bookings after a coupon's last use, staff against staff, online against online and staff against online: **exactly one succeeds, the other is `coupon_used_up` and wrote nothing**; two coupons with one use each, booked by four bookings naming two products in opposite orders: one booking per coupon; and bookings, a cancel, a hold that ran out, the sweep, a save and the read all at once: never more live uses than the coupon allows.
+  - **The race rounds of stages 1 to 3 and stage 5 ran again in the same suite** (`reservations`, `availability`, `booking-rules`, `product-extras`). **No deadlock:** no call answered `40P01` or `try_again`, each file's own check passed, and Postgres' count of detected deadlocks for the database was **0** after the whole run and the reruns.
+  - **The currency lock**: a fixed coupon and a minimum spend each lock it, archived too; a percentage coupon with neither leaves it free and follows the shop.
+  - **The guard**: run against a function whose body was changed (in a transaction that is undone), it raises and names the function.
+  - **The new race test fails when the code is wrong** (put into the local database by hand, then put back): with `for update` taken off the coupon's row in `reserve()`, "two bookings after a coupon's last use" fails in its first round with both bookings `ok`.
+- **Unit: 435 on the platform** (411 before), **654 in `@mango/core`** (652), **202 on the marketplace** (unchanged). Typecheck and lint pass for every workspace, the money rule included.
+  - `lib/coupons.test.ts` (17): the adapter; `decideFor()` and what `reserve()` is handed (a fixed coupon on its own line; a percentage over two lines beside the returning discount, added up by discount id; refused; not applied; no code); `bookAsStaff()`; `saveCoupon()`'s answers.
+  - `lib/book-online.test.ts` (7 more): no code (the coupon is never read); a good code (`reserve()` handed the coupon and 900 of 9000); a fixed coupon larger than its lines (what it took, not its face value); six refusals with `reserve()` never called; not applied (no coupon sent); the returning discount with no code; `reserve()`'s two refusals passed on. The static test still finds `book-online.ts` the only file that calls `reserve()`.
+  - `discounts.test.ts` (2 more): the shared cases; a to z alone.
+- **Browser:** not run here: nothing on a screen changed. CI runs the full suite.
+
+**After the review of PR 48** (18 Nov 2026, an independent review at `cdd321e`: "ready to merge once finding 1 is fixed"). All nine findings are fixed in this PR. The migration was on no database but the local one, so `20261118000100_platform_coupons` was edited in place and the local database reset; there is still one migration.
+
+1. **Blocker: `confirm_hold()` could add a coupon use outside the coupon's row.** A hold that has run out holds no use (`coupon_uses()`), and `confirm_hold()` took no coupon row and judged a hold's expiry by when the call began (all but Moto Mangos holds). A confirm that began just before the expiry and a booking of another product that began just after it could both go through: two confirmed bookings on a coupon with one use. **Fixed:** `confirm_hold()` is re-created in this migration (and is in the guard). After its advisory locks and, for Moto Mangos, the products' and listings' rows, it takes the booking's coupon row `for update`, as `cancel_reservation()` does; then the reservations; then it judges the expiry by `clock_timestamp()`, for every channel. Its `lock_timeout` is still 6 seconds and its grants are as they were. Whichever of a confirm and a booking holds the coupon's row first, the other sees what it did: the booking counts the confirmed hold and is refused, or the confirm finds the hold expired.
+   - **One behaviour changes on purpose:** a counter or booking-page hold whose confirm waits for a lock past the hold's expiry is now refused (`hold_expired`); before, only a Moto Mangos hold was judged that way. Stage 3's test that pinned the old rule ("a hold of the shop's own page is still judged by when the call began") now expects the refusal.
+2. **`reserve()` wrote a use for a coupon amount of 0.** Now `invalid_request` for an amount under 1, and the column's check is `amount > 0`.
+3. **`reserve()` took a coupon on the `api` channel**, and did not read the shop's "Accept coupons" switch. Now a coupon on `api` is `invalid_request`, and the switch is read again under the coupon's row: off, or never saved, is `coupon_not_valid`.
+4. **The "staff against staff" race booked one product on both sides**, so the product's advisory lock made them take turns with or without the coupon's row. Now the two sides book two products.
+5. **The parity test covered 15 of the 29 removed characters.** Now every code point in all 17 planes goes through both normalisers (a database test: the same 55 code points change, to the same bytes, and no other), and a unit test holds the TypeScript side to exactly the 26 letters and the 29 removed characters. Every invisible character in `coupon-code.cases.ts` and in `REMOVED` is a backslash-u escape; a test fails on a literal one. (They had been written as literal bytes.)
+6. **A code Postgres can't hold threw instead of answering `unknown`** (a NUL: `22P05`; a lone surrogate: `PGRST102`). `readCoupon()` now sends a code only when it could be a coupon's (`isCouponCode(normalizeCouponCode(code))`); anything else is "no such coupon" with no read, and `decideDiscounts` answers `unknown`.
+7. **A held booking priced again is looked up by the coupon id on its redemption** (`coupon_inputs()` with a booking id), when that coupon has the code given. Archived since, with its code used again for a new coupon, it is still the booking's own coupon and not the new one.
+8. **A coupon with no limit is not counted under the lock**: `reserve()` calls `coupon_uses()` only when the coupon has `max_uses`, or `max_uses_per_customer` and a customer. `coupon_inputs()` still counts, for the screen.
+9. **`saveCoupon()` answers `try_again` for a deadlock (`40P01`)** as well as `55P03` and `57014`. The booking functions catch a deadlock themselves; `save_coupon()` raises it.
+
+**Decided differently from the review's wording** (say if either should change)
+
+- **Finding 3, the switch off under the lock: `coupon_not_valid`**, not `coupon_refused` with `not_active`. `reserve()` has two coupon refusals (plan §3.2), and `coupon_not_valid` already means "it changed since the rules ran: send the booking again and the rules will say why", which is what happens: on the next try `decideDiscounts` answers `coupons_off`. `coupon_refused` is the app's answer for a rule's refusal, made before the transaction.
+- **Finding 7: the booking's own coupon is preferred only when it has the code that was typed.** A different code typed for that booking is looked up by the code, so staff can still try another coupon on a held booking.
+- **Finding 5: the full sweep is a test, not a script.** It takes about two seconds.
+
+**The guard, and the functions' MD5s** (of the stored source)
+
+| Function | `main`'s body (what the guard expects) | After this migration |
+| --- | --- | --- |
+| `platform.reserve(uuid, jsonb)` | `d38413ff072b5db4bd0470dd16d05532` | `e0ca7239cb2f8e2fabc9f3ae3dd717b7` |
+| `platform.cancel_reservation(uuid, uuid, uuid)` | `d9d027600fd6ac40db35b9a4fb6d784e` | `858f50b095813dcacbce1694941dbd4f` |
+| `platform.confirm_hold(uuid, uuid)` | `744aefe0ac56779f2ccc4c364af6be75` | `fb5aa3c61e7d12ddf0e76f93feaf082b` |
+| `platform_private.expire_holds(uuid, uuid[], uuid[], timestamptz)` | `93e204f23400cf8292e3d45e323a94be` | `ff6fa160435d21f476daa3c553262859` |
+| `platform.save_pricing_settings(uuid, jsonb)` | `dbd61712f2c4d2b00c99fffd861244e5` | `f6ecccebc42680ca2ba7b48c2c36892b` |
+| `platform.pricing_inputs(uuid, uuid[])` | `2753d9bdbb7712ebefe027b68e8978b3` | `56d38b5ae5b33fdcf9ecddd80d0e3890` |
+| `platform_private.tenants_lock_currency()` | `4b545b4c94e3d10b1172745cfd33f7fe` | `4325072baf78a6ffd19b702f56444ac4` |
+| `platform.currency_locked(uuid)` | `20c8317efa611bd2ecc721fdde56e7ba` | `af9db486f48ae6f358e731dfff476c6c` |
+
+New in this migration: `save_coupon()` `c9e3304f25b0291d2de692835e18ce8a`, `coupon_inputs()` `f22497a912c8fbde8a42e994f82e3cde`, `coupon_uses()` `7dda4ec5b9ef42934a63afff213a4ac3`.
+
+**Two mutation checks** (the function changed by hand in the local database, the test run, the function put back and its MD5 compared)
+
+- **Finding 1:** with the coupon's row taken out of `confirm_hold()`, "a confirm in flight across the hold's expiry" fails: the booking of the other product answers `ok` where `coupon_used_up` is expected. Put back: `fb5aa3c6…`, the migration's.
+- **Finding 4:** with `for update` taken off the coupon's row in `reserve()`, the race fails at **Bangkok, staff against staff, round 0**, the first round run: both bookings `ok`. (Before the fix to the test, the staff rounds passed with the lock removed and the first failure was "online against online".) Put back: `e0ca7239…`, the migration's.
+
+**Tests after the review**
+
+- **Database: 654 of 654 on the platform, on a freshly reset local database, the suite run on its own** (644 tests before the review; 19 files). The run before it had 653 of 654: the one failure was stage 3's test that pinned the old expiry rule (item 1 above), since changed. In between, `booking-rules.test.ts` run alone once timed out in an older held-in-place test ("two bookings of one scooter model for two places") and passed 45 of 45 when run again: the load-sensitive kind already on the stage 10 list. **No deadlock:** Postgres' count for the database was 0 after the whole run, and after the run before it.
+- **Unit: 439 on the platform** (435 before the review), **656 in `@mango/core`** (654), **202 on the marketplace**. Typecheck and lint pass for every workspace, the money rule included.
+- New database tests, in `coupons.test.ts` (51, was 41), under "after the review of PR 48": the confirm in flight across the expiry (one live use); the other way round, and a confirm that waits for a lock past the expiry; an amount of 0; the `api` channel; the switch under the lock (never saved, on, off); the 17-plane sweep; a NUL and a lone surrogate, through the read and through both booking paths; a held booking whose coupon was archived and its code used again; the count skipped for a coupon with no limit. The guard test expects eight functions; `default-grants.test.ts` pins `confirm_hold()`'s grants and timeout as re-created.
+- New unit tests: `readCoupon()` sending nothing for a code that could not be a coupon's, `decideFor()` and `bookAsStaff()` then answering `unknown` (3); `bookOnline()` the same (1); the sweep and the escapes in `discounts.test.ts` (2); `40P01` in the `saveCoupon()` test.
+
+**For stage 9** (none of it is built here)
+
+- Settings › Coupons calls `saveCoupon()` (`lib/coupon-save.ts`) and shows `try_again`, `code_taken`, `invalid_code` and the rest in words.
+- **The list's "12 of 50" must come from `coupon_inputs().uses.total`**, not from a raw count of `coupon_redemptions` with `released_at` empty: that count still includes holds that have run out and not been swept, which no longer hold a use (review of PR 48).
+- **The coupon form must not promise "uses per customer"** until Phase 3 sends a `customer_id`: nothing sends one today, so the limit is stored and never reached (review of PR 48).
+- **`invalid_code` needs plain wording for the shop** ("Use only the letters A to Z and the numbers 0 to 9"): Thai characters and full-width digits land here (review of PR 48).
+- The returning-customer card saves `returning_enabled`, `returning_percent_bp` and `returning_rentals_needed` through `save_pricing_settings()`; switched on with no percentage is `returning_percent_required`.
+- "Check a price" with a code: `readCoupon()` then `decideFor()` then `quote()`, the same three calls the booking paths make. A held booking priced again passes its booking id.
+- The form's tick "Can be used on season discounts" (`with_season_discount`), on by default.
+- The form should show the code as it will be stored (`normalizeCouponCode`) and say when it can't be saved (`isCouponCode`).
+
+**For stage 10** (from the review of PR 48; none of it is built here)
+
+- **Fold full-width A to Z and 0 to 9 in both normalisers** (a fixed list, no locale), so a customer typing a code with an IME in full-width letters gets a match. The shared cases and the 17-plane sweep must move with it.
+- **Test a shop's currency change racing `save_coupon()` and `reserve()`**: the tenant's row against the coupon's row, while the currency is still unlocked.
+- **Consider counting any redemption in the currency lock**: `coupon_redemptions.amount` has no currency of its own, so a percentage coupon that has been used leaves amounts behind in the old currency if the currency then changes.
+- The flaky lock-timing tests stay on the stage 10 list as before.
+
+**For Phase 8** (from the review of PR 48)
+
+- **Rate-limit code checks on the public booking page**: `not_active` against `unknown` tells a visitor that a code exists.
+- **`customerId` and `completedRentals` on `bookOnline()` must come from the server**, never from the browser: they decide a discount and a coupon's uses.
+
+**For Phase 3** (noted, not built)
+
+- **`max_uses_per_customer` is enforced only once a `customer_id` is sent** (review of PR 48): the count is built and tested with ids passed in; Phase 3 sends the real one from both booking paths.
+- **A held booking whose coupon was archived since** is priced again as `not_active` (the lookup finds its own coupon, archived). Whether a hold keeps a coupon that was archived after it was made is for the order editor to decide.
+- **A stacking coupon with a credit still throws `credit_exceeds_base`.** When a coupon and the returning-customer discount do not stack, `decideDiscounts` prices both ways and drops the way the pricer refuses (stage 7, review item 1). When they do stack there is only one way, so a credit carried to the invoice that is larger than what the two discounts leave in its rate group is thrown on as `QuoteError`, and `bookOnline()` and `bookAsStaff()` do not catch it. No booking in Phase 2 carries a credit (a credit comes from a swap); Phase 3 must decide what the customer is told.
+- `customer_id` on a redemption has no foreign key: there is no customers table yet.
+- `booking_id` on a redemption is `reservations.booking_id`; Phase 3's order takes it over. An order with no reservation rows (items for sale only) keeps its use until it is given back by whatever cancels an order.
+- A booking cancelled in part keeps the coupon and its stored amount; re-pricing what is left is the order's job.
+- The plan's Phase 3 notes from stage 7 stand ("every Nth period free"; an extension judged on the rental's own pickup and length).
+
+**Known issues and follow-ups**
+
+- **The lock-timing tests are sensitive to load**, as stage 3's and stage 5's are. Run the database suite on its own.
+- A race test shows a race is closed for the timings it hit.
+- `docs/platform/SPEC.md`'s data model does not have the three tables or the settings columns (plan §12).
+
+**Before this goes to staging** (the owner's word each time, plan Q17): nothing to count first. The migration adds three empty tables, three nullable-or-defaulted columns on `pricing_settings`, six new functions, and re-creates seven. Staging must be at 65 of 65 with `main`'s bodies; **the guard checks exactly that and stops with nothing changed if one differs.** Afterwards: the three tables are empty; every `pricing_settings` row reads `returning_enabled = false`, `returning_percent_bp` empty, `returning_rentals_needed = 1`; `reserve()`, `cancel_reservation()` and `save_coupon()` read `lock_timeout=6s`; `save_coupon()` can be executed by `authenticated` only; counts of products, units, blocks, reservations, pricing rows and audit rows are unchanged; `currency_locked()` answers as before for every shop.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s8` on ports 6232x, started with CI's service list. `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. The stacks of stage 5 and stage 6 were stopped (not removed); another project's stack was left alone.
+
+**Next:** stage 9, coupons on screens: Settings › Coupons, the returning-customer card, "Check a price" with a code (and with extras, carried from stage 6).
 
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 

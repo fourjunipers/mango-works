@@ -43,6 +43,90 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"coupon_products": {
+                  Row: {
+                    "coupon_id": string,"product_id": string,"tenant_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "coupon_id": string,"product_id": string,"tenant_id": string
+                  }
+                  Update: {
+                    "coupon_id"?: string,"product_id"?: string,"tenant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "coupon_products_tenant_id_coupon_id_fkey"
+      columns: ["tenant_id","coupon_id"]
+isOneToOne: false
+      referencedRelation: "coupons"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "coupon_products_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "coupon_products_tenant_id_product_id_fkey"
+      columns: ["tenant_id","product_id"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id"]
+    }
+                  ]
+                },"coupon_redemptions": {
+                  Row: {
+                    "amount": number,"booking_id": string,"coupon_id": string,"created_at": string,"customer_id": string | null,"id": string,"redeemed_at": string,"released_at": string | null,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "amount": number,"booking_id": string,"coupon_id": string,"created_at"?: string,"customer_id"?: string | null,"id"?: string,"redeemed_at"?: string,"released_at"?: string | null,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "amount"?: number,"booking_id"?: string,"coupon_id"?: string,"created_at"?: string,"customer_id"?: string | null,"id"?: string,"redeemed_at"?: string,"released_at"?: string | null,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "coupon_redemptions_tenant_id_coupon_id_fkey"
+      columns: ["tenant_id","coupon_id"]
+isOneToOne: false
+      referencedRelation: "coupons"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "coupon_redemptions_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"coupons": {
+                  Row: {
+                    "active": boolean,"all_products": boolean,"amount": number | null,"archived_at": string | null,"channels": (string)[],"code": string,"created_at": string,"currency": string,"id": string,"kind": string,"max_uses": number | null,"max_uses_per_customer": number | null,"min_days": number | null,"min_spend": number | null,"name": string,"percent_bp": number | null,"pickup_from": string | null,"pickup_to": string | null,"tenant_id": string,"updated_at": string,"valid_from": string | null,"valid_to": string | null,"with_returning_discount": boolean,"with_season_discount": boolean
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"all_products"?: boolean,"amount"?: number | null,"archived_at"?: string | null,"channels"?: (string)[],"code": string,"created_at"?: string,"currency": string,"id"?: string,"kind": string,"max_uses"?: number | null,"max_uses_per_customer"?: number | null,"min_days"?: number | null,"min_spend"?: number | null,"name"?: string,"percent_bp"?: number | null,"pickup_from"?: string | null,"pickup_to"?: string | null,"tenant_id": string,"updated_at"?: string,"valid_from"?: string | null,"valid_to"?: string | null,"with_returning_discount"?: boolean,"with_season_discount"?: boolean
+                  }
+                  Update: {
+                    "active"?: boolean,"all_products"?: boolean,"amount"?: number | null,"archived_at"?: string | null,"channels"?: (string)[],"code"?: string,"created_at"?: string,"currency"?: string,"id"?: string,"kind"?: string,"max_uses"?: number | null,"max_uses_per_customer"?: number | null,"min_days"?: number | null,"min_spend"?: number | null,"name"?: string,"percent_bp"?: number | null,"pickup_from"?: string | null,"pickup_to"?: string | null,"tenant_id"?: string,"updated_at"?: string,"valid_from"?: string | null,"valid_to"?: string | null,"with_returning_discount"?: boolean,"with_season_discount"?: boolean
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "coupons_currency_fkey"
+      columns: ["tenant_id","currency"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id","currency"]
+    },{
+      foreignKeyName: "coupons_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"location_closures": {
                   Row: {
                     "created_at": string,"end_date": string,"id": string,"location_id": string,"note": string | null,"repeats_yearly": boolean,"start_date": string,"tenant_id": string
@@ -269,14 +353,14 @@ isOneToOne: false
                   ]
                 },"pricing_settings": {
                   Row: {
-                    "coupons_enabled": boolean,"created_at": string,"currency": string,"default_tax_profile_id": string | null,"deposit_amount": number | null,"deposit_mode": string,"deposit_percent_bp": number | null,"rounding_step": number | null,"tax_inclusive": boolean,"tenant_id": string,"updated_at": string
+                    "coupons_enabled": boolean,"created_at": string,"currency": string,"default_tax_profile_id": string | null,"deposit_amount": number | null,"deposit_mode": string,"deposit_percent_bp": number | null,"returning_enabled": boolean,"returning_percent_bp": number | null,"returning_rentals_needed": number,"rounding_step": number | null,"tax_inclusive": boolean,"tenant_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "coupons_enabled"?: boolean,"created_at"?: string,"currency": string,"default_tax_profile_id"?: string | null,"deposit_amount"?: number | null,"deposit_mode"?: string,"deposit_percent_bp"?: number | null,"rounding_step"?: number | null,"tax_inclusive"?: boolean,"tenant_id": string,"updated_at"?: string
+                    "coupons_enabled"?: boolean,"created_at"?: string,"currency": string,"default_tax_profile_id"?: string | null,"deposit_amount"?: number | null,"deposit_mode"?: string,"deposit_percent_bp"?: number | null,"returning_enabled"?: boolean,"returning_percent_bp"?: number | null,"returning_rentals_needed"?: number,"rounding_step"?: number | null,"tax_inclusive"?: boolean,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "coupons_enabled"?: boolean,"created_at"?: string,"currency"?: string,"default_tax_profile_id"?: string | null,"deposit_amount"?: number | null,"deposit_mode"?: string,"deposit_percent_bp"?: number | null,"rounding_step"?: number | null,"tax_inclusive"?: boolean,"tenant_id"?: string,"updated_at"?: string
+                    "coupons_enabled"?: boolean,"created_at"?: string,"currency"?: string,"default_tax_profile_id"?: string | null,"deposit_amount"?: number | null,"deposit_mode"?: string,"deposit_percent_bp"?: number | null,"returning_enabled"?: boolean,"returning_percent_bp"?: number | null,"returning_rentals_needed"?: number,"rounding_step"?: number | null,"tax_inclusive"?: boolean,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -734,6 +818,9 @@ isOneToOne: false
 "confirm_hold":
 { Args: { "p_booking_id": string,"p_tenant_id": string }; Returns: Json
                            },
+"coupon_inputs":
+{ Args: { "p_booking_id"?: string,"p_code": string,"p_customer_id"?: string,"p_tenant_id": string }; Returns: Json
+                           },
 "create_general_product":
 { Args: { "p_description"?: string,"p_name": string,"p_quantities"?: Json,"p_tenant_id": string,"p_track_units"?: boolean,"p_type": string }; Returns: string
                            },
@@ -812,6 +899,9 @@ isOneToOne: false
                            },
 "save_booking_rules":
 { Args: { "p_rules": Json,"p_tenant_id": string }; Returns: Json
+                           },
+"save_coupon":
+{ Args: { "p_coupon": Json,"p_tenant_id": string }; Returns: Json
                            },
 "save_listing":
 { Args: { "p_product_id": string,"p_settings": Json }; Returns: Json

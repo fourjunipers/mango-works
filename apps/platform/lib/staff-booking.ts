@@ -1,3 +1,20 @@
+import type {
+  CouponOutcome,
+  CouponRefusal,
+} from "@mango/core/discounts";
+import { quote, type Discount, type Quote } from "@mango/core/quote";
+import type { BookingInputs } from "./booking-inputs";
+import {
+  codeGiven,
+  couponOutcomeOf,
+  couponRequestOf,
+  couponUseOf,
+  decideFor,
+  readCoupon,
+  type CouponInputs,
+  type CouponUse,
+} from "./coupons";
+import { quoteInputFor, type PricingInputs } from "./pricing-inputs";
 import { isTryAgain } from "./try-again";
 
 /**
@@ -14,6 +31,12 @@ import { isTryAgain } from "./try-again";
  * Online channels never come through here: lib/book-online.ts is their one
  * entry point, and it runs the booking rules first.
  *
+ * A coupon goes through bookAsStaff(): it reads the prices and the code,
+ * asks decideDiscounts() in @mango/core (through lib/coupons.ts) which
+ * discounts the booking gets, prices it with quote(), and hands reserve()
+ * the coupon and what the quote says it took. reserve() counts the use
+ * under the coupon's row and writes it with the booking.
+ *
  * Phase 3's order screens call these. Today the vehicle's Details form
  * calls moveUnit().
  */
@@ -22,6 +45,9 @@ import { isTryAgain } from "./try-again";
 export type StaffDb = {
   rpc(
     fn:
+      | "pricing_inputs"
+      | "booking_inputs"
+      | "coupon_inputs"
       | "reserve"
       | "confirm_hold"
       | "cancel_reservation"
@@ -81,6 +107,11 @@ export function reserveAsStaff(
     channel: "walk_in" | "phone";
     hold?: boolean;
     lines: readonly StaffLine[];
+    /**
+     * The coupon decideDiscounts() applied and what the quote says it took
+     * (lib/coupons.ts, couponUseOf). bookAsStaff() fills it in.
+     */
+    coupon?: CouponUse | null;
   },
 ): Promise<StaffReserved | Refused> {
   return call<StaffReserved>(db, "reserve", {
@@ -98,8 +129,147 @@ export function reserveAsStaff(
         ...(line.parent === undefined ? {} : { parent: line.parent }),
         ...(line.unitIds === undefined ? {} : { unit_ids: line.unitIds }),
       })),
+      ...(booking.coupon ? { coupon: couponRequestOf(booking.coupon) } : {}),
     },
   });
+}
+
+export type StaffBooking = {
+  channel: "walk_in" | "phone";
+  /** The pickup place: its clock says which day the booking is made. */
+  locationId: string;
+  hold?: boolean;
+  lines: readonly Omit<StaffLine, "locationId">[];
+  /** The code the customer gave. Empty: none. */
+  couponCode?: string | null;
+  /** The staff's own discounts: always last, never blocked. */
+  discounts?: readonly Discount[];
+  /**
+   * Rentals this customer has completed here, and who they are. Inputs
+   * until customers exist (Phase 3): 0 and nobody.
+   */
+  completedRentals?: number;
+  customerId?: string | null;
+  /** The moment the booking is made. */
+  now?: Date;
+};
+
+export type StaffBooked =
+  | (StaffReserved & {
+      /** The price it was booked at. */
+      quote: Extract<Quote, { ok: true }>;
+      /** What became of the code. Null: none was given. */
+      coupon: CouponOutcome | null;
+    })
+  | (Refused & {
+      /** With `coupon_refused`: why the code was refused. */
+      coupon?: CouponRefusal;
+    });
+
+async function read<T>(
+  db: StaffDb,
+  fn: "pricing_inputs" | "booking_inputs",
+  args: Record<string, unknown>,
+): Promise<T> {
+  const { data, error } = await db.rpc(fn, args);
+  if (error)
+    throw Object.assign(new Error(error.message), { code: error.code });
+  return data as T;
+}
+
+/**
+ * A booking at the counter or on the phone, priced, with its coupon.
+ *
+ * Staff are not bound by the booking rules (hours, notice, minimum days),
+ * so offer() is not asked; the price is quote()'s, with the discounts
+ * decideDiscounts() gave. Answers, beside reserve()'s own:
+ *
+ * - `coupon_refused`, with why: nothing is booked, so the member can tell
+ *   the customer and book again without the code;
+ * - `cant_be_priced`, with the line: a product has no price yet;
+ * - `coupon_used_up` / `coupon_not_valid` from reserve(): the last use
+ *   went to another booking, or the coupon changed since it was read;
+ * - `try_again`: a lock could not be had in time. Nothing was written.
+ */
+export async function bookAsStaff(
+  db: StaffDb,
+  tenantId: string,
+  booking: StaffBooking,
+): Promise<StaffBooked> {
+  if (booking.lines.length === 0) throw new RangeError("No lines to book");
+  const productIds = [...new Set(booking.lines.map((line) => line.productId))];
+  const [inputs, pricing, coupon] = await Promise.all([
+    read<BookingInputs>(db, "booking_inputs", {
+      p_tenant_id: tenantId,
+      p_location_id: booking.locationId,
+      p_product_ids: productIds,
+    }),
+    read<PricingInputs>(db, "pricing_inputs", {
+      p_tenant_id: tenantId,
+      p_product_ids: productIds,
+    }),
+    codeGiven(booking.couponCode)
+      ? readCoupon(db, tenantId, booking.couponCode, {
+          customerId: booking.customerId,
+        })
+      : Promise.resolve<CouponInputs | null>(null),
+  ]);
+
+  const decided = decideFor({
+    pricing,
+    quote: quoteInputFor(
+      pricing,
+      booking.lines.map((line, index) => ({
+        id: String(index),
+        productId: line.productId,
+        quantity: line.quantity,
+        span: {
+          start: line.start,
+          end: line.end,
+          timeZone: inputs.location.timezone,
+        },
+        extraOf: line.parent === undefined ? null : String(line.parent),
+      })),
+      { discounts: booking.discounts },
+    ),
+    now: booking.now ?? new Date(),
+    timeZone: inputs.location.timezone,
+    channel: booking.channel,
+    code: booking.couponCode,
+    coupon,
+    completedRentals: booking.completedRentals,
+  });
+  if (decided.decision.outcome === "refused") {
+    return {
+      ok: false,
+      reason: "coupon_refused",
+      coupon: decided.decision.reason,
+    };
+  }
+  const priced = quote(decided.quote);
+  if (!priced.ok) {
+    return {
+      ok: false,
+      reason: "cant_be_priced",
+      line: Number(priced.unpriced[0].lineId),
+    };
+  }
+
+  const reserved = await reserveAsStaff(db, tenantId, {
+    channel: booking.channel,
+    hold: booking.hold,
+    lines: booking.lines.map((line) => ({
+      ...line,
+      locationId: booking.locationId,
+    })),
+    coupon: couponUseOf(decided.decision, priced, booking.customerId),
+  });
+  if (!reserved.ok) return reserved;
+  return {
+    ...reserved,
+    quote: priced,
+    coupon: couponOutcomeOf(decided.decision),
+  };
 }
 
 export function confirmHold(

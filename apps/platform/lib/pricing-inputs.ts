@@ -47,6 +47,14 @@ export type PricingInputs = {
     deposit_percent_bp: number | null;
     deposit_amount: string | null;
     default_tax_profile_id: string | null;
+    /**
+     * The automatic returning-customer discount (since stage 8): on or off,
+     * its percentage, and the completed rentals that make a customer
+     * "returning". lib/coupons.ts reads them for decideDiscounts().
+     */
+    returning_enabled?: boolean;
+    returning_percent_bp?: number | null;
+    returning_rentals_needed?: number;
   } | null;
   /**
    * The products asked for, and the extras offered with the vehicles among

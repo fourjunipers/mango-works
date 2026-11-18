@@ -596,12 +596,16 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
     expect(rows).toEqual([
       // The availability read, which runs as its caller.
       "platform_private.booking_roles(text)",
+      // Behind coupon_inputs(), which runs as its caller (stage 8).
+      "platform_private.coupon_uses(uuid,uuid,uuid)",
       "platform_private.free_units(uuid,uuid,tstzrange)",
       "platform_private.json_time(jsonb,text,text)",
       "platform_private.json_uuid(jsonb,text,text)",
       "platform_private.marketplace_peaks(uuid,tstzrange)",
       // In an index on units and products, so every writer evaluates it.
       "platform_private.norm(text)",
+      // The coupon code as stored, for coupon_inputs() (stage 8).
+      "platform_private.normalize_coupon_code(text)",
       // Behind platform.queue_renewal_notifications(), since Phase 1a.
       "platform_private.queue_renewal_notifications(timestamp with time zone)",
       "platform_private.shortage_demand(uuid,uuid,tstzrange)",
@@ -806,6 +810,109 @@ describe("extras: product_extras and the stage 5 functions", () => {
       'platform.save_product_extras false true false false | true search_path="",lock_timeout=6s',
       // Read by the product_extras policy and by save_product_extras().
       'platform_private.extras_roles false true false false | false search_path=""',
+    ]);
+  });
+});
+
+/**
+ * Phase 2, stage 8 (20261118000100): coupons, coupon_products and
+ * coupon_redemptions; save_coupon(), coupon_inputs() and their helpers; and
+ * the seven functions re-created with a coupon in them.
+ */
+describe("coupons: the three tables and the stage 8 functions", () => {
+  const tables = ["coupons", "coupon_products", "coupon_redemptions"];
+
+  it("owners, managers and staff read (the policy decides who); nobody signed in writes; signed-out visitors get nothing; the service role is granted on purpose", () => {
+    const migrations = migrationsText();
+    for (const table of tables) {
+      const rows = lines(`
+        select r || ' ' || coalesce(string_agg(p, ',' order by p)
+          filter (where has_table_privilege(r, 'platform.${table}', p)), 'none')
+        from unnest(array['anon', 'authenticated']) r,
+             unnest(array['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger']) p
+        group by r order by r;
+      `);
+      expect(rows, table).toEqual(["anon none", "authenticated select"]);
+      expect(hasExplicitGrant(migrations, `platform.${table}`), table).toBe(
+        true,
+      );
+      expect(migrations, table).toMatch(
+        new RegExp(
+          `grant select, insert, update, delete on platform\\.${table} to service_role`,
+        ),
+      );
+    }
+  });
+
+  it("row level security is on, with one policy each: owners, managers and staff of the shop read, through pricing_roles('read') and the helper, not auth.uid()", () => {
+    const rows = lines(`
+      select c.relname || ' ' || c.relrowsecurity::text
+      from pg_class c
+      where c.oid in ('platform.coupons'::regclass, 'platform.coupon_products'::regclass,
+        'platform.coupon_redemptions'::regclass)
+      order by 1;
+      select polrelid::regclass || ' | ' || polname || ' ' || polcmd::text || ' '
+        || polroles::regrole[]::text
+        || ' ' || (pg_get_expr(polqual, polrelid) like '%my_tenant_ids(platform_private.pricing_roles(''read''%')::text
+        || ' ' || (pg_get_expr(polqual, polrelid) like '%auth.uid%')::text
+      from pg_policy
+      where polrelid in ('platform.coupons'::regclass, 'platform.coupon_products'::regclass,
+        'platform.coupon_redemptions'::regclass)
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      "coupon_products true",
+      "coupon_redemptions true",
+      "coupons true",
+      "platform.coupon_products | Owners, managers and staff read coupon products r {authenticated} true false",
+      "platform.coupon_redemptions | Owners, managers and staff read coupon uses r {authenticated} true false",
+      "platform.coupons | Owners, managers and staff read coupons r {authenticated} true false",
+    ]);
+  });
+
+  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned; save_coupon() is not the server's and has the 6-second lock timeout, as reserve() and cancel_reservation() still have", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || has_function_privilege('service_role', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+        || ' | ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in (
+          'save_coupon', 'coupon_inputs', 'coupon_uses', 'release_coupon_use',
+          'normalize_coupon_code', 'json_day', 'reserve', 'cancel_reservation',
+          'confirm_hold',
+          'expire_holds', 'release_expired_holds', 'save_pricing_settings',
+          'pricing_inputs', 'currency_locked', 'tenants_lock_currency')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
+      'platform.cancel_reservation false true true false | true search_path="",lock_timeout=6s',
+      // Re-created in stage 8 with the coupon's row; grants and timeout as before.
+      'platform.confirm_hold false true true false | true search_path="",lock_timeout=6s',
+      // The read: as its caller, so RLS decides. Members and the server.
+      'platform.coupon_inputs false true true false | false search_path=""',
+      'platform.currency_locked false true true false | true search_path=""',
+      'platform.pricing_inputs false true true false | false search_path=""',
+      // The scheduled sweep: the server's and the database job's. No lock
+      // timeout, on purpose (root CLAUDE.md).
+      'platform.release_expired_holds false false true false | true search_path=""',
+      'platform.reserve false true true false | true search_path="",lock_timeout=6s',
+      // Owners and managers (checked inside). Not the server's.
+      'platform.save_coupon false true false false | true search_path="",lock_timeout=6s',
+      'platform.save_pricing_settings false true true false | true search_path=""',
+      // Called by coupon_inputs() as its caller, and by reserve().
+      'platform_private.coupon_uses false true true false | false search_path=""',
+      // Nobody's but the functions that run as their owner.
+      'platform_private.expire_holds false false false false | true search_path=""',
+      'platform_private.json_day false false false false | false search_path=""',
+      'platform_private.normalize_coupon_code false true true false | false search_path=""',
+      'platform_private.release_coupon_use false false false false | false search_path=""',
+      'platform_private.release_expired_holds false false false false | true search_path=""',
+      'platform_private.tenants_lock_currency false false false false | true search_path=""',
     ]);
   });
 });
