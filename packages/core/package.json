@@ -8,6 +8,7 @@
     "./availability": "./src/availability.ts",
     "./booking-rules": "./src/booking-rules.ts",
     "./closures": "./src/closures.ts",
+    "./coupon-code.cases": "./src/coupon-code.cases.ts",
     "./currency": "./src/currency.ts",
     "./discounts": "./src/discounts.ts",
     "./listing": "./src/listing.ts",

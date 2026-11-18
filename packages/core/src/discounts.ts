@@ -215,14 +215,52 @@ export type DiscountDecision =
 
 // ---------------------------------------------------------------- the pieces
 
-/** A code as it is compared: upper case, with every space removed (§11). */
+/**
+ * A code as it is stored and compared (§11). Two steps, and nothing else:
+ *
+ *   1. every space and invisible character in REMOVED is taken out;
+ *   2. the 26 letters a to z become A to Z.
+ *
+ * No other character is changed: no Unicode case mapping (a sharp s stays
+ * as it is, it does not become SS) and no folding of full-width letters. So
+ * the answer does not depend on a locale, and the database's
+ * platform_private.normalize_coupon_code() gives the same one, character
+ * for character. The two are held together by coupon-code.cases.ts: a unit
+ * test runs the cases here and a database test runs them there.
+ *
+ * A code is saved only when it is A to Z and 0 to 9 after this
+ * (isCouponCode), so one typed with any other character finds no coupon.
+ */
 export function normalizeCouponCode(code: string): string {
-  return code.replace(SPACES, "").toUpperCase();
+  let out = "";
+  for (const character of code) {
+    if (REMOVED.includes(character)) continue;
+    const letter = LOWER.indexOf(character);
+    out += letter < 0 ? character : UPPER[letter];
+  }
+  return out;
 }
+
+/** True for a code that can be saved: A to Z and 0 to 9, 1 to 40 of them. */
+export function isCouponCode(normalized: string): boolean {
+  return CODE.test(normalized);
+}
+
+const LOWER = "abcdefghijklmnopqrstuvwxyz";
+const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+/**
+ * Tab, line feed, vertical tab, form feed, carriage return, space, no-break
+ * space, U+1680, U+2000 to U+200A, line and paragraph separator, U+202F,
+ * U+205F, the ideographic space, the byte order mark, and the zero-width
+ * space, non-joiner, joiner and word joiner. The same list as the
+ * database's function.
+ */
+const REMOVED =
+  "\u0009\u000a\u000b\u000c\u000d   " + "           " + "    　﻿​‌‍⁠";
 
 // Patterns are built from strings so this file holds no "/" or "*" outside
 // comments and strings: discounts.test.ts fails on any money arithmetic here.
-const SPACES = new RegExp("\\s+", "gu");
+const CODE = new RegExp("^[A-Z0-9]{1,40}$");
 const DAY = new RegExp("^\\d{4}-\\d{2}-\\d{2}$");
 
 /**

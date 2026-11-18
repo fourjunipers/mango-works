@@ -190,8 +190,9 @@ export type QuoteSnapshot = {
   credits: Array<{ id: string; amount: bigint; taxRateBp: number | null }>;
   /**
    * Every discount the invoice was priced with, in the order applied, one
-   * that took nothing included (a coupon on lines that came to 0 is still
-   * a use of the coupon).
+   * that took nothing included (a staff discount on lines that came to 0).
+   * A coupon is never one of those: decideDiscounts() does not apply a
+   * coupon that would take 0, and it is not a use of the coupon.
    */
   discounts: Array<{
     discountId: string;

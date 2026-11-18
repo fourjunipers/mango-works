@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { COUPON_CODE_CASES } from "./coupon-code.cases";
 import {
   couponChannelFor,
   couponDiscountId,
   decideDiscounts,
+  isCouponCode,
   isRentalLine,
   normalizeCouponCode,
   RETURNING_DISCOUNT_ID,
@@ -181,6 +183,31 @@ describe("why a code is refused", () => {
     expect(
       reason({ lines: [scooter()], coupon: coupon(), code: "SAVE20" }),
     ).toBe("unknown");
+  });
+
+  it("the one normaliser: every shared case gives the stored form, character for character, and says whether it can be saved (the database runs the same list)", () => {
+    expect(COUPON_CODE_CASES.length).toBeGreaterThanOrEqual(30);
+    for (const each of COUPON_CODE_CASES) {
+      const normalized = normalizeCouponCode(each.typed);
+      expect([...normalized], each.what).toEqual([...each.normalized]);
+      expect(isCouponCode(normalized), each.what).toBe(each.accepted);
+      // Normalising what is stored changes nothing.
+      expect(normalizeCouponCode(normalized), each.what).toBe(normalized);
+    }
+    // The cases the list must not lose.
+    const what = COUPON_CODE_CASES.map((each) => each.typed).join("|");
+    for (const character of ["\u00a0", "\u200b", "\u00df", "\uff33"]) {
+      expect(what).toContain(character);
+    }
+  });
+
+  it("the normaliser maps a to z alone: no locale's upper case is asked (a sharp s is not SS, a full-width letter is not folded)", () => {
+    expect(normalizeCouponCode("stra\u00dfe")).toBe("STRA\u00dfE");
+    expect("stra\u00dfe".toUpperCase()).toBe("STRASSE");
+    expect(normalizeCouponCode("\uff53")).toBe("\uff53");
+    expect(isCouponCode("STRASSE")).toBe(true);
+    expect(isCouponCode("STRA\u00dfE")).toBe(false);
+    expect(isCouponCode("")).toBe(false);
   });
 
   it("compares the code in upper case with spaces removed", () => {
