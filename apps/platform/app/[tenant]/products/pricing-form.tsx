@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { ActionForm, useFieldError } from "@/components/action-form";
-import { Field, inputClass } from "@/components/form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { formatMinor, multiplierText, parseMinorUnits } from "@/lib/money";
 import {
@@ -441,7 +441,11 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
 function ErrorFor({ name }: { name: string }) {
   const message = useFieldError(name);
   return message ? (
-    <p role="alert" className="mt-2 text-sm text-destructive">
+    <p
+      id={`${name}-error`}
+      role="alert"
+      className="mt-2 text-sm text-destructive"
+    >
       {message}
     </p>
   ) : null;
@@ -503,7 +507,7 @@ function MoneyInput({
         inputMode="decimal"
         autoComplete="off"
         aria-invalid={error ? true : undefined}
-        aria-describedby={help ? `${id}-help` : undefined}
+        aria-describedby={describedBy(id, { help, error })}
         className={inputClass}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -783,6 +787,8 @@ function SharedChoice({
         <Field id="sharedId" label={t("tiered.list")} error={error}>
           <select
             id="sharedId"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy("sharedId", { error })}
             className={inputClass}
             value={draft.sharedId}
             onChange={(e) => set({ sharedId: e.target.value })}

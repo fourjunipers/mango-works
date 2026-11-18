@@ -9,7 +9,7 @@ import {
   TextInput,
   useFieldError,
 } from "@/components/action-form";
-import { Field, inputClass } from "@/components/form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import type { OutState, ProblemKind } from "@/lib/gear-permissions";
 import { maxGearQuantity } from "@/lib/general-products";
@@ -138,7 +138,7 @@ function StepperField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           aria-invalid={error ? true : undefined}
-          aria-describedby={`${id}-help`}
+          aria-describedby={describedBy(id, { help: true, error })}
           className={cn(inputClass, "w-24 text-center tabular-nums")}
         />
         <button
@@ -206,7 +206,7 @@ function CountField({ free }: { free: number }) {
         required
         defaultValue={1}
         aria-invalid={error ? true : undefined}
-        aria-describedby="report-quantity-help"
+        aria-describedby={describedBy("report-quantity", { help: true, error })}
         className={cn(inputClass, "max-w-28")}
       />
     </Field>

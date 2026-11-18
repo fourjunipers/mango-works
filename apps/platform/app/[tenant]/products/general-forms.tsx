@@ -10,7 +10,7 @@ import {
   useFieldError,
   type FormAction,
 } from "@/components/action-form";
-import { Field, inputClass } from "@/components/form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import { generalTypes, type GeneralType } from "@/lib/general-products";
 import { cn } from "@/lib/utils";
 import {
@@ -225,7 +225,7 @@ function CountField({
         autoComplete="off"
         defaultValue={defaultValue}
         aria-invalid={error ? true : undefined}
-        aria-describedby={help ? `${id}-help` : undefined}
+        aria-describedby={describedBy(id, { help, error })}
         className={cn(inputClass, "max-w-28")}
       />
     </Field>
@@ -354,6 +354,7 @@ function LabelField({
         defaultValue={defaultValue}
         placeholder={t("labelPlaceholder")}
         aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(id, { error })}
         className={cn(inputClass, "max-w-64")}
       />
     </Field>

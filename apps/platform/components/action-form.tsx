@@ -12,7 +12,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { Field, inputClass } from "@/components/form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -108,6 +108,30 @@ export function ActionForm({
   useEffect(() => {
     if (state.ok) onOkRef.current?.();
   }, [state]);
+  // After a refused save, focus goes to the first field with an error, so
+  // a keyboard or screen-reader user lands on what to fix and a phone
+  // scrolls to it. Fields mark themselves with aria-invalid. An error with
+  // no field of its own (the whole-form message, a list's message) takes
+  // the focus itself.
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!state.errors || Object.keys(state.errors).length === 0) return;
+    const form = formRef.current;
+    if (!form) return;
+    const marked = form.querySelector<HTMLElement>(
+      '[aria-invalid="true"]:not([disabled])',
+    );
+    // A group of radios is marked as a group: its first choice takes focus.
+    const field = marked?.matches("input, select, textarea")
+      ? marked
+      : marked?.querySelector<HTMLElement>(
+          "input:not([disabled]), select, textarea",
+        );
+    const target = field ?? form.querySelector<HTMLElement>('[role="alert"]');
+    if (!target) return;
+    if (!field && !target.hasAttribute("tabindex")) target.tabIndex = -1;
+    target.focus();
+  }, [state]);
   const error = (field: string) => {
     const key = state.errors?.[field];
     if (!key) return undefined;
@@ -119,6 +143,7 @@ export function ActionForm({
   return (
     <FormContext.Provider value={{ error, pending }}>
       <form
+        ref={formRef}
         action={formAction}
         className={cn("space-y-5", className)}
         onSubmit={(event) => {
@@ -215,7 +240,7 @@ export function TextInput({
         id={name}
         name={name}
         aria-invalid={message ? true : undefined}
-        aria-describedby={help ? `${name}-help` : undefined}
+        aria-describedby={describedBy(name, { help, error: message })}
         autoComplete="off"
         className={cn(inputClass, className)}
         {...props}
@@ -238,6 +263,7 @@ export function TextArea({
         name={name}
         rows={3}
         aria-invalid={message ? true : undefined}
+        aria-describedby={describedBy(name, { help, error: message })}
         className={cn(inputClass, "h-auto py-2")}
         {...props}
       />
@@ -261,7 +287,7 @@ export function SelectInput({
         id={name}
         name={name}
         aria-invalid={message ? true : undefined}
-        aria-describedby={help ? `${name}-help` : undefined}
+        aria-describedby={describedBy(name, { help, error: message })}
         className={inputClass}
         {...props}
       >
@@ -293,14 +319,24 @@ export function CheckboxInput({
           id={name}
           name={name}
           type="checkbox"
+          aria-invalid={message ? true : undefined}
+          aria-describedby={describedBy(name, { help, error: message })}
           className="size-5 accent-primary"
           {...props}
         />
         {label}
       </label>
-      {help && <p className="text-xs text-muted-foreground">{help}</p>}
+      {help && (
+        <p id={`${name}-help`} className="text-xs text-muted-foreground">
+          {help}
+        </p>
+      )}
       {message && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          id={`${name}-error`}
+          role="alert"
+          className="text-sm text-destructive"
+        >
           {message}
         </p>
       )}
@@ -322,7 +358,14 @@ export function RadioList({
 }) {
   const message = useFieldError(name);
   return (
-    <fieldset className="space-y-2">
+    // The group, not each radio, is what can be invalid: a radio's role
+    // does not take aria-invalid, a radio group's does.
+    <fieldset
+      role="radiogroup"
+      aria-invalid={message ? true : undefined}
+      aria-describedby={describedBy(name, { error: message })}
+      className="space-y-2"
+    >
       <legend className="sr-only">{legend}</legend>
       {options.map((option) => (
         <label
@@ -349,7 +392,11 @@ export function RadioList({
         </label>
       ))}
       {message && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          id={`${name}-error`}
+          role="alert"
+          className="text-sm text-destructive"
+        >
           {message}
         </p>
       )}

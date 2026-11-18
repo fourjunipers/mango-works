@@ -398,9 +398,7 @@ export function Quantities({
     <>
       {t("includedCount", { count: included })}
       {" · "}
-      {most === null
-        ? t("mostNone")
-        : t("mostCount", { count: most })}
+      {most === null ? t("mostNone") : t("mostCount", { count: most })}
     </>
   );
 }
