@@ -66,6 +66,9 @@ export async function savePricingSettings(
       depositPercent: field(formData, "depositPercent"),
       depositAmount: field(formData, "depositAmount"),
       couponsEnabled: formData.get("couponsEnabled") === "on",
+      returningEnabled: formData.get("returningEnabled") === "on",
+      returningPercent: field(formData, "returningPercent"),
+      returningRentals: field(formData, "returningRentals"),
     },
     tenant.currency,
     profiles.map((p) => p.id),
@@ -75,7 +78,11 @@ export async function savePricingSettings(
     p_tenant_id: tenant.id,
     p_settings: result.payload as never,
   });
-  if (error) return { errors: { form: await pricingErrorKey(error) } };
+  if (error) {
+    if (error.message.includes("returning_percent_required"))
+      return { errors: { returningPercent: "returningPercentRequired" } };
+    return { errors: { form: await pricingErrorKey(error) } };
+  }
   refresh(slug);
   return { ok: true };
 }
@@ -102,7 +109,9 @@ export async function saveTaxProfile(
   });
   if (error) {
     const key =
-      error.code === "23505" ? "profileNameExists" : await pricingErrorKey(error);
+      error.code === "23505"
+        ? "profileNameExists"
+        : await pricingErrorKey(error);
     return key === "profileNameExists"
       ? { errors: { name: key } }
       : { errors: { form: key } };
@@ -161,7 +170,9 @@ export async function addUsualTaxProfile(
   });
   if (error) {
     const key =
-      error.code === "23505" ? "profileNameExists" : await pricingErrorKey(error);
+      error.code === "23505"
+        ? "profileNameExists"
+        : await pricingErrorKey(error);
     return { errors: { form: key } };
   }
   const { error: defaultError } = await supabase.rpc("save_pricing_settings", {

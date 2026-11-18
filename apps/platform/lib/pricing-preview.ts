@@ -10,6 +10,11 @@
  */
 
 import { quote, type Quote } from "@mango/core/quote";
+import {
+  RETURNING_DISCOUNT_ID,
+  type DiscountDecision,
+} from "@mango/core/discounts";
+import { decideFor, type CouponInputs } from "./coupons";
 import { parseMinorUnits } from "./money";
 import { addCalendarDays, fromLocalInput } from "./shop-time";
 import {
@@ -187,6 +192,147 @@ export function previewQuote(
       ]),
     );
     return result.ok ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+// ------------------------------------- with extras, a coupon and a returning customer
+
+/** One extra in the sample, taken with the vehicle (its dates are the vehicle's). */
+export type SampleExtra = { productId: string; quantity: number };
+
+export type CheckAsked = {
+  /** pricing_inputs() for this product: the shop's settings, seasons, extras. */
+  inputs: PricingInputs;
+  /** The form's row (draftRow), saved or not. */
+  row: ProductPricingRow | null;
+  sample: Sample;
+  /** Extras with a quantity; 0 or less is left out. Vehicles only. */
+  extras?: readonly SampleExtra[];
+  /** The code as typed, and what coupon_inputs() answered for it. */
+  code?: string | null;
+  coupon?: CouponInputs | null;
+  /** The "Returning customer" tick. */
+  returning?: boolean;
+  /** The moment the price is checked: "today" for a coupon's valid dates. */
+  now: Date;
+};
+
+/** One discount on the breakdown: what it took over every line. */
+export type CheckedDiscount =
+  | { kind: "returning"; id: string; amount: bigint }
+  | { kind: "coupon"; id: string; code: string; amount: bigint };
+
+export type Checked = {
+  quote: Extract<Quote, { ok: true }>;
+  decision: DiscountDecision;
+  /** In the order they were taken: returning-customer, then the coupon. */
+  discounts: CheckedDiscount[];
+  /**
+   * The coupon was applied and the returning-customer discount, which this
+   * customer would have had, was left out: they don't stack and the coupon
+   * took more off.
+   */
+  couponBeatReturning: boolean;
+};
+
+/**
+ * "Check a price" with everything a counter booking has: the sample rental,
+ * the extras taken with it, a coupon code and the "Returning customer"
+ * tick. Judged by decideDiscounts() through lib/coupons.ts' decideFor(), the
+ * one place a booking's discounts are decided, on the staff channel; priced
+ * by quote(). Read-only: nothing is reserved and no use is counted. Null
+ * when it can't be priced.
+ *
+ * The tick stands in for the customer's completed rentals until Phase 3:
+ * ticked, the customer has exactly as many as the shop asks for.
+ */
+export function checkPrice(asked: CheckAsked): Checked | null {
+  const { inputs, row, sample } = asked;
+  if (!row) return null;
+  if (!(sample.end.getTime() > sample.start.getTime())) return null;
+  if (!Number.isInteger(sample.quantity) || sample.quantity < 1) return null;
+  const extras = (asked.extras ?? []).filter(
+    (e) => Number.isInteger(e.quantity) && e.quantity > 0,
+  );
+  const pricing: PricingInputs = {
+    ...inputs,
+    products: [
+      row,
+      ...inputs.products.filter((p) => p.product_id !== row.product_id),
+    ],
+  };
+  const completedRentals = asked.returning
+    ? (inputs.settings?.returning_rentals_needed ?? 1)
+    : 0;
+  try {
+    const invoice = quoteInputFor(pricing, [
+      {
+        id: "sample",
+        productId: row.product_id,
+        quantity: sample.quantity,
+        span: {
+          start: sample.start,
+          end: sample.end,
+          timeZone: sample.timeZone,
+        },
+      },
+      ...extras.map((extra) => ({
+        id: `extra:${extra.productId}`,
+        productId: extra.productId,
+        quantity: extra.quantity,
+        extraOf: "sample",
+      })),
+    ]);
+    const judge = (code: string | null | undefined) =>
+      decideFor({
+        pricing,
+        quote: invoice,
+        now: asked.now,
+        timeZone: sample.timeZone,
+        channel: "walk_in",
+        code,
+        coupon: code ? (asked.coupon ?? null) : null,
+        completedRentals,
+      });
+    const decided = judge(asked.code);
+    const decision = decided.decision;
+    if (decision.outcome === "cant_price") return null;
+    const result = quote(decided.quote);
+    if (!result.ok) return null;
+
+    const taken = new Map<string, bigint>();
+    for (const line of result.lines)
+      for (const d of line.discounts)
+        taken.set(
+          d.discountId,
+          (taken.get(d.discountId) ?? BigInt(0)) + d.amount,
+        );
+    const coupons = decision.outcome === "decided" ? decision.coupons : {};
+    const discounts: CheckedDiscount[] = decision.discounts.flatMap(
+      (d): CheckedDiscount[] => {
+        const amount = taken.get(d.id) ?? BigInt(0);
+        if (d.id === RETURNING_DISCOUNT_ID)
+          return [{ kind: "returning", id: d.id, amount }];
+        const coupon = coupons[d.id];
+        return coupon
+          ? [{ kind: "coupon", id: d.id, code: coupon.code, amount }]
+          : [];
+      },
+    );
+
+    const couponBeatReturning =
+      !!asked.returning &&
+      decision.outcome === "decided" &&
+      decision.coupon?.applied === true &&
+      !decision.returningCustomer &&
+      (() => {
+        const without = judge(null).decision;
+        return without.outcome === "decided" && without.returningCustomer;
+      })();
+
+    return { quote: result, decision, discounts, couponBeatReturning };
   } catch {
     return null;
   }

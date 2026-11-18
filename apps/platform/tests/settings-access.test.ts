@@ -49,6 +49,9 @@ const pages = pagesUnder(settingsDir)
 
 /** The pages owners and managers alone open. Extras is the one exception. */
 const OWNER_OR_MANAGER = [
+  "coupons/[id]/page.tsx",
+  "coupons/new/page.tsx",
+  "coupons/page.tsx",
   "page.tsx",
   "price-lists/[id]/page.tsx",
   "price-lists/new/page.tsx",

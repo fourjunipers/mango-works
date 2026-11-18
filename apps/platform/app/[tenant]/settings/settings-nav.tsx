@@ -11,12 +11,14 @@ const paths: Record<SettingsSection, string> = {
   pricing: "/pricing",
   seasons: "/seasons",
   priceLists: "/price-lists",
+  coupons: "/coupons",
   extras: "/extras",
 };
 
 /**
- * Settings' sections (stage D6; Extras in Phase 2 stage 6): the shop,
- * Pricing and tax, Seasons, Price lists and Extras, as many as the role
+ * Settings' sections (stage D6; Extras in Phase 2 stage 6, Coupons in
+ * stage 9): the shop, Pricing and tax, Seasons, Price lists, Coupons and
+ * Extras, as many as the role
  * opens. One row that scrolls sideways on a phone; the open section is
  * marked for screen readers too.
  */
