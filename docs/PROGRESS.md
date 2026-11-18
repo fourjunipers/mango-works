@@ -782,7 +782,7 @@ The sixth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §7, 
 - **A planned coupon kind: "every Nth period free"** (for example the 6th month free; Mark, 18 Nov 2026). It depends on period billing: an extension changes the count of periods, so it can't be decided on one invoice the way `percent` and `fixed` are. Not built in Phase 2; `kind` stays `'percent' | 'fixed'` until then.
 - "Uses per customer" and "returning customer" run on passed-in facts until orders and customers exist (plan §2.5).
 
-**Decided without an answer: for Mark to confirm.** The plan does not say, and I asked on 18 Nov; the minimum spend was answered, these three were not. Each is one place in `discounts.ts` and one test, so a different answer is a small change.
+**Mark's decisions, 18 Nov 2026.** The plan did not say; all three were built on the recommended option and Mark confirmed them as built the same day.
 
 1. **A tie, when the coupon and the returning-customer discount don't stack and take the same: the returning-customer discount.** The coupon is not applied and nothing is used up (`coupon.applied: false`, `because: "returning_discount_is_better"`), so stage 8 writes no redemption and the customer keeps the code. The same answer when the returning discount is larger: the code is good, it is just not used. This is not a refusal, so the twelve reasons are unchanged.
 2. **The `api` channel accepts no coupon** (`wrong_channel`). A coupon's channels are staff, booking page and Moto Mangos; staff covers `walk_in` and `phone`. `api` gets coupons when a coupon can tick it.
