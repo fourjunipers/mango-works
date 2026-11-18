@@ -1023,7 +1023,94 @@ New in this migration: `save_coupon()` `c9e3304f25b0291d2de692835e18ce8a`, `coup
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s8` on ports 6232x, started with CI's service list. `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. The stacks of stage 5 and stage 6 were stopped (not removed); another project's stack was left alone.
 
-**Next:** stage 9, coupons on screens: Settings › Coupons, the returning-customer card, "Check a price" with a code (and with extras, carried from stage 6).
+**Next:** stage 9, coupons on screens: Settings › Coupons, the returning-customer card, "Check a price" with a code (and with extras, carried from stage 6). **Done: see stage 9, below.**
+
+## Phase 2, stage 9: coupons on screens (branch `platform/phase-2-stage-9-coupon-screens`, 18 Nov 2026)
+
+The ninth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.3, §6, §7, §8). From `main` at `a7d68b5` (PR 48 merged, its migration on staging 66/66). **No migration**: screens, `apps/platform/lib`, messages, tests and docs only. Nothing on staging or live was touched; nothing was pushed to a database but the local one.
+
+**What was built**
+
+- **Settings › Coupons** (`/[tenant]/settings/coupons`, `/new`, `/[id]`), a sixth Settings section. Owners and managers; staff, mechanics and drivers get "Page not found" (each page's first check is `requireArea(slug, "settings")`, held by `tests/settings-access.test.ts`), and the database refuses them anyway (`save_coupon()`).
+  - **The list:** code, name, value ("15% off", "฿200 off"), status (On, Off, Archived) and uses: "Used 12 of 50", or "Used 12" with no limit. **Uses come from `coupon_inputs().uses.total`** (`lib/coupons-data.ts`' `getCouponUses()`, through `readCoupon()`), never from a count of `coupon_redemptions`. Each live coupon has Edit, Switch off or Switch on, and Archive (asked first). Archived coupons come last, newest first, with View only. New coupon at the top.
+  - **The form, in the brief's order:** code; name (the shop's own note); percentage or fixed amount in the shop's currency and exponent; all or chosen products; valid from and to (when the booking is made); pickup from and to; minimum days; minimum spend (its hint says it counts the coupon's own lines after seasonal prices); total uses; where it can be used (staff, booking page, Moto Mangos); "Can be combined with the returning-customer discount"; **"Can be used on season discounts"** (`with_season_discount`, on by default, hint: "Off: the coupon takes nothing off a rental that a season has already made cheaper.").
+  - **The code** is shown as it will be stored ("Saved as SUMMER10") and said to be impossible as soon as it is typed (`codePreview()` uses `normalizeCouponCode` and `isCouponCode` from `@mango/core`, the database's own rule; a unit test runs stage 8's shared cases through it).
+  - **Every refusal in words**, through `saveCoupon()` (`lib/coupon-save.ts`): `invalid_code` under the code box ("Use only the letters A to Z and the numbers 0 to 9, up to 40 of them (spaces are taken out). Thai letters and full-width characters (such as Ａ or ０) can't be used in a code."); `code_taken` names the clash (the live coupon with that code, by its name when it has one); `try_again` (40P01, 55P03, 57014) asks to save again; `only_owner_or_manager`, `invalid_coupon`, `coupon_not_found`, `product_not_found` over the form. The form's own checks come first (`lib/coupon-form.ts`), field by field.
+  - **"Accept coupons" off:** a note at the top with a link to Settings › Pricing and tax; coupons can still be created and edited.
+  - **History** on the list (the shop's coupons) and on each coupon's page, owners and managers: one action a line in the buttons' words ("Ann switched off SUMMER10", "Ann changed SUMMER10 from 10% off to ฿200 off", "Ann archived SUMMER10"), from the audit's row events and `coupon_change` (`lib/coupon-history.ts`). A new coupon's links are counted on its "created" line.
+- **Settings › Pricing and tax:** a **Returning-customer discount** card (on or off, percentage, completed rentals needed, default 1), saved with the form's one Save through `save_pricing_settings()`. On with no percentage is refused on its box (`returningPercentRequired`, and the database's `returning_percent_required` maps to the same words). The "You will be able to create coupons in a later update" line is gone; the switch has a one-line hint instead.
+- **Check a price** (`app/[tenant]/products/check-price.tsx`, moved out of the Pricing form so the New order screen can use it in stage 11):
+  - **Extras** (carried from stage 6): for a vehicle, each extra offered with it that has a price, with a quantity and its included number; the breakdown has a line for each.
+  - **A coupon code box** with Apply, and a **"Returning customer" tick** (its hint gives the shop's percentage and rentals needed, or says the discount is off).
+  - The breakdown shows **each discount**: the returning-customer discount, then "Coupon CODE", each with what it took over every line.
+  - **A note says what became of the code:** applied; refused, with the reason in words for every one of `decideDiscounts`' twelve reasons (naming the coupon's own dates, minimum days or spend where it has them); "not applied" for a coupon that would take ฿0; and when the two discounts don't stack, which one won and why ("the larger discount applies"), both ways round.
+  - **Read-only:** the code is looked up with `coupon_inputs()` (`lookUpCoupon()`, a server action that reads and nothing else) and judged with `decideFor()` from `lib/coupons.ts`, the same path both booking paths use, on the staff channel. Nothing is reserved and no use is counted (a browser test reads the uses after).
+- **Shared words for the booking refusals** a screen will show from stage 11 and Phase 3: `FormErrors.hold_expired` ("This hold has run out; make the booking again."), `coupon_not_valid` ("This coupon can't be used right now; send it again."), `coupon_used_up`; `bookingRefusalKey()` in `lib/coupon-words.ts`. No screen calls them yet.
+- **Root `CLAUDE.md`:** "Saving a coupon" now says the caller answers `try_again` for `40P01`, `55P03` and `57014`.
+- **English and Thai together:** 175 keys; every Thai line is on `docs/platform/thai-review-products.md` ("Phase 2, stage 9") for Korn.
+
+**Decided here, not in the brief** (say if any should change)
+
+1. **Extras in Check a price are built here.** The brief speaks of "the extras it already has", but stage 6 had carried them to stage 9; they were not there.
+2. **Check a price is its own component** (`check-price.tsx`), so the New order screen can take it whole.
+3. **A coupon needs at least one channel** (`couponNoChannels`). The database allows none, but such a coupon could never be used; a new coupon starts with none ticked (nothing is preset).
+4. **An archived coupon is read-only, with "Bring back"** (save_coupon's `archived: false`); refused, with the clash named, while a live coupon has its code.
+5. **Uses of an archived coupon whose code a newer coupon has taken are not shown** ("Uses: not shown (its code is used by a newer coupon)"). `coupon_inputs()` looks a coupon up by code, so it would answer with the newer coupon's count. A read by id needs a migration; suggested for stage 10.
+6. **The returning-customer card is part of the Pricing and tax form** (one Save), not a form of its own. A percentage typed while the discount is off is kept.
+7. **"Not combined unless it says so", the tie:** the note says the returning-customer discount "takes off at least as much" (Mark's stage 7 decision: on a tie, the returning discount).
+8. **The coupon is judged on the staff channel** (`walk_in`) in Check a price: a coupon not ticked for staff is refused there ("can't be used by staff").
+9. **"Today" for a coupon's valid dates is the moment Apply is pressed** (it was when the page opened until the review, item 5 below), on the shop's clock (the product's location is not known on the Pricing tab; the shop's time zone is used, as the sample rental already is).
+10. **The coupons list makes one `coupon_inputs()` call per coupon.** Fine for tens of coupons; a list read with uses would need a migration.
+
+**For Phase 3**
+
+- **Add "Uses per customer" back to the coupon form** once both booking paths send a `customer_id`. It is left off now because nothing sends one, so a limit saved today would never be reached (stage 8's note). The column, `save_coupon()` and the count under the lock are built; the form never names `max_uses_per_customer`, so an existing value is left as it is.
+
+**Tests**
+
+- **Unit: 472 on the platform** (439 before), **656 in `@mango/core`**, **202 on the marketplace**. Typecheck and lint pass in every workspace, with no warnings; the money rule holds (Check a price only adds what `quote()` gave).
+  - `lib/coupon-screens.test.ts` (new, 30): the form's every check, on its own box (Thai and full-width codes, a hyphen, 41 letters, 0% and 100.01%, ฿0, a yen decimal, dates in the wrong order, 0 and 1,001 days, 0 uses, no channel, no chosen product) and at its edges; the payload in THB and JPY, blanks as null, no `max_uses_per_customer`; a saved coupon back on the form and saved again unchanged; the code preview against stage 8's shared cases; every `save_coupon()` refusal placed and worded in both languages; the list's state and uses; every `decideDiscounts` reason and both "not applied" outcomes worded in both languages, with the coupon's own dates, days or minimum; the three booking refusals; every new string in both languages with the same placeholders, and no "later update" or "per customer" left; History lines from audit rows (created with its chosen products, switched off and on, the value, the uses, renamed, a new code, archived, brought back, every other setting); the returning-customer card (off to start, saved, refused, read back); **Check a price** with two helmets one included, a good code, the tick alone and with the shop's discount off, the coupon beating the returning discount, the returning discount beating a non-stacking coupon, a stacking coupon (both rows, returning first), a coupon that takes ฿0, and each of the twelve refusals with the price left as it was.
+  - `tests/settings-access.test.ts`: the three coupon pages each start with `requireArea(slug, "settings")`; owners and managers get six sections.
+  - `lib/pricing-settings.test.ts`: the draft and payload carry the three returning-customer settings.
+- **Database: 654 of 654, on a freshly reset local database, the suite run on its own.** Unchanged in count: this stage adds no migration and no database test. **No lock-timing test failed in this run** (`tax-profile-in-use`, `reservations`, `product-listings`, `booking-rules` all passed).
+- **Browser:** `e2e/coupons.spec.ts` (new), 375 px and 1280 px, **8 of 8**: create (a Thai code refused in words first, then a code typed in small letters with a space, shown and saved as stored), edit to a fixed ฿200 with 50 uses, the list's "Used 0 of 50", switch off and on, archive (asked first), the code used again by a new coupon, a third refused naming the code, "Bring back" refused while the new one has it, the History lines; the returning-customer card (on with no percentage refused, saved, read back) and the coupons-off note with its link; **Check a price** with a good code (its row, −฿280), the tick (the coupon wins: "the larger discount applies"), a ฿50 coupon against 10% (not applied, the returning row −฿140), a code refused as too short and an unknown one, and **no use counted** (read after); **staff** get "Page not found" on Settings › Coupons and the new-coupon form, with no form, no button and no Coupons section. Then the **full suite** on a freshly reset and seeded database, two workers: **168 tests, 160 passed, 7 skipped, 1 failed**: `products-stage-d6.spec.ts`' "a season…" on the phone, where the pickup was typed before the page had started and the price was read without the season. It passed **6 of 6** run alone (3 rounds, both widths); that step now types again until the price agrees, as the file's other Check a price steps already do. `products-stage-d6.spec.ts` expects six Settings sections; `e2e/shop-settings.ts` puts the returning-customer settings back too.
+- **Checked by eye** at 375 px and 1280 px (screenshots in the PR report): the coupon list, the form, Check a price with a coupon applied over the returning-customer discount. No sideways scroll on any coupon screen (asserted in the spec).
+
+**Known issues and follow-ups**
+
+- The flaky lock-timing tests stay on the stage 10 list (none failed in this stage's database run; `tax-profile-in-use.test.ts` and the held-lock tests in `reservations`, `product-listings` and `booking-rules` are still load-sensitive).
+- The Thai lines need Korn's check.
+
+**After the review of PR 50** (18 Nov 2026, an independent review at `36a67b3`: no blockers). All fixed in this PR; no migration.
+
+1. **Check a price could show a price that did not match its boxes.** Typed into before the page's scripts had started, a box kept (or lost) the text while the price was worked out from the defaults. **Fixed by keeping every box of Check a price disabled until the component has started** (`useSyncExternalStore`: false in the server's HTML and while the page starts, true once it runs), rather than reading the boxes into state on mount: it covers every input (the two radios, pickup, days or return, how many, each extra, the code, Apply and the tick) with one rule, and nothing can be typed that the price does not see. A browser test holds the page's scripts back 4 seconds, types Days and Pickup at once, and checks the boxes and the price agree (1 day from 1 Apr in a 20% season: 300 − 60 = 240). **With the fix switched off it fails at both widths** (in that run hydration put Days back to 7, so the typed value was lost; the reviewer's run kept the box at 1 with the 7-day price; the test checks both the box and the price). The retry-until-right loops are gone from `products-stage-d6.spec.ts` (both of them) and `coupons.spec.ts`.
+2. **The coupon form's numbers have one rule** (`parseCouponAmount`, `parseCouponPercent` in `lib/coupon-form.ts`): a dot is the decimal point; a comma only between thousands in groups of three with digits on both sides ("1,234.56", "50,000"); "2,50", "12,5", spaces, underscores, a minus sign and any other comma are refused, with words that say to use a dot for decimals (`couponInvalidAmount`, `couponInvalidPercent`). Amount off, Minimum spend and Percentage off. `lib/seasons.ts` and `lib/money.ts`' `parseMinorUnits` are not changed (stage 10, below).
+3. **More tests:** the form in KWD (0.005 saves as 5 and shows as 0.005; 1,000.250) and VND (whole dong; 50,000); commas, spaces, underscores, a negative and 19 digits; Check a price in the browser with two boats and five helmets, two included with each (4 included, 1 charged, 650 in all) and the shop's "every vehicle" row overridden by the boat's own (the lock keeps the shop's one each); a New York shop's coupon valid dates across both 2027 clock changes (unit); mechanics and drivers by address on the coupon list, the new form, a coupon's page and Pricing and tax, and staff on a coupon's page, each "Page not found"; **"Bring back" racing two creates of the same code** (`tests/db/coupon-screens.test.ts`, 10 rounds through `saveCoupon()`): one wins, the others are `code_taken`, one live coupon has the code (both sides won rounds: bring back 7, a create 3).
+4. **Enter in "Find a product"** no longer sends the form, on the coupon form and the season form (the phone keyboard shows Search).
+5. **"Today" for a coupon's valid dates is the moment Apply is pressed** (judged on the shop's clock by `decideDiscounts`), not when the page opened.
+6. **An amount over 18 digits** (Amount off, Minimum spend) is refused on its box: "That amount is too long: 18 digits at most."
+7. **History reads the newest 2,000 audit rows**, newest first; a coupon whose "created" row is older than those is named by its code now.
+
+**Review tests**
+
+- **Typecheck and lint** clean in every workspace, no warnings.
+- **Unit: 480 on the platform** (472 before the review), **656 in `@mango/core`**, **202 on the marketplace**. `lib/coupon-screens.test.ts` is 38 (number rule, KWD, VND, 18 digits, New York clock changes).
+- **Database: 654 of 655 on a freshly reset local database, the suite run on its own** (654 before; +1, `tests/db/coupon-screens.test.ts`). The one failure was `availability.test.ts`' "a downtime written on the unit it picked, not yet saved…", a held-lock test that timed out at 90 s, the load-sensitive kind already on the stage 10 list; this PR does not touch it, and the file passes alone, **78 of 78**.
+- **Browser: the full suite on that database, seeded, 375 px and 1280 px, two workers: 178 tests, 171 passed, 7 skipped, 0 failed.** `coupons.spec.ts` is now 14 (7 at each width): the delayed-scripts test, the extras test and the roles test are new. The d6 season step that failed once before the review passed with no retry.
+
+**For stage 10** (from the review of PR 50; not built here)
+
+- **A `coupon_inputs` read by coupon id that takes a list of ids in one call.** It replaces the one-call-per-coupon list (`lib/coupons-data.ts`' `getCouponUses()`) and fixes "Uses: not shown" on an archived coupon whose code was used again. A migration.
+- **One number-input rule across seasons, price lists and coupons.** Today `lib/seasons.ts` reads a comma as a decimal point and `parseMinorUnits` (`lib/money.ts`) drops commas, spaces and underscores, so "2,50" is 2.5% on a season and 250 baht on a price list, where the coupon form refuses it. Bring them onto the coupon form's rule (and the returning-customer card's percentage, which still uses `parsePercentBp`).
+- **The shared form** (`components/action-form.tsx`): put focus on the first error after a refused save, and tie each box's error to it with `aria-describedby`.
+
+**For stage 11**
+
+- **A channel picker in Check a price, or on the New order screen**, so a shop can try a booking-page-only or Moto Mangos-only coupon. Check a price judges every code on the staff channel.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s9` on ports 624xx, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack.
+
+**Next:** stage 10, review follow-ups (§3.8 and the items carried above).
 
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 

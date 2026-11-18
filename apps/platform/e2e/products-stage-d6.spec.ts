@@ -97,20 +97,17 @@ async function ownPrices(page: Page, address: string) {
 /** Check a price for two, 45 days from 1 Jan 2027: what the deposit row says. */
 async function depositFor45DaysForTwo(page: Page, address: string) {
   await page.goto(`${address}?tab=pricing`);
-  // Typed again if the page was still starting and put its own pickup back.
-  await expect(async () => {
-    await pickup(page);
-    await checkPrice(page).getByLabel("Days", { exact: true }).fill("45");
-    await checkPrice(page).getByLabel("How many").fill("2");
-    // 2 × (฿3,000 + 14 × ฿100), whatever the deposit.
-    await expect(checkRow(page, "Total")).toHaveText(/^\D*8,800$/, {
-      timeout: 2_000,
-    });
-  }).toPass({ timeout: 15_000 });
+  // Check a price's boxes stay disabled until the page has started, so what
+  // is typed is what is priced (review of PR 50).
+  await pickup(page);
+  await checkPrice(page).getByLabel("Days", { exact: true }).fill("45");
+  await checkPrice(page).getByLabel("How many").fill("2");
+  // 2 × (฿3,000 + 14 × ฿100), whatever the deposit.
+  await expect(checkRow(page, "Total")).toHaveText(/^\D*8,800$/);
   return checkRow(page, "Deposit");
 }
 
-test("Settings has five sections for owners; staff, mechanics and drivers can't open the first four; old price list links redirect", async ({
+test("Settings has six sections for owners; staff, mechanics and drivers can't open the first four; old price list links redirect", async ({
   page,
   browser,
 }) => {
@@ -121,6 +118,7 @@ test("Settings has five sections for owners; staff, mechanics and drivers can't 
     "Pricing and tax",
     "Seasons",
     "Price lists",
+    "Coupons",
     "Extras",
   ])
     await expect(

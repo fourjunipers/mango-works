@@ -38,6 +38,9 @@ type Settings = {
   deposit_percent_bp: number | null;
   deposit_amount: string | null;
   default_tax_profile_id: string | null;
+  returning_enabled?: boolean;
+  returning_percent_bp?: number | null;
+  returning_rentals_needed?: number;
 };
 
 /** The settings row's defaults: what a shop with no row works by. */
@@ -49,6 +52,9 @@ const defaults: Settings = {
   deposit_percent_bp: null,
   deposit_amount: null,
   default_tax_profile_id: null,
+  returning_enabled: false,
+  returning_percent_bp: null,
+  returning_rentals_needed: 1,
 };
 
 /** The shop's owner, signed in through the API (not a browser). */
@@ -143,6 +149,10 @@ export async function withShopSettings<T>(
             deposit_mode: back.deposit_mode,
             deposit_percent_bp: back.deposit_percent_bp,
             deposit_amount: back.deposit_amount,
+            // The returning-customer discount (Phase 2 stage 9).
+            returning_enabled: back.returning_enabled ?? false,
+            returning_percent_bp: back.returning_percent_bp ?? null,
+            returning_rentals_needed: back.returning_rentals_needed ?? 1,
           },
         });
         if (error) throw error;

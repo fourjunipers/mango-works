@@ -1,8 +1,8 @@
 /**
  * Settings › Pricing and tax (docs/products-redesign.md §9.2, §9.6 to §9.8,
  * §9.12): the rounding step, whether prices include tax, the default tax
- * profile, the deposit choice and "Accept coupons". Pure: no React, no
- * database.
+ * profile, the deposit choice, "Accept coupons" and (Phase 2 stage 9) the
+ * automatic returning-customer discount. Pure: no React, no database.
  *
  * Amounts are parsed digit by digit (lib/money.ts) and sent as strings of
  * digits; percentages are basis points read the same way (lib/seasons.ts).
@@ -33,7 +33,15 @@ export type SettingsDraft = {
   /** The fixed amount per order, or the shop's amount on "per product". */
   depositAmount: string;
   couponsEnabled: boolean;
+  /** The returning-customer discount: on or off, its percentage as typed. */
+  returningEnabled: boolean;
+  returningPercent: string;
+  /** Completed rentals at this shop that make a customer "returning". */
+  returningRentals: string;
 };
+
+/** The most completed rentals save_pricing_settings() takes. */
+export const MAX_RETURNING_RENTALS = 1000;
 
 type Settings = NonNullable<PricingInputs["settings"]>;
 
@@ -61,6 +69,12 @@ export function settingsDraft(
       ? minorDecimal(settings.deposit_amount, currency)
       : "",
     couponsEnabled: settings?.coupons_enabled ?? false,
+    returningEnabled: settings?.returning_enabled ?? false,
+    returningPercent:
+      settings?.returning_percent_bp != null
+        ? percentInput(settings.returning_percent_bp)
+        : "",
+    returningRentals: String(settings?.returning_rentals_needed ?? 1),
   };
 }
 
@@ -95,7 +109,8 @@ export function settingsPayload(
     errors.defaultTaxId = "invalidTaxProfile";
   else payload.default_tax_profile_id = draft.defaultTaxId || null;
 
-  if (!depositModes.includes(draft.depositMode)) errors.depositMode = "required";
+  if (!depositModes.includes(draft.depositMode))
+    errors.depositMode = "required";
   if (draft.depositMode === "percent_of_order") {
     const bp = parsePercentBp(draft.depositPercent);
     if (bp === null) errors.depositPercent = "required";
@@ -117,6 +132,26 @@ export function settingsPayload(
       errors.depositAmount = "priceZero";
     else payload.deposit_amount = amount === null ? null : String(amount);
   }
+
+  // The returning-customer discount (plan §5.3). A percentage kept while
+  // it is off is saved too, so switching it back on keeps it.
+  payload.returning_enabled = draft.returningEnabled;
+  const returningBp = parsePercentBp(draft.returningPercent);
+  if (returningBp === "invalid") errors.returningPercent = "invalidPercent";
+  else if (returningBp === 0) errors.returningPercent = "percentZero";
+  else if (returningBp !== null && returningBp > 10000)
+    errors.returningPercent = "couponPercentTooLarge";
+  else if (returningBp === null && draft.returningEnabled)
+    errors.returningPercent = "returningPercentRequired";
+  else payload.returning_percent_bp = returningBp;
+  const rentals = draft.returningRentals.trim();
+  if (
+    !/^\d{1,4}$/.test(rentals) ||
+    Number(rentals) < 1 ||
+    Number(rentals) > MAX_RETURNING_RENTALS
+  )
+    errors.returningRentals = "returningRentalsRange";
+  else payload.returning_rentals_needed = Number(rentals);
 
   return Object.keys(errors).length > 0
     ? { ok: false, errors }

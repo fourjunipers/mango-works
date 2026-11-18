@@ -18,6 +18,7 @@ export const settingsSections = [
   "pricing",
   "seasons",
   "priceLists",
+  "coupons",
   "extras",
 ] as const;
 export type SettingsSection = (typeof settingsSections)[number];

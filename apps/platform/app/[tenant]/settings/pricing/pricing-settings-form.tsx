@@ -23,7 +23,8 @@ type Profile = { id: string; name: string; rate_bp: number };
 /**
  * The shop's pricing settings in one form with one Save
  * (docs/products-redesign.md §9.12): the rounding step, the tax style and
- * default profile, the deposit choice, and "Accept coupons". The first Save
+ * default profile, the deposit choice, "Accept coupons" and the
+ * returning-customer discount (Phase 2 stage 9). The first Save
  * makes the shop's settings row, which fixes its currency: it asks first.
  */
 export function PricingSettingsForm({
@@ -159,8 +160,34 @@ export function PricingSettingsForm({
             defaultChecked={initial.couponsEnabled}
           />
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("coupons.later")}
+            {t("coupons.help")}
           </p>
+        </Panel>
+
+        <Panel title={t("returning.title")} intro={t("returning.intro")}>
+          <div className="space-y-4">
+            <CheckboxInput
+              name="returningEnabled"
+              label={t("returning.label")}
+              defaultChecked={initial.returningEnabled}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextInput
+                name="returningPercent"
+                label={t("returning.percent")}
+                help={t("returning.percentHelp")}
+                inputMode="decimal"
+                defaultValue={initial.returningPercent}
+              />
+              <TextInput
+                name="returningRentals"
+                label={t("returning.rentals")}
+                help={t("returning.rentalsHelp")}
+                inputMode="numeric"
+                defaultValue={initial.returningRentals}
+              />
+            </div>
+          </div>
         </Panel>
       </fieldset>
     </ActionForm>
