@@ -132,27 +132,14 @@ export async function saveHours(
   }
   if (Object.keys(errors).length > 0) return { errors };
 
-  const closedDays = [0, 1, 2, 3, 4, 5, 6].filter(
-    (weekday) => !open.some((h) => h.weekday === weekday),
-  );
-  const removed = await supabase
-    .from("location_hours")
-    .delete()
-    .eq("tenant_id", tenant.id)
-    .eq("location_id", locationId)
-    .in("weekday", closedDays);
-  if (removed.error) return { errors: { form: dbErrorKey(removed.error) } };
-  if (open.length > 0) {
-    const { error } = await supabase.from("location_hours").upsert(
-      open.map((h) => ({
-        ...h,
-        tenant_id: tenant.id,
-        location_id: locationId,
-      })),
-      { onConflict: "location_id,weekday" },
-    );
-    if (error) return { errors: { form: dbErrorKey(error) } };
-  }
+  // The week is replaced as one set, or left as it was
+  // (platform.save_location_hours).
+  const { error } = await supabase.rpc("save_location_hours", {
+    p_tenant_id: tenant.id,
+    p_location_id: locationId,
+    p_hours: open,
+  });
+  if (error) return { errors: { form: dbErrorKey(error) } };
   revalidatePath(`/${slug}/locations/${locationId}`);
   return { ok: true };
 }

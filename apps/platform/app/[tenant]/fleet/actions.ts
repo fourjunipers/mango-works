@@ -555,27 +555,17 @@ export async function addRenewal(
     };
   }
 
-  const { data, error } = await supabase
-    .from("unit_renewals")
-    .insert({
+  // The renewal and its cost are saved together or not at all
+  // (platform.record_renewal).
+  const { error } = await supabase.rpc("record_renewal", {
+    p_tenant_id: tenant.id,
+    p_renewal: {
       ...parsed.data,
-      tenant_id: tenant.id,
       unit_id: field(formData, "id"),
-    })
-    .select("id")
-    .single();
+      ...(cost === null ? {} : { cost: String(cost) }),
+    },
+  });
   if (error) return { errors: { form: dbErrorKey(error) } };
-  if (cost !== null) {
-    const { error: costError } = await supabase
-      .from("unit_renewal_costs")
-      .insert({
-        tenant_id: tenant.id,
-        renewal_id: data.id,
-        currency: tenant.currency,
-        cost,
-      });
-    if (costError) return { errors: { cost: dbErrorKey(costError) } };
-  }
   refresh(slug);
   return { ok: true };
 }

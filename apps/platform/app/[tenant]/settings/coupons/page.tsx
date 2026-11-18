@@ -44,7 +44,10 @@ export default async function CouponsPage({
     getCoupons(tenant.id),
     getPricingInputs(tenant.id, []),
   ]);
-  const uses = await getCouponUses(tenant.id, coupons);
+  const uses = await getCouponUses(
+    tenant.id,
+    coupons.map((c) => c.id),
+  );
   const edit = canPricing(role, "write");
   const accepting = inputs.settings?.coupons_enabled ?? false;
 
@@ -55,12 +58,10 @@ export default async function CouponsPage({
           amount: formatMinor(c.amount ?? "0", c.currency, locale),
         });
   const usesText = (c: CouponRecord) => {
-    const u = couponUsesText(uses.get(c.id) ?? null, c.max_uses);
+    const u = couponUsesText(uses.get(c.id) ?? 0, c.max_uses);
     return u.kind === "ofLimit"
       ? t("usesOf", { used: u.used, limit: u.limit })
-      : u.kind === "noLimit"
-        ? t("usesNoLimit", { used: u.used })
-        : t("usesUnknown");
+      : t("usesNoLimit", { used: u.used });
   };
 
   return (
