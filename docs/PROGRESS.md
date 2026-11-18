@@ -653,7 +653,30 @@ Also in the same push: **`max_quantity` is the most per vehicle** (the owner, 17
 
 ## Phase 2, stage 6: extras on screens (branch `platform/phase-2-stage-6-extras-screens`, 17 Nov 2026)
 
-The sixth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §7, §8; the owner's answers of 17 Nov 2026 under stage 5, "For stage 6"). **Not on staging, not on live**: this branch pushes its migration nowhere. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The sixth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §7, §8; the owner's answers of 17 Nov 2026 under stage 5, "For stage 6"). **Migration on staging since 18 Nov 2026, 65/65** (see "On staging" below); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**On staging since 18 Nov 2026; not on live.** The migration (`20261117000200_platform_extras_opt_out`) was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 02:40 UTC, from `main` at `b31abd7` (PR 45 squash-merged), with `supabase db push --db-url` (never `--linked`); the connection string was checked to name the staging project, and not live's, before each use. Staging records 65 of 65. Live was not touched.
+
+- **Read-only checks first**, in one read-only transaction; all four passed:
+  1. 64 migrations on record, newest `20261117000100`. The CLI's migration list showed 64 matching the repo and this one not yet on staging; the dry run listed exactly this one.
+  2. The bodies the migration's guard expects, by MD5 of the stored source: `pricing_inputs(uuid, uuid[])` `6c662a4f…`, `save_product_extras(uuid, uuid, jsonb)` `d52de865…`.
+  3. `product_extras` had no column named `offered` (its 11 columns as stage 5 left them).
+  4. `authenticated` `statement_timeout=8s`, `anon` `statement_timeout=3s`, `service_role` none; `authenticator` `statement_timeout=8s`, `lock_timeout=8s`. As on 17 Nov. Postgres 17.11.
+- **The push** applied the one migration in about four seconds.
+- **After, read-only:**
+  - 65 migrations on record, newest `20261117000200`.
+  - `product_extras.offered` exists: `boolean`, not null, default `true`. `product_extras_not_offered_check` is there and validated: `offered OR (product_id IS NOT NULL AND included_quantity = 0 AND max_quantity IS NULL)`.
+  - `save_product_extras()` reads `lock_timeout=6s` in `pg_proc.proconfig` (with its empty search path) and has the migration file's body (MD5 `01e347d3…` both). `authenticated` can execute it; `anon`, `service_role` and `public` cannot.
+  - `pricing_inputs()` has the migration file's body (MD5 `2753d9bd…` both). `authenticated` and `service_role` can execute it, not `anon`.
+  - Role timeouts as before the push.
+- **Smoke test through the API, as BSR's demo users, then removed** (02:42 UTC). Saves as `owner@bsr.demo.test`, every read as `staff@bsr.demo.test`:
+  - As staff, a save is refused with `only_owner_or_manager` (42501), as designed.
+  - a) Saved "Drivers License Assistance" on the "every vehicle" list with 1 included; the answer carries `offered: true`.
+  - b) Saved Honda ADV 160 (2025-2026)'s own row for it with `offered: false` (0 included, no most). Staff read both rows. `pricing_inputs()` as staff: **the ADV 160 got no row for it**; Honda Click 160 still got the shop-wide row (1 included, `every_vehicle` true). The extra's own product row came back beside the vehicles'.
+  - c) `quote()` for the ADV 160, 3 days, no extras: the whole result was identical before the saves, with them in place, and after they were removed (total 90000 minor units, THB 900.00, as on 17 Nov).
+  - d) Both lists were saved empty again: `product_extras` has 0 rows and `pricing_inputs()` answers `extras: []`.
+- **Counts, the same before and after** (32 products, 205 units, 0 reservations, 13 pricing rows, 3 shops, 0 `product_extras` rows), **except `audit_events`: 3,419 before, 3,423 after.** The four are the smoke test's `extras_change` events (two saves, two clears); audit rows are not removed by hand.
+- **Not checked here:** the Extras tab and Settings › Extras in a browser against staging.
 
 **What changed**
 
