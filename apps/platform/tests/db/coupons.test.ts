@@ -2942,7 +2942,18 @@ describe("after the review of PR 48", () => {
       coupon({ max_uses: 5 }),
       coupon({ max_uses_per_customer: 2 }),
     ]);
-    const before = written(shop);
+    // Rows, not states: the hold sweep runs every minute and may expire an
+    // earlier test's hold between the two readings.
+    const rows = () =>
+      sql(`
+        select (select count(*) from platform.reservations where tenant_id = '${shop.id}')
+          || ' reservations, '
+          || (select count(*) from platform.unit_blocks b join platform.units u on u.id = b.unit_id where u.product_id = '${bike.id}')
+          || ' blocks on the bike, '
+          || (select count(*) from platform.coupon_redemptions where tenant_id = '${shop.id}')
+          || ' uses';
+      `).out;
+    const before = rows();
     const attempt = (day: number, use: Use) => {
       const body = JSON.stringify(
         request(shop, "booking_page", "instant", days(bike, day), {
@@ -2983,7 +2994,7 @@ describe("after the review of PR 48", () => {
       expect(counted.out).not.toContain("answer:");
     }
     // Every attempt was undone, and the real count is back.
-    expect(written(shop)).toBe(before);
+    expect(rows()).toBe(before);
     expect(
       sql(
         `select l.lanname from pg_proc p join pg_language l on l.oid = p.prolang where p.oid = 'platform_private.coupon_uses(uuid, uuid, uuid)'::regprocedure;`,
