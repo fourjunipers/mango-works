@@ -28,6 +28,7 @@ import {
   type OnlineDb,
 } from "./book-online";
 import type { AvailabilityRow, BookingInputs } from "./booking-inputs";
+import type { CouponInputs } from "./coupons";
 import type { PricingInputs } from "./pricing-inputs";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
@@ -140,6 +141,7 @@ function spy(
     inputs?: BookingInputs;
     availability?: AvailabilityRow[];
     pricing?: PricingInputs;
+    coupon?: CouponInputs;
     reserve?: Reply;
   } = {},
 ) {
@@ -151,6 +153,10 @@ function spy(
         booking_inputs: { data: scene.inputs ?? inputs(), error: null },
         availability: { data: scene.availability ?? stock(3), error: null },
         pricing_inputs: { data: scene.pricing ?? priced, error: null },
+        coupon_inputs: {
+          data: scene.coupon ?? { coupon: null, uses: null },
+          error: null,
+        },
         reserve: scene.reserve ?? {
           data: {
             ok: true,
@@ -842,6 +848,253 @@ describe("bookOnline(): what reserve() answers", () => {
       bookOnline(asked(), { db: failing, now: () => now }),
     ).rejects.toMatchObject({ code: "42501" });
     expect(s.reserved()).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------------ coupons
+
+const COUPON = "44444444-4444-4444-8444-444444444444";
+
+/** The same scooter in a shop that accepts coupons. */
+const withCoupons = (
+  settings: Partial<NonNullable<PricingInputs["settings"]>> = {},
+): PricingInputs => ({
+  ...priced,
+  settings: {
+    currency: "USD",
+    rounding_step: null,
+    tax_inclusive: true,
+    coupons_enabled: true,
+    deposit_mode: "none",
+    deposit_percent_bp: null,
+    deposit_amount: null,
+    default_tax_profile_id: null,
+    returning_enabled: false,
+    returning_percent_bp: null,
+    returning_rentals_needed: 1,
+    ...settings,
+  },
+});
+
+/** 10% off everything, on the booking page, used 0 times of 5. */
+const tenPercent = (
+  over: Partial<NonNullable<CouponInputs["coupon"]>> = {},
+  uses = { total: 0, customer: 0 },
+): CouponInputs => ({
+  coupon: {
+    id: COUPON,
+    code: "SUMMER10",
+    name: "",
+    currency: "USD",
+    kind: "percent",
+    percent_bp: 1000,
+    amount: null,
+    all_products: true,
+    product_ids: [],
+    valid_from: null,
+    valid_to: null,
+    pickup_from: null,
+    pickup_to: null,
+    min_days: null,
+    min_spend: null,
+    max_uses: 5,
+    max_uses_per_customer: null,
+    channels: ["booking_page"],
+    with_returning_discount: false,
+    with_season_discount: true,
+    active: true,
+    archived: false,
+    ...over,
+  },
+  uses,
+});
+
+describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and reserve()", () => {
+  it("no code: the coupon is never read, and reserve() is sent none", async () => {
+    const s = spy({ pricing: withCoupons() });
+    const answer = await bookOnline(asked(), { db: s.db, now: () => now });
+    expect(answer).toMatchObject({ ok: true, coupon: null });
+    expect(s.called()).not.toContain("coupon_inputs");
+    const sent = s.calls.at(-1)!.args.p_request as Record<string, unknown>;
+    expect(Object.keys(sent).sort()).toEqual([
+      "channel",
+      "hold",
+      "lines",
+      "mode",
+    ]);
+    // A box with only spaces in it is no code either.
+    const blank = spy({ pricing: withCoupons() });
+    await bookOnline(asked({ couponCode: " \u00a0 " }), {
+      db: blank.db,
+      now: () => now,
+    });
+    expect(blank.called()).not.toContain("coupon_inputs");
+  });
+
+  it("a good code: read as typed, priced by quote() with the coupon, and reserve() is handed the coupon and what the quote says it took", async () => {
+    const s = spy({ pricing: withCoupons(), coupon: tenPercent() });
+    const answer = await bookOnline(asked({ couponCode: " summer 10 " }), {
+      db: s.db,
+      now: () => now,
+    });
+    // The read is last of the reads, reserve() last of all.
+    expect(s.called().slice(0, -1).sort()).toEqual([
+      "availability",
+      "booking_inputs",
+      "coupon_inputs",
+      "pricing_inputs",
+    ]);
+    expect(s.called().at(-1)).toBe("reserve");
+    expect(
+      s.calls.find((call) => call.fn === "coupon_inputs")!.args,
+    ).toEqual({
+      p_tenant_id: TENANT,
+      p_code: " summer 10 ",
+      p_booking_id: null,
+      p_customer_id: null,
+    });
+    // Two days at 45.00: 90.00, less 10%.
+    if (!answer.ok) throw new Error(answer.reason);
+    expect(answer.quote.totals.total).toBe(BigInt(8100));
+    expect(answer.quote.totals.discount).toBe(BigInt(900));
+    expect(answer.coupon).toMatchObject({
+      applied: true,
+      couponId: COUPON,
+      code: "SUMMER10",
+    });
+    const sent = s.calls.at(-1)!.args.p_request as { coupon: unknown };
+    expect(sent.coupon).toEqual({ coupon_id: COUPON, amount: "900" });
+  });
+
+  it("a fixed coupon larger than its lines: reserve() is handed what it took, not its face value; a customer's id goes with it", async () => {
+    const s = spy({
+      pricing: withCoupons(),
+      coupon: tenPercent({
+        kind: "fixed",
+        percent_bp: null,
+        amount: "20000",
+      }),
+    });
+    const customerId = "55555555-5555-4555-8555-555555555555";
+    const answer = await bookOnline(
+      asked({ couponCode: "SUMMER10", customerId }),
+      { db: s.db, now: () => now },
+    );
+    if (!answer.ok) throw new Error(answer.reason);
+    expect(answer.quote.totals.total).toBe(BigInt(0));
+    expect(
+      (s.calls.at(-1)!.args.p_request as { coupon: unknown }).coupon,
+    ).toEqual({ coupon_id: COUPON, amount: "9000", customer_id: customerId });
+    expect(
+      s.calls.find((call) => call.fn === "coupon_inputs")!.args.p_customer_id,
+    ).toBe(customerId);
+  });
+
+  it("a refused code refuses the booking, with why, and reserve() is never called", async () => {
+    const cases: [string, Parameters<typeof spy>[0], string][] = [
+      ["no such code", { pricing: withCoupons() }, "unknown"],
+      [
+        "switched off",
+        { pricing: withCoupons(), coupon: tenPercent({ active: false }) },
+        "not_active",
+      ],
+      [
+        "archived",
+        { pricing: withCoupons(), coupon: tenPercent({ archived: true }) },
+        "not_active",
+      ],
+      [
+        "its last use is gone",
+        {
+          pricing: withCoupons(),
+          coupon: tenPercent({}, { total: 5, customer: 0 }),
+        },
+        "used_up",
+      ],
+      [
+        "not for this channel",
+        { pricing: withCoupons(), coupon: tenPercent({ channels: ["staff"] }) },
+        "wrong_channel",
+      ],
+      [
+        "the shop accepts no coupons",
+        {
+          pricing: withCoupons({ coupons_enabled: false }),
+          coupon: tenPercent(),
+        },
+        "coupons_off",
+      ],
+    ];
+    for (const [what, scene, reason] of cases) {
+      const s = spy(scene);
+      expect(
+        await bookOnline(asked({ couponCode: "summer10" }), {
+          db: s.db,
+          now: () => now,
+        }),
+        what,
+      ).toEqual({ ok: false, reason: "coupon_refused", line: null, coupon: reason });
+      expect(s.reserved(), what).toBe(false);
+    }
+  });
+
+  it("a coupon that is good but not applied writes no use: reserve() is sent no coupon", async () => {
+    // The returning-customer discount (20%) leaves less to pay than the
+    // coupon (10%), and the coupon does not combine with it.
+    const s = spy({
+      pricing: withCoupons({
+        returning_enabled: true,
+        returning_percent_bp: 2000,
+        returning_rentals_needed: 1,
+      }),
+      coupon: tenPercent(),
+    });
+    const answer = await bookOnline(
+      asked({ couponCode: "SUMMER10", completedRentals: 1 }),
+      { db: s.db, now: () => now },
+    );
+    if (!answer.ok) throw new Error(answer.reason);
+    expect(answer.coupon).toMatchObject({
+      applied: false,
+      because: "returning_discount_is_better",
+    });
+    expect(answer.quote.totals.total).toBe(BigInt(7200));
+    expect(s.calls.at(-1)!.args.p_request).not.toHaveProperty("coupon");
+  });
+
+  it("the returning-customer discount is given with no code at all, from the shop's settings", async () => {
+    const pricing = withCoupons({
+      returning_enabled: true,
+      returning_percent_bp: 2000,
+      returning_rentals_needed: 2,
+    });
+    const first = await bookOnline(asked({ completedRentals: 1 }), {
+      db: spy({ pricing }).db,
+      now: () => now,
+    });
+    const second = await bookOnline(asked({ completedRentals: 2 }), {
+      db: spy({ pricing }).db,
+      now: () => now,
+    });
+    if (!first.ok || !second.ok) throw new Error("not booked");
+    expect(first.quote.totals.total).toBe(BigInt(9000));
+    expect(second.quote.totals.total).toBe(BigInt(7200));
+  });
+
+  it("what reserve() refuses under the coupon's row is passed on", async () => {
+    for (const reason of ["coupon_used_up", "coupon_not_valid"]) {
+      const s = spy({
+        pricing: withCoupons(),
+        coupon: tenPercent(),
+        reserve: { data: { ok: false, reason, line: null }, error: null },
+      });
+      expect(
+        await bookOnline(asked({ couponCode: "SUMMER10" }), {
+          db: s.db,
+          now: () => now,
+        }),
+      ).toEqual({ ok: false, reason, line: null });
+    }
   });
 });
 
