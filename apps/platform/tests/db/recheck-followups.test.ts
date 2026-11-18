@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   anonClient,
+  closedGate,
   createTenant,
   createUser,
   deleteTenant,
@@ -13,9 +14,11 @@ import {
   hours,
   period,
   removeCatalogEntry,
+  seenWaitingForLock,
   serviceClient,
   sql,
   sqlBackground,
+  type Gate,
   type TestTenant,
   type TestUser,
   forceListing,
@@ -109,6 +112,39 @@ async function holding(marker: string) {
   throw new Error(`No session reached ${marker}`);
 }
 
+/**
+ * The holder is still at its gate, with everything it holds: whatever
+ * answered before this did not wait for it.
+ */
+const stillHolding = (marker: string) =>
+  expect(
+    sql(
+      `select count(*) from pg_stat_activity where query like '%${marker}%' and state = 'active' and pid <> pg_backend_pid();`,
+    ).out,
+  ).toBe("1");
+
+/**
+ * Starts `call` while a holder is at its gate, and shows that it waits: it
+ * is seen waiting for a lock, it has not answered while the gate is still
+ * closed, and it answers once the gate is opened. `name` is the function
+ * the call runs, as it appears in pg_stat_activity.
+ */
+async function waitsForGate<T>(
+  gate: Gate,
+  name: string,
+  call: () => PromiseLike<T>,
+): Promise<T> {
+  let answered = false;
+  const running = Promise.resolve(call()).then((result) => {
+    answered = true;
+    return result;
+  });
+  await seenWaitingForLock(name);
+  expect(answered, `${name} answered before the holder let go`).toBe(false);
+  await gate.open();
+  return running;
+}
+
 beforeAll(async () => {
   [shop, other, admin] = await Promise.all([
     createTenant("recheck-a"),
@@ -128,32 +164,31 @@ describe("1. locks no stronger than they need to be", () => {
   it("a team change doesn't wait behind an open downtime insert in the same shop", async () => {
     const unit = await addUnit(await addModel());
     const marker = `hold-team-${tag}`;
-    // A second session adds downtime and keeps its transaction open for 4 s.
+    // A second session adds downtime and keeps its transaction open at a
+    // gate.
+    const gate = await closedGate();
     const open = sqlBackground(`
       begin;
       insert into platform.unit_blocks (tenant_id, unit_id, kind, period)
       values ('${shop.id}', '${unit}', 'downtime', '${period(hours(1), hours(2))}');
-      select pg_sleep(4) /* ${marker} */;
+      ${gate.wait(marker)}
       rollback;
     `);
     await holding(marker);
 
-    const started = Date.now();
     const role = await shop.members.owner.db.rpc("set_member_role", {
       p_membership_id: shop.members.staff.membershipId,
       p_role: "mechanic",
     });
-    const afterRole = Date.now() - started;
     const removed = await shop.members.owner.db.rpc("remove_member", {
       p_membership_id: shop.members.driver.membershipId,
     });
-    const afterBoth = Date.now() - started;
 
     expect(role.error).toBeNull();
     expect(removed.error).toBeNull();
-    // Well under a second each; behind the lock they took the full 4 s.
-    expect(afterRole).toBeLessThan(1000);
-    expect(afterBoth).toBeLessThan(2000);
+    // Both are back while the downtime is still open: neither waited for it.
+    stillHolding(marker);
+    await gate.open();
     expect((await open).failed).toBe("");
 
     const { data: team } = await service
@@ -170,22 +205,23 @@ describe("1. locks no stronger than they need to be", () => {
 
   it("team changes in one shop still go one at a time", async () => {
     const marker = `hold-serial-${tag}`;
-    // The first change holds the shop's lock for 1.5 s.
+    // The first change holds the shop's lock until the gate is opened.
+    const gate = await closedGate();
     const first = sqlBackground(`
       begin;
       select 1 from platform.tenants where id = '${shop.id}' for no key update;
-      select pg_sleep(1.5) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
-    const started = Date.now();
-    const { error } = await shop.members.owner.db.rpc("set_member_role", {
-      p_membership_id: shop.members.staff.membershipId,
-      p_role: "staff",
-    });
+    const { error } = await waitsForGate(gate, "set_member_role", () =>
+      shop.members.owner.db.rpc("set_member_role", {
+        p_membership_id: shop.members.staff.membershipId,
+        p_role: "staff",
+      }),
+    );
     expect(error).toBeNull();
-    expect(Date.now() - started).toBeGreaterThan(700);
-    await first;
+    expect((await first).failed).toBe("");
   });
 
   it("two bikes swapping models at the same moment both finish: no deadlock", async () => {
@@ -195,6 +231,11 @@ describe("1. locks no stronger than they need to be", () => {
     // foreign key's share lock on the model it moves to), waits until the
     // other has done the same, then moves its bike. With a full row lock in
     // the counts trigger each then waited for the other: a deadlock.
+    //
+    // The pause is a starting line, not a held lock, and the one timed wait
+    // left in these files on purpose: released from a gate at the same
+    // instant the two moves do deadlock, on another pair of locks
+    // (docs/PROGRESS.md, Phase 2 stage 10, "Found, not fixed").
     const swap = (bike: string, to: string) =>
       sqlBackground(`
         begin;

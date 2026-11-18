@@ -17,13 +17,16 @@ import { pricingActions, pricingRoles } from "@/lib/pricing-permissions";
 import { roles, type Role } from "@/lib/roles";
 import {
   anonClient,
+  closedGate,
   createTenant,
   createUser,
   deleteTenant,
   deleteUser,
+  seenWaitingForLock,
   serviceClient,
   sql,
   sqlBackground,
+  type Gate,
   type TestTenant,
   type TestUser,
 } from "./helpers";
@@ -171,6 +174,39 @@ async function holding(marker: string) {
     await new Promise((r) => setTimeout(r, 50));
   }
   throw new Error(`No session reached ${marker}`);
+}
+
+/**
+ * The holder is still at its gate, with everything it holds: whatever
+ * answered before this did not wait for it.
+ */
+const stillHolding = (marker: string) =>
+  expect(
+    sql(
+      `select count(*) from pg_stat_activity where query like '%${marker}%' and state = 'active' and pid <> pg_backend_pid();`,
+    ).out,
+  ).toBe("1");
+
+/**
+ * Starts `call` while a holder is at its gate, and shows that it waits: it
+ * is seen waiting for a lock, it has not answered while the gate is still
+ * closed, and it answers once the gate is opened. `name` is the function
+ * the call runs, as it appears in pg_stat_activity.
+ */
+async function waitsForGate<T>(
+  gate: Gate,
+  name: string,
+  call: () => PromiseLike<T>,
+): Promise<T> {
+  let answered = false;
+  const running = Promise.resolve(call()).then((result) => {
+    answered = true;
+    return result;
+  });
+  await seenWaitingForLock(name);
+  expect(answered, `${name} answered before the holder let go`).toBe(false);
+  await gate.open();
+  return running;
 }
 
 const noDeadlock = (
@@ -1707,17 +1743,18 @@ describe("lock order: the product's row, then the price list's, then the tax pro
   it("save_product_pricing waits for whoever holds the product's row", async () => {
     const id = await addProduct();
     const marker = `hold-priced-${tag}`;
+    const gate = await closedGate();
     const first = sqlBackground(`
       begin;
       select 1 from platform.products where id = '${id}' for no key update;
-      select pg_sleep(1.5) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
-    const started = Date.now();
-    const { error } = await savePricing("owner", id, { deposit: 1 });
+    const { error } = await waitsForGate(gate, "save_product_pricing", () =>
+      savePricing("owner", id, { deposit: 1 }),
+    );
     expect(error).toBeNull();
-    expect(Date.now() - started).toBeGreaterThan(700);
     expect((await first).failed).toBe("");
   });
 
@@ -1729,10 +1766,11 @@ describe("lock order: the product's row, then the price list's, then the tax pro
       own_list: { days: days(30_000, 10_000) },
     }).throwOnError();
     const marker = `hold-order-priced-${tag}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select 1 from platform.products where id = '${id}' for no key update;
-      select pg_sleep(2) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
@@ -1740,8 +1778,16 @@ describe("lock order: the product's row, then the price list's, then the tax pro
       savePricing("owner", id, { own_list: { days: days(31_000, 10_000) } }),
       savePricing("manager", id, { price_template_id: shared }),
       savePricing("owner", id, { deposit: 5 }),
-    ];
-    await new Promise((r) => setTimeout(r, 600));
+    ].map((writer) => Promise.resolve(writer));
+    // All three are at the product's row before anything is read.
+    for (let i = 0; ; i++) {
+      const waiting = sql(
+        `select count(*) from pg_stat_activity a where a.wait_event_type = 'Lock' and a.query like '%save_product_pricing%' and a.pid <> pg_backend_pid();`,
+      ).out;
+      if (waiting === "3") break;
+      if (i === 200) throw new Error(`${waiting} of 3 writers are waiting`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
     const { out } = sql(`
       select count(*) from pg_locks l
       join pg_stat_activity a on a.pid = l.pid
@@ -1753,6 +1799,8 @@ describe("lock order: the product's row, then the price list's, then the tax pro
         and a.pid <> pg_backend_pid();
     `);
     expect(out).toBe("0");
+    stillHolding(marker);
+    await gate.open();
     const results = await Promise.all(writers);
     expect((await holder).failed).toBe("");
     noDeadlock(results);
@@ -1771,21 +1819,23 @@ describe("lock order: the product's row, then the price list's, then the tax pro
       price_template_id: list,
     }).throwOnError();
     const marker = `hold-list-${tag}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select 1 from platform.products where id = '${product}' for update;
-      select pg_sleep(1.2) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
     // The product's row is held; saving the list it is on does not wait.
-    const started = Date.now();
     const { error } = await saveTemplate("owner", {
       id: list,
       days: days(31_000, 10_000),
     });
     expect(error).toBeNull();
-    expect(Date.now() - started).toBeLessThan(900);
+    // Back while the holder still has the row: it waited for nothing of it.
+    stillHolding(marker);
+    await gate.open();
     expect((await holder).failed).toBe("");
   });
 });

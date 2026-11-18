@@ -35,6 +35,7 @@ import {
 } from "@/lib/staff-booking";
 import {
   anonClient,
+  closedGate,
   createTenant,
   createUser,
   deleteTenant,
@@ -1397,11 +1398,12 @@ describe("the lock order: a save against a booking and a move", () => {
     const s = await scene();
     const marker = `extras-booking-held-${tag}`;
     const call = request(shop, "walk_in", "staff", s.lines(1));
+    const gate = await closedGate();
     const booking = sqlBackground(`
       begin;
       ${actingAs(shop.members.staff.id)}
       select platform.reserve('${call.p_tenant_id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
-      select pg_sleep(3) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, booking);
@@ -1409,6 +1411,7 @@ describe("the lock order: a save against a booking and a move", () => {
     expect(await waitingForRow("save_product_extras")).toBe(
       "waiting for a row; product locks: 0, unit locks: 0",
     );
+    await gate.open();
     const done = await booking;
     expect(done.failed).toBe("");
     expect(done.out).toContain("true");
@@ -1421,12 +1424,13 @@ describe("the lock order: a save against a booking and a move", () => {
   it("a save written and not yet saved: a booking of that scooter waits at the scooter's row with its product and unit locks in hand, then goes through", async () => {
     const s = await scene();
     const marker = `extras-save-held-${tag}`;
+    const gate = await closedGate();
     const saving = sqlBackground(`
       begin;
       ${actingAs(shop.members.owner.id)}
       select jsonb_array_length(platform.save_product_extras(
         '${shop.id}', '${s.scooter.id}', '${JSON.stringify(s.list)}'::jsonb));
-      select pg_sleep(3) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, saving);
@@ -1435,6 +1439,7 @@ describe("the lock order: a save against a booking and a move", () => {
     expect(seen).toMatch(
       /^waiting for a row; product locks: 2, unit locks: [1-9]\d*$/,
     );
+    await gate.open();
     const done = await saving;
     expect(done.failed).toBe("");
     expect(done.out).toContain("2");
@@ -1457,11 +1462,12 @@ describe("the lock order: a save against a booking and a move", () => {
         .throwOnError()
     ).data!.map((block) => block.unit_id);
     const marker = `extras-move-held-${tag}`;
+    const gate = await closedGate();
     const moving = sqlBackground(`
       begin;
       ${actingAs(shop.members.manager.id)}
       select platform.move_unit('${shop.id}', '${unit}', '${s.other.id}', '${shop.locationId}') ->> 'ok';
-      select pg_sleep(3) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, moving);
@@ -1469,6 +1475,7 @@ describe("the lock order: a save against a booking and a move", () => {
     expect(await waitingForRow("save_product_extras")).toBe(
       "waiting for a row; product locks: 0, unit locks: 0",
     );
+    await gate.open();
     const moved = await moving;
     expect(moved.failed).toBe("");
     expect(moved.out).toContain("true");
@@ -1476,12 +1483,13 @@ describe("the lock order: a save against a booking and a move", () => {
 
     // The other way round: the save first, the move back behind it.
     const marker2 = `extras-save-held-move-${tag}`;
+    const gate2 = await closedGate();
     const held = sqlBackground(`
       begin;
       ${actingAs(shop.members.owner.id)}
       select jsonb_array_length(platform.save_product_extras(
         '${shop.id}', '${s.scooter.id}', '[]'::jsonb));
-      select pg_sleep(3) /* ${marker2} */;
+      ${gate2.wait(marker2)}
       commit;
     `);
     await holding(marker2, held);
@@ -1496,6 +1504,7 @@ describe("the lock order: a save against a booking and a move", () => {
     expect(await waitingForRow("move_unit")).toMatch(
       /^waiting for a row; product locks: [1-9]\d*, unit locks: 1$/,
     );
+    await gate2.open();
     expect((await held).failed).toBe("");
     const answer = await back;
     noDeadlock([answer as never]);
@@ -1593,18 +1602,19 @@ describe("the lock order: a save against a booking and a move", () => {
 });
 
 describe("a lock that can't be had in time, through the API: each function gives up after its own 6 seconds with 55P03, before the API's 8-second limit, and the staff path answers try_again with nothing written", () => {
-  /** Someone holds this product's lock for longer than anyone should wait. */
+  /** Someone holds this product's lock until the gate is opened. */
   const lockHeld = async (productId: string, marker: string) => {
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select platform_private.lock_products_stock(
         array['${productId}']::uuid[], array['${shop.locationId}']::uuid[]);
-      select pg_sleep(9) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, holder);
-    // Wrapped: returning the promise itself would wait for the 9 seconds.
-    return { done: holder };
+    // Wrapped: returning the promise itself would wait for the holder.
+    return { done: holder, gate };
   };
 
   /**
@@ -1635,6 +1645,7 @@ describe("a lock that can't be had in time, through the API: each function gives
     expect(waited, what).toBeGreaterThan(5_500);
     expect(waited, what).toBeLessThan(8_000);
     expect(written(shop), what).toBe(before);
+    await holder.gate.open();
     expect((await holder.done).failed).toBe("");
   }
 

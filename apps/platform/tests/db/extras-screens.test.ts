@@ -32,6 +32,7 @@ import {
 import { roles, type Role } from "@/lib/roles";
 import { reserveAsStaff, type StaffDb } from "@/lib/staff-booking";
 import {
+  closedGate,
   createTenant,
   deleteTenant,
   serviceClient,
@@ -289,14 +290,15 @@ describe("save_product_extras()'s lock timeout, through the API", () => {
     const bike = await vehicle(1);
     const helmet = await gear(3);
     const marker = `extras-lock-${tag}`;
-    // Long enough for two waits of 6 seconds, one after the other. Two
-    // saves sent at the same instant would queue on the row: the second's
-    // wait starts again behind the first's and can reach the API's 8
-    // seconds (57014), which the save path answers "try again" as well.
+    // Held at a gate through two waits of 6 seconds, one after the other.
+    // Two saves sent at the same instant would queue on the row: the
+    // second's wait starts again behind the first's and can reach the API's
+    // 8 seconds (57014), which the save path answers "try again" as well.
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select id from platform.products where id = '${bike}' for update;
-      select pg_sleep(15) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     for (let i = 0; i < 100; i++) {
@@ -336,6 +338,7 @@ describe("save_product_extras()'s lock timeout, through the API", () => {
       expect(waited).toBeLessThan(8_000);
     }
     expect(await rowsOf(bike)).toEqual([]);
+    await gate.open();
     expect((await holder).failed).toBe("");
 
     expect(
