@@ -1179,3 +1179,22 @@ New Thai lines on the branch `platform/phase-2-stage-9-coupon-screens`: Settings
 | `FormErrors.couponInvalidPercent` | Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma. | กรอกเปอร์เซ็นต์ เช่น 10 หรือ 12.5 ใช้จุดสำหรับทศนิยม ไม่ใช่จุลภาค |
 | `FormErrors.couponAmountTooLong` | That amount is too long: 18 digits at most. | จำนวนเงินยาวเกินไป: ไม่เกิน 18 หลัก |
 | `Settings.coupons.amountHelp` | Off the coupon’s lines together, never more than they come to. Never off a deposit. Use a dot for decimals. | หักจากรายการของคูปองรวมกัน ไม่เกินยอดของรายการเหล่านั้น และไม่หักจากเงินมัดจำ ใช้จุดสำหรับทศนิยม |
+
+## Phase 2, stage 10: review follow-ups (18 Nov 2026)
+
+Four lines changed; none is new. Two keys are gone.
+
+**One number rule on every screen.** The coupon form's wording for a mistyped amount or percentage (reviewed under "After the review of PR 50", above) is now the wording of the shared keys, because every screen reads numbers the same way: a dot for decimals, a comma only between thousands. The Thai text is the coupon form's, unchanged; only the keys it sits under are new. It now shows on seasons, price lists, Settings › Pricing and tax (deposit, rounding step, the returning-customer percentage), fleet costs and prices, and coupons.
+
+**Full-width letters and numbers in a coupon code** (Ａ, ０) are now read as the plain ones, so the two code messages no longer say they can't be used.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `FormErrors.invalidMoney` | Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has. | กรอกจำนวนเงิน เช่น 200 หรือ 1,234.50 ใช้จุดสำหรับทศนิยม ใช้จุลภาคเฉพาะคั่นหลักพัน (1,000) ห้ามเว้นวรรค และทศนิยมต้องไม่เกินที่สกุลเงินนี้มี |
+| `FormErrors.invalidPercent` | Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma. | กรอกเปอร์เซ็นต์ เช่น 10 หรือ 12.5 ใช้จุดสำหรับทศนิยม ไม่ใช่จุลภาค |
+| `FormErrors.couponInvalidCode` | Use only the letters A to Z and the numbers 0 to 9, up to 40 of them. Spaces are taken out, and full-width letters and numbers (such as Ａ or ０) are read as A or 0. Thai letters can’t be used in a code. | ใช้ได้เฉพาะตัวอักษร A ถึง Z และตัวเลข 0 ถึง 9 ไม่เกิน 40 ตัว ระบบตัดช่องว่างออก และอ่านตัวอักษรและตัวเลขแบบเต็มความกว้าง (เช่น Ａ หรือ ０) เป็น A หรือ 0 ใช้อักษรไทยในรหัสไม่ได้ |
+| `Settings.coupons.codeCantSave` | This code can’t be saved: use only the letters A to Z and the numbers 0 to 9. Thai letters can’t be used. | บันทึกรหัสนี้ไม่ได้: ใช้ได้เฉพาะตัวอักษร A ถึง Z และตัวเลข 0 ถึง 9 ใช้อักษรไทยไม่ได้ |
+
+**Removed:** `FormErrors.couponInvalidAmount` and `FormErrors.couponInvalidPercent` (their text moved to the two shared keys above), and `Settings.coupons.usesUnknown` ("Uses: not shown (its code is used by a newer coupon)": an archived coupon now always shows its own uses).
+
+**Before stage 10 the two shared keys read:** `FormErrors.invalidMoney` "Enter an amount, such as 45000 or 45000.50." / "กรอกจำนวนเงิน เช่น 45000 หรือ 45000.50", and `FormErrors.invalidPercent` "Enter a percentage such as 20 or 12.5." / "กรอกเปอร์เซ็นต์ เช่น 20 หรือ 12.5".
