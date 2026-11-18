@@ -395,14 +395,13 @@ describe("buffers are typed in hours and stored in minutes", () => {
     expect(hoursToMinutes("  ")).toBeNull();
     expect(hoursToMinutes("0")).toBe(0);
     expect(hoursToMinutes("0.5")).toBe(30);
-    expect(hoursToMinutes("0,5")).toBe(30);
     expect(hoursToMinutes("1.25")).toBe(75);
     expect(hoursToMinutes("24")).toBe(1440);
     expect(hoursToMinutes("168")).toBe(10080);
   });
 
   it("refuses what isn't a number of hours, or more than a week", () => {
-    for (const bad of ["abc", "-1", "1.234", "169", "1e3", "1 hour"])
+    for (const bad of ["abc", "-1", "1.234", "169", "1e3", "1 hour", "0,5", "1,5"])
       expect(hoursToMinutes(bad), bad).toBe("invalid");
   });
 

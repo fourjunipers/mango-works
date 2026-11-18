@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseScaled } from "./number-input";
 import { isTimeZone } from "./tenant-settings";
 
 /**
@@ -103,14 +104,15 @@ export const modelSchema = z
 export type ModelInput = z.infer<typeof modelSchema>;
 
 /**
- * Buffers are typed in hours, decimals allowed ("0.5", "1,5"), and stored in
- * minutes. Blank is null (the shop default); up to a week; to the minute.
+ * Buffers are typed in hours, decimals allowed with a dot ("0.5", "1.5"; the
+ * platform's one number rule, lib/number-input.ts), and stored in minutes.
+ * Blank is null (the shop default); up to a week; to the minute.
  */
 export function hoursToMinutes(text: string): number | null | "invalid" {
-  const typed = text.trim().replace(",", ".");
-  if (!typed) return null;
-  if (!/^\d{1,3}(\.\d{1,2})?$/.test(typed)) return "invalid";
-  const minutes = Math.round(Number(typed) * 60);
+  const hundredths = parseScaled(text, 2);
+  if (hundredths === null || hundredths === "invalid") return hundredths;
+  if (hundredths > BigInt(99_999)) return "invalid";
+  const minutes = Math.round((Number(hundredths) * 60) / 100);
   return minutes > 10080 ? "invalid" : minutes;
 }
 

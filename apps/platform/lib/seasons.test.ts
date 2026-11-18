@@ -23,7 +23,6 @@ describe("parsePercentBp", () => {
   it("reads whole and decimal percentages as basis points", () => {
     expect(parsePercentBp("20")).toBe(2000);
     expect(parsePercentBp("12.5")).toBe(1250);
-    expect(parsePercentBp("12,5")).toBe(1250);
     expect(parsePercentBp("0.01 %")).toBe(1);
     expect(parsePercentBp("")).toBeNull();
   });
@@ -31,6 +30,9 @@ describe("parsePercentBp", () => {
     expect(parsePercentBp("-20")).toBe("invalid");
     expect(parsePercentBp("1.234")).toBe("invalid");
     expect(parsePercentBp("abc")).toBe("invalid");
+    // One number rule (lib/number-input.ts): a comma is never a decimal point.
+    expect(parsePercentBp("12,5")).toBe("invalid");
+    expect(parsePercentBp("2,50")).toBe("invalid");
   });
   it("turns back into what is typed", () => {
     expect(percentInput(1250)).toBe("12.5");
