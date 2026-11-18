@@ -883,6 +883,7 @@ describe("coupons: the three tables and the stage 8 functions", () => {
         and p.proname in (
           'save_coupon', 'coupon_inputs', 'coupon_uses', 'release_coupon_use',
           'normalize_coupon_code', 'json_day', 'reserve', 'cancel_reservation',
+          'confirm_hold',
           'expire_holds', 'release_expired_holds', 'save_pricing_settings',
           'pricing_inputs', 'currency_locked', 'tenants_lock_currency')
       order by 1;
@@ -890,6 +891,8 @@ describe("coupons: the three tables and the stage 8 functions", () => {
     expect(rows).toEqual([
       // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
       'platform.cancel_reservation false true true false | true search_path="",lock_timeout=6s',
+      // Re-created in stage 8 with the coupon's row; grants and timeout as before.
+      'platform.confirm_hold false true true false | true search_path="",lock_timeout=6s',
       // The read: as its caller, so RLS decides. Members and the server.
       'platform.coupon_inputs false true true false | false search_path=""',
       'platform.currency_locked false true true false | true search_path=""',

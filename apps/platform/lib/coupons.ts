@@ -16,6 +16,7 @@
 
 import {
   decideDiscounts,
+  isCouponCode,
   normalizeCouponCode,
   type CouponChannel,
   type CouponOutcome,
@@ -86,6 +87,12 @@ export function codeGiven(code: string | null | undefined): code is string {
  * What the database knows about a code. `bookingId`: a held booking being
  * priced again, whose own use is then left out of the count. `customerId`:
  * whose uses to count beside the total (nobody's until Phase 3).
+ *
+ * A code that could not have been saved (anything but A to Z and 0 to 9
+ * once normalised) is no coupon's, so it is not sent at all: the answer is
+ * "no such coupon" and decideDiscounts() says `unknown`. That also keeps
+ * out what the database can't take as text (a NUL, a lone surrogate),
+ * which would come back as an error and not as an answer.
  */
 export async function readCoupon(
   db: CouponDb,
@@ -93,6 +100,9 @@ export async function readCoupon(
   code: string,
   more: { bookingId?: string | null; customerId?: string | null } = {},
 ): Promise<CouponInputs> {
+  if (!isCouponCode(normalizeCouponCode(code))) {
+    return { coupon: null, uses: null };
+  }
   const { data, error } = await db.rpc("coupon_inputs", {
     p_tenant_id: tenantId,
     p_code: code,

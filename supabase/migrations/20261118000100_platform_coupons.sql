@@ -5,7 +5,7 @@
 -- Builds on 20261117000200_platform_extras_opt_out. No earlier migration is
 -- touched.
 --
---  1. A guard: the seven functions re-created below must still have the
+--  1. A guard: the eight functions re-created below must still have the
 --     bodies main gave them (MD5 of the stored source). A database whose
 --     copy has drifted stops here, with nothing changed.
 --  2. The code's one normaliser, platform_private.normalize_coupon_code():
@@ -18,7 +18,9 @@
 --  7. coupon_uses() and coupon_inputs(): the one read decideDiscounts needs.
 --  8. reserve() re-created: the coupon's row, its recheck under the lock,
 --     and the redemption. cancel_reservation() and the hold sweep
---     (expire_holds()) re-created: the use is given back.
+--     (expire_holds()) re-created: the use is given back. confirm_hold()
+--     re-created: it takes the coupon's row too, and judges the hold's
+--     expiry with every lock held.
 --  9. The currency lock counts a coupon that holds an amount of money.
 --
 -- Lock order (root CLAUDE.md; plan §4). Coupon rows are rows, so they come
@@ -31,6 +33,13 @@
 --   cancel_reservation()  product-and-location locks; unit locks; THE
 --                         COUPON'S ROW (for update); reservations; blocks;
 --                         the redemption.
+--   confirm_hold()        product-and-location locks; unit locks; product
+--                         and listing rows (Moto Mangos); THE COUPON'S ROW
+--                         (for update); reservations; blocks. Confirming a
+--                         hold whose time has run out would bring back a
+--                         use that coupon_uses() has stopped counting, so
+--                         it is a way a use is added, and it happens under
+--                         the coupon's row like every other.
 --   the hold sweep        as before: reservations, then blocks. It sets
 --                         released_at on the redemption and takes NO coupon
 --                         row: the sweep inside reserve() runs with that
@@ -52,6 +61,7 @@ declare
   v_expected constant jsonb := jsonb_build_object(
     'platform.reserve(uuid, jsonb)', 'd38413ff072b5db4bd0470dd16d05532',
     'platform.cancel_reservation(uuid, uuid, uuid)', 'd9d027600fd6ac40db35b9a4fb6d784e',
+    'platform.confirm_hold(uuid, uuid)', '744aefe0ac56779f2ccc4c364af6be75',
     'platform_private.expire_holds(uuid, uuid[], uuid[], timestamptz)',
       '93e204f23400cf8292e3d45e323a94be',
     'platform.save_pricing_settings(uuid, jsonb)', 'dbd61712f2c4d2b00c99fffd861244e5',
@@ -211,7 +221,8 @@ create index coupon_products_tenant_idx on platform.coupon_products (tenant_id);
 -- One use of a coupon by one booking. Written by reserve() under the
 -- coupon's row; given back (released_at) by cancel_reservation() and by the
 -- hold sweep. The amount is what the quote said the coupon took: the
--- database never works it out.
+-- database never works it out. It is more than 0: a coupon that would take
+-- nothing is not applied and uses no use (the owner, 18 Nov 2026).
 create table platform.coupon_redemptions (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references platform.tenants (id) on delete cascade,
@@ -221,7 +232,7 @@ create table platform.coupon_redemptions (
   -- Empty until customers exist (Phase 3).
   customer_id uuid,
   amount bigint not null
-    constraint coupon_redemptions_amount_check check (amount >= 0),
+    constraint coupon_redemptions_amount_check check (amount > 0),
   redeemed_at timestamptz not null default now(),
   released_at timestamptz,
   created_at timestamptz not null default now(),
@@ -1024,6 +1035,12 @@ grant execute on function platform_private.coupon_uses(uuid, uuid, uuid)
 -- first; else the one archived last, so an archived code answers
 -- "not_active" and not "unknown". No coupon: {"coupon": null, "uses": null}.
 --
+-- A held booking priced again (p_booking_id): the coupon it is using is
+-- found by the id on its redemption, when that coupon has the code given.
+-- If that coupon was archived since and its code used again for a new one,
+-- a lookup by code alone would find the new coupon and price the booking
+-- with another coupon than the one whose use it holds.
+--
 -- Runs as its caller, so RLS decides: owners, managers and staff, and the
 -- server. A mechanic, a driver, another shop's member and a stranger find
 -- no coupon; another shop's code looks exactly like no such code. Amounts
@@ -1044,7 +1061,14 @@ as $$
     from platform.coupons c
     where c.tenant_id = p_tenant_id
       and c.code = platform_private.normalize_coupon_code(p_code)
-    order by (c.archived_at is null) desc, c.archived_at desc, c.id
+    order by
+      -- The coupon this booking already holds a use of, first.
+      (c.id in (
+        select x.coupon_id from platform.coupon_redemptions x
+        where x.tenant_id = p_tenant_id and x.booking_id = p_booking_id
+          and x.released_at is null
+      )) desc,
+      (c.archived_at is null) desc, c.archived_at desc, c.id
     limit 1
   )
   select jsonb_build_object(
@@ -1119,13 +1143,16 @@ revoke all on function platform_private.release_coupon_use(uuid, uuid)
 --   "coupon": {"coupon_id": uuid, "amount": "20000", "customer_id": uuid | null}
 -- the coupon decideDiscounts() applied and what the quote says it took (the
 -- quote's lines added up by discountId). A coupon that was not applied is
--- not sent, and writes no redemption.
+-- not sent, and writes no redemption. An amount under 1 is invalid_request:
+-- a coupon that takes nothing is not a use. So is a coupon on the api
+-- channel, which takes none yet.
 --
 -- The rules ran before the transaction. Under the coupon's row, taken for
 -- update after the products' and the listings' rows, what can have changed
 -- since is checked again: switched off, archived, another currency than the
--- shop's, a fixed coupon taking more than its amount (coupon_not_valid),
--- and the uses, in total and by this customer (coupon_used_up). No such
+-- shop's, a fixed coupon taking more than its amount, the shop's "Accept
+-- coupons" switch off (coupon_not_valid), and the uses, in total and by
+-- this customer (coupon_used_up; not counted for a coupon with no limit). No such
 -- coupon, or another shop's, is coupon_not_valid too, before any lock. The
 -- redemption is written with the reservations, so a refusal writes nothing.
 -- Every other check, lock and answer is as it was; so are the grants and
@@ -1382,7 +1409,11 @@ begin
     v_coupon_id := platform_private.json_uuid(p_request -> 'coupon', 'coupon_id', 'invalid_request');
     v_coupon_amount := platform_private.json_whole(p_request -> 'coupon', 'amount', 'invalid_request');
     v_customer_id := platform_private.json_uuid(p_request -> 'coupon', 'customer_id', 'invalid_request');
-    if v_coupon_id is null or v_coupon_amount is null then
+    -- A coupon that takes nothing is not applied and is not a use; and
+    -- the api channel takes no coupon yet.
+    if v_coupon_id is null or v_coupon_amount is null or v_coupon_amount < 1
+      or v_channel = 'api'
+    then
       raise exception 'invalid_request' using errcode = '22023';
     end if;
     -- No such coupon, or another shop's: the same answer, before any lock.
@@ -1605,7 +1636,8 @@ begin
       -- and before any reservation or block. The rules ran before this
       -- transaction (decideDiscounts); what a save or another booking can
       -- have changed since is read again here, under the lock: switched
-      -- off, archived, another currency, and the uses. Two bookings after a
+      -- off, archived, another currency, the shop's "Accept coupons"
+      -- switch, and the uses. Two bookings after a
       -- coupon's last use take turns at this row, and the second counts
       -- the first's redemption.
       if v_coupon_id is not null then
@@ -1618,16 +1650,27 @@ begin
         if not found or not v_coupon.active or v_coupon.archived_at is not null
           or v_coupon.currency is distinct from v_currency
           or (v_coupon.kind = 'fixed' and v_coupon_amount > v_coupon.amount)
+          -- "Accept coupons" off, or never saved: no code on any channel.
+          -- A plain read: a booking never locks a pricing row.
+          or not coalesce((
+            select s.coupons_enabled from platform.pricing_settings s
+            where s.tenant_id = p_tenant_id
+          ), false)
         then
           return jsonb_build_object('ok', false, 'reason', 'coupon_not_valid', 'line', null);
         end if;
-        -- A hold that has run out holds no use, swept yet or not.
-        select u.total, u.customer into v_uses
-        from platform_private.coupon_uses(v_coupon_id, v_customer_id, null) u;
-        if v_uses.total >= v_coupon.max_uses
-          or (v_customer_id is not null and v_uses.customer >= v_coupon.max_uses_per_customer)
+        -- The uses, when the coupon has a limit to hold them to. A hold
+        -- that has run out holds no use, swept yet or not.
+        if v_coupon.max_uses is not null
+          or (v_customer_id is not null and v_coupon.max_uses_per_customer is not null)
         then
-          return jsonb_build_object('ok', false, 'reason', 'coupon_used_up', 'line', null);
+          select u.total, u.customer into v_uses
+          from platform_private.coupon_uses(v_coupon_id, v_customer_id, null) u;
+          if v_uses.total >= v_coupon.max_uses
+            or (v_customer_id is not null and v_uses.customer >= v_coupon.max_uses_per_customer)
+          then
+            return jsonb_build_object('ok', false, 'reason', 'coupon_used_up', 'line', null);
+          end if;
         end if;
       end if;
 
@@ -1889,6 +1932,155 @@ revoke all on function platform.cancel_reservation(uuid, uuid, uuid) from public
 grant execute on function platform.cancel_reservation(uuid, uuid, uuid)
   to authenticated, service_role;
 alter function platform.cancel_reservation(uuid, uuid, uuid) set lock_timeout = '6s';
+
+-- confirm_hold(): as in 20261116000300, with the coupon's row. A hold
+-- whose time has run out holds no use (coupon_uses()), so confirming it
+-- after that moment would add a use; and a confirm that began before that
+-- moment and finished after it did exactly that, beside a booking that had
+-- taken the use meanwhile. So the booking's coupon row is taken for update,
+-- after the advisory locks and the listings' rows and before the
+-- reservations, and the hold's expiry is judged by the clock once every
+-- lock is held, for every channel (it was the call's start time for all
+-- but Moto Mangos). Whichever of a confirm and a booking holds the
+-- coupon's row first, the other then sees what it did.
+
+create or replace function platform.confirm_hold(p_tenant_id uuid, p_booking_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_service boolean := (select auth.role()) is not distinct from 'service_role';
+  v_staff boolean;
+  v_online boolean;
+  v_ids uuid[];
+  v_product_ids uuid[];
+  v_location_ids uuid[];
+  v_held uuid[];
+  -- A Moto Mangos hold.
+  v_marketplace boolean;
+  -- The moment the hold's expiry is judged at: once every lock is held.
+  v_now timestamptz;
+begin
+  v_staff := platform_private.has_role(p_tenant_id, platform_private.booking_roles('confirm'));
+  if not v_service and not v_staff then
+    return jsonb_build_object('ok', false, 'reason', 'not_allowed');
+  end if;
+  if p_booking_id is null then
+    raise exception 'invalid_request' using errcode = '22023';
+  end if;
+
+  -- Not found, or another shop's: the same answer.
+  select array_agg(r.id), array_agg(r.product_id), array_agg(r.location_id),
+    bool_or(r.channel in ('booking_page', 'marketplace', 'api')),
+    bool_or(r.channel = 'marketplace')
+  into v_ids, v_product_ids, v_location_ids, v_online, v_marketplace
+  from platform.reservations r
+  where r.tenant_id = p_tenant_id and r.booking_id = p_booking_id;
+  if v_ids is null then
+    return jsonb_build_object('ok', false, 'reason', 'not_found');
+  end if;
+  -- Online holds are the server's; the counter's are a member's.
+  if (v_online and not v_service) or (not v_online and not v_staff) then
+    return jsonb_build_object('ok', false, 'reason', 'not_allowed');
+  end if;
+
+  -- Product locks, then unit locks, then rows.
+  perform platform_private.lock_products_stock(v_product_ids, v_location_ids);
+  -- A unit moved meanwhile (move_unit): a row names another product or
+  -- place now, or the booking has a new row. Not the right locks.
+  if exists (
+    select 1 from platform.reservations r
+    where r.tenant_id = p_tenant_id and r.booking_id = p_booking_id
+      and not exists (
+        select 1 from unnest(v_ids, v_product_ids, v_location_ids) t(id, product_id, location_id)
+        where t.id = r.id and t.product_id = r.product_id and t.location_id = r.location_id
+      )
+  ) then
+    return jsonb_build_object('ok', false, 'reason', 'try_again');
+  end if;
+  perform platform_private.lock_units(array(
+    select b.unit_id from platform.unit_blocks b where b.reservation_id = any (v_ids)
+  ));
+  -- A Moto Mangos hold: the products' rows, then their listings' rows, as
+  -- reserve() takes them, before any reservation row. The cap is counted
+  -- under the listing's row, so a confirm and a new booking take turns
+  -- there. Whichever of the two holds the row first, the other then sees
+  -- what it did.
+  if v_marketplace then
+    perform 1 from platform.products p
+    where p.id = any (v_product_ids)
+    order by p.id
+    for share;
+    perform 1 from platform.product_listings l
+    where l.product_id = any (v_product_ids)
+    order by l.product_id
+    for no key update;
+  end if;
+  -- The coupon's row, after the advisory locks and the listings' rows and
+  -- before the reservations. A hold whose time has run out holds no use
+  -- (coupon_uses()), so a booking may have taken it; confirming the hold
+  -- then would add a use. A use is only ever added under the coupon's row:
+  -- a confirm and a booking after the same coupon take turns here.
+  perform 1 from platform.coupons c
+  where c.id in (
+    select x.coupon_id from platform.coupon_redemptions x
+    where x.tenant_id = p_tenant_id and x.booking_id = p_booking_id
+      and x.released_at is null
+  )
+  order by c.id
+  for update;
+  perform 1 from platform.reservations r
+  where r.id = any (v_ids)
+  order by r.id
+  for update;
+  -- The hold's expiry is judged now, by the clock, with every lock held:
+  -- not when this call began, which may be before a wait for one of them.
+  v_now := clock_timestamp();
+
+  -- Under the locks: the sweep or a booking may have released it meanwhile.
+  if exists (
+    select 1 from platform.reservations r
+    where r.id = any (v_ids)
+      and (r.state = 'expired' or (r.state = 'held' and r.hold_expires_at <= v_now))
+  ) then
+    return jsonb_build_object('ok', false, 'reason', 'hold_expired');
+  end if;
+
+  select coalesce(array_agg(r.id order by r.id), '{}') into v_held
+  from platform.reservations r
+  where r.id = any (v_ids) and r.state = 'held';
+
+  if cardinality(v_held) = 0 then
+    if not exists (
+      select 1 from platform.reservations r where r.id = any (v_ids) and r.state = 'reserved'
+    ) then
+      return jsonb_build_object('ok', false, 'reason', 'not_held');
+    end if;
+  else
+    update platform.unit_blocks b set kind = 'allocation'
+    where b.reservation_id = any (v_held);
+    update platform.reservations r
+    set state = 'reserved', hold_expires_at = null
+    where r.id = any (v_held);
+
+    perform platform_private.audit(
+      p_tenant_id, 'bookings', p_booking_id::text, 'confirm', null,
+      jsonb_build_object('reservation_ids', to_jsonb(v_held)));
+  end if;
+
+  return jsonb_build_object(
+    'ok', true, 'booking_id', p_booking_id, 'reservation_ids', to_jsonb(v_held));
+exception
+  when deadlock_detected then
+    return jsonb_build_object('ok', false, 'reason', 'try_again');
+end;
+$$;
+
+revoke all on function platform.confirm_hold(uuid, uuid) from public, anon;
+grant execute on function platform.confirm_hold(uuid, uuid) to authenticated, service_role;
+alter function platform.confirm_hold(uuid, uuid) set lock_timeout = '6s';
 
 -- The hold sweep: expire_holds() is what release_expired_holds(), reserve()
 -- and assign_units() all run. As in 20261116000200, giving the use back. It

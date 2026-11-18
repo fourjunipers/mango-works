@@ -1038,6 +1038,28 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
     }
   });
 
+  it("a code Postgres can't hold (a NUL, a lone surrogate) answers coupon_refused, unknown, instead of throwing: the code is never sent to the database", async () => {
+    for (const typed of [
+      `SAVE${String.fromCharCode(0)}10`,
+      `SAVE${String.fromCharCode(0xd83c)}10`,
+    ]) {
+      const s = spy({ pricing: withCoupons(), coupon: tenPercent() });
+      expect(
+        await bookOnline(asked({ couponCode: typed }), {
+          db: s.db,
+          now: () => now,
+        }),
+      ).toEqual({
+        ok: false,
+        reason: "coupon_refused",
+        line: null,
+        coupon: "unknown",
+      });
+      expect(s.called()).not.toContain("coupon_inputs");
+      expect(s.reserved()).toBe(false);
+    }
+  });
+
   it("a coupon that is good but not applied writes no use: reserve() is sent no coupon", async () => {
     // The returning-customer discount (20%) leaves less to pay than the
     // coupon (10%), and the coupon does not combine with it.

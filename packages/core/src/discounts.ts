@@ -256,7 +256,9 @@ const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
  * database's function.
  */
 const REMOVED =
-  "\u0009\u000a\u000b\u000c\u000d   " + "           " + "    　﻿​‌‍⁠";
+  "\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680" +
+  "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a" +
+  "\u2028\u2029\u202f\u205f\u3000\ufeff\u200b\u200c\u200d\u2060";
 
 // Patterns are built from strings so this file holds no "/" or "*" outside
 // comments and strings: discounts.test.ts fails on any money arithmetic here.

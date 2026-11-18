@@ -12,9 +12,14 @@ import { isTryAgain } from "./try-again";
  * save_coupon() waits for the coupon's row behind a booking that is
  * counting its uses, and gives up after 6 seconds (55P03); a statement the
  * API ended while it waited is 57014. Both are answered here as
- * `try_again`, with nothing written (lib/try-again.ts). The screens are
- * stage 9; this is what they will call.
+ * `try_again`, with nothing written (lib/try-again.ts). So is a deadlock
+ * Postgres broke (40P01): the booking functions catch that themselves and
+ * answer `try_again`; save_coupon() raises it, so it is caught here. The
+ * screens are stage 9; this is what they will call.
  */
+
+/** deadlock_detected: Postgres undid this save to let another go on. */
+const DEADLOCK = "40P01";
 
 /** A signed-in member's client on the platform schema. */
 export type CouponSaveDb = {
@@ -87,7 +92,9 @@ export async function saveCoupon(
   });
   if (error) {
     // Nothing was written: the same save may be sent again.
-    if (isTryAgain(error)) return { ok: false, reason: "try_again" };
+    if (isTryAgain(error) || error.code === DEADLOCK) {
+      return { ok: false, reason: "try_again" };
+    }
     const reason = COUPON_SAVE_REASONS.find((each) => each === error.message);
     if (reason) return { ok: false, reason };
     throw Object.assign(new Error(error.message), { code: error.code });

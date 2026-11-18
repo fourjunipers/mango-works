@@ -200,7 +200,7 @@ describe("from platform.coupon_inputs() to decideDiscounts()", () => {
 
   it("codeGiven(): something must be left of it once spaces and invisible characters are gone", () => {
     expect(codeGiven("save200")).toBe(true);
-    for (const empty of [undefined, null, "", "   ", " ​\t"]) {
+    for (const empty of [undefined, null, "", "   ", "\u00a0\u200b\t"]) {
       expect(codeGiven(empty), JSON.stringify(empty)).toBe(false);
     }
   });
@@ -243,6 +243,55 @@ describe("from platform.coupon_inputs() to decideDiscounts()", () => {
         "x",
       ),
     ).rejects.toMatchObject({ code: "57014" });
+  });
+});
+
+describe("a code that could not be a coupon's is never sent to the database", () => {
+  const nul = `SAVE${String.fromCharCode(0)}10`;
+  const surrogate = `SAVE${String.fromCharCode(0xd83c)}10`;
+  const never = {
+    rpc(): never {
+      throw new Error("coupon_inputs() was called");
+    },
+  };
+
+  it("readCoupon(): a NUL, a lone surrogate, a hyphen, a sharp s, 41 letters: no call, and no coupon", async () => {
+    for (const typed of [
+      nul,
+      surrogate,
+      "summer-10",
+      `stra${String.fromCharCode(0xdf)}e`,
+      "a".repeat(41),
+    ]) {
+      expect(
+        await readCoupon(never, TENANT, typed, { bookingId: "b" }),
+        JSON.stringify(typed),
+      ).toEqual({ coupon: null, uses: null });
+    }
+  });
+
+  it("decideFor() then answers unknown for it, and the price is the one without a code", async () => {
+    const inputs = pricing();
+    for (const typed of [nul, surrogate]) {
+      const decided = ask(inputs, {
+        code: typed,
+        coupon: await readCoupon(never, TENANT, typed),
+      });
+      expect(decided.decision).toMatchObject({
+        outcome: "refused",
+        reason: "unknown",
+      });
+    }
+  });
+
+  it("bookAsStaff(): the booking is refused with coupon_refused, unknown; nothing is read for the code and nothing is reserved", async () => {
+    for (const typed of [nul, surrogate]) {
+      const s = staffDb({});
+      expect(
+        await bookAsStaff(s.db, TENANT, counter({ couponCode: typed })),
+      ).toEqual({ ok: false, reason: "coupon_refused", coupon: "unknown" });
+      expect(s.called().sort()).toEqual(["booking_inputs", "pricing_inputs"]);
+    }
   });
 });
 
@@ -552,8 +601,8 @@ describe("saveCoupon(): the answers of platform.save_coupon()", () => {
     ]);
   });
 
-  it("a lock that could not be had in time (55P03), or a statement the API ended (57014), is try_again: nothing was written", async () => {
-    for (const code of ["55P03", "57014"]) {
+  it("a lock that could not be had in time (55P03), a statement the API ended (57014), or a deadlock Postgres broke (40P01), is try_again: nothing was written", async () => {
+    for (const code of ["55P03", "57014", "40P01"]) {
       expect(
         await saveCoupon(
           db({ data: null, error: { code, message: "canceling statement" } })
