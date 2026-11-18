@@ -831,7 +831,27 @@ The sixth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §7, 
 
 ## Phase 2, stage 8: coupons in the database (branch `platform/phase-2-stage-8-coupons-db`, 18 Nov 2026)
 
-The eighth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2, §4, §5.3, §6, §8). From `main` at `3c3b4bd` (PR 47 merged). **Database, the two booking paths and their tests: nothing on a screen changes** (Settings › Coupons, the returning-customer card and "Check a price" with a code are stage 9). **Applied locally only: not on staging, not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+The eighth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.2, §4, §5.3, §6, §8). From `main` at `3c3b4bd` (PR 47 merged). **Database, the two booking paths and their tests: nothing on a screen changes** (Settings › Coupons, the returning-customer card and "Check a price" with a code are stage 9). **Migration on staging since 18 Nov 2026, 66/66** (see "On staging" below); **not on live.** `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
+
+**On staging since 18 Nov 2026; not on live.** Migration 20261118000100 pushed to staging, 66/66. The migration (`20261118000100_platform_coupons`) was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 08:15 UTC, from `main` at `165cb9e` (PR 48 squash-merged), with `supabase db push --db-url` (never `--linked`); the connection string was checked to name the staging project, and not live's, before each use. Live was not touched.
+
+- **Read-only checks first**, in one read-only transaction; all passed:
+  1. 65 migrations on record, newest `20261117000200`, none newer. The dry run listed exactly this one.
+  2. The eight bodies the migration's guard expects, by MD5 of the stored source (`md5(prosrc)`, as the guard computes it): `reserve` `d38413ff…`, `cancel_reservation` `d9d02760…`, `confirm_hold` `744aefe0…`, `expire_holds` `93e204f2…`, `save_pricing_settings` `dbd61712…`, `pricing_inputs` `2753d9bd…`, `tenants_lock_currency` `4b545b4c…`, `currency_locked` `20c8317e…`.
+  3. No table or function with "coupon" in its name. (`pricing_settings.coupons_enabled`, from an earlier migration, was already there.)
+  4. `reserve()`, `cancel_reservation()` and `confirm_hold()` each read `lock_timeout=6s`.
+- **The push** applied the one migration in about seven seconds.
+- **After, read-only:**
+  - 66 migrations on record, newest `20261118000100`.
+  - The eight re-created functions have the migration's bodies: `reserve` `e0ca7239…`, `cancel_reservation` `858f50b0…`, `confirm_hold` `fb5aa3c6…`, `expire_holds` `ff6fa160…`, `save_pricing_settings` `f6eccceb…`, `pricing_inputs` `56d38b5a…`, `tenants_lock_currency` `4325072b…`, `currency_locked` `af9db486…`. The new ones too: `save_coupon` `c9e3304f…`, `coupon_inputs` `f22497a9…`, `coupon_uses` `7dda4ec5…`.
+  - `reserve()`, `cancel_reservation()`, `confirm_hold()` and `save_coupon()` read `lock_timeout=6s`.
+  - `coupons`, `coupon_products` and `coupon_redemptions` exist, each with RLS on and one policy, each empty.
+  - `anon` has no privilege on the three tables and cannot execute `coupon_inputs()` or `save_coupon()`; real attempts as `anon` were all refused ("permission denied for schema platform"). `authenticated` has `select` only on the three tables. `save_coupon()` can be executed by `authenticated` only (not `service_role`, `anon` or `public`); `coupon_inputs()` by `authenticated` and `service_role`.
+  - `pricing_settings` has `returning_enabled` (boolean, not null, default `false`), `returning_percent_bp` (integer, nullable, no default) and `returning_rentals_needed` (integer, not null, default `1`); the one row there reads `false`, empty, `1`.
+  - Generated types: regenerated against staging (`supabase gen types typescript --db-url`, schemas `public,graphql_public,platform`), no difference from `packages/db/src/database.types.ts` on `main`.
+- **Smoke test, read-only** (one read-only transaction as BSR's demo owner, rolled back): `coupon_inputs()` for a code that doesn't exist answered `{"coupon": null, "uses": null}`, no error. No coupon or booking was created.
+- **Counts, the same before and after:** 3 shops, 32 products, 0 reservations, 1 `pricing_settings` row.
+- **Not checked here:** nothing in a browser against staging (no screen uses this until stage 9).
 
 **What changed**
 
