@@ -14,6 +14,8 @@ in `bigint` minor units: `price-list` (quick entry, the two kinds of list),
 `rental-price` (the list price of one unit for one rental), `season`, `quote`
 (**the one pricer**: included extras, seasons, discounts, VAT per invoice,
 deposits),
+`discounts` (which discounts an invoice gets: coupons and the
+returning-customer discount, decided before the pricer),
 `quote-snapshot` (one priced invoice as plain data, for an order to keep),
 `rental-period` (extending, swapping and returning early) and `zoned`
 (wall-clock time in any time zone). `pricing` and `money` are the
