@@ -139,8 +139,9 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
       .from("unit_blocks")
       .insert(await allocationFor(tenant.id, unit.id, hours(30), hours(31))),
   );
+  // As the owner: a renewal with no signed-in user is refused.
   const renewal = ok(
-    await service
+    await tenant.members.owner.db
       .from("unit_renewals")
       .insert({
         tenant_id: tenant.id,

@@ -122,11 +122,31 @@ export async function createTenant(
   };
 }
 
-/** Removes a tenant (memberships cascade) and its users. */
+/**
+ * Removes a tenant (memberships cascade) and its users.
+ *
+ * A tenant with audit rows can't be hard-deleted (20261119000100), and every
+ * tenant has one from the moment it is created. So a test's tenant is
+ * removed as the local database's superuser, its audit rows first, in one
+ * transaction. Only tests do this: the app has no way to delete a tenant.
+ */
 export async function deleteTenant(tenant: TestTenant | undefined) {
   if (!tenant) return;
+  if (!/^[0-9a-f-]{36}$/i.test(tenant.id)) {
+    throw new Error(`Not a tenant id: ${tenant.id}`);
+  }
   const service = serviceClient();
-  await service.from("tenants").delete().eq("id", tenant.id);
+  const removed = sql(
+    [
+      "begin;",
+      `delete from platform.audit_events where tenant_id = '${tenant.id}';`,
+      `delete from platform.tenants where id = '${tenant.id}';`,
+      "commit;",
+    ].join("\n"),
+  );
+  if (removed.failed) {
+    throw new Error(`deleteTenant ${tenant.id}: ${removed.failed}`);
+  }
   for (const member of Object.values(tenant.members)) {
     await service.auth.admin.deleteUser(member.id);
   }
@@ -321,6 +341,113 @@ export function sqlBackground(
     );
     child.stdin.end(statements);
   });
+}
+
+// --------------------------------------------------------------------- gates
+// A test that needs one session to hold its locks while another waits used
+// to keep the holder open with pg_sleep(n) and race that clock. A gate has
+// no clock: the holder waits at the gate after its writes, the test looks
+// at whatever it needs to see for as long as that takes, and then opens the
+// gate. Nothing depends on how fast the machine is.
+//
+// The gate is an advisory lock of its own class (not the booking functions'
+// 1a01 and 1a02), held by a session of its own. A holder asks for it shared
+// inside its transaction, so it waits there, locks and all, until the
+// gate's session lets go.
+
+/** The advisory-lock class of every gate. */
+export const GATE_CLASS = 27262;
+
+/**
+ * In pg_stat_activity.query, what a session waiting at a gate is running.
+ * For a poll that looks for "a session waiting for a lock" and must not
+ * take the holder at its gate for one: `a.query not like '%${GATE_WAIT}%'`.
+ */
+export const GATE_WAIT = `pg_advisory_xact_lock_shared(${GATE_CLASS}`;
+
+export type Gate = {
+  /**
+   * The statement a holder runs, inside its transaction, where pg_sleep()
+   * used to be: it waits here until the gate is opened. `marker` is found
+   * in pg_stat_activity.query, as it was with pg_sleep.
+   */
+  wait(marker: string): string;
+  /** Lets every holder at the gate go on. Safe to call more than once. */
+  open(): Promise<void>;
+};
+
+let gateCount = 0;
+const gateBase = Math.floor(Math.random() * 1_000_000) * 1_000;
+
+/** Runs `statement` until it answers `wanted`, 50 ms apart, 10 s at most. */
+async function polled(statement: string, wanted: string, what: string) {
+  for (let i = 0; i < 200; i++) {
+    if (sql(statement).out === wanted) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error(`Gave up waiting for ${what}`);
+}
+
+/**
+ * A gate, closed. Open it when the test has seen what it came for; a test
+ * that fails first leaves it to the ceiling below, so a holder never stays
+ * in the database holding locks for the files that run next.
+ */
+export async function closedGate(): Promise<Gate> {
+  const key = gateBase + ++gateCount;
+  const child = spawn("docker", [
+    "exec",
+    "-i",
+    dbContainer(),
+    "psql",
+    "-U",
+    "postgres",
+    "-At",
+    "-v",
+    "ON_ERROR_STOP=1",
+  ]);
+  const closed = new Promise<void>((resolve) =>
+    child.on("close", () => resolve()),
+  );
+  child.stdout.resume();
+  child.stderr.resume();
+  child.stdin.write(`select pg_advisory_lock(${GATE_CLASS}, ${key});\n`);
+  await polled(
+    `select count(*) from pg_locks where locktype = 'advisory' and classid = ${GATE_CLASS} and objid = ${key} and mode = 'ExclusiveLock' and granted;`,
+    "1",
+    "a gate to close",
+  );
+  let opened = false;
+  const open = async () => {
+    if (!opened) {
+      opened = true;
+      // The session ends, and its lock with it.
+      child.stdin.end(`select pg_advisory_unlock(${GATE_CLASS}, ${key});\n`);
+    }
+    await closed;
+  };
+  // Not part of any test's timing: only so that a failed test's holder is
+  // let go. Longer than any test waits.
+  setTimeout(() => void open(), 120_000).unref();
+  return {
+    wait: (marker) =>
+      `select pg_advisory_xact_lock_shared(${GATE_CLASS}, ${key}) /* ${marker} */;`,
+    open,
+  };
+}
+
+/**
+ * Waits until a session whose current statement contains `queryLike` is
+ * waiting for a lock (and is not a holder at its gate). Polled with a
+ * bound, never slept: the test goes on the moment it is so.
+ */
+export async function seenWaitingForLock(queryLike: string): Promise<void> {
+  const text = queryLike.replaceAll("'", "''");
+  await polled(
+    `select (count(*) > 0)::text from pg_stat_activity a where a.wait_event_type = 'Lock' and a.query like '%${text}%' and a.query not like '%${GATE_WAIT}%' and a.pid <> pg_backend_pid();`,
+    "true",
+    `a session running ${queryLike} to wait for a lock`,
+  );
 }
 
 /** A product's Moto Mangos listing under the names its settings had as columns. */

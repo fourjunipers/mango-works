@@ -1585,7 +1585,8 @@ describe("renewal notifications are queued, once each, for a sender that doesn't
     return (await outbox()).length - before;
   };
   const addRenewal = async (unit: string, kind: string, expires_at: string) => {
-    const { data, error } = await service
+    // As a member: a renewal with no signed-in user is refused.
+    const { data, error } = await queue.members.owner.db
       .from("unit_renewals")
       .insert({ tenant_id: queue.id, unit_id: unit, kind, expires_at })
       .select("id")

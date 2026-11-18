@@ -17,6 +17,7 @@ import { bookingActions, bookingRoles } from "@/lib/booking-permissions";
 import { roles, type Role } from "@/lib/roles";
 import {
   anonClient,
+  closedGate,
   createTenant,
   createUser,
   deleteTenant,
@@ -27,6 +28,7 @@ import {
   sqlAs,
   sqlBackground,
   type Db,
+  type Gate,
   type TestTenant,
   type TestUser,
 } from "./helpers";
@@ -341,6 +343,7 @@ describe("first: what the pick-again design rests on", () => {
   it("a rolled-back sub-transaction gives back its transaction-level advisory locks, and keeps the ones taken before it", async () => {
     const space = 770_000 + Math.floor(Math.random() * 1000);
     const marker = `subxact-${tag}`;
+    const gate = await closedGate();
     // Session A stays inside one transaction the whole time.
     const a = sqlBackground(`
       begin;
@@ -366,16 +369,8 @@ describe("first: what the pick-again design rests on", () => {
       from pg_locks
       where locktype = 'advisory' and classid = ${space} and granted
         and pid = pg_backend_pid();
-      -- Stays open until session B has looked (B holds lock 99 while it
-      -- does), or 30 seconds at most.
-      do $$ /* ${marker} */
-      begin
-        for i in 1..300 loop
-          exit when not pg_try_advisory_lock(${space}, 99);
-          perform pg_advisory_unlock(${space}, 99);
-          perform pg_sleep(0.1);
-        end loop;
-      end $$;
+      -- Stays open, at its gate, until session B has looked.
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
@@ -386,10 +381,10 @@ describe("first: what the pick-again design rests on", () => {
         || ' ' || pg_try_advisory_xact_lock(${space}, 2)::text
         || ' ' || pg_try_advisory_xact_lock(${space}, 3)::text
         || ' ' || pg_try_advisory_xact_lock(${space}, 4)::text;
-      select pg_advisory_xact_lock(${space}, 99);
-      select pg_sleep(0.5);
       commit;
     `);
+    // B has looked: A may go on.
+    await gate.open();
     expect(b.failed).toBe("");
     // 1: taken before the savepoint, and again inside it: still A's.
     // 2: taken inside a savepoint that was rolled back: free.
@@ -1797,11 +1792,12 @@ describe("lock order", () => {
   it("while one booking holds a product's lock a second one waits, holding no unit lock", async () => {
     const bike = await vehicle(2);
     const marker = `hold-product-${tag}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select platform_private.lock_products_stock(
         array['${bike.id}']::uuid[], array['${shop.locationId}']::uuid[]);
-      select pg_sleep(4) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
@@ -1822,6 +1818,7 @@ describe("lock order", () => {
         and a.query like '%reserve%' and a.pid <> pg_backend_pid()
       limit 1;
     `);
+    await gate.open();
     expect(seen).toBe("waiting, unit locks: 0");
     expect((await holder).failed).toBe("");
     expect(outcome(await call)).toBe("ok");
@@ -1841,10 +1838,11 @@ describe("lock order", () => {
     for (const order of [pairs, [...pairs].reverse()]) {
       // Someone holds the key that is last in lock order.
       const marker = `hold-last-key-${tag}-${++counter}`;
+      const gate = await closedGate();
       const holder = sqlBackground(`
         begin;
         select pg_advisory_xact_lock(x'1a02'::int, (${last}::bigint - case when ${last} > 2147483647 then 4294967296 else 0 end)::int);
-        select pg_sleep(4) /* ${marker} */;
+        ${gate.wait(marker)}
         commit;
       `);
       await holding(marker);
@@ -1868,6 +1866,7 @@ describe("lock order", () => {
           and w.objid::bigint = ${last}
         limit 1;
       `);
+      await gate.open();
       expect(inHand.split(",").sort()).toEqual(keys.slice(0, 5).sort());
       expect((await holder).failed).toBe("");
       expect((await taker).failed).toBe("");
@@ -1901,10 +1900,11 @@ describe("lock order", () => {
 
     // Someone holds the lock that is second in key order.
     const marker = `hold-unit-${tag}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select pg_advisory_xact_lock(x'1a01'::int, hashtext('${lowId}'));
-      select pg_sleep(4) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
@@ -1930,6 +1930,7 @@ describe("lock order", () => {
         and w.objid::bigint = (hashtext('${lowId}')::bigint & 4294967295)
       limit 1;
     `);
+    await gate.open();
     expect(seen).toBe("waiting, first lock in hand: 1");
     expect((await holder).failed).toBe("");
     const moved = await move;
@@ -1956,12 +1957,13 @@ describe("lock order", () => {
     // A mechanic's downtime on the best fit, written but not yet saved:
     // the booking can't see it when it picks.
     const marker = `hold-downtime-${tag}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       insert into platform.unit_blocks (tenant_id, unit_id, kind, period)
       values ('${shop.id}', '${bestFit}', 'downtime',
         tstzrange('${at(3).toISOString()}', '${at(5).toISOString()}'));
-      select pg_sleep(4) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
@@ -1981,6 +1983,7 @@ describe("lock order", () => {
         and w.objid::bigint = (hashtext('${bestFit}')::bigint & 4294967295)
       limit 1;
     `);
+    await gate.open();
     expect(seen).toBe("waiting for the unit, product locks: 1");
     expect((await holder).failed).toBe("");
     // The downtime landed first. The booking read again under the lock,
@@ -2003,18 +2006,35 @@ describe("lock order", () => {
     const bike = await vehicle(1);
     const before = await written();
     const marker = `hold-only-unit-${tag}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       insert into platform.unit_blocks (tenant_id, unit_id, kind, period)
       values ('${shop.id}', '${bike.units[0]}', 'downtime',
         tstzrange('${at(3).toISOString()}', '${at(5).toISOString()}'));
-      select pg_sleep(3) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
-    const result = await staffBook("staff", [
+    let answered = false;
+    const call = staffBook("staff", [
       { product_id: bike.id, starts_at: at(3), ends_at: at(4) },
-    ]);
+    ]).then((answer) => {
+      answered = true;
+      return answer;
+    });
+    // It waits for the unit's lock, and has not answered while the downtime
+    // is not yet saved.
+    await until(`
+      select 'waiting' from pg_locks w
+      where w.locktype = 'advisory' and w.classid = x'1a01'::int and not w.granted
+        and w.objid::bigint = (hashtext('${bike.units[0]}')::bigint & 4294967295)
+      limit 1;
+    `);
+    const answeredEarly = answered;
+    await gate.open();
+    expect(answeredEarly, "answered before the downtime landed").toBe(false);
+    const result = await call;
     expect((await holder).failed).toBe("");
     expect(result.data).toEqual({ ok: false, reason: "unavailable", line: 0 });
     expect(await written()).toEqual(before);
@@ -2024,10 +2044,11 @@ describe("lock order", () => {
     // Session 1 holds the unit's row and nothing else (no unit lock): a
     // delete or a key change that has got that far.
     const marker = `holds-unit-row-${tag}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select 1 from platform.units where id = '${bike.units[0]}' for update;
-      select pg_sleep(4) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker);
@@ -2048,7 +2069,6 @@ describe("lock order", () => {
       where a.query like '%reserve%' and a.pid <> pg_backend_pid()
       limit 1;
     `);
-    expect(seen).toBe("waiting for a row, unit locks: 1");
     // Session 3 takes the product's row without waiting. It can: the
     // booking has not locked it yet. A booking that locked the product's
     // row first and met the unit's row at its block insert would be holding
@@ -2059,6 +2079,8 @@ describe("lock order", () => {
       where id = '${bike.id}' for update nowait;
       commit;
     `);
+    await gate.open();
+    expect(seen).toBe("waiting for a row, unit locks: 1");
     expect(third.failed).toBe("");
     expect(third.out).toContain("got the product row");
     expect((await holder).failed).toBe("");
@@ -2078,10 +2100,11 @@ describe("lock order", () => {
 
       // Session 1: someone is editing the product and has not saved yet.
       const editMarker = `edit-product-${tag}-${units}`;
+      const gate = await closedGate();
       const editor = sqlBackground(`
         begin;
         update platform.products set description = 'Being edited' where id = '${bike.id}';
-        select pg_sleep(5) /* ${editMarker} */;
+        ${gate.wait(editMarker)}
         commit;
       `);
       await holding(editMarker);
@@ -2120,6 +2143,8 @@ describe("lock order", () => {
           and a.query like '%reserve%' and d.query like '%${deleteMarker}%'
         limit 1;
       `);
+      // The edit is saved: the delete goes on, and then the booking.
+      await gate.open();
       expect(seen, `${units} units`).toBe(
         "waiting for the delete, nothing locked or written: true",
       );
@@ -2171,12 +2196,13 @@ function bookingHeld(
   userId: string | null,
   call: ReturnType<typeof request>,
   marker: string,
+  gate: Gate,
 ) {
   return sqlBackground(`
     begin;
     ${actingAs(userId)}
     select platform.reserve('${call.p_tenant_id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
-    select pg_sleep(3) /* ${marker} */;
+    ${gate.wait(marker)}
     commit;
   `);
 }
@@ -2235,7 +2261,8 @@ describe("one side held in place, the other seen waiting", () => {
       const bike = await vehicle(1);
       const marker = `named-held-${tag}-${index}`;
       const [user, call] = c.first(bike);
-      const first = bookingHeld(user, call, marker);
+      const gate = await closedGate();
+      const first = bookingHeld(user, call, marker, gate);
       await holding(marker, first);
       const second = c.second(bike);
       // One statement, so both are read at the same moment.
@@ -2251,6 +2278,7 @@ describe("one side held in place, the other seen waiting", () => {
           and a.pid <> pg_backend_pid()
         limit 1;
       `);
+      await gate.open();
       expect(seen, c.what).toBe("waiting, unit locks: 0");
       const saved = await first;
       expect(saved.failed, c.what).toBe("");
@@ -2271,10 +2299,11 @@ describe("one side held in place, the other seen waiting", () => {
     it(`the unit being ${status}, not yet saved: the booking that picked it waits for the unit's lock with its product lock in hand, reads again, and is refused`, async () => {
       const bike = await vehicle(1);
       const marker = `leaving-${status}-${tag}`;
+      const gate = await closedGate();
       const leaving = sqlBackground(`
         begin;
         update platform.units set status = '${status}' where id = '${bike.units[0]}';
-        select pg_sleep(3) /* ${marker} */;
+        ${gate.wait(marker)}
         commit;
       `);
       await holding(marker, leaving);
@@ -2293,6 +2322,7 @@ describe("one side held in place, the other seen waiting", () => {
           and w.objid::bigint = (hashtext('${bike.units[0]}')::bigint & 4294967295)
         limit 1;
       `);
+      await gate.open();
       expect(seen).toBe("waiting for the unit, product locks: 1");
       expect((await leaving).failed).toBe("");
       const result = await call;
@@ -2315,12 +2345,14 @@ describe("one side held in place, the other seen waiting", () => {
     it(`a booking written, not yet saved: marking its unit ${status} waits for the unit's lock, then is refused because the unit is booked`, async () => {
       const bike = await vehicle(1);
       const marker = `booked-before-${status}-${tag}`;
+      const gate = await closedGate();
       const booking = bookingHeld(
         null,
         request(shop, "booking_page", "instant", [
           { product_id: bike.id, starts_at: at(1), ends_at: at(2) },
         ]),
         marker,
+        gate,
       );
       await holding(marker, booking);
       const leaving = Promise.resolve(
@@ -2341,6 +2373,7 @@ describe("one side held in place, the other seen waiting", () => {
           and w.objid::bigint = (hashtext('${bike.units[0]}')::bigint & 4294967295)
         limit 1;
       `);
+      await gate.open();
       expect(seen).toBe("waiting for the unit lock held by the booking: true");
       const saved = await booking;
       expect(saved.failed).toBe("");
