@@ -9,6 +9,7 @@
     "./booking-rules": "./src/booking-rules.ts",
     "./closures": "./src/closures.ts",
     "./currency": "./src/currency.ts",
+    "./discounts": "./src/discounts.ts",
     "./listing": "./src/listing.ts",
     "./money": "./src/money.ts",
     "./price-list": "./src/price-list.ts",

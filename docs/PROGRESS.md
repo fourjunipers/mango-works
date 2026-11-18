@@ -750,6 +750,85 @@ The sixth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.2, §7, 
 
 **Next:** stage 7, coupons: the rules (`@mango/core` only).
 
+## Phase 2, stage 7: coupons, the rules (branch `platform/phase-2-stage-7-coupon-rules`, 18 Nov 2026)
+
+**`@mango/core` and docs only: no migration, no database, no screen, nothing in `apps/`.** From `main` at `b31abd7`. `quote()` is not changed by one line: it stays the only pricer, and nothing here multiplies, divides or rounds money (adding and comparing only).
+
+**What was built: `packages/core/src/discounts.ts`** (exported as `@mango/core/discounts`)
+
+- **`decideDiscounts(request)`**, a pure function. It takes the invoice as `quote()` takes it (its `couponsEnabled` is the shop's "Accept coupons" switch; its `discounts` are the staff's), each line's product type, the shop's currency, the booking moment, the location's time zone, the channel, the code given with the coupon it found and its uses so far (total and this customer's), the returning-customer settings and the customer's completed rentals (an input until Phase 3). It answers one of three things:
+  - **decided:** the ordered discounts for `quote()`, whether the returning-customer discount is in them, what happened to the coupon, and the coupon's id and code keyed by discount id, ready for `snapshotQuote`'s context;
+  - **refused:** one of the twelve reasons, with the discounts that still apply without the code, so a screen can say why and still show the price;
+  - **can't be priced:** a line has no price yet, as `quote()` says it.
+- **The order it fixes:** returning-customer discount (`returning_customer`), then the coupon (`coupon:<id>`), then whatever was passed in (staff and other), unchanged and in its own order. The staff discount is never blocked.
+- **The first rule that refuses is the answer**, in this order: `coupons_off`, `unknown`, `not_active` (switched off or archived), `wrong_channel`, `too_early` / `expired`, `used_up`, `customer_used_up`, `not_these_products`, `wrong_dates`, `too_short`, `below_minimum`. With the switch off the code is not even looked at.
+- **The code** is compared in upper case with every space removed, on both sides (`normalizeCouponCode`).
+- **Valid dates** are the calendar day the booking is made, on the location's clock (`zonedDateString`), both ends included. No fixed offset: tested across both New York clock changes.
+- **Which lines.** A line is the coupon's when its product is one of the coupon's, it starts inside the pickup dates and it is long enough (rental days on the location's clock). A percentage coupon names those lines; a fixed one is shared over them by the pricer's own proportional split, and the pricer already stops it at what they come to.
+- **Minimum spend** (Mark, 18 Nov 2026): the price after seasons of the coupon's own lines, before any discount. Helmets beside a scooters-only coupon don't count; nor does the returning-customer or a staff discount lower it.
+- **The returning-customer discount** applies to rental lines only: a vehicle or gear **priced by time** (by rental length or per period, the same test the season step uses). An item for sale, a service, and gear at a fixed price or free are left out. It needs the setting on and the shop's number of completed rentals; with no rental line on the invoice it is not given. The coupons switch does not stop it.
+- **Not combined unless the coupon says so** (Q7). When they don't stack, the invoice is priced both ways with `quote()` and the customer gets the one that leaves less to pay.
+- **A coupon never reduces the deposit and the total never goes below zero**: no change was needed in the pricer; both are now pinned by tests in every deposit mode.
+
+**New from Mark on 18 Nov 2026, built here**
+
+- **`with_season_discount`, "Can be used on season discounts"** (boolean, default true). When false, a line a season made cheaper is not one of the coupon's lines; a season that raised the price never rules a line out. With no line left the code is refused as `not_these_products`. In `decideDiscounts` it is `CouponSettings.withSeasonDiscount`.
+  - **For stage 8:** a column on `coupons`, `with_season_discount boolean not null default true`, written by `save_coupon` and returned by `coupon_inputs`.
+  - **For stage 9:** a tick on the coupon form, "Can be used on season discounts", on by default.
+  - The plan's §12 lists the edit §5.3 needs.
+
+**For Phase 3** (noted, not built)
+
+- **A planned coupon kind: "every Nth period free"** (for example the 6th month free; Mark, 18 Nov 2026). It depends on period billing: an extension changes the count of periods, so it can't be decided on one invoice the way `percent` and `fixed` are. Not built in Phase 2; `kind` stays `'percent' | 'fixed'` until then.
+- "Uses per customer" and "returning customer" run on passed-in facts until orders and customers exist (plan §2.5).
+- **An extension's line should be judged on the rental's own pickup and length**, not the new period's: `rentalStart ?? span.start` for the pickup dates, and the days from the original pickup for minimum days. Today `decideDiscounts` reads `span` alone, which is right for a first booking, the only kind Phase 2 makes. Mark's lean; to confirm when Phase 3 builds extensions.
+
+**Mark's decisions, 18 Nov 2026.** The plan did not say. The first three were built on the recommended option and Mark confirmed them as built the same day; the fourth came with the review of PR 47.
+
+1. **A tie, when the coupon and the returning-customer discount don't stack and take the same: the returning-customer discount.** The coupon is not applied and nothing is used up (`coupon.applied: false`, `because: "returning_discount_is_better"`), so stage 8 writes no redemption and the customer keeps the code. The same answer when the returning discount is larger: the code is good, it is just not used. This is not a refusal, so the twelve reasons are unchanged.
+2. **The `api` channel accepts no coupon** (`wrong_channel`). A coupon's channels are staff, booking page and Moto Mangos; staff covers `walk_in` and `phone`. `api` gets coupons when a coupon can tick it.
+3. **Pickup dates and minimum days are judged line by line.** When a booking's lines have different dates, the coupon is taken only on the lines that start in its pickup dates and are long enough, and is refused (`wrong_dates`, `too_short`) when none do. With one set of dates, as every booking has today, it is the same as judging the booking.
+4. **A coupon that takes 0 is not applied and uses no use** (Mark, 18 Nov 2026, after the review of PR 47). Its lines are free, or the returning-customer discount it stacks on already took them to nothing. The code is good, so this is not a refusal: the outcome is `coupon.applied: false`, `because: "takes_nothing"`, and stage 8 writes no redemption. A coupon that takes even one minor unit is applied and is a use.
+
+**Smaller decisions, in the code's comments**
+
+- "The larger" is judged on **what the customer pays** (the invoice total, each way), not on the two discount amounts, so tax added on top and a staff discount after them are counted.
+- A line with both a cheaper season and a dearer one is out when `with_season_discount` is false: any season rule that lowers the price rules it out, judged by the rule's sign (review, item 2 below).
+- A coupon whose lines come to nothing is not applied: see Mark's decision 4. (`quote-snapshot.ts` still says "a coupon on lines that came to 0 is still a use" in a comment; nothing reads it, and `decideDiscounts` no longer hands the pricer such a coupon.)
+- A coupon or a returning-customer discount passed in beside the request is a programming error and throws: both are decided here, and there is one coupon per booking. So is a coupon in another currency than the shop's, and settings that could not have been saved (a day that is not a date, 0 days, a percentage over 100).
+- **Totals never fall as days rise** holds with each discount in play. A coupon's own thresholds are the stated exception: reaching its minimum days or minimum spend can make the longer rental cheaper, which is the coupon doing its job. One test says so.
+
+**Tests**
+
+- **`discounts.test.ts`: 120 tests.** Every refusal reason, each at its boundary, and their order; the code in any case and spacing; the plan's worked example to the satang (฿3,000, 10% returning, ฿200 stacking: ฿2,500, VAT ฿163.55; not stacking: ฿2,700, VAT ฿176.64); a fixed coupon larger than its lines (zero, deposit unchanged) and a percentage coupon with a per-vehicle deposit; all four deposit modes against three coupons (12 tests: the fixed and per-vehicle deposits are the same amount, a percentage deposit moves only with the total); never below zero, alone, stacked and with staff discounts, on one line and several, two tax rates, tax included and on top, THB and JPY; a chosen-products coupon with included helmets and a service beside it; the returning discount skipping items for sale, services and fixed-price gear; the larger of the two both ways and on a tie; "Can be used on season discounts" on, off, a surcharged line, mixed lines, and a line with both kinds of season; valid dates, pickup day and rental days across both New York clock changes; JPY and VND, fixed and percentage, with a fixed coupon split over three lines in whole yen; totals never falling over 1 hour to 400 days from six starts (a month end, a leap day, New Year, both clock changes) for six combinations of discounts; **every pinned D2 and D3 figure unchanged when no discount applies** (41 of the 43 pinned invoices; the other two pass a coupon in themselves, which `decideDiscounts` refuses by design, and stay pinned in `quote-snapshot.test.ts`); `snapshotQuote` recording each decided discount (id, source, coupon id and code, kind, value, lines, amount per line).
+- **Unit: 642 in `@mango/core`** (522 before), 411 on the platform, 202 on the marketplace. Typecheck and lint clean in every workspace. No database or browser test is touched.
+
+**After the review of PR 47** (18 Nov 2026: merge as it is, no must-fix; these were asked for before the merge)
+
+1. **A way the pricer refuses is not on offer.** When a coupon and the returning-customer discount don't stack, the invoice is priced both ways. If one way throws `credit_exceeds_base` (a credit carried to the invoice is larger than what that discount would leave), the customer gets the other; the error is thrown on only when both ways throw. The review's case is a test: a ฿1,400 week with a ฿1,200 credit, 10% returning and a ฿400 coupon gives the returning discount and ฿60 to pay, where it threw before.
+2. **"Can be used on season discounts" judges the season rule's sign, not the rounded amount.** The ids of the rules with `adjustBp < 0` are collected from the invoice's season rules, and a line is out when one of them adjusted it. A ¥40 helmet for a day in a 1%-off season (¥0.4, so ¥0) is refused as `not_these_products`; it was accepted before.
+3. **A coupon that takes 0 is not applied and uses no use** (Mark's decision 4, above). The outcome is `coupon.applied: false`, `because: "takes_nothing"`; the coupon is not in the discounts and not in the snapshot's coupons. Found by pricing the chosen list with `quote()` and adding what the coupon took.
+4. **The two pinned invoices that pass a coupon in** (D2's 10% coupon, the dong shop's fixed coupon) are now also run through the code path: the same coupon as `CouponSettings`, found by its code, gives the same totals, tax groups, line amounts and pinned figures. The count of the others is pinned at exactly 41.
+5. **"The larger" is not "the bigger discount"**, in two tests: a staff ฿450 after a ฿150 coupon finds only ฿350 left to take, so the ฿140 returning discount leaves less to pay (฿1,310 against ฿1,400); and with tax on top at 10% and 7%, ฿140 off the scooter saves ฿154 where ฿142 off the lock saves ฿151.94.
+6. **A static test holds `discounts.ts` to adding and comparing**: with comments and strings stripped, any `*`, `/` or `%` in the file fails `discounts.test.ts`. The file's two patterns are built from strings for that reason.
+7. **Tests after the review: 130 in `discounts.test.ts`, 652 in `@mango/core`.** Typecheck and lint clean.
+
+**For stage 8** (from the review of PR 47; none of it is built here)
+
+- **One code normaliser.** `save_coupon` normalises the code (upper case, spaces removed), accepts only A to Z and 0 to 9 after that, stores that form, and the lookup compares by equality. `normalizeCouponCode` in `@mango/core` and the database must not drift apart.
+- **Uses leave out this booking's own redemption** when a held booking is priced again: otherwise a coupon's last use refuses the very booking that holds it.
+- **The redemption's amount is read from the quote's lines by `discountId`** (what the coupon took, added up), and the column allows 0.
+- **`not_active` needs the lookup to see archived coupons**: a lookup that hides them answers `unknown`. Decide then whether an archived code can be used again for a new coupon.
+- **`reserve()` rechecks active and archived under the coupon's row lock**, with the count of uses.
+- The `with_season_discount` column (above).
+- A coupon with `applied: false` (`returning_discount_is_better` or `takes_nothing`) writes no redemption.
+
+**Carried**
+
+- **Extend the money lint to `packages/core`.** The rule that refuses `*`, `/` and `%` on amounts covers `apps/platform` only (`one-pricer.test.ts`). In core it has to let the pricer's own files through and hold every other file; until then `discounts.ts` is held by its static test (item 6 above).
+
+**Next:** stage 8, coupons in the database (the three tables with `with_season_discount`, the returning-customer settings columns, `save_coupon`, `coupon_inputs`, redemption inside `reserve()`).
+
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 
 The fourth build stage of pricing, of seven (`docs/products-redesign.md` §9.2, "As built in stage D4"; decision 29). **The first with a migration.** Nothing on any screen changes in this stage. `docs/platform/SPEC.md` does not have this yet (the owner maintains it).
