@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   couponChannelFor,
@@ -15,6 +16,7 @@ import {
 import {
   lineDeposits,
   quote,
+  QuoteError,
   type DepositSetting,
   type Discount,
   type Quote,
@@ -34,6 +36,7 @@ import {
   perDay,
   pinnedQuotes,
   thb,
+  VAT_7,
 } from "./quote-pinned.fixtures";
 import {
   readSnapshot,
@@ -780,6 +783,119 @@ describe("the larger of the two, when they don't stack", () => {
     expect(lockOnly.q.totals.total).toBe(thb("1760"));
   });
 
+  it("the larger is what leaves less to pay, not the bigger discount: a staff discount after them", () => {
+    // The returning discount takes ฿140 off the scooter. A ฿150 coupon for
+    // the lock is the bigger discount, and on its own leaves less to pay.
+    const lines = [scooter(), line("lock", fixed("500"), { vehicle: false })];
+    const ask = {
+      lines,
+      types: { lock: "sale_item" as const },
+      coupon: coupon({
+        amount: thb("150"),
+        allProducts: false,
+        productIds: ["lock"],
+      }),
+      returningCustomer: RETURNING_10,
+      completedRentals: 1,
+    };
+    const alone = priced(ask);
+    expect(ids(alone.decision.discounts)).toEqual([COUPON_ID]);
+    expect(alone.q.totals.total).toBe(thb("1750"));
+
+    // A staff ฿450 off the lock comes last. After the coupon it finds only
+    // ฿350 to take: ฿1,400 to pay. After the returning discount it takes
+    // all ฿450: ฿1,260 + ฿50 = ฿1,310. The smaller discount wins.
+    const staff: Discount = {
+      id: "staff",
+      source: "staff",
+      lines: ["lock"],
+      amount: thb("450"),
+    };
+    const flipped = priced({ ...ask, quote: { discounts: [staff] } });
+    expect(ids(flipped.decision.discounts)).toEqual([
+      RETURNING_DISCOUNT_ID,
+      "staff",
+    ]);
+    expect(flipped.decision.coupon).toMatchObject({
+      applied: false,
+      because: "returning_discount_is_better",
+    });
+    expect(flipped.q.totals.total).toBe(thb("1310"));
+  });
+
+  it("the larger is what leaves less to pay: tax added on top at two rates", () => {
+    // The scooter is taxed at 10%, the lock at 7%. ฿140 off the scooter
+    // saves ฿154 with its tax; ฿142 off the lock saves ฿151.94.
+    const lines = [
+      scooter({ taxRateBp: 1000 }),
+      line("lock", fixed("500"), { vehicle: false, taxRateBp: 700 }),
+    ];
+    const ask = (taxInclusive: boolean) => ({
+      lines,
+      types: { lock: "sale_item" as const },
+      coupon: coupon({
+        amount: thb("142"),
+        allProducts: false,
+        productIds: ["lock"],
+      }),
+      returningCustomer: RETURNING_10,
+      completedRentals: 1,
+      quote: { taxInclusive },
+    });
+    const onTop = priced(ask(false));
+    expect(ids(onTop.decision.discounts)).toEqual([RETURNING_DISCOUNT_ID]);
+    // 1,260 + 126 and 500 + 35.
+    expect(onTop.q.totals.total).toBe(thb("1921"));
+    // The coupon's way would have been 1,540 + 358 + 25.06 = 1,923.06.
+
+    // With tax included in the prices the bigger discount is the larger.
+    const included = priced(ask(true));
+    expect(ids(included.decision.discounts)).toEqual([COUPON_ID]);
+    expect(included.q.totals.total).toBe(thb("1758"));
+  });
+
+  it("a way the pricer refuses is not on offer: a credit larger than what it would leave", () => {
+    // A ฿1,400 week with ฿1,200 carried over from a swap.
+    const credit = { id: "swap", amount: thb("1200"), taxRateBp: VAT_7 };
+    const ask = (c: CouponSettings, returningBp: number) => ({
+      lines: [scooter()],
+      coupon: c,
+      returningCustomer: { ...RETURNING_10, percentBp: returningBp },
+      completedRentals: 1,
+      quote: { credits: [credit] },
+    });
+
+    // The ฿400 coupon would leave ฿1,000, less than the credit: the pricer
+    // refuses it. The returning 10% leaves ฿1,260, so the customer gets that.
+    const returningOnly = priced(ask(coupon({ amount: thb("400") }), 1000));
+    expect(ids(returningOnly.decision.discounts)).toEqual([
+      RETURNING_DISCOUNT_ID,
+    ]);
+    expect(returningOnly.decision.coupon).toEqual({
+      applied: false,
+      because: "returning_discount_is_better",
+      couponId: "c1",
+      code: "SAVE200",
+    });
+    expect(returningOnly.q.totals.total).toBe(thb("60"));
+
+    // The other way round: 20% would leave ฿1,120, a ฿100 coupon ฿1,300.
+    const couponOnly = priced(ask(coupon({ amount: thb("100") }), 2000));
+    expect(ids(couponOnly.decision.discounts)).toEqual([COUPON_ID]);
+    expect(couponOnly.decision.returningCustomer).toBe(false);
+    expect(couponOnly.q.totals.total).toBe(thb("100"));
+
+    // Neither can be priced: the pricer's own error, not a guess.
+    let thrown: unknown;
+    try {
+      decideDiscounts(request(ask(coupon({ amount: thb("400") }), 2000)));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(QuoteError);
+    expect((thrown as QuoteError).code).toBe("credit_exceeds_base");
+  });
+
   it("a refused code never costs the customer the returning discount", () => {
     const refused = refusal({ ...ask(coupon({ minDays: 31 })) });
     expect(refused.reason).toBe("too_short");
@@ -970,7 +1086,7 @@ describe("which lines a coupon is taken on", () => {
     ).toBe("wrong_dates");
   });
 
-  it("a coupon on lines that come to nothing takes nothing, and is still a use", () => {
+  it("a coupon on free lines takes nothing: not applied, and no use", () => {
     const { decision, q } = priced({
       lines: [
         scooter(),
@@ -978,9 +1094,57 @@ describe("which lines a coupon is taken on", () => {
       ],
       coupon: coupon({ allProducts: false, productIds: ["map"] }),
     });
-    expect(decision.coupon?.applied).toBe(true);
+    expect(decision.coupon).toEqual({
+      applied: false,
+      because: "takes_nothing",
+      couponId: "c1",
+      code: "SAVE200",
+    });
+    // It is not in the list for quote(), nor in the snapshot's coupons.
+    expect(decision.discounts).toEqual([]);
+    expect(decision.coupons).toEqual({});
     expect(q.totals.discount).toBe(0n);
     expect(q.totals.total).toBe(thb("1400"));
+  });
+
+  it("a stacking coupon after a 100% returning discount takes nothing: not applied", () => {
+    const all = { ...RETURNING_10, percentBp: 10000 };
+    for (const c of [
+      coupon({ withReturningDiscount: true }),
+      percent(5000, { withReturningDiscount: true }),
+    ]) {
+      const { decision, q } = priced({
+        lines: month(),
+        coupon: c,
+        returningCustomer: all,
+        completedRentals: 1,
+      });
+      expect(decision.coupon).toMatchObject({
+        applied: false,
+        because: "takes_nothing",
+      });
+      expect(ids(decision.discounts)).toEqual([RETURNING_DISCOUNT_ID]);
+      expect(decision.returningCustomer).toBe(true);
+      expect(decision.coupons).toEqual({});
+      expect(q.totals.total).toBe(0n);
+    }
+    // With a line the returning discount does not reach, it takes something.
+    const withLock = priced({
+      lines: [...month(), line("lock", fixed("500"), { vehicle: false })],
+      types: { lock: "sale_item" },
+      coupon: coupon({ withReturningDiscount: true }),
+      returningCustomer: all,
+      completedRentals: 1,
+    });
+    expect(withLock.decision.coupon?.applied).toBe(true);
+    expect(withLock.q.totals.total).toBe(thb("300"));
+  });
+
+  it("a coupon that takes even one satang is applied", () => {
+    // 0.01% of ฿1,400 is ฿0.14.
+    const { decision, q } = priced({ lines: [scooter()], coupon: percent(1) });
+    expect(decision.coupon?.applied).toBe(true);
+    expect(q.totals.discount).toBe(thb("0.14"));
   });
 });
 
@@ -1081,6 +1245,37 @@ describe('"Can be used on season discounts"', () => {
         quote: { seasonRules: [scootersLow] },
       }),
     ).toBe("below_minimum");
+  });
+
+  it("off: a season discount that rounds to nothing is still a season discount", () => {
+    // 1% off a ¥40 helmet for a day is ¥0.4, which is ¥0.
+    const sale: SeasonRule = {
+      id: "sale",
+      startsOn: "2027-11-01",
+      endsOn: "2027-11-30",
+      repeatsYearly: false,
+      adjustBp: -100,
+      products: "all",
+    };
+    const ask = (withSeasonDiscount: boolean) => ({
+      lines: [line("helmet", perDay(40n), { days: 1, vehicle: false })],
+      currency: "JPY",
+      coupon: percent(5000, { currency: "JPY", withSeasonDiscount }),
+      quote: { seasonRules: [sale] },
+    });
+    const on = priced(ask(true));
+    expect(on.q.lines[0].seasons).toEqual([
+      { ruleId: "sale", periodsInside: 1, amount: 0n },
+    ]);
+    expect(on.q.lines[0].seasonPrice).toBe(40n);
+    expect(on.decision.coupon?.applied).toBe(true);
+    expect(reason(ask(false))).toBe("not_these_products");
+    // And a 1% surcharge that rounds to nothing never rules the line out.
+    const up = {
+      ...ask(false),
+      quote: { seasonRules: [{ ...sale, adjustBp: 100 }] },
+    };
+    expect(decided(up).coupon?.applied).toBe(true);
   });
 
   it("off: a line with a cheaper season and a dearer one is still out", () => {
@@ -1288,7 +1483,11 @@ describe("the total never goes below zero", () => {
             quote: { taxInclusive },
             ...more,
           });
-          expect(decision.coupon?.applied).toBe(true);
+          // Where every line is a rental line and the returning discount
+          // is 100%, the coupon takes nothing and is not applied.
+          const nothingLeft =
+            more.returningCustomer?.percentBp === 10000 && make().length === 1;
+          expect(decision.coupon?.applied).toBe(!nothingLeft);
           assertNeverNegative(q);
           // Larger than every line: they all come to nothing.
           expect(q.lines.map((l) => l.amount)).toEqual(q.lines.map(() => 0n));
@@ -1651,7 +1850,7 @@ describe("every pinned D2 and D3 figure is unchanged when no discount applies", 
     expect(all.filter(hasCoupon).map((each) => each.name).length).toBe(
       all.length - plain.length,
     );
-    expect(plain.length).toBeGreaterThanOrEqual(40);
+    expect(plain.length).toBe(41);
     for (const each of all.filter(hasCoupon)) {
       expect(() =>
         decideDiscounts({
@@ -1664,6 +1863,77 @@ describe("every pinned D2 and D3 figure is unchanged when no discount applies", 
           completedRentals: 0,
         }),
       ).toThrow(/decided here/);
+    }
+  });
+
+  it.each(
+    all
+      .filter(hasCoupon)
+      .map((each) => [`${each.from}: ${each.name}`, each] as const),
+  )("%s, with its coupon given as a code", (_name, each) => {
+    // The same coupon as the shop would have saved it, found by its code.
+    const given = each.input.discounts ?? [];
+    expect(given.length).toBe(1);
+    const [passedIn] = given;
+    expect(passedIn.lines).toBe("all");
+    const settingsOf: CouponSettings = coupon({
+      id: `id-${passedIn.id}`,
+      code: passedIn.id,
+      currency: each.context.currency,
+      kind: passedIn.percentBp !== undefined ? "percent" : "fixed",
+      percentBp: passedIn.percentBp ?? null,
+      amount: passedIn.amount ?? null,
+    });
+    const decision = decideDiscounts({
+      quote: { ...each.input, discounts: [] },
+      productTypes: Object.fromEntries(
+        Object.entries(each.context.lines).map(([id, l]) => [
+          id,
+          l.productType,
+        ]),
+      ),
+      currency: each.context.currency,
+      now: each.context.pricedAt,
+      timeZone: each.input.lines[0].span.timeZone,
+      channel: "booking_page",
+      coupon: {
+        code: passedIn.id.toLowerCase(),
+        found: { settings: settingsOf, uses: { total: 0, customer: 0 } },
+      },
+      completedRentals: 0,
+    });
+    if (decision.outcome !== "decided") throw new Error("expected a decision");
+    expect(decision.coupon).toMatchObject({ applied: true, code: passedIn.id });
+    expect(decision.discounts).toEqual([
+      {
+        ...passedIn,
+        id: couponDiscountId(`id-${passedIn.id}`),
+        lines: each.input.lines.map((l) => l.id),
+      },
+    ]);
+
+    const q = quote({ ...each.input, discounts: decision.discounts });
+    const pinnedWay = quote(each.input);
+    if (!q.ok || !pinnedWay.ok) throw new Error("expected a priced quote");
+    // To the minor unit the same invoice as the pinned one.
+    expect(q.totals).toEqual(pinnedWay.totals);
+    expect(q.taxGroups).toEqual(pinnedWay.taxGroups);
+    expect(q.lines.map((l) => [l.amount, l.discount])).toEqual(
+      pinnedWay.lines.map((l) => [l.amount, l.discount]),
+    );
+    const got = {
+      total: q.totals.total,
+      vat: q.totals.vat,
+      net: q.totals.net,
+      discount: q.totals.discount,
+      credit: q.totals.credit,
+      nonTaxable: q.nonTaxable,
+      deposit: q.deposit.amount,
+      amounts: q.lines.map((l) => l.amount),
+    };
+    expect(Object.keys(each.pinned).length).toBeGreaterThan(0);
+    for (const key of Object.keys(each.pinned) as Array<keyof typeof got>) {
+      expect(got[key], key).toEqual(each.pinned[key]);
     }
   });
 
@@ -1874,5 +2144,68 @@ describe("snapshotQuote records each discount that was decided", () => {
     expect(read.totals.total).toBe(0n);
     expect(read.deposit.amount).toBe(thb("2000"));
     expect(read.lines[0].deposit).toBe(thb("2000"));
+  });
+});
+
+// ------------------------------------------------------------ one pricer
+
+/**
+ * The code of a TypeScript file with its comments and its strings (quoted
+ * and template) taken out, so what is left is operators and names.
+ */
+function codeOnly(source: string): string {
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const two = source.slice(i, i + 2);
+    const char = source[i];
+    if (two === "//") {
+      while (i < source.length && source[i] !== "\n") i += 1;
+    } else if (two === "/*") {
+      const end = source.indexOf("*/", i + 2);
+      i = end < 0 ? source.length : end + 2;
+    } else if (char === '"' || char === "'" || char === "`") {
+      i += 1;
+      while (i < source.length && source[i] !== char) {
+        i += source[i] === "\\" ? 2 : 1;
+      }
+      i += 1;
+      out += '""';
+    } else {
+      out += char;
+      i += 1;
+    }
+  }
+  return out;
+}
+
+describe("discounts.ts does no arithmetic on money", () => {
+  // The app's money lint rule does not reach packages/core, so this holds
+  // the line here: quote() is the only code that multiplies, divides or
+  // takes a remainder. Adding and comparing are allowed.
+  const source = readFileSync(
+    new URL("./discounts.ts", import.meta.url),
+    "utf8",
+  );
+
+  it("the stripper keeps code and drops comments and strings", () => {
+    expect(
+      codeOnly(
+        'const a = b * 2; // c / d\n/* e % f */ const g = "h * i" + `j / ${k}`;',
+      ),
+    ).toBe('const a = b * 2; \n const g = "" + "";');
+    expect(codeOnly("x / y")).toContain("/");
+    expect(codeOnly("x % y")).toContain("%");
+  });
+
+  it("has no *, / or % in its code", () => {
+    const code = codeOnly(source);
+    expect(code.length).toBeGreaterThan(3000);
+    expect(code).toContain("decideDiscounts");
+    const found = code
+      .split("\n")
+      .map((text, index) => ({ line: index + 1, text: text.trim() }))
+      .filter(({ text }) => /[*/%]/.test(text));
+    expect(found).toEqual([]);
   });
 });

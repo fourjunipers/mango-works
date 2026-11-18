@@ -21,7 +21,9 @@
 import type { BookingChannel } from "./booking-rules";
 import {
   quote,
+  QuoteError,
   type Discount,
+  type Quote,
   type QuoteInput,
   type QuoteLineInput,
   type QuotedLine,
@@ -169,13 +171,19 @@ export type CouponOutcome =
       lineIds: string[];
     }
   /**
-   * The code is good, but it can't be combined with the returning-customer
-   * discount and that one leaves the customer paying no more. Nothing is
-   * used up: no redemption is written.
+   * The code is good and nothing is used up: no redemption is written.
+   *
+   * "returning_discount_is_better": it can't be combined with the
+   * returning-customer discount, and that one leaves the customer paying no
+   * more (or the coupon's way can't be priced: a credit is larger than what
+   * it would leave).
+   *
+   * "takes_nothing": its lines already come to nothing, so it would take 0
+   * (Mark, 18 Nov 2026). It is not in the discounts.
    */
   | {
       applied: false;
-      because: "returning_discount_is_better";
+      because: "returning_discount_is_better" | "takes_nothing";
       couponId: string;
       code: string;
     };
@@ -209,8 +217,13 @@ export type DiscountDecision =
 
 /** A code as it is compared: upper case, with every space removed (§11). */
 export function normalizeCouponCode(code: string): string {
-  return code.replace(/\s+/gu, "").toUpperCase();
+  return code.replace(SPACES, "").toUpperCase();
 }
+
+// Patterns are built from strings so this file holds no "/" or "*" outside
+// comments and strings: discounts.test.ts fails on any money arithmetic here.
+const SPACES = new RegExp("\\s+", "gu");
+const DAY = new RegExp("^\\d{4}-\\d{2}-\\d{2}$");
 
 /**
  * The coupon channel a booking's channel counts as. Staff covers the counter
@@ -235,13 +248,9 @@ export function couponChannelFor(
 
 function assertDay(day: string | null, what: string): void {
   if (day === null) return;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  const check = match
-    ? new Date(
-        Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
-      )
-    : null;
-  if (!check || check.toISOString().slice(0, 10) !== day) {
+  // A day that is not on the calendar (30 Feb) does not read back as itself.
+  const time = DAY.test(day) ? Date.parse(`${day}T00:00:00.000Z`) : NaN;
+  if (Number.isNaN(time) || new Date(time).toISOString().slice(0, 10) !== day) {
     throw new RangeError(`${what} must be a real date, YYYY-MM-DD: ${day}`);
   }
 }
@@ -355,18 +364,22 @@ const inRange = (day: string, from: string | null, to: string | null) =>
  * for chosen scooters does not reduce the helmets beside them.
  *
  * `priced` is the invoice priced with no discount, in the lines' order.
+ * `down` holds the ids of the season rules that lower a price. A season
+ * discount is judged by its rule, not by the amount it came to: 1% off a
+ * ¥40 helmet rounds to ¥0 and is still a season discount.
  */
 function couponLines(
   coupon: CouponSettings,
   lines: readonly QuoteLineInput[],
   priced: readonly QuotedLine[],
+  down: ReadonlySet<string>,
 ): { ok: true; lines: QuotedLine[] } | { ok: false; reason: CouponRefusal } {
   let left = lines.map((line, index) => ({ line, priced: priced[index] }));
 
   left = left.filter(
     ({ line, priced: p }) =>
       (coupon.allProducts || coupon.productIds.includes(line.productId)) &&
-      (coupon.withSeasonDiscount || !p.seasons.some((s) => s.amount < ZERO)),
+      (coupon.withSeasonDiscount || !p.seasons.some((s) => down.has(s.ruleId))),
   );
   if (left.length === 0) return { ok: false, reason: "not_these_products" };
 
@@ -500,7 +513,12 @@ export function decideDiscounts(request: DiscountRequest): DiscountDecision {
   const plain = quote({ ...base, discounts: [] });
   if (!plain.ok) return { outcome: "cant_price", unpriced: plain.unpriced };
 
-  const eligible = couponLines(coupon, base.lines, plain.lines);
+  const down = new Set(
+    (base.seasonRules ?? [])
+      .filter((rule) => rule.adjustBp < 0)
+      .map((rule) => rule.id),
+  );
+  const eligible = couponLines(coupon, base.lines, plain.lines, down);
   if (!eligible.ok) return refused(eligible.reason);
 
   const discountId = couponDiscountId(coupon.id);
@@ -530,34 +548,78 @@ export function decideDiscounts(request: DiscountRequest): DiscountDecision {
     coupon: { applied: true, couponId: coupon.id, code, discountId, lineIds },
     coupons: { [discountId]: { couponId: coupon.id, code } },
   });
+  /** The code is good and is not used: the coupon is not in `discounts`. */
+  const notApplied = (
+    because: Extract<CouponOutcome, { applied: false }>["because"],
+    discounts: Discount[],
+    withReturning: boolean,
+  ): DiscountDecision => ({
+    outcome: "decided",
+    discounts,
+    returningCustomer: withReturning,
+    coupon: { applied: false, because, couponId: coupon.id, code },
+    coupons: {},
+  });
+  /** What the coupon took over all its lines: adding only. */
+  const taken = (priced: Extract<Quote, { ok: true }>) =>
+    priced.lines.reduce(
+      (sum, line) =>
+        line.discounts
+          .filter((each) => each.discountId === discountId)
+          .reduce((lineSum, each) => lineSum + each.amount, sum),
+      ZERO,
+    );
+  const price = (discounts: Discount[]) => {
+    const priced = quote({ ...base, discounts });
+    if (!priced.ok) {
+      throw new RangeError("An invoice that was priced can't be priced");
+    }
+    return priced;
+  };
 
-  if (!returning) return applied([couponDiscount, ...given], false);
-  if (coupon.withReturningDiscount) {
-    return applied([returning, couponDiscount, ...given], true);
+  if (!returning || coupon.withReturningDiscount) {
+    const withCoupon = returning
+      ? [returning, couponDiscount, ...given]
+      : [couponDiscount, ...given];
+    // A coupon that takes 0 is not applied and uses no use (Mark, 18 Nov
+    // 2026): its lines are free, or the returning discount took them all.
+    return taken(price(withCoupon)) === ZERO
+      ? notApplied("takes_nothing", without, returning !== null)
+      : applied(withCoupon, returning !== null);
   }
 
   // They don't stack: the customer gets the one that leaves less to pay
   // (Q7), found by pricing the invoice both ways. The same to pay: the
   // returning-customer discount, so the coupon is not used up.
-  const withCoupon = [couponDiscount, ...given];
-  const payWithReturning = quote({ ...base, discounts: without });
-  const payWithCoupon = quote({ ...base, discounts: withCoupon });
-  if (!payWithReturning.ok || !payWithCoupon.ok) {
-    throw new RangeError("An invoice that was priced can't be priced");
-  }
-  if (payWithCoupon.totals.total < payWithReturning.totals.total) {
-    return applied(withCoupon, false);
-  }
-  return {
-    outcome: "decided",
-    discounts: without,
-    returningCustomer: true,
-    coupon: {
-      applied: false,
-      because: "returning_discount_is_better",
-      couponId: coupon.id,
-      code,
-    },
-    coupons: {},
+  //
+  // One way may be impossible: a credit carried to this invoice is larger
+  // than what that discount would leave in its rate group, which the pricer
+  // refuses. That way is then not on offer and the customer gets the other.
+  // Both impossible is the caller's error, as `quote()` would say it.
+  const option = (discounts: Discount[]) => {
+    try {
+      return { priced: price(discounts), error: null };
+    } catch (error) {
+      if (error instanceof QuoteError && error.code === "credit_exceeds_base") {
+        return { priced: null, error };
+      }
+      throw error;
+    }
   };
+  const withCoupon = [couponDiscount, ...given];
+  const byReturning = option(without);
+  const byCoupon = option(withCoupon);
+  if (!byCoupon.priced) {
+    if (!byReturning.priced) throw byCoupon.error;
+    return notApplied("returning_discount_is_better", without, true);
+  }
+  if (!byReturning.priced) {
+    return taken(byCoupon.priced) === ZERO
+      ? notApplied("takes_nothing", given, false)
+      : applied(withCoupon, false);
+  }
+  // Paying less with the coupon means the coupon took something.
+  return byCoupon.priced.totals.total < byReturning.priced.totals.total
+    ? applied(withCoupon, false)
+    : notApplied("returning_discount_is_better", without, true);
 }
