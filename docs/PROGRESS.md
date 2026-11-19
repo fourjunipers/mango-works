@@ -13,6 +13,17 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Phase 1b: plan only (branch `platform/phase-1b-plan`, 19 Nov 2026)
+
+**No code, no migration, no test.** The plan is `docs/phase-1b-plan.md`, draft 1, written from `main` at `d458717`, PR 51's branch (`record_renewal()`) and the Phase 3 plan, draft 2. Not yet approved.
+
+- **Already built in 1a** (plan §1.2): renewal records and costs, reminder settings, the hourly reminder queue, dashboard renewal items, downtime blocks, `units.notes`, one current odometer value. **Not built, though the spec lists them:** `track_maintenance_costs`, `avg_daily_km`, keys, a `registration` renewal kind, a renewal's document file. Nothing in the platform uploads a file yet, so 1b would be the first use of the storage module.
+- **Design:** what is due is worked out on read, with an hourly job only for messages and follow-ups; every odometer change through one function into a log; a job points at its downtime block; "block when overdue" and an expired renewal are pickup blockers (Phase 3's `pickup_blockers()`) with a manager override, not availability changes; "Remove for good" is a unit status, `removed`, through one function.
+- **Lock order:** no new advisory-lock class; the new rows sit inside class 3.9 of the Phase 3 plan's §4.2. A function holding a unit's lock takes the unit's row without waiting. **For the Phase 5 plan:** check-out and check-in write the odometer inside `pick_up` and `return_rental`, so there the unit's row is taken `for no key update nowait` (plan §2.7, rule 3).
+- **Ten new tables, eight migrations, eleven stages**; seven Fable builds, four Opus with a Fable check or review.
+- **Fifteen open decisions for Mark** (plan §6), each with a recommendation.
+- **Spec line found stale:** Vehicle record › Odometer log still says a lower reading "needs a manager override"; the Fleet section and the build say confirmed and audited (plan §8).
+
 ## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
 
 **Docs only: no code, migration or test changed.** Written from `main` at `b9e0b33`.
@@ -2612,6 +2623,7 @@ Mapping first: `docs/platform/MAPPING.md` (legacy marketplace tables → tenants
 
 ## Phase 1b: fleet care (to build)
 
+- Plan: `docs/phase-1b-plan.md` (draft 1, 19 Nov 2026).
 - Vehicle notes field (fitted accessories), see SPEC Vehicle record: column exists, screen only. Still to do: the staff app's bike card and the Fleet search.
 
 ## Next
