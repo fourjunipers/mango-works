@@ -1257,11 +1257,14 @@ describe("the Moto Mangos cap inside reserve()", () => {
       "cap_reached",
     );
     // Its time runs out, as the clock would run it.
-    await service
-      .from("reservations")
-      .update({ hold_expires_at: new Date(Date.now() - 1000).toISOString() })
-      .eq("booking_id", hold.booking_id)
-      .throwOnError();
+    // A second ago by the database's clock, which is the one that judges.
+    expect(
+      sql(`
+        update platform.reservations
+        set hold_expires_at = clock_timestamp() - interval '1 second'
+        where booking_id = '${hold.booking_id}';
+      `).failed,
+    ).toBe("");
     const next = booked(await mmBook([{ product_id: bike.id, ...window() }]));
     expect(outcome(await mmBook([{ product_id: bike.id, ...window() }]))).toBe(
       "cap_reached",
@@ -1537,12 +1540,17 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
     await holding(marker);
     // The hold's time is up, by the database's clock (the confirm is not
     // saved, so the row still reads as a hold and carries its expiry).
-    await until(`
+    // The poll looks for longer than the hold lasts (one second, and ten
+    // more), so it can't give up before the hold is over.
+    await until(
+      `
       select 'run out' from platform.reservations
       where booking_id = '${hold.booking_id}' and state = 'held'
         and hold_expires_at < clock_timestamp()
       limit 1;
-    `);
+    `,
+      11_000,
+    );
     // To this booking the hold has run out: it does not count it.
     const call = mmBook([
       { product_id: bike.id, location_id: second, ...window },

@@ -1638,12 +1638,15 @@ describe("reserve() with a coupon: counted and written under the coupon's row", 
 // ------------------------------------------------------- giving a use back
 
 describe("a use is given back by a cancel and by a hold that runs out", () => {
-  const expire = (bookingId: string) =>
-    service
-      .from("reservations")
-      .update({ hold_expires_at: new Date(Date.now() - 1000).toISOString() })
-      .eq("booking_id", bookingId)
-      .throwOnError();
+  /** A second ago by the database's clock, which is the one that judges. */
+  const expire = async (bookingId: string) => {
+    const { failed } = sql(`
+      update platform.reservations
+      set hold_expires_at = clock_timestamp() - interval '1 second'
+      where booking_id = '${bookingId}';
+    `);
+    expect(failed).toBe("");
+  };
   const sweep = async () => {
     const { error } = await service.rpc("release_expired_holds");
     expect(error).toBeNull();
@@ -2484,13 +2487,16 @@ describe("races for a coupon's last use: exactly one booking gets it, and no dea
             coupon: taking(c),
           }),
         );
-        await service
-          .from("reservations")
-          .update({
-            hold_expires_at: new Date(Date.now() - 1000).toISOString(),
-          })
-          .eq("booking_id", hold.booking_id)
-          .throwOnError();
+        // Run out a second ago by the database's clock, which is the one
+        // that judges it (the test machine's may not agree).
+        expect(
+          sql(`
+            update platform.reservations
+            set hold_expires_at = clock_timestamp() - interval '1 second'
+            where booking_id = '${hold.booking_id}';
+          `).failed,
+          `${where}, round ${round}`,
+        ).toBe("");
         const [one, two, three, cancelled, saved, found, swept] =
           await Promise.all([
             staffBook(days(a, day), { tenant, coupon: taking(c) }),
@@ -2586,13 +2592,21 @@ describe("after the review of PR 48", () => {
     `);
     expect(failed).toBe("");
   };
-  const expired = (bookingId: string) =>
-    until(`
+  /**
+   * Waits until the hold has run out by the database's clock. `holdSeconds`
+   * is how long the hold was given: the poll looks for that long and ten
+   * seconds more, so it can never give up before the hold itself is over.
+   */
+  const expired = (bookingId: string, holdSeconds: number) =>
+    until(
+      `
       select 'expired' from platform.reservations
       where booking_id = '${bookingId}'
         and hold_expires_at + interval '300 milliseconds' < clock_timestamp()
       limit 1;
-    `);
+    `,
+      (holdSeconds + 10) * 1000,
+    );
 
   it("finding 1: a confirm in flight across the hold's expiry holds the coupon's row, so a booking of another product after the same coupon's last use waits for it and is refused: exactly one live use", async () => {
     const [bike, other] = await Promise.all([vehicle(1), vehicle(1)]);
@@ -2605,7 +2619,8 @@ describe("after the review of PR 48", () => {
     // afterwards: this one wait is real time. Five seconds for the confirm
     // to begin (holding() fails by name if it did not make it), then a
     // bounded poll for the expiry.
-    expiresIn(hold.booking_id, 5);
+    const holdSeconds = 5;
+    expiresIn(hold.booking_id, holdSeconds);
     // The confirm starts before the hold runs out, and is not saved until
     // the late booking has been seen waiting behind it.
     const marker = `confirm-in-flight-${tag}-${++counter}`;
@@ -2618,7 +2633,7 @@ describe("after the review of PR 48", () => {
       commit;
     `);
     await holding(marker, confirming);
-    await expired(hold.booking_id);
+    await expired(hold.booking_id, holdSeconds);
     // By now coupon_uses() no longer counts the hold. Without the coupon's
     // row in confirm_hold() this booking takes the use at once, and the
     // confirm then commits a second one.
@@ -2659,7 +2674,7 @@ describe("after the review of PR 48", () => {
       await staffBook(days(bike, 1), { hold: true, coupon: taking(mine) }),
     );
     expiresIn(hold.booking_id, 1);
-    await expired(hold.booking_id);
+    await expired(hold.booking_id, 1);
     const taker = booked(
       await pageBook(days(other, 1), { coupon: taking(mine) }),
     );
