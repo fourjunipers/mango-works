@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { catalogRequestQueue } from "@/lib/admin-queue";
-import { seed, serviceClient } from "./helpers";
+import { deleteTenant, seed, serviceClient } from "./helpers";
 
 const service = serviceClient();
 const tag = Math.random().toString(36).slice(2, 8);
@@ -54,7 +54,7 @@ afterAll(async () => {
     .from("bike_catalog")
     .delete()
     .in("id", [fromMarketplaceShop, fromPlatformShop]);
-  await service.schema("platform").from("tenants").delete().eq("id", tenantId);
+  await deleteTenant(tenantId);
 });
 
 describe("marketplace admin: catalog requests", () => {

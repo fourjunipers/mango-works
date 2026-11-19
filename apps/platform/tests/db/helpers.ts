@@ -122,11 +122,37 @@ export async function createTenant(
   };
 }
 
-/** Removes a tenant (memberships cascade) and its users. */
+/**
+ * Removes a tenant (memberships cascade) and its users.
+ *
+ * A tenant with audit rows can't be hard-deleted, and no audit row can be
+ * deleted (20261120000200); every tenant has one from the moment it is
+ * created. So a test's tenant is removed as the local database's superuser:
+ * its audit rows first, with the table's triggers switched off for that one
+ * statement (session_replication_role, which only a superuser may set), then
+ * the tenant, in one transaction, with a lock timeout so that it fails
+ * rather than waits. Only tests do this: no app can delete a tenant.
+ */
 export async function deleteTenant(tenant: TestTenant | undefined) {
   if (!tenant) return;
+  if (!/^[0-9a-f-]{36}$/i.test(tenant.id)) {
+    throw new Error(`Not a tenant id: ${tenant.id}`);
+  }
   const service = serviceClient();
-  await service.from("tenants").delete().eq("id", tenant.id);
+  const removed = await sqlBackground(
+    [
+      "begin;",
+      "set local lock_timeout = '5s';",
+      "set local session_replication_role = replica;",
+      `delete from platform.audit_events where tenant_id = '${tenant.id}';`,
+      "set local session_replication_role = origin;",
+      `delete from platform.tenants where id = '${tenant.id}';`,
+      "commit;",
+    ].join("\n"),
+  );
+  if (removed.failed) {
+    throw new Error(`deleteTenant ${tenant.id}: ${removed.failed}`);
+  }
   for (const member of Object.values(tenant.members)) {
     await service.auth.admin.deleteUser(member.id);
   }
