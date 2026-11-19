@@ -1,6 +1,6 @@
 # Phase 3 plan: orders and calendar
 
-**Draft 2, 19 Nov 2026.** Plan only: no code, no migration, nothing applied anywhere. Draft 1 (`45dd93f`) was critiqued by Fable ("needs a second draft"); this draft applies every item of that critique and Mark's 25 decisions of 19 Nov 2026, and then his answers to draft 2's open points (decisions 23 replaced, 26 to 31, same day). §14 lists each change and where it went.
+**Draft 2, 19 Nov 2026.** Plan only: no code, no migration, nothing applied anywhere. Draft 1 (`45dd93f`) was critiqued by Fable ("needs a second draft"); this draft applies every item of that critique and Mark's 25 decisions of 19 Nov 2026, then his answers to draft 2's open points (decisions 23 replaced, 26 to 32, same day), and Fable's re-check of draft 2 ("fix these first", 16 plan-text fixes; the design stands). §14 lists each change and where it went.
 
 Written from `main` at `b9e0b33` (PR 50 merged; 66 migrations, staging at 66 of 66, live at 53 of 53) **and PR 51's branch** `platform/phase-2-stage-10-review-followups` at `2474a6e` (migration 6, `20261119000100_platform_review_followups`). Every schema statement below is about the database as it will be after migration 6. Phase 2 stage 11 (the read-only New order screen, Settings › Booking rules, the seed) is assumed merged before stage 9 here.
 
@@ -126,7 +126,7 @@ payment_allocations append-only: how much of a payment went to which charge, wit
 | `booked` returned → `archived` | `archive_order`, the nightly job | Decision 12 |
 | **Reverts** (setting `staff_can_revert`, default off) | | |
 | out → reserved | `revert_pickup` | Sale items' stock put back |
-| returned → out | `revert_return` | **Voids that return's late or early charge; refused if money is allocated to it** (S5); block end restored, refused `unit_taken` if re-booked |
+| returned → out | `revert_return` | **Voids that return's late or early charge; refused if money is allocated to it** (S5); block end restored, refused `unit_taken` if re-booked. Intended difference from `cancel_order`, which **does** void a charge with money on it and turns that money into a credit: a cancel ends the order and leaves the customer's money visible as a credit, while a revert undoes one step and must not quietly move money that a tax invoice already shows against that charge |
 | `booked` (nothing out) → `draft` | `unreserve_order` | Blocks released, lines kept |
 | `canceled` → `draft` | `restore_order` | |
 | `archived` → `booked` | `unarchive_order` | |
@@ -225,16 +225,19 @@ order_counters    tenant_id, next_number
 1. Read the order's live reservations **unlocked**: their products, places, units, and the order's rental ids.
 2. Take lock classes 1–2 from those reservations (plus any new products or units the call adds).
 3. Lock the order row (`for no key update`).
-4. **Settle a run-out hold**: if `status = new` and `hold_expires_at` has passed by `clock_timestamp()`, apply decision 5 now (releasing still-held reservations, which the advisory locks already cover).
-5. **Read again.** If the products, places, units or rentals differ from step 1, answer `try_again` with nothing written (as `cancel_reservation` does today).
-6. Write nothing until `reserve_core` (or the inner core it calls) answers ok. **Any inner refusal is raised** (a `P0001` with the reason), caught by the function's outermost block, and answered `{ok: false, reason}` with every write undone.
+4. **Settle a run-out hold**: if `status = new` and `hold_expires_at` has passed by `clock_timestamp()`, apply decision 5 now (releasing still-held reservations, which the advisory locks already cover). **The settlement is kept, whatever happens next** (item 7 of the re-check):
+   - Functions that need the hold (`confirm_order`, `assign_order_units` and `save_order` on a `new` order, `swap_order_coupon` on a `new` order) commit the settlement and **return** `{ok: false, reason: 'hold_expired'}`. The refusal is returned, not raised, so nothing rolls the settlement back.
+   - Functions that don't need the hold (`hold_order`, `reserve_order`, `cancel_order`, `cancel_rental`, `unreserve_order`, `restore_order`, `save_order` on what is now a draft) carry on from the settled state in the same transaction.
+5. **Read again.** If the products, places, units or rentals differ from step 1, answer `try_again` (returned, not raised) with nothing written beyond step 4's settlement (as `cancel_reservation` does today).
+6. Write nothing until `reserve_core` (or the inner core it calls) answers ok. The work after step 5 runs in an **inner block** (a savepoint): any inner refusal is raised there (a `P0001` with the reason), caught by that block, and answered `{ok: false, reason}` with that block's writes undone and step 4's settlement kept.
 
 `lock_timeout = '6s'` on each; callers answer `try_again` for `55P03`, `57014`, `40P01`.
 
 | Function | Does | Migration |
 | --- | --- | --- |
 | `create_order(tenant, order)` | New order, rentals, lines, charge(s), through `reserve_core` in hold, reserve or draft mode. **Idempotency key** (S6): a repeat answers the first result | 3 |
-| `hold_order`, `reserve_order`, `confirm_order`, `unreserve_order` | §2.3. `confirm_order` uses the re-created `confirm_hold` core, which reads live reservations only (M5) | 3, 6 |
+| `hold_order`, `reserve_order`, `confirm_order` | §2.3. The `confirm_hold` core is re-created **in migration 3, with `hold_order`**: it reads live reservations only (M5), so re-holding a draft and confirming works from the first day. `reservations.hold_expires_at` is always copied from `orders.hold_expires_at` | 3 |
+| `unreserve_order` | §2.3 | 6 |
 | `cancel_order`, `cancel_rental`, `restore_order` | §2.3; a paid charge gets a `difference` charge (S5) | 3, 6 |
 | `assign_order_units(order, rental, units)` | Named wrapper around the `assign_units` core (M4): before pickup, fill a shortage or change the unit | 3 |
 | `pick_up`, `return_rental`, `revert_pickup`, `revert_return`, `archive_order`, `unarchive_order` | §2.3 | 5 |
@@ -275,12 +278,12 @@ Names follow the repo rule; timestamps when written. Re-created functions are re
 
 | # | Name | Stage | What |
 | --- | --- | --- | --- |
-| 1 | `platform_unit_lock_rules` | 1 | `units_guard`: a product change only inside `move_unit()` (a transaction setting it marks), lost at any time; `units_clamp_product_counts` becomes a **statement-level** trigger that locks every affected product row in id order once (§4.1); `review_catalog_request` locks products before its catalog entry |
+| 1 | `platform_unit_lock_rules` | 1 | `units_guard`: a product change only inside `move_unit()` (the transaction-local marker of §4.1), one sold/retired/lost change per transaction, lost at any time; `move_unit()` re-created to set and clear the marker and refuse a second call; `units_clamp_product_counts` replaced by **two statement-level triggers** (update, delete) that lock every affected product row in id order once (§4.1); `review_catalog_request` locks products before its catalog entry |
 | 2 | `platform_orders` | 2a | Clears Phase 2 reservations, their allocation and hold blocks, and coupon redemptions (S7, decision 24); `customers`, `orders`, `rentals`, `order_charges`, `order_lines`, `order_counters`; `reservations.rental_id` (nullable); **`move_unit()` re-created to copy `rental_id` on a split** (M2); staff permission columns and `staff_may()`; RLS; `save_customer`, `save_staff_permissions` |
-| 3 | `platform_order_core` | 2b | `reserve_core`; `reservations.rental_id` not null; `create_order`, `hold_order`, `reserve_order`, `confirm_order`, `cancel_order`, `assign_order_units`; `confirm_hold`, `cancel_reservation`, `assign_units` moved to private cores; **`platform.reserve()` dropped**; coupon redemption `customer_id` foreign key |
+| 3 | `platform_order_core` | 2b | **Checks again for reservations with no `rental_id`, and clears them (with their blocks and redemptions) as migration 2 did, before** `reservations.rental_id` is set not null (S7; on live the count must be 0 or the migration stops); `reserve_core`; `create_order`, `hold_order`, `reserve_order`, `confirm_order`, `cancel_order`, `assign_order_units`; `confirm_hold` (live reservations only), `cancel_reservation`, `assign_units` moved to private cores; **`platform.reserve()` dropped**; coupon redemption `customer_id` foreign key; the deferred check that every order has its number (§4.2) |
 | 4 | `platform_payments_ledger` | 3 | `payments`, `payment_allocations` (both append-only), `record_payment`, `record_refund`, `record_deposit`, `write_off_credit` |
-| 5 | `platform_order_status` | 4 | `pick_up`, `return_rental` (late charge), reverts, archive, `pickup_blockers`, `order_state`, stock movements |
-| 6 | `platform_order_edits` | 5 | `save_order`, `change_rental_dates`, `add_to_order`, `unreserve_order`, `cancel_rental`, `restore_order`, coupon swap, `confirm_hold` core re-created for repeat holds |
+| 5 | `platform_order_status` | 4 | `pick_up`, `return_rental` (late charge), reverts, archive, `pickup_blockers`, `order_state`, stock movements; `unit_blocks_guard` re-created so the return path can lengthen a **lost** unit's out block (§6.3) |
+| 6 | `platform_order_edits` | 5 | `save_order`, `change_rental_dates`, `add_to_order`, `unreserve_order`, `cancel_rental`, `restore_order`, coupon swap (`swap_order_coupon`) |
 | 7 | `platform_rental_changes` | 6 | `extend_rental`, `swap_rental_unit`, `return_early`, `edit_return_time`; swap settings |
 | 8 | `platform_order_reads` | 7 | `order_list`, `today_board`, `timeline`, `order_history`, `bookings_at_risk`, `completed_rentals` |
 | 9 | `platform_order_jobs` | 8 | Outbox kinds and columns, alert settings, the three jobs and their schedules |
@@ -334,11 +337,20 @@ Six booleans on `tenants`, written by `save_staff_permissions` (owner, manager),
 
 ### 4.1 The stage 10 deadlock and the multi-row crossing (S1)
 
-**Two bikes swapping products.** Today `units_product_not_retired` locks the new product `for share` and `units_clamp_product_counts` then the old `for no key update`; two moves in opposite directions deadlock. **Fix: a vehicle's product changes only through `move_unit()`, one unit per transaction**; `units_guard` refuses a product change made any other way (for the service role too). `move_unit()` already takes both products' advisory locks sorted, then both product rows in id order `for no key update`, so two moves between the same products serialise on their advisory locks before either touches a row. Gate test: two `move_unit()` calls in opposite directions released at the same instant: one waits, both finish, 0 deadlocks; and a direct `update units set product_id` is refused.
+**Two bikes swapping products.** Today `units_product_not_retired` locks the new product `for share` and `units_clamp_product_counts` then the old `for no key update`; two moves in opposite directions deadlock. **Fix: a vehicle's product changes only through `move_unit()`, one unit per transaction**; `units_guard` refuses a product change made any other way (for the service role too).
 
-**A multi-row status change against a two-product booking.** `units_clamp_product_counts` is a row trigger: an `update` of several units of products X and Y locks their product rows `for no key update` in whatever order the rows come, while a booking of X and Y holds `for share` on both in id order. **Rule: a statement that changes units locks every product row it affects once, in id order, before any row's counts are touched.** The trigger becomes statement-level (`after update ... referencing old table`), locking `distinct product_id` sorted, then clamping. Gate test: a two-unit status change (Y's unit first in the statement) against a booking of X and Y: one waits for the other, 0 deadlocks; fails on today's trigger.
+- **The marker** (item 2 of the re-check). `move_unit()` sets a transaction-local setting, `platform.moving_unit`, to the unit's id just before it updates the unit, and sets it to `done` straight after. `units_guard` allows a product change only while the marker equals that row's id, so a later direct product change in the same transaction is still refused. `move_unit()` refuses to start when the marker is already set (to an id or `done`): **a second `move_unit()` in the same transaction is refused**, `one_move_per_transaction`.
+- **Two opposite moves at the same place** serialise on their product-and-location advisory locks before either touches a row. **At different places** (A moves X→Y at place P, B moves Y→X at place Q) the advisory locks differ, but both then take both product rows **in id order, `for no key update`**, so they serialise on the product rows; still safe, because neither holds a product row while waiting for the other in reverse order (item 16).
+- Gate tests: two `move_unit()` calls in opposite directions released at the same instant, once at one place and once at two places: one waits, both finish, 0 deadlocks; a direct `update units set product_id` is refused; a second `move_unit()` in one transaction is refused; a direct product change after a `move_unit()` in the same transaction is refused.
 
-**"Never raise a lock level later"**: a transaction takes all its product rows at once, at the strongest strength it needs. `pg_locks` does not list granted row locks, so this is checked **statically**: a test reads every `platform`/`platform_private` function body (`pg_get_functiondef`) and fails when one function takes a `products` row lock in two different strengths, or a weaker one before a stronger one. Where a race test needs to see held row locks it uses `pgrowlocks` if the local stack has the extension (it ships with Postgres contrib; enabled in the test database only).
+**A multi-row status change against a two-product booking.** `units_clamp_product_counts` is today a row trigger, `after update of status, product_id or delete … for each row` (`20261111001200_platform_clamp_booking_counts.sql:94`, renamed in `20261113000200`): an `update` of several units of products X and Y locks their product rows `for no key update` in whatever order the rows come, while a booking of X and Y holds `for share` on both in id order. **Rule: a statement that changes or deletes units locks every product row it affects once, in id order, before any row's counts are touched.**
+
+- **Two statement-level triggers replace the row trigger** (item 1). A statement trigger with transition tables can carry neither a column list nor two events, so: `units_counts_after_update` (`after update … referencing old table as o new table as n for each statement`, no column list; it finds the units that stopped counting for a product by joining `o` to `n` on id: was active, now not active or on another product) and `units_counts_after_delete` (`after delete … referencing old table as o for each statement`). Each locks the `distinct` old product ids sorted, `for no key update`, then clamps each product and its listing.
+- **Why a second trigger for delete, not "delete stays per row":** owners and managers can delete units directly through the table's policy, and nothing stops one statement naming units of two products; the stock functions happen to delete one product's units, but the rule must not depend on the caller. The per-row `units_busy_on_delete` before trigger is unchanged (it takes each unit's lock without waiting).
+- **Sold, retired and lost, several units in one statement: unsupported** (item 16). `units_guard` takes each such unit's lock in row order, so two such statements could cross. `units_guard` refuses a second unit changing to sold, retired or lost in one transaction (`one_unit_status_change`), checked **before** it takes the second unit's lock, using a transaction-local marker like `move_unit()`'s. The app changes these one unit at a time already. Test: a two-unit `update … set status = 'retired'` is refused with nothing changed.
+- Gate test: a two-unit status change to maintenance (Y's unit first in the statement) against a booking of X and Y: one waits for the other, 0 deadlocks; fails on today's trigger. A two-product unit delete against the same booking: the same.
+
+**"Never raise a lock level later"**: a transaction takes all its product rows at once, at the strongest strength it needs. `pg_locks` does not list granted row locks, so this is checked **statically**: a test reads every `platform`/`platform_private` function body (`pg_get_functiondef`) and fails when one function takes a `products` row lock in two different strengths, or a weaker one before a stronger one, **except for functions on a reviewed exception list**, each with its reason (item 15). The list starts with `swap_rental_unit`: it takes the old product's row `for no key update` when the old vehicle goes into repair and the new product's `for share`, two rows in two strengths by design, both taken at once in id order and never raised. Where a race test needs to see held row locks it uses `pgrowlocks` if the local stack has the extension (Postgres contrib; enabled in the test database only).
 
 ### 4.2 The global order
 
@@ -353,10 +365,10 @@ Every function or trigger that takes more than one lock takes them in this order
    4. **listing rows**, product-id order, `for no key update` (Moto Mangos);
    5. **coupon rows**, in id order, `for update` (both, on a coupon swap);
    6. **customer rows**, only to insert or upsert one (a new order's customer; a marketplace upsert), never otherwise;
-   7. **insert of a new order; rental rows** (insert, or in id order for an existing order);
+   7. **insert of a new order** (its `number` still empty); **rental rows** (insert, or in id order for an existing order);
    8. **reservations**, then **unit_blocks**;
    9. **charges, lines, payments, allocations, redemptions, stock movements, outbox rows**;
-   10. **`order_counters`**, last.
+   10. **`order_counters`**, last: the shop's counter row `for update`, then an **update of the new order's own row** to write its `number` (item 6). Updating a row the transaction itself inserted waits for nothing, so the counter stays the last lock any transaction takes. A deferred constraint trigger refuses a commit that leaves an order without a number.
 
 Why the order row comes straight after the advisory locks: it is the order functions' serialisation point (M3), and nothing that holds a unit, product, listing, coupon or customer row ever waits for an order row. `move_unit()`, a unit delete, a status change, a downtime write, `save_coupon`, `save_listing`, `save_product_extras` and the hold sweep take no order row. `record_payment` takes only an order row.
 
@@ -377,8 +389,9 @@ Why the order row comes straight after the advisory locks: it is the order funct
 | `edit_return_time`, `archive_order`, `unarchive_order` | None | None | order, rentals, charges, lines |
 | `record_payment`, `record_refund`, `record_deposit`, `write_off_credit` | None | None | order, payments, allocations |
 | `move_unit()` (re-created) | Where it is, goes, and its bookings name | The unit | unit row `nowait`, products `for no key update` in id order, reservations (copy `rental_id` on split), blocks, unit's own row. **No order or rental row** |
-| Unit status change (one or many units) | None | Sold, retired, lost: each unit | unit rows, then **every affected product row once, in id order** (statement trigger), listing rows |
-| Unit delete, downtime | As today | As today | As today |
+| Unit status change (one or many units to repair or active; **one unit per transaction** to sold, retired or lost) | None | Sold, retired, lost: that one unit | unit rows, then **every affected product row once, in id order** (statement trigger), listing rows |
+| Unit delete (one or many) | None | Each unit, without waiting (as today) | unit rows, then every affected product row once, in id order (statement trigger), listing rows |
+| Downtime | As today | As today | As today |
 | `review_catalog_request` | None | None | products in id order, then the catalog entry |
 | Hold sweep | Expired holds' products, sorted | None | reservations, blocks, redemption (unchanged; no order row) |
 | `close_expired_holds_on_orders` | None | None | order rows `skip locked` (only orders whose reservations are already expired), then their rentals |
@@ -409,7 +422,7 @@ On a `new` or `draft` order: prices worked out first; then, in the §4.2 order, 
 | A held booking whose coupon was archived since | Kept until saved again; re-deciding refuses it with words |
 | Stacking coupon with a credit throws `credit_exceeds_base` | `decideDiscounts` caps the coupon at what the credit leaves; not applied if nothing is left. Stage 6 core work |
 | An extension judged on the rental's own pickup and length | Decision 13: judged on the original pickup and length; an extension takes **no new use** and is not re-judged on dates; with decision 17, a percentage coupon does not apply to extensions at all |
-| Refund VAT | `refundVat()` in `@mango/core`, stage 3 |
+| Refund VAT | A refund's credit note carries the VAT of the allocations it reverses (§6.4), stage 3 |
 | Early-return outcome stored, never recomputed | `early_return` charge with its inputs in the snapshot |
 | Lines never re-sorted | `order_lines.position`; no function updates amounts |
 | An extra left behind when `move_unit` moves its vehicle to another place | At risk on the order; transfers are Phase 11 |
@@ -434,6 +447,7 @@ On a rental that is out and **not overdue** (an overdue rental is refused `renta
 
 - **Early return:** block shortened, `closed_at` set, `early_return` charge with the unused part as credit, refund or nothing per shop settings; staff without `staff_can_refund` leave a credit.
 - **Late return** (decisions 7, 8, 21): if the recorded return time is past `ends_at` + `late_return_grace_minutes` (default 60), a `late_return` charge is offered, on by default, from `ends_at` to the recorded time (`extensionPrice`); waiving needs `staff_can_waive_late_charge` and a reason (stored as a 0 charge with the reason).
+- **A late return of a vehicle marked lost while out must succeed** (decisions 7 and 19; item 4). Today `unit_blocks_guard` (`20261116000100_platform_reservations.sql`, around line 205) refuses any block that covers more time than before on a unit that is sold, retired or lost. Migration 5 re-creates it with one exception: **the return path** (`return_rental`, which sets a transaction-local marker naming the reservation) may lengthen **that rental's existing `out` allocation** on a `lost` unit to the return time plus buffer. Every other lengthening on a sold, retired or lost unit stays refused, including by the same transaction outside that marker. Test: a scooter marked lost while out, found and returned two days late: the return succeeds, the block ends at the return time, the late charge is offered; extending the same rental or writing a new block on the unit is still refused `unit_not_in_fleet`.
 - **Editing the recorded return time** (`edit_return_time`, decision 7): with a reason and an audit event, subject to `staff_can_edit_return_time`, until the order is archived, never in the future. It recalculates the late charge. If no money is allocated to the old late charge it is voided and replaced; if money is, **the difference is a new `difference` charge or a credit**, never an edit to a paid charge. It never moves a block (the time is in the past).
 - **A difference function** (S5): `chargeDifference(old charge snapshot, new quote)` in `@mango/core`, used by `edit_return_time`, `change_rental_dates` and `cancel_rental` when a charge has money against it: a `difference` charge for the change, negative when it is a credit. Stage 5 core work.
 - **Month-to-month** (decisions 3, 4, 17): a rental over 30 days is split at booking into date-to-date periods from the pickup; each is a continuation line priced at booking prices and frozen, and each period is its own charge with `due_at` at its start. The periods add up to the whole rental's price to the minor unit. **Across those charges** (M8, decision 17):
@@ -450,7 +464,8 @@ payments            append-only
   id, tenant_id, order_id
   kind        payment | refund | deposit_in | deposit_out | deposit_hold | deposit_release
               | deposit_capture | credit_write_off
-  method      cash | transfer | other        (Phase 7: card, promptpay)
+  method      cash | transfer | deposit | other        (Phase 7: card, promptpay)
+  deposit_payment_id         for a payment made from a kept deposit: its deposit_capture row
   amount      bigint > 0
   currency    FK (tenant_id, currency) → tenants (id, currency), no cascade
   provider, provider_ref     null offline; Phase 7 fills them
@@ -458,14 +473,21 @@ payments            append-only
   receipt_ref, received_at, recorded_by, note
   rate_groups jsonb          per rate group: rate, gross, net, VAT, worked out once on this payment's total (paymentVat)
 payment_allocations append-only
-  id, tenant_id, payment_id, charge_id, amount
-  rate_groups jsonb          per rate group: the gross this charge received from the payment
+  id, tenant_id, payment_id, charge_id
+  amount      bigint, > 0 for a payment, < 0 for a refund's reversing allocation
+  rate_groups jsonb          per rate group: the gross this charge received (or gave back)
 ```
+
+**Three rules, decided now because the rows are append-only** (item 8):
+
+- **No overpayment.** `record_payment` refuses an amount larger than what is open on the order (the balance below, if positive), `overpayment`. Staff give change in cash; the ledger records what the order needed. Deposits are recorded separately (`deposit_in`) and are outside the balance.
+- **A refund reverses allocations.** `record_refund` names the charges it refunds and writes a **negative allocation** against each, so a refunded charge's allocations no longer equal its total and it no longer reads as settled. Its **credit note** (Phase 6) carries the VAT of what it reverses: `paymentVat` run on the refund's own allocations, per rate group, once on its total, the same rule as a payment. A refund of an unallocated credit (money paid against charges since voided, e.g. a cancelled order) has no allocation to reverse: its credit note carries the VAT of the payments that created the credit, which the refund names.
+- **A kept deposit becomes a payment.** When a deposit is kept against a charge (a cash deposit applied to damage or a late charge in Phase 3; a card hold captured in Phase 7), two rows are written in one call: a `deposit_capture` row that reduces the deposit held, and a `payment` row, method `deposit`, `deposit_payment_id` pointing at it, **allocated to that charge with its own tax invoice and VAT**, the same as any payment. The balance therefore falls by the amount kept and the deposit held falls with it; the deposit row itself never enters the balance.
 
 - **Every payment received gets its own tax invoice** (decision 25; printed in Phase 6). **Its VAT is worked out once, on the payment's total, per rate group, and shown once at the bottom (total, then net and VAT)**, not summed charge by charge (decision 27). Rounding is half up to the smallest currency unit. This holds for shops whose prices include VAT and shops that add it.
 - **`paymentVat(payment, allocations)`** in `@mango/core`: from the charges the payment is allocated to, it adds up the gross the payment puts into each rate group, then per group works out VAT once on that gross (rate ÷ (100 + rate) of it, half up) and net = gross − VAT. It is the same formula for both tax styles, because a payment is always a gross amount: for a shop that adds VAT on top, the charge's gross already includes the VAT added. The result is stored on the `payments` row.
 - **Allocations** still record what each charge received (its gross per rate group, the payment's amount split over the charge's groups in proportion to their gross, the charge's last allocation taking the rounding remainder so a charge's allocations add up exactly to its total). They decide when a charge is settled; they are not where invoice VAT comes from. A charge's own VAT (its snapshot) and the VAT on the invoices that paid it can differ by a minor unit per group; the invoices are the documents of record.
-- **Balance = total of non-void charges − payments + refunds (+ credit write-offs), whatever the allocation. A charge is settled when its allocations equal its total.** Deposits are outside it.
+- **Balance = total of non-void charges − payments + refunds (+ credit write-offs), whatever the allocation. A charge is settled when its allocations (payments less reversals) equal its total.** Deposit rows are outside it; a kept deposit enters it only as its `payment` row.
 - **Credits:** a negative balance. Cancelling an order with payments voids its charges and leaves the payments as credit (decision 18). A credit stays until refunded (`staff_can_refund`) or written off (`staff_can_write_off_credit`), and blocks archiving (decisions 12, 14).
 - **The currency** is held by the foreign keys on `orders`, `order_charges` and `payments` (no cascade: a currency change is refused while any exists), not by `tenants_lock_currency()`'s unlocked `exists` (S8).
 - **Phase 7 attaches here:** `payment_accounts`, `webhook_events`, `scheduled_charges(order_charge_id, due_at)`, card holds as `deposit_hold`/`deposit_release`/`deposit_capture` with `provider_ref`, card refunds as `refund` rows after the provider confirms, and the payment deadline. A shop cancellation fee (decision 18) is Phase 7.
@@ -491,10 +513,10 @@ The fee record is marketplace-owned (`public.marketplace_fees`, keyed by order i
 - **Base: everything booked through Moto Mangos at booking, for the whole booked length** (a 90-day booking pays on all 90 days; no 30-day cap): the rental after any discounts or coupons, plus paid extras (phone holder, insurance or cover, and so on) and delivery.
 - **Never the security deposit.**
 - **VAT:** the base is what the renter sees: including VAT for a shop whose prices include it; before VAT for a shop that adds it on top.
-- **Fee:** 10% of the base, **rounded to the nearest whole unit of the currency, half up**; at least the market currency's minimum (฿50 for THB).
-- **Extensions and further months** arranged with the shop afterwards are outside Moto Mangos and carry no fee. Moto Mangos never tracks or charges recurring monthly rentals; an order's later `extension` and `period` charges are invisible to the fee.
+- **Fee:** 10% of the base, **rounded to the nearest whole unit of the currency, half up**; at least the market currency's minimum (฿50 for THB); **never more than its base** (decision 32).
+- **Extensions and further months** arranged with the shop afterwards are outside Moto Mangos and carry no fee. Moto Mangos never tracks or charges recurring monthly rentals. **Charges created after booking are outside the fee**; the booked months of a 90-day booking (its `booking` and `period` charges made at booking) are inside it.
 - **Receipt:** Moto Mangos's own fee gets a standard receipt from Mango Works, not a tax invoice (decision 26). **Confirm with Korn before Phase 8.**
-- `create_booking` returns the base it used (rental after discounts, extras, delivery, and whether VAT is inside), so the marketplace computes the fee from the platform's figures and stores both.
+- `create_booking` returns the base it used (rental after discounts, extras, delivery, and whether VAT is inside); the marketplace works the fee out from that and stores both. **The marketplace never passes a fee in** (INTEGRATION §3.12, corrected).
 
 **`apps/marketplace/lib/fees.ts` against this, Phase 8 code changes** (not changed here):
 
@@ -503,7 +525,7 @@ The fee record is marketplace-owned (`public.marketplace_fees`, keyed by order i
 | `bookingFee(rentalAfterPromotion, …)`: the base is the rental after promotion only; "extras never count" | The base adds paid extras and delivery |
 | No VAT input | Take the base as shown to the renter (gross with VAT included; before VAT when added on top) |
 | `feeRoundingUnit` lets a market round to a multiple (e.g. ฿10) | Nearest whole unit only (decision 23); drop the setting or fix it at 1 |
-| `min(…, rentalAfterPromotion)`: the fee is never more than the rental | Not in decision 23. With the minimum, a very small booking would pay a fee above its base unless this cap stays: keep the cap (now on the whole base) unless Mark says otherwise |
+| `min(…, rentalAfterPromotion)`: the fee is never more than the rental | Kept, on the whole base (decision 32) |
 | `priceBreakdown`: due at shop = rental after promotion − fee + extras; no delivery line | Due at shop = base − fee (+ delivery when paid at handover); the breakdown gains a delivery line, and the fee line includes extras and delivery |
 | Minimum per market currency; half-up rounding; integers in minor units | Already as decided |
 
@@ -513,14 +535,14 @@ One PR each. Migrations local only until Mark says otherwise; staging as each me
 
 | # | Stage | Migration | Model | Accept tests |
 | --- | --- | --- | --- | --- |
-| 1 | **Unit lock rules** | 1 | Fable build | Two opposite `move_unit()` calls on a gate: 0 deadlocks, 30 rounds × 3 shops; direct product change refused; two-unit status change vs two-product booking on a gate: 0 deadlocks (fails on today's trigger); lost while out and with future bookings succeeds, future bookings at risk; catalog review vs product delete: 0 deadlocks; the static lock-strength test |
+| 1 | **Unit lock rules** | 1 | Fable build | §4.1's gate tests: two opposite `move_unit()` calls at one place and at two places, 0 deadlocks, 30 rounds × 3 shops; direct product change refused, also after a `move_unit()` in the same transaction; a second `move_unit()` in one transaction refused; two-unit status change and two-product unit delete vs a two-product booking, 0 deadlocks (fail on today's trigger); a two-unit change to sold, retired or lost refused with nothing changed; lost while out and with future bookings succeeds and **its future blocks are kept** (the at-risk read arrives in stage 7); catalog review vs product delete: 0 deadlocks; the static lock-strength test with its exception list. **Tests that change a unit's product directly, ported to `move_unit()` or rewritten** (item 3; line numbers on PR 51's branch): `availability.test.ts` around 3326, 3334, 3345 and 3748 (direct updates by the owner: ported); 3583 (a set-up step with `session_replication_role = replica`, which skips triggers: rewritten to build the state through `move_unit()`); `product-listings.test.ts:521` (moves a listing's product, refused `listing_product_fixed`: checked still to hold, rewritten if it relied on a unit move); `review-fixes.test.ts:700` (ported); `recheck-followups.test.ts:244`, **the swap test itself, which becomes a true-concurrency gate test of two opposite `move_unit()` calls and must pass** |
 | 2a | **Orders: tables, RLS, customers, settings** | 2 | Fable build | **Migration 2 deletes every Phase 2 reservation, its allocation and hold blocks, and every coupon redemption, on staging and locally; the seed is rerun after it.** On live the count before the push must be 0, or the push stops. Isolation for every new table (5 roles × 2 shops, stranger, MM customer, anon); `staff_may` for each setting and role; customer contacts never in audit; `move_unit` split copies `rental_id`; currency FK refuses a currency change |
-| 2b | **The core and the test port** | 3 | Fable build | `reserve_core` with orders and rentals; `platform.reserve()` gone; **Phase 2's database tests (`reservations`, `availability`, `booking-rules`, `coupons`, `product-extras` races and checks) ported to `create_order`, with the same rounds and outcomes; `staff-booking.ts` and `book-online.ts` call `create_order`; `bookOnline()` moved to the shared package**; a non-unit FK failure raised, never `unit_taken`; any inner refusal leaves nothing written; idempotent `create_order`; 200-line booking timed, 201 refused; per-customer coupon limit under a race; numbering: 50 parallel orders, no duplicate number or code |
-| 3 | **Payments ledger** | 4 | Fable build | Append-only for every role; balance exact after 20 parallel payments, a refund and a cancel in any order; `paymentVat` works VAT once on each payment's total per rate group, half up (inclusive and on top, THB, USD, VND), and a payment covering three month charges gives one VAT figure per group, not a sum of three; a charge's allocations add up exactly to its total; idempotent payment and refund; refund and write-off per setting; deposits outside the balance |
-| 4 | **Status machine** | 5 | Fable build | Every transition and revert by each role and setting; derived state for every mix; pickup blockers; late return clipped, never refused; late charge after 60 minutes' grace, waivable per setting; revert-return voids its charge and is refused with money allocated; sale stock out and back; held-order expiry settled first by every function |
+| 2b | **The core and the test port** | 3 | Fable build | `reserve_core` with orders and rentals; `platform.reserve()` gone; **Phase 2's database tests (`reservations`, `availability`, `booking-rules`, `coupons`, `product-extras` races and checks) ported to `create_order`, with the same rounds and outcomes; `staff-booking.ts` and `book-online.ts` call `create_order`; `bookOnline()` moved to the shared package**; a non-unit FK failure raised, never `unit_taken`; any inner refusal leaves nothing written; idempotent `create_order`; 200-line booking timed, 201 refused; per-customer coupon limit under a race; numbering: 50 parallel orders, no duplicate number or code, every order numbered at commit; **a draft held again and confirmed** (the live-reservations `confirm_hold` core is in this migration); a run-out hold settled and kept when the call then answers `hold_expired`; migration 3's re-check finds no reservation without a rental before `not null` |
+| 3 | **Payments ledger** | 4 | Fable build | Append-only for every role; balance exact after 20 parallel payments, a refund and a cancel in any order; `paymentVat` works VAT once on each payment's total per rate group, half up (inclusive and on top, THB, USD, VND), and a payment covering three month charges gives one VAT figure per group, not a sum of three; a charge's allocations add up exactly to its total; idempotent payment and refund; refund and write-off per setting; deposits outside the balance; **an overpayment refused**; a refund's reversing allocations make its charge unsettled and its VAT is that of what it reverses; a kept cash deposit becomes a `deposit_capture` plus a `payment` allocated to the charge, the balance and the deposit held each falling by the amount |
+| 4 | **Status machine** | 5 | Fable build | Every transition and revert by each role and setting; derived state for every mix; pickup blockers; late return clipped, never refused; late charge after 60 minutes' grace, waivable per setting; revert-return voids its charge and is refused with money allocated, while `cancel_order` voids a paid charge into a credit; **a late return of a vehicle marked lost while out succeeds, and any other lengthening on it is refused**; sale stock out and back; held-order expiry settled first by every function |
 | 5 | **Order edits, add to order, coupon swap** | 6 | Fable build | §5.2 races; `add_to_order` on reserved and picked-up orders; date change keeps units when free; `chargeDifference` core (stage task) on a paid charge; repeat hold then confirm; **gate test: `save_order` adding a rental against `pick_up` of the same order** (one waits, the other `try_again` or both clean) |
 | 6 | **Rental changes and long rentals** | 7 | Fable build | Redesign's swap tests; swap refused on an overdue rental; breakdown swap into repair; extend vs a booking of the next days; **gate test: `extend_rental` against `move_unit()` of its unit** (`try_again` or clean, never a half move); early return vs a booking of the freed time; `edit_return_time` with and without money against the late charge; month periods telescope; `planBookedCharges` (decision 17) and the redemption sum; stacking coupon with a credit |
-| 7 | **Reads** | 8 | Opus build + Fable review (decision 31) | `order_list` filters (status, payment status, shortage, at risk, overdue, channel, dates, search by number, customer, phone, plate) per role; `today_board` writes nothing; `order_history` for staff without audit access; cross-tenant test per read; response times |
+| 7 | **Reads** | 8 | Opus build + Fable review (decision 31); the review covers role leakage in the security-definer reads and the at-risk rule | `bookings_at_risk` (repair, lost, overdue, clipped turnaround); `order_list` filters (status, payment status, shortage, at risk, overdue, channel, dates, search by number, customer, phone, plate) per role; `today_board` writes nothing; `order_history` for staff without audit access; cross-tenant test per read; response times |
 | 8 | **Jobs, outbox and email** | 9 | Fable build (job SQL); sender Opus + Fable check | Each job twice writes once; the close job touches only orders the sweep already expired, `skip locked`; overdue 1/3/15/30 in a DST shop shown on the Dashboard; **with sending off, nothing reaches the transport** and every message is queued; against the fake transport with the switch on: end-of-rental email in the customer's language, renewal reminders, retry and failure, old messages expired rather than sent |
 | 9 | **New order and the order page** | None | Opus + Fable check | Playwright 375 and 1280 px: **full new → reserved → picked up → returned → archived**; an overlap refused "This vehicle is booked from … (order #…)"; add to order; hold expiry; Thai at phone width |
 | 10 | **Today board, order list, Settings › Orders** | None | Opus + Fable check | Four tabs with counts, Late highlighted; search by plate and phone; the six staff permissions switch screens and are refused by the database when off |
@@ -601,13 +623,13 @@ Not truly testable: race tests prove the timings they hit; real Resend sends (on
 | 29 | Overbooking accepted: a vehicle rental may wait for its unit, shown as a shortage; never more than one unit | §2.2 |
 | 30 | Long rentals: time-priced extras follow each month's charge; flat-fee extras on the first charge only | §6.3 |
 | 31 | Stage 7 (reads) is an Opus build with a Fable review | §8 |
+| 32 | The Moto Mangos fee is never more than its base (decided 19 Nov 2026; was an open point of the fee check). Written into SPEC, INTEGRATION and the marketplace SPEC | §7.3; `docs/platform/SPEC.md`, `docs/INTEGRATION.md`, `docs/marketplace/SPEC.md` |
 
 ### 11.2 Open points
 
 1. **Moto Mangos fee receipt** (decision 26): a standard receipt from Mango Works, not a tax invoice. **Confirm with Korn before Phase 8.**
-2. **The fee's ceiling** (found checking `fees.ts`): today the fee is never more than the rental. Decision 23 does not say; with a ฿50 minimum, a booking whose whole base is under ฿50 would otherwise pay more in fee than it costs. §7.3 keeps the ceiling (now on the whole base) for Phase 8 unless Mark says otherwise.
 
-Draft 2's other open points (the VAT on a payment, one invoice for several month charges, the sending domain, overbooked vehicles, extras on long rentals) are settled by decisions 27 to 30, with no Korn check left on them.
+Draft 2's other open points (the VAT on a payment, one invoice for several month charges, the sending domain, overbooked vehicles, extras on long rentals) are settled by decisions 27 to 30, and the fee's ceiling by decision 32, with no Korn check left on them.
 
 ## 12. Risks
 
@@ -651,7 +673,7 @@ Draft 2's other open points (the VAT on a payment, one invoice for several month
 | **S6** | Idempotency keys on `create_order`, `record_payment`, `record_refund` | §3.2, §6.4 |
 | **S7** | Migration 2 clears Phase 2 rows on staging and in the seed, then reseeds | stage 2a |
 | **S8** | `deposit_hold`, `deposit_release` now; currency by foreign key | §6.4, §3.2 |
-| **S9** | Stage 2 split into 2a and 2b; ledger before status machine; reads and job SQL Fable builds; numbering fixed (nine migrations, thirteen stages) | §3.8, §8 |
+| **S9** | Stage 2 split into 2a and 2b; ledger before status machine; job SQL a Fable build; **reads an Opus build with a Fable review (decision 31), the review covering role leakage in the security-definer reads and the at-risk rule**; numbering fixed (nine migrations, thirteen stages) | §3.8, §8 |
 | **S10** | `order_history` read | §3.9, §9 |
 | Minor | Swap refused when overdue; breakdown swap into repair; `closed_at` column; gear return wording; fines on `picked_up_at`/`returned_at`; confirmed and canceled emails to Phase 6; "unpaid past due" waits for Phase 7 | §6.2, §3.2, §2.2, §1.2, §3.6 |
 | Scope | "Remove for good" moved to Phase 1b (migration and stage removed) | §1.2, §3.7, PROGRESS |
@@ -663,3 +685,20 @@ Draft 2's other open points (the VAT on a payment, one invoice for several month
 | **Decision 29** | Overbooked vehicle rentals accepted | §2.2 |
 | **Decision 30** | Time-priced extras per month charge; flat-fee extras on the first only | §6.3 |
 | **Decision 31** | Stage 7 an Opus build with a Fable review | §8, Summary |
+| **Decision 32** | Fee never more than its base; moved from §11.2 to the decisions; added to SPEC, INTEGRATION and the marketplace SPEC | §7.3, §11.1, §11.2 |
+| **Re-check 1** (counts trigger) | Two statement-level triggers (update, delete) replace the row trigger; delete gets its own because owners can delete units of several products in one statement | §4.1, §3.8 |
+| **Re-check 2** (`move_unit` marker) | Transaction-local marker naming the unit, set to `done` after its update; a second call refused; a later direct product change refused | §4.1, §3.8 |
+| **Re-check 3** (stage 1 tests) | The direct product-change tests listed, ported or rewritten; the swap test becomes a gate test that must pass; "future bookings at risk" reworded to "its future blocks are kept" | §8 stage 1 |
+| **Re-check 4** (lost and late) | `unit_blocks_guard` lets the return path lengthen a lost unit's out block; every other lengthening refused; test | §6.3, §3.8 (migration 5), §8 stage 4 |
+| **Re-check 5** (repeat holds) | The live-reservations `confirm_hold` core moves to migration 3 with `hold_order`; `reservations.hold_expires_at` copied from the order; the later re-creation removed | §3.3, §3.8, §8 stage 2b |
+| **Re-check 6** (order number) | Order inserted first without a number; the number written by an update of its own row after `order_counters`, taken last; deferred check | §4.2, §3.8 |
+| **Re-check 7** (settling a run-out hold) | The settlement is kept; the refusal is returned, not raised; the functions on each side named; later work in an inner block | §3.3 |
+| **Re-check 8** (ledger) | No overpayment; refunds write reversing allocations and carry the VAT of what they reverse; a kept deposit becomes a `deposit_capture` plus a `payment` allocated to the charge | §6.4, §5.3, §8 stage 3 |
+| **Re-check 9** | Decision 32 | above |
+| **Re-check 10** (fee wording) | "Charges created after booking are outside the fee"; the booked months of a 90-day booking are inside it | §7.3 |
+| **Re-check 11** (S5) | `revert_return` refuses to void a paid charge while `cancel_order` voids it into a credit, and why that is intended | §2.3, §8 stage 4 |
+| **Re-check 12** (S7) | Migration 3 checks and clears again before `rental_id` is set not null | §3.8, §8 stage 2b |
+| **Re-check 13** | §14's S9 line corrected | §14 |
+| **Re-check 14** (fee docs) | VAT basis added to SPEC and INTEGRATION; INTEGRATION §3.12: the marketplace works the fee out from what `create_booking` returns and passes no fee in | §7.3; `docs/platform/SPEC.md`, `docs/INTEGRATION.md` |
+| **Re-check 15** | Reviewed exception list for the static lock-strength test, starting with `swap_rental_unit` | §4.1 |
+| **Re-check 16** | Opposite moves at different places serialise on product rows in id order; multi-unit sold, retired or lost unsupported, refused before the second unit's lock, with a test | §4.1, §4.3 |
