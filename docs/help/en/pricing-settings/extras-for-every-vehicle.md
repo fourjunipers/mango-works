@@ -24,6 +24,7 @@ Changes are listed under **History** on the same page.
 
 ## Common problems
 
+- **"Enter a whole number in range."** **Included free** and **Most per vehicle** take whole numbers.
 - **"The most per vehicle can't be below the number included."**
 - **"Check the lines marked below."** / **"Check the extras and try again."**
 - **"The shop has no rental gear or services yet. Add them on the Products page."**

@@ -24,5 +24,5 @@ Who can do this: owners and managers.
 
 ## Common problems
 
-- **"Only vehicles have a deposit."** Gear, services and items for sale don't take a deposit.
+- **No Deposit card?** Only vehicles have a deposit. Rental gear, services and items for sale have no Deposit card on their Pricing tab.
 - **"Enter an amount, such as 45000 or 45000.50."**

@@ -21,5 +21,4 @@ The time zone is per location, not per shop. **Shop settings** says "Time zone, 
 
 ## Common problems
 
-- **"Only an owner can change a location's time zone."** Ask an owner to make the change.
 - **"Choose a time zone from the list."** Pick from the list rather than typing.

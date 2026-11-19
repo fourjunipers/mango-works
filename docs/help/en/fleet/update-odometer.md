@@ -16,7 +16,7 @@ Who can do this: everyone except drivers.
 2. On the vehicle's page:
    - Owners and managers: change **Odometer** under **Details** and press **Save**.
    - Staff and mechanics: type the reading under **Odometer** and save it.
-3. If the new reading is lower than the current one, confirm "Are you sure? This is lower than the current reading ({current} {unit})." Any role can do this; the change is recorded with who made it.
+3. If the new reading is lower than the current one, confirm "Are you sure? This is lower than the current reading ({current} {unit})." Everyone who can update the odometer can do this (not drivers); the change is recorded with who made it.
 
 The reading is in the shop's distance unit (km or miles, set in **Shop settings**).
 

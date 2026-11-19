@@ -31,6 +31,7 @@ Changes are listed on the product's **History** tab.
 
 ## Common problems
 
+- **"Enter a whole number in range."** **Included free** and **Most per vehicle** take whole numbers.
 - **"The most per vehicle can't be below the number included."** Raise **Most per vehicle** or lower **Included free**.
 - **"Check the lines marked below."** Fix the lines with an error.
 - **"Check the extras and try again."**

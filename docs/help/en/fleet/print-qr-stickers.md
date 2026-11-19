@@ -15,13 +15,14 @@ Who can do this: everyone in the shop.
 ## Print one sticker
 
 1. Open the vehicle's page and scroll to **QR sticker**.
-2. Press **Print this sticker**.
+2. Press **Print this sticker**. The sticker sheet opens with this vehicle already ticked.
+3. Press **Print**.
 
 ## Print a sheet of stickers
 
 1. Open **Fleet** and press **Print stickers**.
 2. To narrow the list, choose a **Product** and a **Sort by** order (**Most recently added** or **Plate**), then press **Apply**.
-3. Tick the vehicles to print, or press **Select all** for everything listed. Only the ticked stickers appear on paper.
+3. Tick the vehicles to print, or press **Select all N listed** ("Select the 1 vehicle listed" when there is only one). Only the ticked stickers appear on paper.
 4. Press **Print**.
 
 ## Scanning

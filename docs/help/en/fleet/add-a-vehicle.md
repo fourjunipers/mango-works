@@ -18,7 +18,7 @@ Who can do this: owners and managers.
 2. Choose the **Product**. Only your own products are listed. If it isn't there, press **Product not here? Add it first**: you come back here after saving it.
 3. Fill in what you know:
    - **Year**: the year of this vehicle.
-   - **Odometer now** (in your shop's km or miles).
+   - **Odometer (km)**, or **Odometer (mi)** if your shop uses miles.
    - **Plate**. A new vehicle not registered yet: tick **Plate pending (not registered yet)** instead. Staff are warned before check-out.
    - **Colour**, **Frame (chassis) number**, **Engine number**.
    - **Location**: where the vehicle is kept.

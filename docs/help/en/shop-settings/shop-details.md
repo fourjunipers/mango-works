@@ -27,7 +27,7 @@ Time zone, address, opening hours and closures are set per location: see [Add a 
 
 ## The currency locks
 
-Once a price has been saved in the shop's currency, the currency can't change, and the field says "Locked: prices have been saved in this currency." Saving **Pricing and tax**, a product's prices or a price list for the first time fixes the currency.
+Once money has been saved in the shop's currency, the currency can't change, and the field says "Locked: prices have been saved in this currency." The currency is fixed by the first of any of these: saving **Pricing and tax**, a product's prices or a price list; saving a vehicle's purchase and sale details; a tax or insurance record with a cost; or a coupon with a fixed amount off or a minimum spend.
 
 ## Common problems
 

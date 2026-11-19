@@ -20,7 +20,7 @@ Who can do this: owners and managers. (Staff see the seasons that affect a produ
 2. Press **New season**.
 3. Type a **Name**, for example "Low season".
 4. Choose the **First day** and **Last day**.
-5. Tick **Every year** if it repeats on the same days each year. The year is then ignored, and the season may run over the new year (for example 20 December to 10 January).
+5. **Every year** starts ticked: the season repeats on the same days each year. Untick it for one year only. When ticked, the year is ignored, and the season may run over the new year (for example 20 December to 10 January).
 6. Under **Price change**, choose the **Direction** (**Increase** or **Decrease**) and type the **Percentage**, for example 20 or 12.5. The change is worked out on the list price.
 7. Under **Products**, choose **All products** or **Chosen products**. For chosen products, use **Search products** and tick them.
 8. Leave **Season on** ticked.

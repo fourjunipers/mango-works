@@ -33,6 +33,5 @@ Who can do this: owners and managers.
 ## Common problems
 
 - **"That name is already used in this shop."** Choose another name.
-- **"Enter a whole number."** The quantity must be a whole number.
-- **"Enter a quantity from 0 to 1,000 (up to 100,000 for an item for sale)."**
+- **"Enter a whole number."** The quantity must be a whole number from 0 to 1,000 (up to 100,000 for an item for sale).
 - **"Couldn't save. Please try again."** Reload the page and try again.

@@ -26,11 +26,11 @@ Each product's **History** tab records the change, for example "Price list 300â€
 1. Open the list.
 2. Press **Delete price list** and confirm "Delete this price list? This can't be undone."
 
-A list can't be deleted while a product uses it. Move those products to their own prices or another list first.
+While a product uses the list, the page says under the delete button: "A list can't be deleted while a product uses it. Move those products to other prices first." Move those products to their own prices or another list first.
+
+The list's kind is shown with the note "A list's kind can't be changed." To switch between amounts and multipliers, create a new list.
 
 ## Common problems
 
 - **"This price list is used by a product, so it can't be deleted. Move those products to other prices first."**
-- **"A list can't be deleted while a product uses it. Move those products to other prices first."**
-- **"A list's kind can't be changed."** Create a new list of the other kind instead.
 - See [Create a price list](create-a-price-list.md) for the price errors.

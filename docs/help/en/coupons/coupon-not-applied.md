@@ -8,6 +8,8 @@ updated: 2026-11-19
 
 # Why a coupon wasn't applied
 
+Who can do this: owners, managers and staff can try a code in **Check a price**. Only owners and managers can change coupons.
+
 When you type a code in **Check a price** and press **Apply**, you see "Coupon {code} applied." or a message saying why not. Bookings with coupons arrive with orders in a later phase; the same rules apply there.
 
 ## Messages and what to do
@@ -19,7 +21,6 @@ When you type a code in **Check a price** and press **Apply**, you see "Coupon {
 - **"Not applied: this coupon can be used from {from}."** Its valid dates haven't started.
 - **"Not applied: this coupon could be used until {to}."** Its valid dates have passed.
 - **"Not applied: this coupon has been used as many times as it allows."** Raise **Total uses**, or leave it empty for no limit.
-- **"Not applied: this customer has used this coupon as many times as it allows."**
 - **"Not applied: this coupon isn’t for these products, or it can’t be used on a season discount."** Check its **Products**, and **Can be used on season discounts**.
 - **"Not applied: the pickup isn’t inside this coupon’s pickup dates."**, or "Not applied: the pickup must be from {from} to {to}." (or "on or after {from}", "on or before {to}"). Change the pickup, or the coupon's **Pickup dates**.
 - **"Not applied: the rental must be at least N days."** See **Minimum days**.

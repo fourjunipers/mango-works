@@ -30,6 +30,7 @@ Past blocks are listed under **Earlier blocks**.
 
 ## Common problems
 
+- **"Enter a real date."** Check **From** and **Until**.
 - **"This vehicle is already blocked for part of that time. Pick other times, or end the other block first."** It overlaps a booking or another block. Choose other times.
 - **"This vehicle has been sold or retired, so it can't be blocked."**
 - **"The end must be after the start."** **Until** is before **From**.

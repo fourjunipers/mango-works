@@ -30,7 +30,6 @@ Owners and managers: open the history, press **Delete** on the record and confir
 
 ## Common problems
 
-- **"Required."** The expiry date is missing.
-- **"Enter a real date."** Check the start or expiry date.
+- The browser won't send the form without an **Expiry date**. If a date still gets through empty or wrong, the screen shows **"Enter a real date."** Check the start and expiry dates.
 - **"The end must be after the start."** The expiry date is before the start date.
 - **"Couldn't save. Please try again."** Reload the page and try again.

@@ -25,4 +25,5 @@ The first time the shop saves **Pricing and tax**, you are asked: "Saving fixes 
 ## Common problems
 
 - **"Enter an amount, such as 45000 or 45000.50."** Type the step as a number.
+- **"A price can't be 0. To charge nothing, choose Free."** The step can't be 0. Leave it blank to use your currency's default.
 - **"Couldn't save. Please try again."** Reload the page and try again.

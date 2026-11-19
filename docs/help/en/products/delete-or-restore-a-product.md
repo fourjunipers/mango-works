@@ -29,4 +29,4 @@ A retired product is hidden from the Products and Fleet lists and from "Add vehi
 
 - **"This product still has vehicles. Remove all its vehicles first."** Delete the vehicles added by mistake. Vehicles you really had can't be deleted once booked; keep the product instead.
 - **"This product still has stock. Set its quantity to 0, and mark any lost units found or remove them from stock, first."** For gear and items for sale, bring the stock to zero on the **Details** or **Stock** tab first.
-- **"This product is retired. Restore it first."** Press **Restore product** before changing it.
+- **"This product is retired. Restore it first."** Shown when you try to list a retired product on Moto Mangos or add a vehicle to it. Press **Restore product** first. Editing its details still works while it is retired.

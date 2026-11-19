@@ -28,5 +28,6 @@ If you type a lower odometer reading, you are asked "Are you sure? This is lower
 - **"Enter the plate, or tick “Plate pending”."** Fill in one or the other.
 - **"This vehicle was changed by someone else while this form was open. Reload the page to see the latest, then make your change again."** Someone saved this vehicle after you opened it. Reload and make your change again.
 - **"This vehicle's bookings changed while this form was open. Reload the page to see them, then make your change again."** A booking was added or moved meanwhile. Reload and try again.
+- **"Enter a year, such as 2024."** Type the four-digit year.
 - **"Enter a distance, such as 12345."** Type the odometer as a plain number.
 - **"Couldn't save. Please try again."** Reload the page and try again.

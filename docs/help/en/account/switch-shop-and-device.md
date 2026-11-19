@@ -33,7 +33,7 @@ updated: 2026-11-19
 
 1. Open **You and this device**: at the bottom of the sidebar on a computer, or the person icon in the header on a phone.
 2. Under **This device**, choose:
-   - **Language**: English or Thai.
+   - **Language**: **English** or **ไทย** (Thai).
    - **Appearance**: **Match device**, **Light** or **Dark**.
    - **Tab bar on phones**: **Bottom** or **Top**. On a wide screen the tabs are in the sidebar instead.
 

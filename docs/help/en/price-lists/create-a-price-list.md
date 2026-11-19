@@ -20,7 +20,7 @@ Who can do this: owners and managers.
 4. Choose **What does it hold?** This can't be changed later:
    - **Amounts**: the price for each length, in money.
    - **Multipliers of a base price**: each product on it sets its own base price, which the list multiplies.
-5. Fill in the prices with quick entry, the same way as on a product: **Daily** and **Monthly** are required, the days between fill in, and any day can be typed by hand. For multipliers, type numbers such as 3 or 1.1666, and use **Sample base price** to see what they come to.
+5. Fill in the prices with quick entry, the same way as on a product: **Daily (1 day)** and **Monthly (30 days)** are required, the days between fill in, and any day can be typed by hand. For multipliers, type numbers such as 3 or 1.1666, and use **Sample base price** to see what they come to.
 6. Press **Create price list**. It stays greyed out until you have chosen what the list holds and the prices are ready: daily and monthly filled in, every day valid, and no day cheaper than the day before.
 7. If this is the first price the shop saves, confirm "Saving fixes the shop's currency as {currency}, and it can't be changed after that. Save?"
 

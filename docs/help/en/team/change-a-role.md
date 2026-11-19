@@ -25,7 +25,7 @@ Who can do this: owners and managers. Owners can give any role. Managers can onl
 | --- | --- |
 | Owner | Everything, including changing a location's time zone and making other owners |
 | Manager | Everything in shop admin except the owner-only items; can change staff, mechanics and drivers |
-| Staff | The four staff-app tabs. Sees products, fleet and prices but can't change product setup or prices |
+| Staff | The four staff-app tabs. Updates odometers, vehicle status (Active or Maintenance), downtime and tax and insurance records. Sees products, fleet and prices but can't change product setup or prices |
 | Mechanic | Dashboard and Maintenance; updates odometers, vehicle status, downtime and tax and insurance records. Can't see prices |
 | Driver | Dashboard and Orders. Can see the fleet but can't change vehicles |
 
@@ -36,5 +36,5 @@ Inviting new people arrives in Phase 11. Until then, ask Mango Works to add them
 ## Common problems
 
 - **"A shop needs at least one owner. Make someone else an owner first."** You tried to change or remove the last owner. Make another person an owner, then try again.
-- **"You can't make that change."** Your role doesn't allow it, for example a manager changing another manager or owner.
+- **"You can't make that change."** Your role doesn't allow it, or the person's role changed meanwhile. Reload the page and try again.
 - **"That didn't work. Please try again."** Something went wrong while saving. Reload the page and try again.
