@@ -22,6 +22,16 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 - **Found while planning:** the Phase 2 rule that online bookings reach `reserve()` only through `bookOnline()` in `apps/platform/lib` can't serve the marketplace app at 3M (an app may not import from another app). Plan Q15.
 - **16 open decisions** in §11, each with a recommendation. Nothing in the spec, INTEGRATION or the root `CLAUDE.md` is changed; §13 lists what each will need.
 
+**Draft 2 (19 Nov 2026), after Fable's critique ("needs a second draft") and Mark's 25 decisions.** Written against `main` plus PR 51's branch (migration 6). Every critique item (M1–M8, S1–S10, minor, scope) is applied; plan §14 lists each with the section it changed, §11.1 the decisions.
+
+- `reserve_core` takes the order and its rentals and inserts them inside the lock order; `platform.reserve()` is dropped and Phase 2's tests are ported to `create_order` (stage 2b). Line cap 200.
+- Every order function reads unlocked, takes its advisory locks from the order's reservations, locks the order row, reads again (`try_again` if anything moved), and settles a run-out hold first.
+- Intent status stored; reserved, picked up, returned and mixed derived. Shortage, at risk and completed rentals computed, not stored.
+- Payments ledger and append-only allocations with VAT per payment (`paymentVat`); balance independent of allocation; staff permissions as six shop settings checked in the database.
+- **Thirteen stages, nine migrations**; stage 1 makes `move_unit()` the only way a vehicle changes product and turns the counts trigger statement-level (the stage 10 deadlock and the multi-row crossing).
+- **"Remove for good" (deleting a vehicle that has bookings, 12 Nov proposal) moved from Phase 3 to Phase 1b.**
+- **Open points** (plan §11.2): the Moto Mangos fee base in decision 23 differs from SPEC, INTEGRATION, the marketplace SPEC and `fees.ts` on the 30-day cap, promotions, VAT, the per-currency minimum, and the spec's old "Connect platform fee" line; when the sending domain is verified; two VAT questions for Korn; overbooked vehicle rentals; time-priced extras on long rentals.
+
 ## Next.js security upgrade (branch `security/next-upgrade`, 17 Nov 2026)
 
 `next build` warned that the Next.js version is affected by a known security vulnerability.
@@ -2168,7 +2178,7 @@ Fifth round (owner's click-through, 13 Nov 2026):
 
 Open, for the owner:
 
-- **Deleting a vehicle that has bookings (from Phase 3).** The owner wants vendors to be able to remove any vehicle for good while past sales history stays. A real delete can't do both: it erases the vehicle's own records and would leave past orders pointing at nothing. Proposed for Phase 3: "Remove for good" marks the vehicle as removed (never shown again, not restorable from the app, plate free to reuse) and keeps the row for past orders and reports. Needs a column and every vehicle query to leave removed ones out.
+- **Deleting a vehicle that has bookings (from Phase 3).** The owner wants vendors to be able to remove any vehicle for good while past sales history stays. A real delete can't do both: it erases the vehicle's own records and would leave past orders pointing at nothing. Proposed for Phase 3: "Remove for good" marks the vehicle as removed (never shown again, not restorable from the app, plate free to reuse) and keeps the row for past orders and reports. Needs a column and every vehicle query to leave removed ones out. **Moved to Phase 1b** (Phase 3 plan, draft 2, 19 Nov 2026).
 - **"Edit" button beside Save on the make & model page:** not built; the page is already an edit form. Waiting for the owner to say what could not be changed.
 
 Known limits and open points:
