@@ -11,6 +11,7 @@
 --  4. A shop's map link is an https Google Maps address; photos are paths
 --     inside the shop's own folder (or our placeholders).
 --  5. Two owners removing each other at once: one stays.
+--  6. Nobody signed in reads a booking's Stripe ids.
 
 -- 1. The functions are as main left them -------------------------------------------------------
 
@@ -355,3 +356,27 @@ begin
   return old;
 end;
 $$;
+
+-- 6. A booking's Stripe ids -----------------------------------------------------------------------
+-- bookings.stripe_customer_id and stripe_payment_method_id were readable by
+-- anyone who could read the row: the customer, and every member of the
+-- shop. The spec gives the shop the customer's name and contact, the dates,
+-- the amount to collect and the code (Vendor dashboard, Bookings); the fee
+-- is charged by the marketplace's server and never passes through the shop.
+-- So no signed-in user reads those two columns: the server (service role)
+-- does. Nothing in the app reads them from the browser.
+--
+-- Column grants replace the table grant, so a column added to bookings
+-- later is not readable by signed-in users until its migration grants it:
+-- on purpose, the same way round as new tables. Signed-out visitors keep the
+-- same grant as before on those columns and, as before, no policy gives them
+-- a row.
+
+revoke select on public.bookings from anon, authenticated;
+grant select (
+  id, code, customer_id, shop_id, bike_model_id, qty, start_at, end_at,
+  mode, delivery_address, delivery_location, delivery_fee, rental_total,
+  promo_id, discount, rental_after_promo, fee, due_at_shop, status,
+  payment_method, payment_due_at, paid_at, request_expires_at, cancelled_by,
+  cancel_reason, created_at, updated_at, currency
+) on public.bookings to anon, authenticated;

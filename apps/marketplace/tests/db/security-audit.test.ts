@@ -407,3 +407,36 @@ describe("two owners removing each other at the same moment", () => {
     expect(refused[0].failed).toContain("a shop must keep at least one owner");
   }, 30_000);
 });
+
+describe("a booking's Stripe ids", () => {
+  it("neither the shop nor the customer reads them; the rest of the row is read as before; the server reads everything", async () => {
+    const customer = await signedInClient(seed.users.customer);
+    for (const client of [bsrOwner, customer]) {
+      for (const column of ["stripe_customer_id", "stripe_payment_method_id"]) {
+        const { error } = await client
+          .from("bookings")
+          .select(`id, ${column}`)
+          .eq("id", seed.booking);
+        expect(error?.code, column).toBe(DENIED);
+      }
+      const { data, error } = await client
+        .from("bookings")
+        .select("id, code, status, fee, due_at_shop, currency, customer_id")
+        .eq("id", seed.booking);
+      expect(error).toBeNull();
+      expect(data).toHaveLength(1);
+    }
+    const all = await service
+      .from("bookings")
+      .select("id, stripe_customer_id, stripe_payment_method_id")
+      .eq("id", seed.booking);
+    expect(all.error).toBeNull();
+    expect(all.data).toHaveLength(1);
+    expect((await anon.from("bookings").select("id")).data).toEqual([]);
+    // "*" names the closed columns too, so it is refused for everyone but
+    // the server.
+    expect((await bsrOwner.from("bookings").select("*")).error?.code).toBe(
+      DENIED,
+    );
+  });
+});

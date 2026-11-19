@@ -81,7 +81,12 @@ describe("the public (signed out)", () => {
       "bookings",
       "booking_events",
     ] as const) {
-      const { data } = await anon.from(table).select("*");
+      // bookings: named columns, because its two Stripe id columns are
+      // closed to everyone but the server (20261120000100), so "*" is
+      // refused outright.
+      const { data } = await anon
+        .from(table)
+        .select(table === "bookings" ? "id, code, status" : "*");
       expect(data, table).toEqual([]);
     }
   });
