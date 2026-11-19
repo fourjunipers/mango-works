@@ -13,7 +13,7 @@
  * (VND).
  */
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { roles, type Role } from "@/lib/roles";
 import {
   anonClient,
@@ -21,21 +21,29 @@ import {
   createCatalogEntry,
   createTenant,
   createUser,
+  type Db,
   deleteTenant,
   deleteUser,
   forceListing,
+  type Gate,
+  GATE_TEST_TIMEOUT,
+  GATE_TIMEOUTS,
   GATE_WAIT,
+  holding,
   period,
   removeCatalogEntry,
   seenWaitingForLock,
   serviceClient,
   sql,
   sqlBackground,
-  type Db,
-  type Gate,
+  stillHolding,
   type TestTenant,
   type TestUser,
+  until,
 } from "./helpers";
+
+// Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 let newYork: TestTenant;
@@ -384,29 +392,6 @@ const noDeadlock = (
   }
 };
 
-/** Waits until another session is running a statement carrying `marker`. */
-async function holding(marker: string) {
-  for (let i = 0; i < 100; i++) {
-    const { out } = sql(
-      `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
-    );
-    if (out === "1") return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`No session reached ${marker}`);
-}
-
-/**
- * The session carrying `marker` is still at its gate, its locks in hand:
- * whatever answered before this did not wait for it.
- */
-const stillHolding = (marker: string) =>
-  expect(
-    sql(
-      `select count(*) from pg_stat_activity where query like '%${marker}%' and state = 'active' and pid <> pg_backend_pid();`,
-    ).out,
-  ).toBe("1");
-
 /**
  * Starts `call` while a holder is at its gate, and shows that it waits:
  * it is seen waiting for a lock, it has not answered while the gate is
@@ -465,17 +450,6 @@ async function answeredOrWaiting<T>(
 async function deadlocksReported() {
   await new Promise((r) => setTimeout(r, 1200));
   return deadlocks();
-}
-
-/** Polls `statement` until it answers something other than an empty string. */
-async function until(statement: string): Promise<string> {
-  for (let i = 0; i < 100; i++) {
-    const { out, failed } = sql(statement);
-    expect(failed).toBe("");
-    if (out) return out;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`Never true: ${statement}`);
 }
 
 const deadlocks = () =>
@@ -1992,11 +1966,13 @@ describe("availability(): the read", () => {
     expect((await call([good])).error?.message).toBe("product_not_found");
   });
 
-  it("takes no lock: it answers while a booking holds the product's lock", async () => {
-    const bike = await vehicle(2);
-    const marker = `hold-product-read-${tag}`;
-    const gate = await closedGate();
-    const holder = sqlBackground(`
+  it(
+    "takes no lock: it answers while a booking holds the product's lock",
+    async () => {
+      const bike = await vehicle(2);
+      const marker = `hold-product-read-${tag}`;
+      const gate = await closedGate();
+      const holder = sqlBackground(`
       begin;
       select platform_private.lock_products_stock(
         array['${bike.id}']::uuid[], array['${shop.locationId}']::uuid[]);
@@ -2004,15 +1980,17 @@ describe("availability(): the read", () => {
       ${gate.wait(marker)}
       commit;
     `);
-    await holding(marker);
-    expect(await counts(bike.id, at(1), at(2), shop, db("mechanic"))).toBe(
-      "2 / 2 / 0 / 2",
-    );
-    // Back while the holder still has its locks: it waited for none of them.
-    stillHolding(marker);
-    await gate.open();
-    expect((await holder).failed).toBe("");
-  }, 30_000);
+      await holding(marker);
+      expect(await counts(bike.id, at(1), at(2), shop, db("mechanic"))).toBe(
+        "2 / 2 / 0 / 2",
+      );
+      // Back while the holder still has its locks: it waited for none of them.
+      await stillHolding(marker);
+      await gate.open();
+      expect((await holder).failed).toBe("");
+    },
+    GATE_TEST_TIMEOUT,
+  );
 });
 
 describe("who may call each new function", () => {
@@ -2379,28 +2357,32 @@ describe("a block that reached a unit past its lock", () => {
       commit;
     `);
 
-  it("the constraint refuses the booking's block; the unit is left out of the next attempt, so a line that named it answers unit_taken", async () => {
-    const bike = await vehicle(1);
-    const marker = `past-guard-named-${tag}`;
-    const gate = await closedGate();
-    const holder = pastTheGuard(bike.units[0], marker, gate);
-    await holding(marker);
-    // The booking's block waits for the unsaved downtime to be saved or
-    // dropped; the gate is opened once it is seen waiting there.
-    const result = await waitsForGate(gate, "reserve", () =>
-      staffBook("staff", [
-        {
-          product_id: bike.id,
-          starts_at: at(2),
-          ends_at: at(4),
-          unit_ids: bike.units,
-        },
-      ]),
-    );
-    expect((await holder).failed).toBe("");
-    expect(result.data).toEqual({ ok: false, reason: "unit_taken", line: 0 });
-    expect(await reservationsOf(bike.id)).toEqual([]);
-  }, 30_000);
+  it(
+    "the constraint refuses the booking's block; the unit is left out of the next attempt, so a line that named it answers unit_taken",
+    async () => {
+      const bike = await vehicle(1);
+      const marker = `past-guard-named-${tag}`;
+      const gate = await closedGate();
+      const holder = pastTheGuard(bike.units[0], marker, gate);
+      await holding(marker);
+      // The booking's block waits for the unsaved downtime to be saved or
+      // dropped; the gate is opened once it is seen waiting there.
+      const result = await waitsForGate(gate, "reserve", () =>
+        staffBook("staff", [
+          {
+            product_id: bike.id,
+            starts_at: at(2),
+            ends_at: at(4),
+            unit_ids: bike.units,
+          },
+        ]),
+      );
+      expect((await holder).failed).toBe("");
+      expect(result.data).toEqual({ ok: false, reason: "unit_taken", line: 0 });
+      expect(await reservationsOf(bike.id)).toEqual([]);
+    },
+    GATE_TEST_TIMEOUT,
+  );
 
   it("a line that named none takes another unit, or answers unavailable when there is none", async () => {
     for (const units of [2, 1]) {
@@ -2433,56 +2415,62 @@ describe("a block that reached a unit past its lock", () => {
 });
 
 describe("deleting a unit never waits for its lock", () => {
-  it("while something holds the unit's lock the delete is refused at once with unit_busy, and goes through afterwards", async () => {
-    const bike = await vehicle(1);
-    const marker = `hold-unit-delete-${tag}`;
-    const gate = await closedGate();
-    const holder = sqlBackground(`
+  it(
+    "while something holds the unit's lock the delete is refused at once with unit_busy, and goes through afterwards",
+    async () => {
+      const bike = await vehicle(1);
+      const marker = `hold-unit-delete-${tag}`;
+      const gate = await closedGate();
+      const holder = sqlBackground(`
       begin;
       select platform_private.lock_units(array['${bike.units[0]}']::uuid[]);
       ${gate.wait(marker)}
       commit;
     `);
-    await holding(marker);
-    const refused = await db("owner")
-      .from("units")
-      .delete()
-      .eq("id", bike.units[0])
-      .select("id");
-    expect(refused.error).toMatchObject({
-      code: "55P03",
-      message: "unit_busy",
-    });
-    // At once: the holder still has the lock, and keeps it until the gate.
-    stillHolding(marker);
-    await gate.open();
-    expect((await holder).failed).toBe("");
-    const deleted = await db("owner")
-      .from("units")
-      .delete()
-      .eq("id", bike.units[0])
-      .select("id");
-    expect(deleted.error).toBeNull();
-    expect(deleted.data).toHaveLength(1);
-  }, 30_000);
+      await holding(marker);
+      const refused = await db("owner")
+        .from("units")
+        .delete()
+        .eq("id", bike.units[0])
+        .select("id");
+      expect(refused.error).toMatchObject({
+        code: "55P03",
+        message: "unit_busy",
+      });
+      // At once: the holder still has the lock, and keeps it until the gate.
+      await stillHolding(marker);
+      await gate.open();
+      expect((await holder).failed).toBe("");
+      const deleted = await db("owner")
+        .from("units")
+        .delete()
+        .eq("id", bike.units[0])
+        .select("id");
+      expect(deleted.error).toBeNull();
+      expect(deleted.data).toHaveLength(1);
+    },
+    GATE_TEST_TIMEOUT,
+  );
 
-  it("several units in one statement against a booking in flight on two of them: refused at once or after the booking, never a deadlock", async () => {
-    const bike = await vehicle(4);
-    const before = deadlocks();
-    const [first, second] = [...bike.units].sort();
-    const units = async () =>
-      (
-        await service
-          .from("units")
-          .select("*", { count: "exact", head: true })
-          .eq("product_id", bike.id)
-      ).count;
+  it(
+    "several units in one statement against a booking in flight on two of them: refused at once or after the booking, never a deadlock",
+    async () => {
+      const bike = await vehicle(4);
+      const before = deadlocks();
+      const [first, second] = [...bike.units].sort();
+      const units = async () =>
+        (
+          await service
+            .from("units")
+            .select("*", { count: "exact", head: true })
+            .eq("product_id", bike.id)
+        ).count;
 
-    // The booking has its unit locks and no row yet (between lock_units and
-    // the unit rows): the delete meets a held lock and is refused at once.
-    const lockMarker = `booking-has-locks-${tag}`;
-    const lockGate = await closedGate();
-    const locked = sqlBackground(`
+      // The booking has its unit locks and no row yet (between lock_units and
+      // the unit rows): the delete meets a held lock and is refused at once.
+      const lockMarker = `booking-has-locks-${tag}`;
+      const lockGate = await closedGate();
+      const locked = sqlBackground(`
       begin;
       select platform_private.lock_products_stock(
         array['${bike.id}']::uuid[], array['${shop.locationId}']::uuid[]);
@@ -2490,26 +2478,26 @@ describe("deleting a unit never waits for its lock", () => {
       ${lockGate.wait(lockMarker)}
       commit;
     `);
-    await holding(lockMarker);
-    const refused = await db("owner")
-      .from("units")
-      .delete()
-      .eq("product_id", bike.id)
-      .select("id");
-    expect(refused.error?.message).toBe("unit_busy");
-    // At once: the holder still has its locks, and keeps them until the gate.
-    stillHolding(lockMarker);
-    await lockGate.open();
-    expect((await locked).failed).toBe("");
-    expect(await units()).toBe(4);
+      await holding(lockMarker);
+      const refused = await db("owner")
+        .from("units")
+        .delete()
+        .eq("product_id", bike.id)
+        .select("id");
+      expect(refused.error?.message).toBe("unit_busy");
+      // At once: the holder still has its locks, and keeps them until the gate.
+      await stillHolding(lockMarker);
+      await lockGate.open();
+      expect((await locked).failed).toBe("");
+      expect(await units()).toBe(4);
 
-    // A real booking for those two units, written and not yet saved: it
-    // holds their locks and their rows. The delete waits for a row holding
-    // nothing the booking still needs, and once the booking is saved it is
-    // refused by the booking's blocks (the app's "retire instead").
-    const bookMarker = `booking-written-${tag}`;
-    const bookGate = await closedGate();
-    const booking = sqlBackground(`
+      // A real booking for those two units, written and not yet saved: it
+      // holds their locks and their rows. The delete waits for a row holding
+      // nothing the booking still needs, and once the booking is saved it is
+      // refused by the booking's blocks (the app's "retire instead").
+      const bookMarker = `booking-written-${tag}`;
+      const bookGate = await closedGate();
+      const booking = sqlBackground(`
       begin;
       select set_config('request.jwt.claims', '{"role":"service_role"}', true);
       select platform.reserve('${shop.id}', '${JSON.stringify(
@@ -2531,42 +2519,50 @@ describe("deleting a unit never waits for its lock", () => {
       ${bookGate.wait(bookMarker)}
       commit;
     `);
-    await holding(bookMarker);
-    // Either answer is allowed, so the booking is saved once the delete has
-    // been refused or is seen waiting for it.
-    const deleting = await answeredOrWaiting("units", () =>
-      db("owner").from("units").delete().eq("product_id", bike.id).select("id"),
-    );
-    await bookGate.open();
-    const late = await deleting.running;
-    const saved = await booking;
-    expect(saved.failed).toBe("");
-    expect(saved.out).toContain("true");
-    expect(["23503", "55P03"]).toContain(late.error?.code);
-    noDeadlock([late]);
-    expect(await deadlocksReported()).toBe(before);
-    expect(await units()).toBe(4);
-    expect(await held(bike.id)).toBe(
-      "reserved | allocation,allocation,allocation,allocation",
-    );
-  }, 30_000);
+      await holding(bookMarker);
+      // Either answer is allowed, so the booking is saved once the delete has
+      // been refused or is seen waiting for it.
+      const deleting = await answeredOrWaiting("units", () =>
+        db("owner")
+          .from("units")
+          .delete()
+          .eq("product_id", bike.id)
+          .select("id"),
+      );
+      await bookGate.open();
+      const late = await deleting.running;
+      const saved = await booking;
+      expect(saved.failed).toBe("");
+      expect(saved.out).toContain("true");
+      expect(["23503", "55P03"]).toContain(late.error?.code);
+      noDeadlock([late]);
+      expect(await deadlocksReported()).toBe(before);
+      expect(await units()).toBe(4);
+      expect(await held(bike.id)).toBe(
+        "reserved | allocation,allocation,allocation,allocation",
+      );
+    },
+    GATE_TEST_TIMEOUT,
+  );
 
-  it("a delete of both units, not yet saved, against a booking for both: the booking waits for a unit's lock with no row locked, then finds them gone", async () => {
-    const bike = await vehicle(2);
-    const before = deadlocks();
-    const marker = `delete-both-${tag}`;
-    const gate = await closedGate();
-    const deleter = sqlBackground(`
+  it(
+    "a delete of both units, not yet saved, against a booking for both: the booking waits for a unit's lock with no row locked, then finds them gone",
+    async () => {
+      const bike = await vehicle(2);
+      const before = deadlocks();
+      const marker = `delete-both-${tag}`;
+      const gate = await closedGate();
+      const deleter = sqlBackground(`
       begin;
       delete from platform.units where product_id = '${bike.id}';
       ${gate.wait(marker)}
       commit;
     `);
-    await holding(marker);
-    const call = onlineBook([
-      { product_id: bike.id, starts_at: at(1), ends_at: at(2), quantity: 2 },
-    ]);
-    const seen = await until(`
+      await holding(marker);
+      const call = onlineBook([
+        { product_id: bike.id, starts_at: at(1), ends_at: at(2), quantity: 2 },
+      ]);
+      const seen = await until(`
       select 'waiting for a unit lock, nothing locked or written: ' || (a.backend_xid is null)
       from pg_locks w
       join pg_stat_activity a on a.pid = w.pid
@@ -2574,16 +2570,22 @@ describe("deleting a unit never waits for its lock", () => {
         and a.query like '%reserve%'
       limit 1;
     `);
-    expect(seen).toBe(
-      "waiting for a unit lock, nothing locked or written: true",
-    );
-    await gate.open();
-    expect((await deleter).failed).toBe("");
-    const result = await call;
-    noDeadlock([result]);
-    expect(result.data).toEqual({ ok: false, reason: "unavailable", line: 0 });
-    expect(await deadlocksReported()).toBe(before);
-  }, 30_000);
+      expect(seen).toBe(
+        "waiting for a unit lock, nothing locked or written: true",
+      );
+      await gate.open();
+      expect((await deleter).failed).toBe("");
+      const result = await call;
+      noDeadlock([result]);
+      expect(result.data).toEqual({
+        ok: false,
+        reason: "unavailable",
+        line: 0,
+      });
+      expect(await deadlocksReported()).toBe(before);
+    },
+    GATE_TEST_TIMEOUT,
+  );
 
   it("the stock functions that delete units hold these locks already and still work", async () => {
     const helmet = await general("gear", 5);

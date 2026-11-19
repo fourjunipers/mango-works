@@ -3,7 +3,7 @@
  * Migrations 20261112000200 to 20261112000400. Each test failed before its
  * migration and passes after.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   anonClient,
   closedGate,
@@ -11,19 +11,26 @@ import {
   createUser,
   deleteTenant,
   deleteUser,
+  forceListing,
+  type Gate,
+  GATE_TEST_TIMEOUT,
+  GATE_TIMEOUTS,
+  holding,
   hours,
+  listingOf,
   period,
   removeCatalogEntry,
   seenWaitingForLock,
   serviceClient,
   sql,
   sqlBackground,
-  type Gate,
+  stillHolding,
   type TestTenant,
   type TestUser,
-  forceListing,
-  listingOf,
 } from "./helpers";
+
+// Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 let other: TestTenant;
@@ -100,29 +107,6 @@ const outcome = async (modelId: string, db = service) =>
       .maybeSingle()
   ).data;
 
-/** Waits until a background session is sitting on its "hold" marker. */
-async function holding(marker: string) {
-  for (let i = 0; i < 100; i++) {
-    const { out } = sql(
-      `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
-    );
-    if (out === "1") return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`No session reached ${marker}`);
-}
-
-/**
- * The holder is still at its gate, with everything it holds: whatever
- * answered before this did not wait for it.
- */
-const stillHolding = (marker: string) =>
-  expect(
-    sql(
-      `select count(*) from pg_stat_activity where query like '%${marker}%' and state = 'active' and pid <> pg_backend_pid();`,
-    ).out,
-  ).toBe("1");
-
 /**
  * Starts `call` while a holder is at its gate, and shows that it waits: it
  * is seen waiting for a lock, it has not answered while the gate is still
@@ -187,7 +171,7 @@ describe("1. locks no stronger than they need to be", () => {
     expect(role.error).toBeNull();
     expect(removed.error).toBeNull();
     // Both are back while the downtime is still open: neither waited for it.
-    stillHolding(marker);
+    await stillHolding(marker);
     await gate.open();
     expect((await open).failed).toBe("");
 
@@ -224,46 +208,51 @@ describe("1. locks no stronger than they need to be", () => {
     expect((await first).failed).toBe("");
   });
 
-  it("two bikes swapping models at the same moment both finish: no deadlock", async () => {
-    const [modelX, modelY] = [await addModel(), await addModel()];
-    const [bikeA, bikeB] = [await addUnit(modelX), await addUnit(modelY)];
-    // Each session first holds what a bike arriving on a model holds (the
-    // foreign key's share lock on the model it moves to), waits until the
-    // other has done the same, then moves its bike. With a full row lock in
-    // the counts trigger each then waited for the other: a deadlock.
-    //
-    // The pause is a starting line, not a held lock, and the one timed wait
-    // left in these files on purpose: released from a gate at the same
-    // instant the two moves do deadlock, on another pair of locks
-    // (docs/PROGRESS.md, Phase 2 stage 10, "Found, not fixed").
-    const swap = (bike: string, to: string) =>
-      sqlBackground(`
+  it(
+    "two bikes swapping models at the same moment both finish: no deadlock",
+    async () => {
+      const [modelX, modelY] = [await addModel(), await addModel()];
+      const [bikeA, bikeB] = [await addUnit(modelX), await addUnit(modelY)];
+      // Each session first holds what a bike arriving on a model holds (the
+      // foreign key's share lock on the model it moves to), waits until the
+      // other has done the same, then moves its bike. With a full row lock in
+      // the counts trigger each then waited for the other: a deadlock.
+      //
+      // The pause is a starting line, not a held lock, and the one timed wait
+      // left in these files on purpose: released from a gate at the same
+      // instant the two moves do deadlock, on another pair of locks
+      // (docs/PROGRESS.md, Phase 2 stage 10, "Found, not fixed").
+      const swap = (bike: string, to: string) =>
+        sqlBackground(`
         begin;
         select 1 from platform.products where id = '${to}' for key share;
         select pg_sleep(1.2);
         update platform.units set product_id = '${to}' where id = '${bike}';
         commit;
       `);
-    const results = await Promise.all([
-      swap(bikeA, modelY),
-      swap(bikeB, modelX),
-    ]);
-    for (const result of results) {
-      expect(result.failed).not.toMatch(/deadlock/i);
-    }
-    // Both finished, or one was refused for a reason a person can read.
-    const refused = results.filter((r) => r.failed);
-    expect(refused.length).toBeLessThanOrEqual(1);
-    const { data: bikes } = await service
-      .from("units")
-      .select("id, product_id")
-      .in("id", [bikeA, bikeB]);
-    const modelOf = (id: string) => bikes!.find((b) => b.id === id)!.product_id;
-    if (refused.length === 0) {
-      expect(modelOf(bikeA)).toBe(modelY);
-      expect(modelOf(bikeB)).toBe(modelX);
-    }
-  }, 30_000);
+      const results = await Promise.all([
+        swap(bikeA, modelY),
+        swap(bikeB, modelX),
+      ]);
+      for (const result of results) {
+        expect(result.failed).not.toMatch(/deadlock/i);
+      }
+      // Both finished, or one was refused for a reason a person can read.
+      const refused = results.filter((r) => r.failed);
+      expect(refused.length).toBeLessThanOrEqual(1);
+      const { data: bikes } = await service
+        .from("units")
+        .select("id, product_id")
+        .in("id", [bikeA, bikeB]);
+      const modelOf = (id: string) =>
+        bikes!.find((b) => b.id === id)!.product_id;
+      if (refused.length === 0) {
+        expect(modelOf(bikeA)).toBe(modelY);
+        expect(modelOf(bikeB)).toBe(modelX);
+      }
+    },
+    GATE_TEST_TIMEOUT,
+  );
 
   it("the counts are still clamped when a bike leaves a model", async () => {
     const model = await addModel();

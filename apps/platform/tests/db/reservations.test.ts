@@ -12,7 +12,7 @@
  * sub-transaction gives back its transaction-level advisory locks.
  */
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { bookingActions, bookingRoles } from "@/lib/booking-permissions";
 import { roles, type Role } from "@/lib/roles";
 import {
@@ -20,18 +20,24 @@ import {
   closedGate,
   createTenant,
   createUser,
+  type Db,
   deleteTenant,
   deleteUser,
+  type Gate,
+  GATE_TIMEOUTS,
+  holding,
   period,
   serviceClient,
   sql,
   sqlAs,
   sqlBackground,
-  type Db,
-  type Gate,
   type TestTenant,
   type TestUser,
+  until,
 } from "./helpers";
+
+// Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 let newYork: TestTenant;
@@ -267,39 +273,6 @@ const outcome = (result: Result) => {
   expect(result.error, result.error?.message).toBeNull();
   return result.data!.ok ? "ok" : result.data!.reason;
 };
-
-/** Waits until another session is running a statement carrying `marker`. */
-async function holding(
-  marker: string,
-  session?: Promise<{ out: string; failed: string }>,
-) {
-  // If the session that should be holding ends first, say why at once.
-  let ended: { out: string; failed: string } | undefined;
-  void session?.then((result) => (ended = result));
-  for (let i = 0; i < 100; i++) {
-    if (ended)
-      throw new Error(
-        `The session ended before ${marker}: ${ended.failed || ended.out}`,
-      );
-    const { out } = sql(
-      `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
-    );
-    if (out === "1") return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`No session reached ${marker}`);
-}
-
-/** Polls `statement` until it answers something other than an empty string. */
-async function until(statement: string): Promise<string> {
-  for (let i = 0; i < 100; i++) {
-    const { out, failed } = sql(statement);
-    expect(failed).toBe("");
-    if (out) return out;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`Never true: ${statement}`);
-}
 
 const deadlocks = () =>
   Number(

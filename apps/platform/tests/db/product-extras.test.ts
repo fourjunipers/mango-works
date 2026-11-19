@@ -12,7 +12,7 @@
  * through the API. The race runs in three shops: Bangkok (THB), New York
  * (USD, daylight saving) and Saigon (VND).
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { quote } from "@mango/core/quote";
 import { readSnapshot, snapshotQuote } from "@mango/core/quote-snapshot";
 import { extrasActions, extrasRoles } from "@/lib/extras-permissions";
@@ -38,15 +38,21 @@ import {
   closedGate,
   createTenant,
   createUser,
+  type Db,
   deleteTenant,
   deleteUser,
+  GATE_TIMEOUTS,
+  holding,
   serviceClient,
   sql,
   sqlBackground,
-  type Db,
   type TestTenant,
   type TestUser,
+  until,
 } from "./helpers";
+
+// Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 let rival: TestTenant;
@@ -290,38 +296,6 @@ const actingAs = (userId: string | null) =>
   userId
     ? `select set_config('request.jwt.claims', '${JSON.stringify({ sub: userId, role: "authenticated" })}', true); set local role authenticated;`
     : `select set_config('request.jwt.claims', '{"role":"service_role"}', true); set local role service_role;`;
-
-/** Waits until another session is running a statement carrying `marker`. */
-async function holding(
-  marker: string,
-  session?: Promise<{ out: string; failed: string }>,
-) {
-  let ended: { out: string; failed: string } | undefined;
-  void session?.then((result) => (ended = result));
-  for (let i = 0; i < 100; i++) {
-    if (ended)
-      throw new Error(
-        `The session ended before ${marker}: ${ended.failed || ended.out}`,
-      );
-    const { out } = sql(
-      `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
-    );
-    if (out === "1") return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`No session reached ${marker}`);
-}
-
-/** Polls `statement` until it answers something other than an empty string. */
-async function until(statement: string): Promise<string> {
-  for (let i = 0; i < 100; i++) {
-    const { out, failed } = sql(statement);
-    expect(failed).toBe("");
-    if (out) return out;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`Never true: ${statement}`);
-}
 
 /**
  * The session running `needle` is waiting for a row (not an advisory lock):

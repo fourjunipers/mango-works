@@ -13,7 +13,7 @@
  * New York (USD, daylight saving) and Saigon (VND).
  */
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   bookOnline,
   type OnlineBookingRequest,
@@ -26,17 +26,24 @@ import {
   createCatalogEntry,
   createTenant,
   createUser,
+  type Db,
   deleteTenant,
   deleteUser,
   forceListing,
+  GATE_TIMEOUTS,
+  holding,
   removeCatalogEntry,
   serviceClient,
   sql,
   sqlBackground,
-  type Db,
   type TestTenant,
   type TestUser,
+  until,
+  watch,
 } from "./helpers";
+
+// Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 let newYork: TestTenant;
@@ -373,29 +380,6 @@ const noDeadlock = (
       expect(data.reason).not.toBe("try_again");
   }
 };
-
-/** Waits until another session is running a statement carrying `marker`. */
-async function holding(marker: string) {
-  for (let i = 0; i < 100; i++) {
-    const { out } = sql(
-      `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
-    );
-    if (out === "1") return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`No session reached ${marker}`);
-}
-
-/** Polls `statement` until it answers something other than an empty string. */
-async function until(statement: string): Promise<string> {
-  for (let i = 0; i < 100; i++) {
-    const { out, failed } = sql(statement);
-    expect(failed).toBe("");
-    if (out) return out;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`Never true: ${statement}`);
-}
 
 const deadlocks = () =>
   Number(
@@ -1642,8 +1626,10 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
       await holding(marker);
       // The confirm has not got to its work yet: the booking was first.
       expect(
-        sql(
-          `select count(*) from pg_stat_activity where state = 'active' and query like '%${began}%' and pid <> pg_backend_pid();`,
+        (
+          await watch(
+            `select count(*) from pg_stat_activity where state = 'active' and query like '%${began}%' and pid <> pg_backend_pid();`,
+          )
         ).out,
         "the confirm left its gate before the booking was in place",
       ).toBe("1");
@@ -1662,7 +1648,8 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
       await confirmGate.open();
       let seen = "";
       while (!seen && !answered) {
-        seen = sql(`
+        seen = (
+          await watch(`
       select 'waiting at the listing''s row'
       from pg_locks w
       join pg_stat_activity a on a.pid = w.pid
@@ -1678,8 +1665,9 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
               and t.relation = 'platform.product_listings'::regclass))
         )
       limit 1;
-    `).out;
-        if (!seen) await new Promise((r) => setTimeout(r, 50));
+    `)
+        ).out;
+        if (!seen) await new Promise((r) => setTimeout(r, 25));
       }
       expect
         .soft(seen, "the confirm answered without waiting at the listing's row")
@@ -1687,13 +1675,15 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
       // And it waits for that booking, not for anything else.
       expect
         .soft(
-          sql(`
+          (
+            await watch(`
         select count(*) from pg_stat_activity a
         where a.query like '%confirm_hold%' and a.pid <> pg_backend_pid()
           and pg_blocking_pids(a.pid) = array(
             select b.pid from pg_stat_activity b
             where b.query like '%${marker}%' and b.pid <> pg_backend_pid());
-      `).out,
+      `)
+          ).out,
           "the confirm is not waiting for the booking",
         )
         .toBe("1");

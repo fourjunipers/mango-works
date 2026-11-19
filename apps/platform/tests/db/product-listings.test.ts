@@ -8,7 +8,7 @@
  * product's row, then the listing's) and the races around it; and that the
  * vehicle-fields rule on products survived the columns being dropped.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { roles, type Role } from "@/lib/roles";
 import {
   anonClient,
@@ -19,6 +19,9 @@ import {
   deleteTenant,
   deleteUser,
   forceListing,
+  GATE_TEST_TIMEOUT,
+  GATE_TIMEOUTS,
+  holding,
   listingOf,
   removeCatalogEntry,
   seenWaitingForLock,
@@ -28,7 +31,11 @@ import {
   sqlBackground,
   type TestTenant,
   type TestUser,
+  watch,
 } from "./helpers";
+
+// Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 let other: TestTenant;
@@ -136,18 +143,6 @@ const retire = (productId: string, on = true) =>
     .update({ retired_at: on ? new Date().toISOString() : null })
     .eq("id", productId)
     .select("id");
-
-/** Waits until a background session is sitting on its marker. */
-async function holding(marker: string) {
-  for (let i = 0; i < 100; i++) {
-    const { out } = sql(
-      `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
-    );
-    if (out === "1") return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`No session reached ${marker}`);
-}
 
 const noDeadlock = (
   results: { error: { code?: string; message?: string } | null }[],
@@ -961,76 +956,80 @@ describe("lock order: the product's row, then the listing's", () => {
     expect((await first).failed).toBe("");
   });
 
-  it("a writer that has the product's row is never made to wait by the listing's row alone: the listing is only ever locked under the product's lock", async () => {
-    // Every path that writes a listing, each run while another session
-    // holds the product's row. None may get as far as the listing's row:
-    // while the holder has it, nobody else holds a lock on the listing.
-    const { id, unitIds } = await addListable(2);
-    await setListing(db("owner"), id, {
-      marketplace_listed: true,
-      instant_units: 2,
-      ready_now: 2,
-    }).throwOnError();
-    const marker = `hold-order-${tag}`;
-    // The holder keeps the product's row until its gate is opened: no clock.
-    const gate = await closedGate();
-    const holder = sqlBackground(`
+  it(
+    "a writer that has the product's row is never made to wait by the listing's row alone: the listing is only ever locked under the product's lock",
+    async () => {
+      // Every path that writes a listing, each run while another session
+      // holds the product's row. None may get as far as the listing's row:
+      // while the holder has it, nobody else holds a lock on the listing.
+      const { id, unitIds } = await addListable(2);
+      await setListing(db("owner"), id, {
+        marketplace_listed: true,
+        instant_units: 2,
+        ready_now: 2,
+      }).throwOnError();
+      const marker = `hold-order-${tag}`;
+      // The holder keeps the product's row until its gate is opened: no clock.
+      const gate = await closedGate();
+      const holder = sqlBackground(`
       begin;
       select 1 from platform.products where id = '${id}' for no key update;
       ${gate.wait(marker)}
       commit;
     `);
-    await holding(marker);
-    let answered = 0;
-    // A query builder sends nothing until it is awaited: each is started
-    // now, with `then`.
-    const started = <T>(call: PromiseLike<T>): Promise<T> =>
-      Promise.resolve(
-        call.then((result) => {
-          answered++;
-          return result;
-        }),
-      );
-    const writers = [
-      started(setListing(db("owner"), id, { instant_units: 1 })),
-      started(
-        db("mechanic")
-          .from("units")
-          .update({ status: "maintenance" })
-          .eq("id", unitIds[0])
-          .select("id"),
-      ),
-      started(
-        db("manager").rpc("change_listing_entry", {
-          p_product_id: id,
-          p_catalog_id: presetB,
-        }),
-      ),
-    ];
-    // Each of the three is seen waiting for a lock, and none has answered
-    // while the holder still has the product's row.
-    await seenWaitingForLock("save_listing");
-    await seenWaitingForLock('"units"');
-    await seenWaitingForLock("change_listing_entry");
-    expect(answered, "a writer answered before the holder let go").toBe(0);
-    const { out } = sql(`
+      await holding(marker);
+      let answered = 0;
+      // A query builder sends nothing until it is awaited: each is started
+      // now, with `then`.
+      const started = <T>(call: PromiseLike<T>): Promise<T> =>
+        Promise.resolve(
+          call.then((result) => {
+            answered++;
+            return result;
+          }),
+        );
+      const writers = [
+        started(setListing(db("owner"), id, { instant_units: 1 })),
+        started(
+          db("mechanic")
+            .from("units")
+            .update({ status: "maintenance" })
+            .eq("id", unitIds[0])
+            .select("id"),
+        ),
+        started(
+          db("manager").rpc("change_listing_entry", {
+            p_product_id: id,
+            p_catalog_id: presetB,
+          }),
+        ),
+      ];
+      // Each of the three is seen waiting for a lock, and none has answered
+      // while the holder still has the product's row.
+      await seenWaitingForLock("save_listing");
+      await seenWaitingForLock('"units"');
+      await seenWaitingForLock("change_listing_entry");
+      expect(answered, "a writer answered before the holder let go").toBe(0);
+      const { out } = await watch(`
       select count(*) from pg_locks l
       join pg_stat_activity a on a.pid = l.pid
       where l.relation = 'platform.product_listings'::regclass
         and l.mode in ('RowExclusiveLock', 'RowShareLock')
         and a.pid <> pg_backend_pid();
     `);
-    await gate.open();
-    expect(out).toBe("0");
-    const results = await Promise.all(writers);
-    expect((await holder).failed).toBe("");
-    noDeadlock(results);
-    for (const { error } of results) expect(error).toBeNull();
-    // One vehicle is left active: whatever order they ran in, the counts fit.
-    const after = await listingOf(id);
-    expect(after.instant_units + after.request_units).toBeLessThanOrEqual(1);
-    expect(after.ready_now).toBeLessThanOrEqual(1);
-  }, 30_000);
+      await gate.open();
+      expect(out).toBe("0");
+      const results = await Promise.all(writers);
+      expect((await holder).failed).toBe("");
+      noDeadlock(results);
+      for (const { error } of results) expect(error).toBeNull();
+      // One vehicle is left active: whatever order they ran in, the counts fit.
+      const after = await listingOf(id);
+      expect(after.instant_units + after.request_units).toBeLessThanOrEqual(1);
+      expect(after.ready_now).toBeLessThanOrEqual(1);
+    },
+    GATE_TEST_TIMEOUT,
+  );
 });
 
 describe("races", () => {
