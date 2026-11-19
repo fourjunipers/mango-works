@@ -32,6 +32,31 @@ describe("photoUrl", () => {
   });
 });
 
+describe("photoUrl and stored values that are not a photo path", () => {
+  // A value starting with "/" was returned as it stood, so "//host/x" in a
+  // shop's photos made the page load an image from that host.
+  it.each([
+    "//evil.example/x.png",
+    "/\\evil.example/x.png",
+    "///evil.example/x.png",
+    "/\t/evil.example/x.png",
+    "/images/../../evil",
+    "/images//evil.example/x.png",
+    "/api/places/x",
+    "/",
+  ])("falls back for %j", (path) => {
+    expect(photoUrl("http://x", "shop-photos", path)).toBe(BIKE_PLACEHOLDER);
+  });
+
+  it("treats an address as a file name inside the bucket, never as an address", () => {
+    expect(
+      photoUrl("http://x", "shop-photos", "https://evil.example/x.png"),
+    ).toBe(
+      "http://x/storage/v1/object/public/shop-photos/https%3A//evil.example/x.png",
+    );
+  });
+});
+
 describe("isOwnPhotoPath", () => {
   it("accepts the shop's own folder", () => {
     expect(isOwnPhotoPath(`${shopId}/x.webp`, shopId)).toBe(true);
