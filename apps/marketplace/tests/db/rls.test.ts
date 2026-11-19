@@ -283,10 +283,23 @@ describe("vendors", () => {
         .insert({ shop_id: seed.bsrShop, user_id: extra.id, role: "staff" });
       expect(staffError?.code).toBe(DENIED);
 
+      // Not even an owner adds a member by writing the table (security
+      // audit, 19 Nov 2026): people join through an invite.
       const { error: ownerError } = await bsrOwner
         .from("shop_members")
         .insert({ shop_id: seed.bsrShop, user_id: extra.id, role: "staff" });
-      expect(ownerError).toBeNull();
+      expect(ownerError?.code).toBe(DENIED);
+      const { error: joinError } = await serviceClient()
+        .from("shop_members")
+        .insert({ shop_id: seed.bsrShop, user_id: extra.id, role: "staff" });
+      expect(joinError).toBeNull();
+
+      const { data: staffRemoved } = await bsrStaff
+        .from("shop_members")
+        .delete()
+        .eq("user_id", extra.id)
+        .select();
+      expect(staffRemoved).toEqual([]);
 
       const { data: removed } = await bsrOwner
         .from("shop_members")
