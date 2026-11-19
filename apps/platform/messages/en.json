@@ -531,7 +531,7 @@
     "model_has_active_units": "Retire or sell its vehicles first. A product can be retired once none of its vehicles is in the fleet.",
     "model_retired": "This product is retired. Restore it first.",
     "specs_required": "Give the make, model, engine size, transmission and year first.",
-    "invalidHours": "Enter the hours as a number, like 2 or 0.5 (168 at most).",
+    "invalidHours": "Enter the hours as a number, like 2 or 0.5 (168 at most). Use a dot for decimals; a comma only separates thousands, so 0,5 is not read as a half.",
     "productHasVehicles": "This product still has vehicles. Remove all its vehicles first.",
     "invalidQuantity": "Enter a whole number.",
     "units_blocked": "{count, plural, one {# unit is} other {# units are}} in repair or booked, so the quantity can’t go below {count}.",
@@ -541,6 +541,9 @@
     "notes_too_long": "Keep the notes to 500 characters.",
     "unit_not_free": "This unit is booked or already out of service.",
     "unit_not_found": "This unit is no longer here. Reload the page.",
+    "invalid_renewal": "This record couldn’t be saved. Check its type, its dates and its cost.",
+    "invalid_hours": "These opening hours couldn’t be saved. Check each day’s times: a day closes after it opens.",
+    "location_not_found": "This location is no longer here. Reload the page.",
     "not_in_repair": "This unit is no longer in repair. Reload the page.",
     "not_lost": "This unit is no longer marked lost. Reload the page.",
     "not_out_of_service": "This unit is no longer out of service. Reload the page.",
@@ -1513,8 +1516,8 @@
       "monthly": "Monthly (30 days)",
       "required": "Daily and monthly are both needed.",
       "requiredMark": "Required",
-      "invalid": "Enter an amount above 0, such as 300 or 300.50.",
-      "invalidMultiplier": "Enter a multiplier above 0, such as 3 or 1.1666.",
+      "invalid": "Enter an amount above 0, such as 300 or 1,300.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces.",
+      "invalidMultiplier": "Enter a multiplier above 0, such as 3 or 1.1666. Use a dot for decimals; a comma only between thousands (1,000).",
       "sameEveryDay": "Same price every day"
     },
     "grid": {
@@ -1528,7 +1531,7 @@
       "reset": "Reset",
       "fallsTitle": "A longer rental can't cost less",
       "falls": "{day} days cost less than {before} days. Raise it, or lower the days before it. Equal prices are fine.",
-      "invalidDays": "A day typed by hand isn't a valid price."
+      "invalidDays": "A day typed by hand isn't a valid price. Use a dot for decimals; a comma only between thousands (1,000). No spaces."
     },
     "deposit": {
       "title": "Deposit",

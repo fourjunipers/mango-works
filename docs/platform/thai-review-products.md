@@ -1198,3 +1198,19 @@ Four lines changed; none is new. Two keys are gone.
 **Removed:** `FormErrors.couponInvalidAmount` and `FormErrors.couponInvalidPercent` (their text moved to the two shared keys above), and `Settings.coupons.usesUnknown` ("Uses: not shown (its code is used by a newer coupon)": an archived coupon now always shows its own uses).
 
 **Before stage 10 the two shared keys read:** `FormErrors.invalidMoney` "Enter an amount, such as 45000 or 45000.50." / "กรอกจำนวนเงิน เช่น 45000 หรือ 45000.50", and `FormErrors.invalidPercent` "Enter a percentage such as 20 or 12.5." / "กรอกเปอร์เซ็นต์ เช่น 20 หรือ 12.5".
+
+### After the review of PR 51 (19 Nov 2026)
+
+Four lines reworded and three new. The four are the refusals on the screens where a comma or a space stopped being accepted in this stage (price lists, multipliers, buffer hours): each now says the rule, as `FormErrors.invalidMoney` already did. The three new lines are for refusals that showed the general "Couldn't save. Please try again." before: a renewal record or a week of opening hours the database refuses, and a location that has been removed since the page was loaded.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `FormErrors.invalidHours` | Enter the hours as a number, like 2 or 0.5 (168 at most). Use a dot for decimals; a comma only separates thousands, so 0,5 is not read as a half. | กรอกจำนวนชั่วโมงเป็นตัวเลข เช่น 2 หรือ 0.5 (ไม่เกิน 168) ใช้จุดสำหรับทศนิยม จุลภาคใช้คั่นหลักพันเท่านั้น จึงไม่อ่าน 0,5 เป็นครึ่งชั่วโมง |
+| `Pricing.quick.invalid` | Enter an amount above 0, such as 300 or 1,300.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces. | กรอกราคาที่มากกว่า 0 เช่น 300 หรือ 1,300.50 ใช้จุดสำหรับทศนิยม ใช้จุลภาคเฉพาะคั่นหลักพัน (1,000) ห้ามเว้นวรรค |
+| `Pricing.quick.invalidMultiplier` | Enter a multiplier above 0, such as 3 or 1.1666. Use a dot for decimals; a comma only between thousands (1,000). | กรอกตัวคูณที่มากกว่า 0 เช่น 3 หรือ 1.1666 ใช้จุดสำหรับทศนิยม ใช้จุลภาคเฉพาะคั่นหลักพัน (1,000) |
+| `Pricing.grid.invalidDays` | A day typed by hand isn't a valid price. Use a dot for decimals; a comma only between thousands (1,000). No spaces. | มีวันที่แก้เองซึ่งไม่ใช่ราคาที่ถูกต้อง ใช้จุดสำหรับทศนิยม ใช้จุลภาคเฉพาะคั่นหลักพัน (1,000) ห้ามเว้นวรรค |
+| `FormErrors.invalid_renewal` | This record couldn’t be saved. Check its type, its dates and its cost. | บันทึกรายการนี้ไม่ได้ กรุณาตรวจประเภท วันที่ และค่าใช้จ่าย |
+| `FormErrors.invalid_hours` | These opening hours couldn’t be saved. Check each day’s times: a day closes after it opens. | บันทึกเวลาเปิดทำการไม่ได้ กรุณาตรวจเวลาของแต่ละวัน เวลาปิดต้องหลังเวลาเปิด |
+| `FormErrors.location_not_found` | This location is no longer here. Reload the page. | ไม่พบสาขานี้แล้ว กรุณาโหลดหน้าใหม่ |
+
+**Before this change the four read:** "Enter the hours as a number, like 2 or 0.5 (168 at most)." / "กรอกจำนวนชั่วโมงเป็นตัวเลข เช่น 2 หรือ 0.5 (ไม่เกิน 168)"; "Enter an amount above 0, such as 300 or 300.50." / "กรอกราคาที่มากกว่า 0 เช่น 300 หรือ 300.50"; "Enter a multiplier above 0, such as 3 or 1.1666." / "กรอกตัวคูณที่มากกว่า 0 เช่น 3 หรือ 1.1666"; "A day typed by hand isn't a valid price." / "มีวันที่แก้เองซึ่งไม่ใช่ราคาที่ถูกต้อง".
