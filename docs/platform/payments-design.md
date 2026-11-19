@@ -1,6 +1,6 @@
 # Payments design: Phase 7 and the Moto Mangos fee
 
-**Draft 1, 19 Nov 2026.** Design only: no code, no migration, nothing applied anywhere. Written from `main` at `d458717` and `docs/phase-3-plan.md` draft 2 on `platform/phase-3-plan-draft` (`f996c4e`).
+**Draft 2, 19 Nov 2026.** Design only: no code, no migration, nothing applied anywhere. Written from `main` at `d458717` and `docs/phase-3-plan.md` draft 2 on `platform/phase-3-plan-draft` (`f996c4e`). Draft 2 applies Mark's fifteen decisions of 19 Nov 2026 on draft 1's open questions (§11.1).
 
 Read for this: `docs/platform/SPEC.md`, `docs/marketplace/SPEC.md`, `docs/INTEGRATION.md` (the copies on the Phase 3 plan branch, which carry the corrected fee wording), `docs/phase-3-plan.md` §6 and §7 and decisions 1 to 32, `docs/PROGRESS.md`, `apps/marketplace/lib/fees.ts` and `fee-lifecycle.ts`.
 
@@ -17,11 +17,11 @@ Read for this: `docs/platform/SPEC.md`, `docs/marketplace/SPEC.md`, `docs/INTEGR
 4. **One risk must be cleared with Stripe before Phase 7 starts.** "Transportation services" is a restricted business in Thailand and is on Stripe's list of industries it cannot support through Connect in Thailand "for some connected accounts" [S2][S3]. Vehicle rental is not named either way. §11.3 question 1.
 5. **Money states live in two places.** What is still in motion (an intent waiting for the customer, a refund the bank has not confirmed) lives in mutable provider tables. The Phase 3 ledger stays append-only and gets a row only when the provider confirms money moved. A later reversal (a refund that failed, a chargeback) is a new row that points at the row it undoes.
 6. **Webhooks are a prompt, not the truth.** Each event is verified, stored once, and answered at once. A worker then fetches the object from the provider and brings our records to match it, so events may arrive twice, late or out of order. A daily job compares the provider's list with the ledger.
-7. **A tax finding goes against a settled decision and needs Korn before Phase 3's ledger is built.** The Revenue Department's order Por.73/2541 reads as putting a security deposit on a rental of movable property inside VAT when it is received, with a credit note when it is returned [T18]. The decision is "no VAT on a deposit until kept". This design keeps the decision and makes the question Korn's first (§6.1, K3).
-8. **Phase 3's plan needs nine changes now**, while it is on paper (§10). The three that matter most: the "no overpayment" rule must bind staff entry only, because money a provider has already taken cannot be refused; a refund must name the payment it refunds, not only the charges; and a Moto Mangos order needs a line for the fee paid online, or its balance never reaches zero.
+7. **VAT on deposits is a shop setting with two modes** (decided 19 Nov 2026): VAT when the deposit is received with a credit note on return, or no VAT on deposits. The Revenue Department's order Por.73/2541 reads as the first for a rental of movable property [T18]; Korn's answer to K3 may lock the setting to one mode. The ledger and the documents are designed for both (§6.4).
+8. **Phase 3's plan needs ten changes now**, while it is on paper (§10). The three that matter most: the "no overpayment" rule must bind staff entry only, because money a provider has already taken cannot be refused; a refund must name the payment it refunds, not only the charges; and a Moto Mangos order needs a line for the fee paid online, or its balance never reaches zero.
 9. **Vendor billing keeps its own invoices and ledger** and uses Stripe only to collect (card, PromptPay QR). Stripe has no bank transfer method in Thailand [S36], so the manual "mark paid with a slip" route is required, not optional.
 10. **Omise is a weaker fallback than assumed**: it adds JCB, Amex and UnionPay, but it cannot refund PromptPay, may not allow a saved card to be charged without the customer, promises no webhook retries, and has no confirmed way for a platform to act for a shop (§1.4).
-11. **Phase 7 is ten stages** (§9); seven are Fable builds. Phase 8 adds the public checkout on top.
+11. **Phase 7 is ten stages behind one gate** (§9: Stripe's answer on vehicle rental comes first, and a refusal means comparing Thai providers before Phase 7 is scheduled); seven are Fable builds. Phase 8 adds the public checkout on top.
 
 ## 1. What the providers allow (checked 19 Nov 2026)
 
@@ -191,7 +191,7 @@ Every provider's payment is mapped to one of: `awaiting_customer`, `processing`,
 | --- | --- | --- | --- |
 | Account | Connected account id; no secret stored | A chain key if Omise confirms account chaining for Thailand; otherwise the shop's own public and secret key, stored encrypted (§8.2) | Expected: the shop's own merchant keys, stored encrypted |
 | Capabilities | §2.3 | Five card brands, holds with one partial capture, signed webhooks; **no** PromptPay refund, **no** webhook retries, **no** idempotency header, and possibly no charge without the customer (§1.4) | Expected: bank QR first; cards, saved cards, holds and refunds each only if that provider's pages confirm it |
-| When built | Phase 7 | Only when a Thai shop cannot use Stripe (§11.1 decision 12) | When the Vietnam market is prepared; chosen then, against the same contract tests |
+| When built | Phase 7 | Only when a Thai shop cannot use Stripe (§11.1 decision 11, and §9's gate) | When the Vietnam market is prepared; chosen then, against the same contract tests |
 
 **Contract tests.** One test suite runs against every adapter and the fake: pay, pay twice with one key, hold and capture part, release, refund in part, a refund that fails, a decline of each class, a webhook with a bad signature, the same event twice. An adapter that lacks a capability must refuse the call with `not_supported`, and the suite checks that too.
 
@@ -201,7 +201,7 @@ Every provider's payment is mapped to one of: `awaiting_customer`, `processing`,
 
 - **Account shape:** created by the platform with controller properties equal to Standard (losses Stripe, fees paid by the account, requirements collected by Stripe, full Dashboard) [S5], on the Accounts v1 API until Stripe confirms Accounts v2 for Thai platforms (§11.3 question 6). The shop is merchant of record, pays Stripe's fees and dispute fees, and can open its own Stripe Dashboard.
 - **Onboarding:** Settings › Payments › "Connect Stripe" (owner only). The server creates the account (country and business type from the tenant, never assumed Thai), stores its id, and sends the owner to a fresh Account Link. On return the page fetches the account and shows one of: finish the form, under review, ready, or what Stripe still needs (`requirements.currently_due`, with the deadline). `account.updated` keeps this current [S7][S9].
-- **An existing Stripe account** (BSR has one, connected to Booqable) is **not** connected. The owner makes a second account under the same Stripe login through our link; connecting an existing one would need OAuth, which Stripe no longer recommends and which shares our data with the shop's other platforms [S8]. §11.1 decision 1.
+- **One Stripe account per business** (§11.1 decision 1). A shop that already has a Stripe account keeps it: BSR's, connected to Booqable today, is connected to our platform as well, **if Stripe allows one account to be connected to two platforms** (§11.3 question 7; pending). The only route Stripe's pages describe for an existing account is OAuth, which they no longer recommend for new platforms, and which makes what we create on the account visible to the shop's other platforms [S8]; that is accepted for a shop that chooses to keep one account. The account is then one we did not create: we can read its `charges_enabled` and requirements but its settings are the shop's, and the shop can disconnect us at any time, which `account.application.deauthorized` reports. **If Stripe says no**, the fallback is a new account through our onboarding link, as for a shop with no Stripe account.
 - **Disconnecting:** an account we created cannot be disconnected by the shop alone [S42]. We handle `account.application.deauthorized` anyway: the account is marked disconnected, online payment switches off, scheduled charges stop with a staff alert, and nothing else changes.
 - **Stored** in `platform.payment_accounts`: tenant, provider, the account id, livemode, capabilities, requirements due and their deadline, default currency, statement descriptor, connected by and when. No secret for Stripe.
 - **One live account per tenant and provider.** A tenant's currency must equal the account's settlement currency before card or QR payment switches on.
@@ -223,7 +223,7 @@ Used by "Take payment" on the order page, a payment link, and (Phase 8) checkout
 
 - The same flow with a QR in place of the card form. Staff show it on their screen; a link shows it on the customer's phone.
 - **We run our own clock**, because Stripe documents no QR lifetime [S22]. A shown QR is good for the request's own time (15 minutes at the desk; a payment link's own expiry; the hold's remaining time at checkout). When that runs out we cancel the provider payment. Whether a cancelled intent's QR can still be paid is **unclear** (§11.3 question 4), so the rule below covers it.
-- **Money that arrives is always recorded** (§10 change 1): a second payment on one QR, a payment after its request expired, a payment on an order since cancelled. It becomes a `payment` row; whatever no open charge needs stays unallocated as the customer's credit, and staff get a "money received that the order did not need" item to refund it.
+- **Money that arrives is always recorded** (§10 change 1): a second payment on one QR, a payment after its request expired, a payment on an order since cancelled. It becomes a `payment` row; whatever no open charge needs stays unallocated as the customer's credit, and staff get a "money received that the order did not need" item to refund it. Nothing is refunded automatically for a shop's order (§11.1 decision 13).
 - **PromptPay never holds a deposit and is never saved.** A deposit by PromptPay is charge-and-refund.
 - **Refunds** are asynchronous (§3.7).
 
@@ -231,7 +231,7 @@ Used by "Take payment" on the order page, a payment link, and (Phase 8) checkout
 
 - A card is saved on **the shop's account**, as a provider customer per `(tenant, customer)`. Table `customer_payment_methods`: tenant, customer, payment account, provider customer and method references, brand, last four, expiry, status, and the **consent record** (the text version shown, when, by whom, from which channel and address, what it allowed: the amount or how it is worked out, when it will be charged, the cancellation terms) [S26].
 - Saved with authentication at the time (SetupIntent, or as part of a first payment), so later charges have the best chance of passing without the customer [S25].
-- Staff can remove a card; a customer can remove theirs from a link. A removed card cancels its scheduled charges with a staff alert.
+- A card saved on an order stays for the charges the rental agreement allows (§3.6) and is detached a set time after the order closes (a shop setting, default 90 days). Staff can remove it sooner. A removed card cancels its scheduled charges with a staff alert.
 - If the card network changes the card's brand, a new agreement is needed before another charge without the customer [S26]: the method is marked `needs_consent` and its scheduled charges become "action needed".
 
 ### 3.5 Scheduled charges
@@ -271,32 +271,84 @@ scheduled_charges
 
 ### 3.6 Deposits by card
 
-The shop's deposit mode (none, percentage, per product, fixed) sets the amount; this is how a card takes it. Staff choose **authorize** or **charge** per payment, with the shop's default.
+Decided 19 Nov 2026 (§11.1 decision 6). The shop's deposit mode (none, percentage, per product, fixed) sets the amount; this is how a card takes it.
 
-**Authorize (a hold)**
+**The shop chooses hold or charge for any deposit, and the platform never overrides it.** Staff choose per payment, with the shop's default. A long rental can take a hold; a short one can take a charge.
 
-- Taken **with the customer present**, at pickup, in the card form (staff device, or a link on the customer's phone). A customer-initiated hold gets the longer window; a hold taken from a saved card without the customer can be 4 days 18 hours on Visa [S28]. §11.1 decision 7.
-- We store the hold's own `capture_before` and never work a length out ourselves.
-- **Offered only when the rental fits:** the rental's end, plus a margin (default 24 hours, for the check-in and a damage decision), must fall before the shortest window the card could get. For a hold taken with the customer that is 7 days less the margin: rentals of up to about 6 days. Anything longer is charge-and-refund, as the settled decision says. A rental extended past its hold gets a staff item "the hold ends before the return": capture it now as a charged deposit, or let it go.
-- **At-expiry action** (shop default, changeable per order): release, or capture. A job runs it **6 hours before `capture_before`**; staff can capture or release by hand at any time before.
-- **Capture** takes all or part once; the rest is released by the provider [S28]. **Release** cancels the hold at no cost.
-- If the hold ends on its own (`charge.expired`), it is recorded as released, with a staff alert when the order still wanted it.
-- **Longer holds** (30 days for vehicle rental) need Stripe's IC+ pricing on the shop's account [S29]; not designed in until Stripe says Thai shops can have it (§11.3 question 3). If it comes, only `capture_before` changes; nothing here does.
+**A deposit is asked for once per rental.** It belongs to the rental, not to a billed period: it is never asked for again on a later month's charge, on an extension, or on a `difference` charge. (Phase 3 decision 17 already puts it on the first charge only.) A swap shows the deposit difference and moves nothing (Phase 3 §6.2).
 
-**Charge** (and every PromptPay deposit, and every long rental): a payment now, refunded at return in whole or in part. The shop is told in Settings that a refunded card deposit costs Stripe's fee on the original payment [S19][S30].
+#### Hold (authorize)
 
-**In the ledger** (kinds from Phase 3 §6.4):
+- Taken in the provider's card form: at pickup with the customer present, or from the saved card. We store the hold's own `capture_before` and never work a length out ourselves. A hold taken with the customer present gets the network's longer window; one taken from a saved card without the customer can be 4 days 18 hours on Visa [S28].
+- **A hold that ends before the rental does is allowed.** Before staff confirm, the screen says in plain words when the hold will end and, if that is before the return, "From [date] this deposit is no longer secured." The shop accepts that. Nothing is refused and nothing is switched to a charge.
+- **Staff always see when the hold ends**: on the order, on the Today board's item for that rental, and as a Dashboard item 24 hours before the end when the vehicle is still out.
+- **Nothing is charged automatically.** There is no at-expiry capture. Before the end, staff can **capture** all or part once (the rest is released by the provider [S28]) or **release** by hand. A hold that reaches its end with no decision is released: the provider lets it go (`charge.expired`), and it is recorded as a release with the reason "expired".
+- After a hold has ended the deposit is unsecured. What the shop still has is the saved card (below).
+- **Longer holds** (30 days for vehicle rental) need Stripe's IC+ pricing on the shop's account [S29]; not designed in until Stripe says Thai shops can have it (§11.3 question 3). If it comes, only `capture_before` changes.
+
+This replaces the spec's "at-expiry action chosen by staff: release, or capture shortly before the hold's capture_before time" (§12).
+
+#### Charge
+
+A payment now, by card or PromptPay, returned at the end in whole or in part by a refund. The shop is told in Settings that a refunded card deposit costs Stripe's fee on the original payment [S19][S30]. PromptPay can only be charged, never held [S22].
+
+#### The card stays saved, for charges the agreement allows
+
+Every card used for a deposit or a payment on an order is saved on that order's customer (§3.4), where the provider allows saving in the same step and otherwise in a step of its own. The shop can then charge it later, without the customer present, for **damage, fines and other amounts the rental agreement allows**.
+
+- **Consent.** Two records, both required before such a charge is offered: the card-saving consent (§3.4), and the signed rental agreement containing the clause that allows it. **Phase 6: the agreement template must carry that clause** (what may be charged, that it may be after the return, how the customer is told, how to object), and the signed copy's version is what the charge points at. Until an order has a signed agreement with that clause, "Charge saved card" is not offered for it; a payment link is.
+- **Who:** owner and manager; staff when a new shop setting, `staff_can_charge_saved_card`, is on (default off), checked in the database like Phase 3's other permissions.
+- **What it is charged for:** always an order charge that already exists (a damage charge from Phase 5, a traffic fine from Phase 9, a late-return charge, an unpaid balance), with its description. Never a free amount with no charge behind it.
+- **The call:** a `provider_payments` row for that charge, then `chargeSaved` with that row's id as the key. The customer is sent a message at the same moment saying what was charged, why, and the shop's contact.
+
+| Result | What happens |
+| --- | --- |
+| Paid | Ledger `payment` row, method `card`, allocated to that charge, with its tax invoice. The order shows who charged it and under which agreement |
+| Authentication needed | Not charged. The customer gets a link that confirms the same payment; the charge stays open; staff see "waiting for the customer". No automatic retry |
+| Retryable decline (insufficient funds, issuer unavailable, `try_again_later`) | Not charged. **No automatic retry**: staff may try again by hand, at most **four attempts per charge**, at least 12 hours apart [S27][S31]. After that, a payment link only |
+| Stop (`do_not_try_again`, lost, stolen, revoked, expired, card data wrong) | Not charged; the card is marked unusable; a payment link only |
+| Card removed, or its brand changed since it was saved [S26] | "Charge saved card" is not offered; a payment link only |
+| The answer is unknown | The same key is sent again; the worker's fetch settles it [S17] |
+
+- **Risk the shop is told about in Settings:** a charge made without the customer has no 3-D Secure protection against a dispute [S43], so the evidence is the signed agreement, the check-in photos and the damage record. Disputes follow §3.8.
+- **How long the card stays:** until a shop setting's time after the order is closed (default 90 days, because fines arrive late), then it is detached. Staff can remove it sooner. A customer who asks for removal while a rental is open is referred to the shop.
+- **A charge that comes after the order was archived** (a fine weeks later) un-archives it, as a late payment does.
+
+#### What the order shows
+
+**A deposit is never part of the order's balance or "amount owed".** It has its own line, with one of these states, worked out from the ledger rows:
+
+| State | Shown as |
+| --- | --- |
+| Required, not taken yet | "Deposit: ฿X, taken at pickup" (information, never an amount due) |
+| Hold in place | "Deposit: held [date], ends [date]" |
+| Hold released by staff | "Deposit: held [date], released [date]" |
+| Hold ended on its own | "Deposit: held [date], expired [date]" |
+| Hold captured in part or whole | "Deposit: held [date], ฿Y kept [date]" (and released for the rest) |
+| Charged | "Deposit: charged [date]" |
+| Charged, returned | "Deposit: charged [date], refunded [date]" |
+| Charged, part or all kept | "Deposit: charged [date], ฿Y kept [date]" (and refunded for the rest) |
+| Cash | The same words with "cash" |
+
+- After a hold is released or has expired, the deposit never shows as outstanding, on the order, the order list's "unpaid" filter, a payment request, or a customer message.
+- A multi-month rental's later charges never show a deposit line as due; the order's one deposit line keeps its state.
+- "Unpaid", "part-paid" and "paid" are worked out from charges and payments only (Phase 3's balance). §10 change 10.
+
+#### In the ledger
+
+Kinds from Phase 3 §6.4.
 
 | Event | Rows |
 | --- | --- |
 | Hold placed | `deposit_hold`, method `card`, the provider reference; **no money has moved** |
-| Hold captured in part for damage | `deposit_capture` (the part kept, the money arriving now) + `payment`, method `deposit`, pointing at it, allocated to the damage charge with its own VAT and tax invoice; `deposit_release` for the rest |
-| Hold released or expired | `deposit_release` for the whole |
+| Hold captured in part for damage | `deposit_capture` (the part kept, the money arriving now) + `payment`, method `deposit`, pointing at it, allocated to the damage charge; `deposit_release` for the rest |
+| Hold released by staff, or expired | `deposit_release` for the whole, with the reason (`released` or `expired`) |
 | Deposit charged | `deposit_in`, method `card` or `promptpay` |
-| Charged deposit returned | `deposit_out` once the provider confirms the refund; a kept part is `deposit_capture` + `payment` as above |
+| Charged deposit returned | `deposit_out`, naming the `deposit_in` it returns, once the provider confirms the refund; a kept part is `deposit_capture` + `payment` as above |
+| Later charge to the saved card | An ordinary `payment`, method `card`; nothing to do with the deposit rows |
 | Cash deposit | Unchanged from Phase 3 |
 
-Two rules follow, both for Phase 3 to write down now (§10 change 4): a hold's rows always satisfy hold = captures + releases, and "deposit held" as money counts `deposit_in` less `deposit_out` and captures of charged deposits only; card holds are shown beside it, never inside it.
+Two rules follow, both for Phase 3 to write down now (§10 change 4): a hold's rows always satisfy hold = captures + releases, and "deposit held" as money counts `deposit_in` less `deposit_out` and captures of charged deposits only; card holds are shown beside it, never inside it. What VAT a deposit row carries is §6.4.
 
 ### 3.7 Refunds
 
@@ -307,22 +359,22 @@ Two rules follow, both for Phase 3 to write down now (§10 change 4): a hold's r
 - **A refund that fails** before it was done: the request is `failed`, nothing is in the ledger, staff are told to repay another way (cash or transfer, recorded as Phase 3 records them). **A refund that fails after it was recorded** (rare; Stripe returns the money to the shop's balance [S30]): a `reversal` row pointing at the refund row (§10 change 3), and Phase 6 must decide what cancels the credit note already issued (§11.2 K5).
 - **A short balance:** a card refund waits while the shop's Stripe balance cannot cover it and fails after 45 days [S11]; the request shows "waiting for funds in your Stripe balance".
 - **Cost:** Stripe keeps its fee on the original payment; a PromptPay refund costs ฿10 more [S19]. The refund screen says so.
-- **Cancellation fee** (Phase 3 decision 18 left it here): a shop setting, "keep X% or a fixed amount when the customer cancels less than N hours before pickup", default: no refund after 72 hours, full refund before. Kept money is a charge of its own (`order_charges.kind`, §10 change 8) so it has a tax invoice like any other income.
+- **Cancellation fee** (Phase 3 decision 18 left it here; §11.1 decision 14): a shop setting that applies **only to bookings made on the shop's own booking page**: "keep X% or a fixed amount when the customer cancels less than N hours before pickup", default: free until 72 hours before pickup and nothing back after. Kept money is a charge of its own (`order_charges.kind`, §10 change 8) so it has a tax invoice like any other income. Orders made by staff are refunded by staff as Phase 3 has it. **Moto Mangos bookings never use the shop's setting**: they follow the one platform-wide 72-hour rule (§4.5).
 
 ### 3.8 Disputes
 
 - Cards only; PromptPay has none [S22].
 - A dispute on a direct charge is the shop's: Stripe debits the shop's balance for the amount and the ฿500 fee, and the shop answers it [S12][S19].
 - **Phase 7 does three things.** It records the dispute (`provider_disputes`: payment, amount, reason, state, respond-by). It alerts owner and manager at once, with the deadline from `evidence_details.due_by` and a link to the dispute in the shop's own Stripe Dashboard. And it writes the ledger: a `chargeback` row when the funds are withdrawn (the order's balance goes back up by that amount; the shop pursues the customer or writes it off) and a `reversal` of it when a won dispute returns them (§10 change 3).
-- **Answering inside the app is later** (§11.1 decision 10). The platform already holds what wins a rental dispute (the signed agreement, check-out and check-in photos, the damage record, the customer's ID check), so an evidence pack is a natural later feature.
+- **Answering inside the app is later** (§11.1 decision 9). The platform already holds what wins a rental dispute (the signed agreement, check-out and check-in photos, the damage record, the customer's ID check), so an evidence pack is a natural later feature.
 - No refund is possible on a payment while its dispute is open [S18]; the refund screen says so.
 - The dispute fee is the shop's cost and is not in the order's ledger.
 
 ### 3.9 What staff and customers see
 
-- **Stripe's own receipt emails are off**; our messages carry the receipt and the tax invoice (Phase 6). `receipt_email` is never passed [S33]. §11.1 decision 13.
+- **Stripe's own receipt emails are off**; our messages carry the receipt and the tax invoice (Phase 6). `receipt_email` is never passed [S33]. §11.1 decision 12.
 - **On the card statement:** the shop's own descriptor, with the order code as the suffix (`BSR* K7Q4AB`) [S32]. PromptPay shows Stripe's name and cannot be changed [S22]; the confirmation message names the shop.
-- **Settings › Payments:** connection state, what Stripe still needs, methods on or off, charge-before time, the unpaid deadline, deposit default (authorize or charge) and at-expiry action, the cancellation fee, and a plain statement of Stripe's fees and that refunds do not return them.
+- **Settings › Payments:** connection state, what Stripe still needs, methods on or off, charge-before time, the unpaid deadline, deposit default (hold or charge), VAT on deposits (§6.4), who may charge a saved card and how long a card stays saved, the cancellation fee for the shop's own booking page, and a plain statement of Stripe's fees and that refunds do not return them.
 
 ### 3.10 Mapping to Phase 3's ledger
 
@@ -348,7 +400,7 @@ Two rules follow, both for Phase 3 to write down now (§10 change 4): a hold's r
 | --- | --- | --- |
 | Seller (merchant of record) | Mango Works Co., Ltd., trading as Moto Mangos | The shop |
 | Paid | Online, to Mango Works' Stripe account | At the shop, by the shop's own means (cash, transfer, or the shop's Stripe through the platform) |
-| On the statement | Moto Mangos' descriptor | The shop's, if by card |
+| On the statement | "MOTO MANGOS", if Stripe allows it on Mango Works' one account (§4.2) | The shop's, if by card |
 | Document | A receipt from Mango Works (decision 26, pending Korn) | The shop's tax invoice or receipt for what the shop is paid |
 | Refund decided by | Moto Mangos' rules | The shop's |
 | Dispute falls on | Mango Works | The shop |
@@ -366,7 +418,7 @@ Stripe decides merchant of record by what the customer sees [S38], so the Moto M
 
 **Decided by the facts: a separate charge.** This is also what the spec's Review decisions and INTEGRATION §6.4 already say. The later "full online payment" mode (the rest charged to the shop's account at the same checkout) would be two charges, fee and rental, on two accounts from one card; that needs card cloning [S14], which is not confirmed for Thai platforms. It stays out of Phase 7 and Phase 8 (§11.3 question 5).
 
-**Which Stripe account.** Mango Works is one company and could use one Stripe account for everything. Recommended: **two accounts under the one company**: "Mango Works" (the Connect platform and vendor billing) and "Moto Mangos" (the fee). Renters then see one brand on the checkout, receipt and statement, as Stripe's merchant-of-record rule asks, and consumer disputes on the fee never touch the standing of the account the shops' payments depend on. Whether Stripe Thailand allows a second account for the same company is to be confirmed (§11.3 question 7; §11.1 decision 2).
+**Which Stripe account** (§11.1 decision 1). **One.** Mango Works uses a single Stripe account for the Connect platform, vendor billing and the Moto Mangos fee. The fee's card statement should read "MOTO MANGOS": Stripe builds a card's statement text from the account's prefix and a per-payment suffix, shown as `PREFIX* SUFFIX` and cut at 22 characters [S49], so the fee would be charged with the suffix "MOTO MANGOS" and vendor invoices with their own. Whether that is allowed for a second brand on one account, and whether it meets the rule that checkout, receipt and statement show the same seller [S38], is **pending Stripe's answer** (§11.3 question 8). Until then the checkout and the receipt name both: "Moto Mangos, by Mango Works Co., Ltd." One thing the single account carries with it: disputes on renters' fees count against the same account the Connect platform runs on, so the fee's dispute rate is watched from the first live booking.
 
 ### 4.3 The fee record
 
@@ -378,12 +430,13 @@ The fee is worked out by the marketplace from the base `create_booking` returns;
 
 | Booking | Card | PromptPay |
 | --- | --- | --- |
-| Pickup more than 72 hours away | Card saved at booking on Moto Mangos' account, with consent to one charge of the stated fee at the stated time; charged without the customer at the charge time | **Paid at booking** (PromptPay cannot be saved [S22]) |
+| Pickup more than 72 hours away | Card saved at booking on Mango Works' account, with consent to one charge of the stated fee at the stated time; charged without the customer at the charge time | **Paid at booking** (PromptPay cannot be saved [S22]) |
 | Pickup within 72 hours, or a walk-in | Paid at booking | Paid at booking |
 | Request booking | Card saved at booking; nothing charged until the shop accepts; then as above (at once if inside 72 hours) | The customer pays when the shop accepts: a payment link, good until the earlier of 24 hours and the charge time |
 
-- **"72 hours"**: the code today counts 3 calendar days at the pickup's clock time in the shop's time zone (`fee-lifecycle.ts`, owner decision 9 Nov 2026). In Thailand the two are the same instant. In a country with daylight saving they differ by an hour twice a year. §11.1 decision 4.
-- **The scheduled charge** uses the same runner design as §3.5, on Moto Mangos' account, with the marketplace SPEC's policy: retry after 12 hours; email the customer to update the card; **unpaid 2 days before pickup: the booking is cancelled** (`cancelled_unpaid`) and the shop told. Authentication needed: the customer gets a link to confirm the same payment.
+- **"72 hours" means 3 calendar days at the pickup's clock time, in the shop's time zone** (§11.1 decision 3): pickup at 10:00 on the 30th is charged at 10:00 on the 27th, as `fee-lifecycle.ts` already counts. In Thailand that is exactly 72 hours; where clocks change it can be 71 or 73.
+- **Card is shown first at checkout** (§11.1 decision 4): a card is charged only at the cut-off, so a card booking cancelled in time is never charged and never needs a refund.
+- **The scheduled charge** uses the same runner design as §3.5, on Mango Works' account, with the marketplace SPEC's policy: retry after 12 hours; email the customer to update the card; **unpaid 2 days before pickup: the booking is cancelled** (`cancelled_unpaid`) and the shop told. Authentication needed: the customer gets a link to confirm the same payment.
 - **Timing against the shop.** A card booking is not `paid` until the charge succeeds, 72 hours before pickup. The shop sees "confirmed, fee due [date]" until then and "paid, collect ฿X at pickup" after.
 - **A PromptPay payment at booking with a hold on the vehicle**: the QR is shown for the hold's remaining time. If the money arrives after the hold ran out and the vehicle is gone, the fee is refunded in full automatically and the customer told.
 
@@ -396,11 +449,12 @@ The fee is worked out by the marketplace from the base `create_booking` returns;
 | Shop declines, lets a request expire, or cancels | Cancelled, nothing charged | Full refund |
 | Fee unpaid at the deadline | Booking cancelled; nothing charged | |
 
+- **One rule for every Moto Mangos booking** (§11.1 decision 14): the 72-hour rule above is platform-wide and fixed. A shop cannot change it, and a shop's own cancellation-fee setting (§3.7) never applies to a Moto Mangos booking.
 - Refunds follow §3.7's two steps on the fee record: requested, then `refunded` when the provider confirms.
-- **What a refund costs Mango Works:** Stripe keeps its fee on the original payment, and a PromptPay refund costs ฿10 more [S19]. On a ฿50 fee paid by PromptPay that is about ฿11 lost per refund; on a card fee of ฿288, about ฿20. This only arises for fees paid at booking, which is why the checkout puts the card first for a pickup more than 72 hours away: a card is not charged until the free-cancellation time has passed. §11.1 decision 5.
+- **What a refund costs Mango Works:** Stripe keeps its fee on the original payment, and a PromptPay refund costs ฿10 more [S19]. On a ฿50 fee paid by PromptPay that is about ฿11 lost per refund; on a card fee of ฿288, about ฿20. This only arises for fees paid at booking, which is why the checkout puts the card first for a pickup more than 72 hours away: a card is not charged until the free-cancellation time has passed. §11.1 decision 4.
 - A PromptPay refund may wait on the customer's bank details [S22]; the booking page shows "refund on its way" with what the customer must do.
 - A referral earning is reversed when its fee is refunded (marketplace SPEC, unchanged).
-- A dispute on the fee is Mango Works' own: recorded on the fee record, answered from Moto Mangos' Stripe Dashboard.
+- A dispute on the fee is Mango Works' own: recorded on the fee record, answered from Mango Works' Stripe Dashboard.
 
 ### 4.6 The receipt
 
@@ -410,7 +464,7 @@ Sent by email when the fee is paid: Moto Mangos and Mango Works Co., Ltd. with i
 
 The renter's ฿2,880 booking is ฿288 to Moto Mangos and ฿2,592 to the shop. The platform's order for it must say so, or its balance stays ฿288 short for ever, it never reads as settled, and Phase 3's auto-archive never runs.
 
-Recommended (§10 change 5, §11.1 decision 6): the order's `booking` charge carries **a line of its own kind, `marketplace_fee`, negative, for the fee**, written by `create_booking` from the fee the marketplace reports, fixed like the fee. The shop's charge total is then what the shop collects, and the shop's tax invoice is for what the shop is paid. The other way to do it (the shop's sale is the full ฿2,880 and Moto Mangos "collected" ฿288 of it as the shop's commission) would make Mango Works bill every shop a commission and contradict "Moto Mangos takes only the customer's booking fee". Which of the two the shop's VAT follows is Korn's (§11.2 K2), and matters most for a shop that adds VAT on top.
+Decided, pending Korn's answer to K2 (§10 change 5, §11.1 decision 5): the order's `booking` charge carries **a line of its own kind, `marketplace_fee`, negative, for the fee**, written by `create_booking` from the fee the marketplace reports, fixed like the fee. The shop's charge total is then what the shop collects, and the shop's tax invoice is for what the shop is paid. The other way to do it (the shop's sale is the full ฿2,880 and Moto Mangos "collected" ฿288 of it as the shop's commission) would make Mango Works bill every shop a commission and contradict "Moto Mangos takes only the customer's booking fee". Which of the two the shop's VAT follows is Korn's (§11.2 K2), and matters most for a shop that adds VAT on top.
 
 ## 5. Webhooks and idempotency
 
@@ -419,8 +473,9 @@ Recommended (§10 change 5, §11.1 decision 6): the order's `booking` charge car
 | Endpoint | App | Receives | Secret |
 | --- | --- | --- | --- |
 | `/api/webhooks/stripe/connect` | Platform | Events of connected accounts (each has a top-level `account`) [S15] | Its own |
-| `/api/webhooks/stripe/account` | Platform | Mango Works' own account: vendor billing | Its own |
-| `/api/webhooks/stripe` | Marketplace | Moto Mangos' account: the fee | Its own |
+| `/api/webhooks/stripe/account` | Platform | Mango Works' own account: vendor billing **and** the Moto Mangos fee (one account, §4.2) | Its own |
+
+Because the fee and vendor billing share one Stripe account, their events arrive at one endpoint and are told apart by the `provider_payments` row they belong to (`purpose`). The platform's worker handles `vendor_invoice`; rows with purpose `fee` are left for the marketplace's own worker, which applies the fee rules it owns. Neither app imports the other; they meet in the shared store.
 
 Each endpoint is registered for the event types it handles and no others.
 
@@ -531,7 +586,7 @@ Printing and numbering are Phase 6's. This section fixes what each payment must 
 | **Deposits** | Departmental Order Por.73/2541 puts an advance, **security deposit**, earnest money or reservation money for rental of anything other than land and buildings **inside VAT when it is received**, with a credit note when it is returned. The only exceptions it makes are container deposits and deposits on rented land and buildings | [T18] |
 | Withholding | A company paying rent for a vehicle withholds 5%; for a service 3%; for advertising 2%; when the contract is ฿1,000 or more. The payer gives a certificate (50 Tawi) | [T19][T20] |
 
-**The deposit finding goes against a settled decision** ("deposits carry no VAT until kept", and the Products redesign's "deposits are never taxed"). This design does not reopen the decision; it records that the Revenue Department's own order reads the other way for a deposit a VAT-registered shop is **paid** (cash, transfer, a charged card), that no ruling was found for vehicle rental in particular, and that a card **hold**, where no money is received, is not addressed by the order at all. It is Korn's first question (K3), and it should be answered before Phase 3's ledger stage is built, because it decides whether a `deposit_in` row carries VAT and a tax invoice (§10 change 9).
+**Deposits.** The order above reads against the earlier "deposits carry no VAT until kept". Mark's decision of 19 Nov 2026 makes it a shop setting with two modes, designed in §6.4. No ruling was found for vehicle rental in particular, and a card **hold**, where no money is received, is not addressed by the order at all; both are in K3.
 
 ### 6.2 Numbering
 
@@ -557,9 +612,38 @@ Phase 3 already stores, on the payment: the amount, currency, method, `received_
 | For a credit note: the original document's number and date, the original value, the right value, the difference and its VAT, the reason | The refund's `refund_of_payment_id` (§10 change 2) and its reversing allocations | This is why a refund must name its payment |
 | Language | The shop's document language (Thai or English); amounts in the shop's currency | Baht for a Thai shop [T5] |
 
-**Rows that get no tax invoice:** a card hold placed or released (no money); a payment by a shop that is not VAT-registered (a receipt instead); and, as decided, a deposit received, pending K3.
+**Rows that get no tax invoice:** a card hold placed, released or expired (no money); a payment by a shop that is not VAT-registered (a receipt instead); and a deposit received by a shop whose setting is "no VAT on deposits" (§6.4).
 
 **Other countries.** Everything above is the Thai tax profile. The document kinds, the required fields and the numbering rule belong to the country tax profile the spec already names; no code may assume them.
+
+### 6.4 VAT on deposits: two modes
+
+Decided 19 Nov 2026 (§11.1 decision 7). A shop setting, `deposit_vat_mode`, in Settings › Pricing and tax, shown only to a VAT-registered shop:
+
+| Mode | Meaning |
+| --- | --- |
+| `on_receipt` | VAT is charged when a deposit is received; a credit note is issued when it is returned |
+| `none` | No VAT on deposits |
+
+- **The mode in force when a deposit is received is copied onto its ledger row** and governs that deposit to its end. Changing the setting affects only deposits received afterwards.
+- **A lock.** The country tax profile can fix the mode. If Korn's answer to K3 is that the law decides, the Thai profile sets it, the shop's setting shows the mode with "set by tax rules" and cannot be changed.
+- **A card hold has no money and no document in either mode.**
+- **Money kept** (a hold captured, or part of a charged or cash deposit kept for damage, a late return or a fine) follows Korn's answer to K3(c): either a taxable charge or compensation outside VAT. That is a property of **the charge it pays** (its tax profile), not of the deposit, so nothing here hard-codes it.
+
+**The deposit's rate.** A deposit set per product takes that product's tax rate. A deposit set for the whole order (a percentage or a fixed amount) is split over the booking charge's rate groups in proportion to their gross, the last group taking the rounding remainder. VAT is worked out once per group on the deposit's amount, half up, as `paymentVat` does for a payment; a deposit is a gross amount in both tax styles. (Whether this is the right rate is K3(d).)
+
+| Event | `on_receipt` | `none` |
+| --- | --- | --- |
+| Deposit received (cash, transfer, charged card, PromptPay) | `deposit_in` with `rate_groups` (net and VAT per group); **a tax invoice** for the deposit, from the tax invoice series | `deposit_in`, no `rate_groups`; a plain deposit receipt, not a tax invoice |
+| Deposit returned, whole or part | `deposit_out` naming the `deposit_in`, with the `rate_groups` of what it returns; **a credit note** citing that tax invoice, reason "deposit returned" [T10] | `deposit_out`; a return receipt |
+| Part kept against a charge that is taxable | `deposit_capture` + `payment` (method `deposit`). The VAT on that money was already invoiced with the deposit, so the payment's own `rate_groups` are marked **"invoiced with the deposit"** and it gets a receipt that cites the deposit's tax invoice, **not a second tax invoice**. If the charge's rate differs from the deposit's, the difference is put right by a credit note for the kept part and a new tax invoice at the charge's rate | `deposit_capture` + `payment`; the payment gets its own tax invoice with VAT worked out now, as any payment does (Phase 3 §6.4 as written) |
+| Part kept against a charge that is compensation, outside VAT | `deposit_capture` + `payment` with no VAT; a credit note for the kept part's VAT, since that money turned out not to be for a taxable service; a plain receipt | `deposit_capture` + `payment` with no VAT; a plain receipt |
+| Hold placed, released, expired | `deposit_hold`, `deposit_release`: no `rate_groups`, no document | The same |
+| Hold captured | Money arrives now: `deposit_capture` + `payment`, taxed (or not) as the charge it pays is; a tax invoice or a receipt at capture | The same |
+
+**What the ledger needs for both modes** (§10 change 9): `rate_groups` allowed on `deposit_in` and `deposit_out`; the mode copied onto each `deposit_in`; `deposit_out` able to name its `deposit_in`; and a marker on a `payment` row whose VAT was already invoiced with its deposit, so no report counts that VAT twice. Output VAT for a period is then: payments' VAT (leaving out those marked), plus `deposit_in` VAT, less refunds' and `deposit_out` VAT.
+
+**Tests when built:** each row of the table in both modes; a mode change between a deposit's receipt and its return leaves that deposit on its old mode; a locked profile refuses a change; the period's output VAT is the same whether a ฿5,000 deposit with ฿1,200 kept is worked through mode `on_receipt` or is a ฿1,200 payment under `none`.
 
 ## 7. Vendor billing (Mango Works as the seller)
 
@@ -577,7 +661,7 @@ So the settled "manual mark paid with a slip" route is the only way to take a ba
 
 ### 7.2 The record is ours; Stripe only collects
 
-Recommended (§11.1 decision 11): Mango Works keeps its own invoices, payments and credits, and uses plain Stripe payments (a saved card, a PromptPay QR) to collect. Stripe Billing is not used. Reasons: the Thai tax invoice and its numbering must be ours whatever collects the money; a payment net of 3% withholding, a slip-backed transfer and prepaid credits are all outside what a Stripe subscription models; and Stripe Billing adds 0.7% of billed volume [S19]. The spec's Tech stack line ("Stripe Billing for SaaS subscriptions") would change.
+Decided 19 Nov 2026 (§11.1 decision 10): Mango Works keeps its own invoices, payments and credits, and uses plain Stripe payments (a saved card, a PromptPay QR) to collect. Stripe Billing is not used. Reasons: the Thai tax invoice and its numbering must be ours whatever collects the money; a payment net of 3% withholding, a slip-backed transfer and prepaid credits are all outside what a Stripe subscription models; and Stripe Billing adds 0.7% of billed volume [S19]. The spec's "Stripe Billing" lines are corrected in this PR (§12).
 
 ```text
 platform_billing.*          owned by Mango Works; a shop's owner reads its own rows; only platform finance writes
@@ -613,7 +697,7 @@ platform_billing.*          owned by Mango Works; a shop's owner reads its own r
 
 | Secret | Where |
 | --- | --- |
-| Mango Works' Stripe secret keys (one per Stripe account), test and live | The host's environment variables, per app and per environment. Never in the repo, never in a `NEXT_PUBLIC_` variable, never logged. Live keys only in the live environment |
+| Mango Works' Stripe secret keys test and live | The host's environment variables, per app and per environment. Never in the repo, never in a `NEXT_PUBLIC_` variable, never logged. Live keys only in the live environment |
 | Webhook signing secrets | The same, one per endpoint |
 | A shop's Stripe account | Only its account id is stored. There is no shop secret: the platform's key acts for the account |
 | A shop's keys for a provider with no platform model (§1.4) | Encrypted in the application before storage (AES-256-GCM, a fresh nonce per value, the key id beside it), with the master key in the environment and a documented rotation. In a table no signed-in role can read; decrypted only inside `@mango/payments`. Not Supabase Vault, so the move to Neon does not touch it |
@@ -634,7 +718,7 @@ Signature on the raw body, 5-minute tolerance, live/test match, and then the fet
 - **Roles:** connecting or disconnecting an account is owner-only. Refunds follow `staff_can_refund`. Mechanics and drivers see no payment data.
 - **Payment links** carry a random token (stored hashed), show only what the payer needs (shop, order code, amount), and expire.
 - **Audit:** connecting an account, every refund request, every capture and release, every manual vendor payment and every webhook replay write an audit event with who did it. Customer contact details stay out of audit snapshots, as now.
-- **Money moved by a job** (a scheduled charge, an at-expiry capture) is recorded with the job as the actor and the setting that authorised it.
+- **Money moved by a job** (a scheduled charge) is recorded with the job as the actor and the setting that authorised it.
 
 ### 8.5 Abuse
 
@@ -646,6 +730,12 @@ Signature on the raw body, 5-minute tolerance, live/test match, and then the fet
 
 One PR each. Stripe test mode only; migrations local until Mark says otherwise. **Fable build** for anything that moves or counts money, takes locks or decides isolation; **Opus + Fable check** for screens.
 
+**The gate before stage 1** (§11.1 decision 11). Phase 7 is not scheduled until Stripe has answered §11.3 question 1 in writing.
+
+- **Stripe says yes** (rental shops are supported through Connect in Thailand): the stages below, as written.
+- **Stripe says no, or only with conditions the shops cannot meet:** before any stage is scheduled, Thai providers are compared: **2C2P, Omise, GB Prime Pay, and any other with platform or sub-merchant support**. Each is checked from its own current pages, and in writing where the pages are silent, against what this design needs: money straight to the shop with Mango Works never holding it; a way for a platform to act for a shop without the shop's all-powerful key; cards and PromptPay; saving a card and charging it without the customer; holds with a partial capture; refunds for both methods; signed webhooks with retries; idempotent calls; and whether a vehicle rental business is accepted at all. §1.4 holds what is known of Omise today; 2C2P and GB Prime Pay have not been researched. The comparison's result replaces "Stripe" in stages 2 and 3; the interface, the ledger mapping, the webhook store and every other stage stand.
+- Questions 7 and 8 (BSR's existing account; one Mango Works account) do not hold Phase 7 up: each has its fallback written in (§3.1, §4.2).
+
 | # | Stage | Model | Accept tests |
 | --- | --- | --- | --- |
 | 1 | **Tables and ledger additions**: `payment_accounts`, `customer_payment_methods`, `provider_payments`, `refund_requests`, `provider_disputes`, `scheduled_charges`, `webhook_events`, `reconciliation_issues`; the ledger's provider index and any Phase 3 change not yet in (§10) | Fable build | Isolation for every table (5 roles × 2 shops, stranger, Moto Mangos customer, anon); `default-grants`; no signed-in role reads `webhook_events`; one live account per tenant and provider; a second ledger row for one provider reference and kind is refused |
@@ -655,9 +745,9 @@ One PR each. Stripe test mode only; migrations local until Mark says otherwise. 
 | 5 | **Pay now**: card and PromptPay on the order page, payment links, down payments | Fable build (server), Opus + Fable check (screens) | Test cards: plain success, 3-D Secure passed, 3-D Secure failed, declined. PromptPay test payment. Ledger row, allocation and `paymentVat` equal to the same payment recorded as cash; two browser tabs paying one request: one payment; a payment arriving after the order is cancelled, and a second payment on one QR, each become credit with a staff item; link expiry; amount re-read when a charge changed |
 | 6 | **Refunds** | Fable build | Full and partial card refunds; a refund over what is left on the payment refused; the ledger row appears only when the provider confirms; a PromptPay refund waiting on the customer shows so; a refund that fails before and after it was recorded (the `reversal` row); `staff_can_refund` off refuses in the database before any provider call; the refund's VAT is that of what it reverses |
 | 7 | **Saved cards and scheduled charges** | Fable build | Consent stored with its text version; charge at the due time in a daylight-saving shop; the amount is what is open at run time; authentication-needed card: `action_needed`, link confirms the same payment; retryable decline: attempts at +12, +24, +48 hours and no fifth; a stop code: no retry; two runners, one charge; order cancelled between claim and charge: no charge; unknown answer then the same key: one payment; the deadline puts the order on the Late tab |
-| 8 | **Deposits by card**: authorize or charge, capture, release, at-expiry job | Fable build | `capture_before` stored from the charge; hold refused for a rental that does not fit and charge offered instead; capture part: `deposit_capture` + `payment` + `deposit_release` add up to the hold; release; expiry event recorded as a release; the job acts 6 hours before the deadline and only once; an extended rental raises the "hold ends before return" item; "deposit held" excludes holds |
-| 9 | **Disputes, cancellation fee, wrap-up**: dispute records and alerts, the `chargeback` and `reversal` rows, the cancellation-fee setting, help articles (Fable checks them), the demo seed, doc edits | Opus + Fable check; ledger rows Fable | A test dispute: alert with the deadline, balance up by the amount; won: restored; refund refused while a dispute is open; the cancellation fee kept as its own charge with VAT |
-| 10 | **The Moto Mangos fee rails** (no checkout yet): the fee record's charge, schedule, retry, deadline, refund, receipt, on Moto Mangos' account, behind the marketplace's fee functions | Fable build | Every row of §4.4 and §4.5 against `fee-lifecycle.ts`, in THB and a zero-decimal currency, in a daylight-saving zone; fee never taken from the browser; a refund reverses the referral earning; receipt numbers gapless under 50 parallel payments |
+| 8 | **Deposits by card and later charges**: hold or charge, capture, release, expiry; charging the saved card for damage, fines and other amounts the agreement allows; `deposit_vat_mode` | Fable build | `capture_before` stored from the charge; **a hold on a rental longer than the hold is accepted**, with the "no longer secured from [date]" notice; capture part: `deposit_capture` + `payment` + `deposit_release` add up to the hold; release by hand; a hold reaching its end is recorded as released with reason expired, **and nothing is charged**; the 24-hour notice appears once. A deposit is asked for once: a three-month rental's second and third charges carry none, and the order never shows the deposit as owed after release, expiry, or at any later month. Every state of §3.6's display table, in the order list's unpaid filter too. Later charge: refused without a signed agreement carrying the clause; refused for staff when the setting is off; paid; authentication needed (link confirms the same payment); a fifth attempt refused; a stop code; an archived order un-archived. Both VAT modes, every row of §6.4's table |
+| 9 | **Disputes, cancellation fee, wrap-up**: dispute records and alerts, the `chargeback` and `reversal` rows, the cancellation-fee setting for the shop's own booking page, help articles (Fable checks them), the demo seed, doc edits | Opus + Fable check; ledger rows Fable | A test dispute: alert with the deadline, balance up by the amount; won: restored; refund refused while a dispute is open; the cancellation fee kept as its own charge with VAT |
+| 10 | **The Moto Mangos fee rails** (no checkout yet): the fee record's charge, schedule, retry, deadline, refund, receipt, on Mango Works' account, behind the marketplace's fee functions | Fable build | Every row of §4.4 and §4.5 against `fee-lifecycle.ts`, in THB and a zero-decimal currency, in a daylight-saving zone; fee never taken from the browser; a refund reverses the referral earning; receipt numbers gapless under 50 parallel payments |
 
 Order: 1 → 2 → 3 and 4 (either first) → 5 → 6 → 7 and 8 (either first) → 9; 10 needs 2, 4 and 6 and the 3M switch.
 
@@ -687,43 +777,45 @@ Phase 3's ledger is append-only and its first migration has not been written. Th
 | 2 | **A refund names the payment it refunds**: `payments.refund_of_payment_id` (required for a refund to a card or QR; optional for cash), with refunds on one payment never exceeding it. It still names the charges it reverses | A provider refunds a payment, not a charge [S30]. And a credit note must cite the tax invoice it corrects, which is the payment's (§6) | §6.4 `payments`; `record_refund` |
 | 3 | **Reversal rows**: a column `reverses_payment_id` (unique) and two more kinds, `reversal` and `chargeback`. A `reversal` undoes the row it points at (a refund or deposit return the bank later failed; a chargeback that was won) and its allocations. A `chargeback` takes a payment back: the balance rises and its charges read unsettled. The balance formula gains both | The ledger cannot be edited, and providers do reverse things after the fact [S30][S18] | §6.4 kinds and "Balance ="; §2.3 (archive needs no open chargeback) |
 | 4 | **A card hold is not money.** Write down: `deposit_hold` and `deposit_release` never enter the balance or "deposit held"; a hold's rows satisfy hold = captures + releases; "deposit held" = `deposit_in` − `deposit_out` − captures of charged deposits. `deposit_capture` gets a nullable `deposit_payment_id` pointing at the `deposit_in` or `deposit_hold` it draws on | Phase 3 creates the kinds for Phase 7 without saying how they count; a cash-close or report built in between would count holds as cash | §6.4 |
-| 5 | **A Moto Mangos order shows the fee paid online**: `order_lines.kind` gains `marketplace_fee` (a negative line in the `booking` charge, written by `create_booking`, fixed at booking, removed with a cancellation). Decision 6 below; VAT treatment with Korn (K2) | Otherwise every marketplace order is short by the fee for ever, never settled, never auto-archived | §3.2 `order_lines.kind`; §7.2, §7.3 |
+| 5 | **A Moto Mangos order shows the fee paid online**: `order_lines.kind` gains `marketplace_fee` (a negative line in the `booking` charge, written by `create_booking`, fixed at booking, removed with a cancellation). Decided 19 Nov 2026 (§11.1 decision 5); VAT treatment with Korn (K2) | Otherwise every marketplace order is short by the fee for ever, never settled, never auto-archived | §3.2 `order_lines.kind`; §7.2, §7.3 |
 | 6 | **Provider rows are unique and need no staff member**: a unique index on `(provider, provider_ref, kind)` where `provider` is set; `recorded_by` nullable with a `source` column (`staff`, `provider`, `job`); `received_at` passed in by the caller (the provider's time of payment, which dates the tax invoice), never defaulted to now for a provider row | Webhooks, the page's return call and the reconciliation job can all try to record one payment; none of them is a signed-in member | §6.4 `payments`; S6 |
 | 7 | **The system can call the ledger cores.** `record_payment`, `record_refund` and `record_deposit` are split like the order functions: a `platform_private` core (callable by the service role for a provider-confirmed row, with no `staff_may` check and no overpayment refusal) and the staff wrapper that checks role, setting and overpayment | Phase 7's worker has no member to act as; today's plan checks `staff_can_refund` inside the one function | §3.3 table; §3.9 |
 | 8 | **Leave room in two lists**: `payments.method` accepts `card` and `promptpay` from the start (unused until Phase 7), and `order_charges.kind` gains `cancellation_fee`. Optional, for the same reason: a `withholding` payment kind (a company customer that pays a shop net of withholding tax settles its charge with a certificate, not money; rate with Korn, K10) | Each is a check-constraint change on a table that cannot be rewritten; cheaper to name now | §3.2, §6.4 |
 
-| 9 | **Do not build "a deposit has no VAT" into the table.** Keep `rate_groups` allowed (nullable) on `deposit_in` and `deposit_out` rows, and keep the "no tax invoice for a deposit" rule in one function, until Korn answers K3. If the answer is that a paid deposit is taxed on receipt, `deposit_in` gets a tax invoice and `deposit_out` a credit note, and nothing already written needs to change | Por.73/2541 [T18] reads against the settled rule; rows written without VAT can never be given it | §6.4; stage 3 |
+| 9 | **The ledger carries both deposit VAT modes** (§6.4): `rate_groups` allowed on `deposit_in` and `deposit_out`; the shop's `deposit_vat_mode` copied onto each `deposit_in`; `deposit_out` names the `deposit_in` it returns (the same `refund_of_payment_id` as change 2); a marker on a `payment` row whose VAT was already invoiced with its deposit. The setting itself (`on_receipt`, `none`, and the profile's lock) goes with Phase 3's other pricing settings. Cash deposits meet this in Phase 3, before any card does | Decided 19 Nov 2026 (§11.1 decision 7). Por.73/2541 [T18] reads as VAT on receipt; rows written without VAT can never be given it | §6.4; stage 3 |
+| 10 | **A deposit is never owed.** Write down: a charge's `total` never includes its `deposit`; the balance, "settled", the order list's unpaid and part-paid filters, auto-archive and every payment request are worked out from charges and payments only; the deposit is one line per rental with a state derived from its ledger rows (§3.6's table); it is asked for once per rental, so a later month's, an extension's or a `difference` charge has `deposit` 0 | Decided 19 Nov 2026 (§11.1 decision 6): a multi-month rental must never show the deposit as owed again, the Booqable problem | §3.2 `order_charges.deposit`; §6.3; §6.4 "Balance ="; stage 7 reads; §9 order page |
 
 Two notes that need no change, only care: `order_charges.due_at` is all scheduled charges need (§3.5); and Phase 3's rule that a tax invoice follows each payment holds for provider payments as written, with the one open point of an unallocated remainder (K4).
 
 ## 11. Open decisions
 
-### 11.1 For Mark
+### 11.1 Mark's decisions, 19 Nov 2026
 
-Each with options and a recommendation.
+Draft 1 put sixteen questions here with a recommendation each. Mark answered them on 19 Nov 2026; this table is the record. Where a decision waits on someone else's answer it says so.
 
-1. **Connecting a shop that already has a Stripe account** (BSR's is tied to Booqable). (a) A new account under the shop's Stripe login, made through our onboarding link. (b) OAuth to the existing account. **Recommend (a):** OAuth is no longer recommended by Stripe for new platforms and shares the data we create with the shop's other platforms [S8]; the cost is filling Stripe's form once more.
-2. **One Stripe account for Mango Works, or two.** (a) One for everything. (b) "Mango Works" (Connect platform, vendor billing) and "Moto Mangos" (the fee). **Recommend (b)**, if Stripe allows it (question 7): one brand on the renter's checkout, receipt and statement, and consumer disputes kept away from the platform account.
-3. **Visa and Mastercard only.** Thai Stripe accounts cannot take Amex, JCB or UnionPay [S24], which some Japanese, Chinese and American renters carry. (a) Accept for Phase 7 and watch BSR's declined and abandoned payments. (b) Bring a second provider forward (Omise lists all five brands [O2], with the limits in §1.4). **Recommend (a).**
-4. **"72 hours" or "3 calendar days at the pickup's clock time".** The code and the 9 Nov decision say calendar days; this brief says 72 hours. The same in Thailand; an hour apart twice a year where clocks change. **Recommend calendar days** (it matches the shop's own charge-before setting, in days, and "the same time, three days earlier" is what a customer expects), written to customers as "3 days before pickup".
-5. **A fee paid by PromptPay at booking and cancelled in time.** (a) Refund it (costs about ฿11 on a ฿50 fee, and may wait on the customer's bank details). (b) Give Moto Mangos credit for a later booking. **Recommend (a)**, and put the card first at checkout for pickups more than 72 hours away, since a card is charged only after free cancellation has ended.
-6. **The fee inside the shop's order.** (a) A negative `marketplace_fee` line: the shop's sale is what the shop collects. (b) A "paid to Moto Mangos" payment: the shop's sale is the full price and Moto Mangos kept a commission. **Recommend (a)**, subject to Korn (K2). It decides §10 change 5.
-7. **When a card deposit hold is taken.** (a) Only with the customer present, at pickup. (b) Also from a saved card before pickup. **Recommend (a):** it gets the longer window and the customer sees it happen; (b) can be 4 days 18 hours on Visa [S28]. With (a), a hold is offered for rentals of up to about 6 days and anything longer is charge-and-refund.
-8. **What a hold does when it reaches its end with no decision.** (a) Release. (b) Capture. **Recommend (a) as the default**, changeable per shop and per order as already decided: taking a customer's money by default, with a fee if it is then returned, should be a choice.
-9. **Scheduled charge retries.** **Recommend:** the first attempt, then +12, +24 and +48 hours (four in all), none after a stop code or a request for authentication, none past the deadline; the shop sets the deadline (default 24 hours after the first failure) and whether the booking is then cancelled (default: no, flagged). Moto Mangos' fee keeps its own rule (retry at 12 hours, cancel 2 days before pickup).
-10. **Disputes in Phase 7.** (a) Record, alert, link to the shop's Stripe Dashboard. (b) Also submit evidence from the app. **Recommend (a) now**, (b) after Phase 5 exists.
-11. **Vendor billing.** (a) Our own invoices and ledger, Stripe to collect. (b) Stripe Billing as the record. **Recommend (a)** (§7.2); it changes one line of the spec's Tech stack.
-12. **Omise.** Build only when a Thai shop cannot use Stripe, or when card-brand cover (decision 3) is shown to cost bookings. **Recommend: not in Phase 7**; the interface and contract tests are what Phase 7 owes it.
-13. **Stripe's own receipt emails: off**, ours only. **Recommend off**, so a customer gets one message with the tax invoice.
-14. **Money a provider took that the order did not need** (a second QR payment, a payment after cancellation). (a) Keep as credit with a staff item to refund. (b) Refund automatically. **Recommend (a)** for shop orders, since each refund costs the shop a fee and staff may prefer to apply it; **automatic refund only** for an online checkout whose hold ran out (Phase 8) and for the Moto Mangos fee.
-15. **The cancellation fee setting.** **Recommend:** default as the settled rule (free until 72 hours before pickup, nothing back after), with a shop able to set a percentage or amount kept and its own cut-off; Moto Mangos bookings always use Moto Mangos' rule for the fee and the shop's for the rental.
-16. **The Stripe risk check.** Send §11.3's questions before Phase 7 is scheduled. **Recommend treating question 1 as a gate:** if Stripe will not support rental shops through Connect in Thailand, Phase 7's first provider changes.
+| # | Decision | Where |
+| --- | --- | --- |
+| 1 | **One Stripe account per business.** BSR keeps its existing Stripe account (connected to Booqable today) and connects it to our platform as well, if Stripe allows one account to be connected to two platforms; otherwise a new account through our onboarding. Mango Works uses **one** Stripe account for the platform, vendor billing and the Moto Mangos fee, with "MOTO MANGOS" on the renter's statement for the fee, if Stripe allows it by statement descriptor suffix. **Both points are pending Stripe's answer** (§11.3 questions 7 and 8) | §3.1, §4.2, §5.1, §8.2 |
+| 2 | Thai accounts take Visa and Mastercard only: **accepted for Phase 7** | §1.2 |
+| 3 | **"72 hours" means 3 calendar days at the pickup's clock time**, in the shop's time zone (as `fee-lifecycle.ts` already counts) | §4.4 |
+| 4 | The Moto Mangos fee is charged by card at the 72-hour cut-off, so a card booking cancelled in time is never charged. PromptPay pays at booking; a PromptPay booking cancelled before the cut-off gets its fee refunded. **Card is shown first at checkout** | §4.4, §4.5 |
+| 5 | The fee shows in the shop's order as a **negative line**, so the shop's sale is what it collects. **Pending Korn (K2)** | §4.7, §10 change 5 |
+| 6 | **Deposits are the shop's choice.** Hold or charge for any deposit; the platform never overrides it. A hold that ends before a long rental does leaves the deposit unsecured from then on; staff see when it ends; nothing is charged automatically. A hold reaching its end with no decision is released. The card stays saved on the order so the shop can make a later charge for damage, fines or other amounts the rental agreement allows; the agreement template must carry that consent (Phase 6). A deposit is required once per rental, never per period. A deposit is never part of the order's balance or "amount owed", and a released or expired hold never shows as outstanding | §3.6, §10 changes 4 and 10 |
+| 7 | **VAT on deposits is a shop setting with two modes:** (a) VAT charged when the deposit is received, with a credit note on return; (b) no VAT on deposits. A captured hold or kept money follows Korn's answer to K3(c). If Korn's answer to K3 says the law decides, the setting locks to that mode. The ledger and documents are designed for both now | §6.4, §10 change 9 |
+| 8 | Scheduled charge retries: at due, then +12, +24 and +48 hours, never past the deadline | §3.5 |
+| 9 | Disputes in Phase 7: record, alert, and link to the shop's Stripe Dashboard. Evidence inside the app is later | §3.8 |
+| 10 | Vendor billing: our own invoices and ledger; Stripe only to collect. The spec's "Stripe Billing" lines are corrected in this PR | §7.2, §12 |
+| 11 | **Omise: not in Phase 7.** If Stripe refuses vehicle rental through Connect in Thailand, Thai providers are compared (2C2P, Omise, GB Prime Pay and any other with platform or sub-merchant support) **before Phase 7 is scheduled**. That is a gate in the phase breakdown | §9 (the gate), §2.5 |
+| 12 | Stripe's own receipt emails: off; ours only | §3.9 |
+| 13 | Money a provider took that the order did not need is kept as credit with a staff item. It is refunded automatically only for an expired online checkout and for the Moto Mangos fee | §3.3, §4.4, §9 (Phase 8) |
+| 14 | **Cancellation rules.** Moto Mangos bookings follow one fixed, platform-wide 72-hour rule that shops cannot change. A shop's own cancellation-fee setting applies only to bookings made on its own booking page | §3.7, §4.5 |
+| 15 | §11.3 is replaced by the eleven questions below | §11.3 |
 
 ### 11.2 For Korn (tax)
 
 - **K1. The Moto Mangos fee document** (Phase 3 decision 26). While Mango Works is not VAT-registered a receipt is all it may issue [T3]. Once registered, the law asks for a tax invoice for every service [T1], with the abbreviated form only for retail-type businesses [T7][T8]. Is a plain receipt right now, and what must the fee document become on registration: a full receipt/tax invoice, or an abbreviated one?
 - **K2. A shop's VAT on a Moto Mangos booking.** The renter pays 10% to Moto Mangos and 90% to the shop. Is the shop's taxable sale the 90% it receives, or the full price with the 10% as a commission it paid? For a shop that adds VAT on top, on which amount is the VAT worked out, and is the fee's base (the price before VAT) still right?
-- **K3. Deposits and VAT.** Por.73/2541 reads as: a security deposit on a rental of movable property is inside VAT when received, with a credit note on return [T18]. (a) Does that apply to a refundable damage deposit on a short vehicle rental, in cash or by a charged card? (b) Is a card hold, where no money is received, outside VAT until it is captured? (c) Is money kept from a deposit for damage, a late return or a fine a taxable service, or compensation outside VAT? This decides whether "deposits carry no VAT until kept" can stand.
+- **K3. Deposits and VAT.** Por.73/2541 reads as: a security deposit on a rental of movable property is inside VAT when received, with a credit note on return [T18]. Mark has made it a shop setting with two modes (§6.4); **if the law decides, the setting is locked to that mode.** (a) Does the order apply to a refundable damage deposit on a short vehicle rental, in cash or by a charged card, so that mode "VAT on receipt" is the only lawful one for a VAT-registered shop? (b) Is a card hold, where no money is received, outside VAT until it is captured? (c) Is money kept from a deposit for damage, a late return or a fine a taxable service, or compensation outside VAT? (d) In "VAT on receipt" mode, at which rate: the rented product's, and for a deposit on a whole order, split across its rates? And is §6.4's handling of a kept part (no second tax invoice; a receipt citing the deposit's) right?
 - **K4. Money received that no charge needs** (an overpayment, a second QR payment, the credit left when an order is cancelled): is a tax invoice due on receipt as an advance, and a credit note when it is refunded?
 - **K5. Reversals.** A refund recorded and credit-noted that the bank later fails; a chargeback lost: which document corrects each, a debit note or a cancel-and-reissue?
 - **K6. A cancellation fee kept by the shop:** a taxable service with its own tax invoice, or compensation?
@@ -737,28 +829,31 @@ Each with options and a recommendation.
 
 ### 11.3 For the providers
 
-To send to Stripe in writing; each is a point its pages leave unclear.
+To send to Stripe in writing (the list as revised on 19 Nov 2026, decision 15). Each is a point Stripe's pages leave unclear, or a decision that waits on Stripe.
 
-1. **Is short-term vehicle rental (motorbikes, cars) supported for connected accounts of a Thai platform**, with the Standard-equivalent settings and direct charges? "Transportation services" is restricted and on the Connect-in-Thailand list [S2][S3].
+1. **Is short-term vehicle rental (motorbikes, cars) supported for connected accounts of a Thai platform**, with the Standard-equivalent settings and direct charges? "Transportation services" is restricted and on the Connect-in-Thailand list [S2][S3]. **This is the gate for Phase 7** (§9).
 2. "Not applicable" in the application-fee column for a Thai platform with Thai accounts [S1]: confirm that no application fee can be taken. (We design for none.)
 3. Can a Thai connected account have IC+ pricing, and with it extended authorization (30 days for vehicle rental)? [S29]
 4. PromptPay: how long does a QR stay payable; does cancelling the PaymentIntent stop it; does an unpaid one ever emit a failure event; which refund flow applies to a normal QR payment and how long has the customer to answer; is the maximum 999,999.99 or 2,000,000 THB? [S22][S23]
 5. Can a Thai platform clone a card saved on its own account to a Thai connected account for a direct charge? [S14]
 6. Is Accounts v2 available to Thai platforms, or should controller properties on v1 be used? [S6]
-7. May one Thai company hold two Stripe accounts (two brands), one of them a Connect platform?
-8. Which self-assessment applies with the Payment Element? [S48]
-9. Is there a time limit for refunding a card payment? [S30]
-10. Is VAT added to Stripe's Thai fees, and how are they invoiced to a shop?
+7. **Can a shop's existing Thai Stripe account, already connected to another platform (BSR's, to Booqable), also be connected to ours?** If so, by which route (OAuth is the only one Stripe's pages describe for an existing account, and they no longer recommend it for new platforms [S8]), what each platform can then see of the other's payments and customers, and whether direct charges, PromptPay, saved cards and holds all work on an account connected that way. (Decision 1; pending.)
+8. **May Mango Works use one Stripe account for all three: the Connect platform, its own vendor billing, and the Moto Mangos booking fee charged to renters?** Can the fee's card statement read "MOTO MANGOS" by a statement descriptor suffix, or by another setting, while the account's own name stays Mango Works [S49]; and does that satisfy the rule that checkout, receipt and statement show the same seller [S38]? (Decision 1; pending.)
+9. Which self-assessment applies with the Payment Element? [S48]
+10. Is there a time limit for refunding a card payment? [S30]
+11. Is VAT added to Stripe's Thai fees, and how are they invoiced to a shop?
 
-To send to Omise only if decision 12 brings it forward: is account chaining available in Thailand, and what may a chain key do; would a vehicle rental shop's account have 3-D Secure forced on, and can a saved card then be charged without the customer; how long does a hold last in Thailand; what does a repeated `ref_id` return; are webhooks ever retried [O5][O6][O8][O13][O14].
+To send to Omise only if the gate (§9) brings it into the comparison: is account chaining available in Thailand, and what may a chain key do; would a vehicle rental shop's account have 3-D Secure forced on, and can a saved card then be charged without the customer; how long does a hold last in Thailand; what does a repeated `ref_id` return; are webhooks ever retried [O5][O6][O8][O13][O14].
 
 ## 12. Doc edits this design will need
 
 Not made in this PR; the owner keeps the specs.
 
-- `docs/platform/SPEC.md`: Tech stack (Payments row, if decision 11 is accepted); Data model (`payments`, `scheduled_charges`, the new tables); Payments (Visa and Mastercard only; hold length read from the hold; PromptPay limits); Review decisions (the "about 7 days" wording).
-- `docs/marketplace/SPEC.md`: PromptPay pays at booking for every booking (it still says a link is sent 3 days before); "3 days" against "72 hours" per decision 4.
-- `apps/marketplace/CLAUDE.md`: it still says the fee is taken "via Stripe Connect as an application fee"; the fee is a separate charge on Moto Mangos' own account.
+- `docs/platform/SPEC.md`: **done in this PR:** the "Stripe Billing" mentions (Tech stack, Team and settings, Review decisions, Phase 11, the CLAUDE.md block) now say Mango Works' own invoices with Stripe only to collect. **Still to do:** Data model (`payments`, `scheduled_charges`, the new tables); Payments (Visa and Mastercard only; hold length read from the hold; PromptPay limits; the saved card charged later under the agreement); Review decisions › "When the renter pays" (the at-expiry action is gone: a hold with no decision is released and nothing is charged automatically; "about 7 days"; a deposit is never part of the balance); Products redesign › "Deposits are never taxed" (now a shop setting, §6.4).
+- **Phase 6:** the rental agreement template must carry the clause that allows a later charge to the saved card for damage, fines and other amounts (§3.6); the tax invoice, credit note and deposit receipt layouts for both deposit VAT modes (§6.4).
+- `apps/platform/CLAUDE.md`: its Stack line still says "Stripe Connect + Billing".
+- `docs/marketplace/SPEC.md`: PromptPay pays at booking for every booking (it still says a link is sent 3 days before); "72 hours" is 3 calendar days at the pickup's clock time (decision 3); card shown first at checkout (decision 4); the fixed platform-wide cancellation rule (decision 14).
+- `apps/marketplace/CLAUDE.md`: it still says the fee is taken "via Stripe Connect as an application fee"; the fee is a separate charge on Mango Works' own Stripe account.
 - `docs/INTEGRATION.md`: §3.12 `payment` (the later `full` mode is two charges, not an application fee); §5 (PromptPay requests).
 - `docs/phase-3-plan.md`: §10 above.
 - Root `CLAUDE.md`: when Phase 7 is built, where the ledger cores sit in the lock order (they take only the order row, as `record_payment` does today).
@@ -817,6 +912,7 @@ All read on 19 Nov 2026.
 | S46 | https://docs.stripe.com/connect/cross-border-payouts |
 | S47 | https://docs.stripe.com/connect/required-verification-information (the country lists behind this page) |
 | S48 | https://stripe.com/guides/pci-compliance |
+| S49 | https://docs.stripe.com/get-started/account/statement-descriptors |
 | O1 | https://omise.co/en/post/omise-unveils-bold-rebranding-and-ai-powered-innovations |
 | O2 | https://www.omise.co/pricing/thailand |
 | O3 | https://docs.omise.co/collecting-card-information |
