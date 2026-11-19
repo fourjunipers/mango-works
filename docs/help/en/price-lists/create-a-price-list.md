@@ -21,16 +21,21 @@ Who can do this: owners and managers.
    - **Amounts**: the price for each length, in money.
    - **Multipliers of a base price**: each product on it sets its own base price, which the list multiplies.
 5. Fill in the prices with quick entry, the same way as on a product: **Daily** and **Monthly** are required, the days between fill in, and any day can be typed by hand. For multipliers, type numbers such as 3 or 1.1666, and use **Sample base price** to see what they come to.
-6. Press **Create price list**.
+6. Press **Create price list**. It stays greyed out until you have chosen what the list holds and the prices are ready: daily and monthly filled in, every day valid, and no day cheaper than the day before.
+7. If this is the first price the shop saves, confirm "Saving fixes the shop's currency as {currency}, and it can't be changed after that. Save?"
 
 Then put products on it: [Use a shared price list on a product](../products/use-a-price-list.md).
 
 ## Common problems
 
-- **"The shop already has a price list with this name."**
-- **"Fill in daily and monthly, and fix the days marked in red, before saving."**
-- **"A longer rental can't cost less than a shorter one. Equal prices are fine."**
-- **"A price list needs all 30 days."**
-- **"Enter a multiplier above 0, such as 3 or 1.1666."**
-- **"Enter an amount above 0, such as 300 or 300.50."**
-- **"A list's kind can't be changed."**
+While **Create price list** is greyed out, the form shows what is missing:
+
+- **"Daily and monthly are both needed."** Shown under the empty one once you have typed the other.
+- **"Enter an amount above 0, such as 300 or 300.50."** (a list of amounts) or **"Enter a multiplier above 0, such as 3 or 1.1666."** (a list of multipliers): a quick-entry box isn't a valid number.
+- A red box titled **"A longer rental can't cost less"**, with a line for each problem day: "{day} days cost less than {before} days. Raise it, or lower the days before it. Equal prices are fine." Raise that day, or lower the days before it.
+- **"A day typed by hand isn't a valid price."** Fix the day you typed.
+
+When saving:
+
+- **"The shop already has a price list with this name."** Choose another name.
+- **"Couldn't save. Please try again."** Reload the page and try again.

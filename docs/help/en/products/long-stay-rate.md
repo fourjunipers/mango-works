@@ -13,9 +13,10 @@ For a rental longer than 30 days:
 - A month runs date to date from the pickup date (for example 5 March to 5 April).
 - Each whole month costs the product's **monthly** price (the 30-day total).
 - Each leftover day costs the **long-stay daily rate**. If you leave it blank, it is the monthly price ÷ 30.
-- Leftover days never cost more than one more month, and a rental never costs more than the list price for the same number of days.
+- Leftover days never cost more than one more month.
+- From 31 started days, a rental that is still short of its first calendar month (for example 1 January 10:00 to 31 January 12:00) costs the monthly price.
 
-**Check a price** shows the working, for example "1 month and 15 days at {rate} a day".
+**Check a price** shows the working, for example "1 month and 15 days at {rate} a day", or "31 days started: the monthly price".
 
 Who can do this: owners and managers.
 
@@ -29,4 +30,5 @@ Who can do this: owners and managers.
 ## Common problems
 
 - **"Enter an amount, such as 45000 or 45000.50."** Type the rate as a number, with a dot for decimals.
+- **"A price can't be 0. To charge nothing, choose Free."** The rate can't be 0. Leave it blank to use the monthly price ÷ 30.
 - **"Couldn't save. Please try again."** Reload the page and try again.

@@ -25,5 +25,4 @@ The first time the shop saves **Pricing and tax**, you are asked: "Saving fixes 
 ## Common problems
 
 - **"Enter an amount, such as 45000 or 45000.50."** Type the step as a number.
-- **"The currency can't change once prices have been saved in it."**
 - **"Couldn't save. Please try again."** Reload the page and try again.

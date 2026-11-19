@@ -18,7 +18,7 @@ Who can use it: owners, managers and staff.
 2. Under **Sample rental by**, choose **Number of days** or **Dates**.
 3. Set the **Pickup** and either **Days** or **Return**.
 4. Set **How many**.
-5. Optional, for vehicles: tick extras under **Extras taken with it**. Included ones say "N included with each".
+5. Optional, for a vehicle with extras: under **Extras taken with it**, type how many of each extra go with the rental (0 to 99). An extra with some included free says "N included with each".
 6. Optional: type a **Coupon code** and press **Apply**. Press **Remove the code** to take it off.
 7. Optional: tick **Returning customer** to see the returning-customer discount.
 

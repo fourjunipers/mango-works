@@ -33,6 +33,5 @@ Who can do this: staff and mechanics switch between **Active** and **Maintenance
 ## Common problems
 
 - **"This vehicle still has a block that ends in the future. End or remove it first."** Retiring or selling needs its future downtime or bookings cleared first. End or remove the downtime under **Downtime**.
-- **"Someone is saving a booking or a block on this one right now. Please try again."** Wait a moment and try again.
-- **"You can't make that change."** Your role can't set this status.
+- **"Only an owner or manager can change that."** Staff and mechanics can only switch between Active and Maintenance. For example, setting a sold or retired vehicle back to Active needs an owner or manager.
 - **"Couldn't save. Please try again."** Reload the page and try again.

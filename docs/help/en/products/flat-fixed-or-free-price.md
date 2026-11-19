@@ -29,7 +29,7 @@ Who can do this: owners and managers.
 
 ## Common problems
 
-- **"Enter a price."** The amount is missing.
+- **"Required."** The amount is missing.
 - **"A price can't be 0. To charge nothing, choose Free."** Only services and extras can be Free.
 - **"This kind of product can't be priced that way."** See the table above.
 - **"Enter an amount, such as 45000 or 45000.50."**

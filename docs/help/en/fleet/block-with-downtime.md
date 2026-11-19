@@ -17,7 +17,7 @@ Who can do this: everyone except drivers.
 1. Open the vehicle's page and scroll to **Downtime**.
 2. Fill in **From** (leave blank to start now) and **Until** (leave blank to block it until someone ends it).
 3. Add a **Reason** if you like.
-4. Press **Add**.
+4. Press **Add downtime**.
 
 The block appears in the list. An open-ended one says "until ended".
 
@@ -33,5 +33,4 @@ Past blocks are listed under **Earlier blocks**.
 - **"This vehicle is already blocked for part of that time. Pick other times, or end the other block first."** It overlaps a booking or another block. Choose other times.
 - **"This vehicle has been sold or retired, so it can't be blocked."**
 - **"The end must be after the start."** **Until** is before **From**.
-- **"Someone is saving a booking or a block on this one right now. Please try again."** Wait a moment and try again.
 - **"That downtime was already ended or removed by someone else. This is the vehicle as it is now."** Nothing to do: the page now shows the current blocks.

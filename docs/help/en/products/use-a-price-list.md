@@ -28,6 +28,7 @@ The long-stay daily rate, deposit and tax stay on the product: see [Set a long-s
 ## Common problems
 
 - **"There are no shared price lists yet."** Create one in Settings › Price lists.
-- **"Choose a price list, or set this product's own prices."**
-- **"This list holds multipliers: enter a base price."**
+- **"Required."** Under **Price list**: no list is chosen. Under **Base price**: the list holds multipliers and needs this product's base price.
 - **"Enter an amount, such as 45000 or 45000.50."** The base price isn't a valid amount.
+- **"A price can't be 0. To charge nothing, choose Free."** The base price can't be 0.
+- **"You can't make that change."** Only owners and managers can change prices.

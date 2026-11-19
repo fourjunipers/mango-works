@@ -33,14 +33,16 @@ The first time the shop saves any price, you are asked to confirm the currency: 
 
 ## Common problems
 
-- **"A longer rental can't cost less"** with "{day} days cost less than {before} days. Raise it, or lower the days before it. Equal prices are fine." A total that falls as days rise is refused. Fix the day marked in red.
-- **"A longer rental can't cost less than a shorter one. Equal prices are fine."** The same rule, shown when saving.
-- **"Daily and monthly are both needed."** Fill in both.
-- **"Fill in daily and monthly, and fix the days marked in red, before saving."**
+With **Set this product's own prices**, **Save prices** stays greyed out until the prices are ready: daily and monthly filled in, every day valid, and no day cheaper than the day before. Meanwhile the form shows what is missing:
+
+- **"Daily and monthly are both needed."** Shown under the empty one once you have typed the other.
 - **"Enter an amount above 0, such as 300 or 300.50."** A quick-entry box isn't a valid amount.
+- A red box titled **"A longer rental can't cost less"**, with a line for each problem day: "{day} days cost less than {before} days. Raise it, or lower the days before it. Equal prices are fine." Raise that day, or lower the days before it.
 - **"A day typed by hand isn't a valid price."** Fix the day you typed.
-- **"A price list needs all 30 days."** Every day must have a price.
-- **"A price can't be 0. To charge nothing, choose Free."** Free is offered for services and extras only.
-- **"The currency can't change once prices have been saved in it."**
-- **"Only an owner or manager can change that."**
+
+When saving:
+
+- **"A price can't be 0. To charge nothing, choose Free."** The long-stay daily rate can't be 0; leave it blank to use the monthly price ÷ 30.
+- **"Enter an amount, such as 45000 or 45000.50."** The long-stay daily rate isn't a valid amount.
+- **"You can't make that change."** Only owners and managers can change prices.
 - **"Couldn't save. Please try again."** Reload the page and try again.

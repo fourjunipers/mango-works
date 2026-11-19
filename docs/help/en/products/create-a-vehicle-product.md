@@ -24,7 +24,9 @@ Who can do this: owners and managers.
    - Off-road: ATV, UTV, Dirt bike
    - Boat or jet ski: Jet ski, Speedboat, Pontoon
 6. Optional: **Description**, **Can be booked online**, **Buffer before pickup (hours)** and **Buffer after return (hours)** (decimals are fine: 0.5 is half an hour), **Minimum age** and **Licence class**.
-7. Press **Save product**, or **Save and add a vehicle** to go straight on to adding a vehicle.
+7. Press **Save product**.
+
+   If you came here from **Add vehicle** (with **Product not here? Add it first**), there is no "What are you adding?" choice, and the button reads **Save and add a vehicle** instead: it saves the product and takes you back to adding the vehicle.
 
 The product opens with its tabs: **Details**, **Units** (its vehicles), **Pricing**, **Extras**, **Moto Mangos** (motorbikes only) and **History**. Next:
 

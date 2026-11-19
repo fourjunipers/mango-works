@@ -14,7 +14,7 @@ Who can do this: owners and managers.
 
 ## Steps
 
-1. Open **Fleet** and press **Add vehicle**. Or, on the Fleet list, open a product's line and press **Add vehicle** under its vehicles, so the product is already chosen. You can also use **Add vehicle** on a product's **Units** tab.
+1. On **Fleet**, open the product's line and press **Add vehicle** under its vehicles, or press **Add vehicle** on the product's **Units** tab. Either way the product is already chosen.
 2. Choose the **Product**. Only your own products are listed. If it isn't there, press **Product not here? Add it first**: you come back here after saving it.
 3. Fill in what you know:
    - **Year**: the year of this vehicle.

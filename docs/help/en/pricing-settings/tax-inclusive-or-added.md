@@ -26,5 +26,4 @@ Tax is worked out once per invoice and rate, not line by line. **Check a price**
 ## Common problems
 
 - **"That tax profile is no longer in use."** Choose another default.
-- **"The currency can't change once prices have been saved in it."**
 - **"Couldn't save. Please try again."** Reload the page and try again.

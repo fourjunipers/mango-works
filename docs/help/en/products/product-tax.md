@@ -8,10 +8,12 @@ updated: 2026-11-19
 
 # Choose the tax on a product
 
-Each product's **Pricing** tab has a **Tax** card. **Tax on this product** offers:
+A product's **Pricing** tab has a **Tax** card only when the shop has at least one tax profile (removed profiles don't count). With none, there is no Tax card and the shop charges no tax: add one first, see [Add, change or remove a tax profile](../pricing-settings/tax-profiles.md).
+
+**Tax on this product** offers:
 
 - **Shop default**, showing the shop's default profile, such as "Shop default (VAT 7%)", or "Shop default (no tax)".
-- Any of the shop's tax profiles.
+- The shop's other tax profiles.
 - **Not taxable**.
 
 Whether prices include tax or have it added on top is a shop setting: see [Choose whether prices include tax](../pricing-settings/tax-inclusive-or-added.md).
