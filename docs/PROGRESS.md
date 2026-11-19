@@ -13,6 +13,15 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Phase 3: plan draft, for a Fable critique (branch `platform/phase-3-plan-draft`, 19 Nov 2026)
+
+**No code and no migration. Not approved.** The draft is `docs/phase-3-plan.md`, written from `main` at `b9e0b33`, assuming PR 51 (Phase 2 stage 10) and Phase 2 stage 11 merge first.
+
+- **Shape:** orders, rentals, billed-period lines and charges on top of Phase 2's `reservations` (Q1); `booking_id` becomes the order's id; one vehicle per rental (Q2); a charge is one `quote()` call and what a payment pays.
+- **Eight migrations, twelve stages.** Stage 1 fixes stage 10's "two bikes swapping models" deadlock and states one global lock order for Phase 3 (plan §4).
+- **Found while planning:** the Phase 2 rule that online bookings reach `reserve()` only through `bookOnline()` in `apps/platform/lib` can't serve the marketplace app at 3M (an app may not import from another app). Plan Q15.
+- **16 open decisions** in §11, each with a recommendation. Nothing in the spec, INTEGRATION or the root `CLAUDE.md` is changed; §13 lists what each will need.
+
 ## Next.js security upgrade (branch `security/next-upgrade`, 17 Nov 2026)
 
 `next build` warned that the Next.js version is affected by a known security vulnerability.
