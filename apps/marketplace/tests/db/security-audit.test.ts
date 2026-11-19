@@ -252,7 +252,10 @@ describe("the search functions answer for live shops only", () => {
 });
 
 describe("a shop's map link and photos", () => {
-  const update = (client: Db, values: Record<string, unknown>) =>
+  const update = (
+    client: Db,
+    values: { maps_url?: string | null; photos?: string[] },
+  ) =>
     client.from("shops").update(values).eq("id", seed.bsrShop).select("id");
 
   it.each([

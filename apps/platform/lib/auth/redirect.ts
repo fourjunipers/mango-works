@@ -6,7 +6,6 @@ const BASE = "http://x";
  * an address before reading it, so "/\t/host" is "//host") and backslashes
  * (browsers read "\" as "/").
  */
-// eslint-disable-next-line no-control-regex -- control characters are the point
 const UNSAFE = /[\u0000-\u001f\u007f\\]/;
 
 /**
