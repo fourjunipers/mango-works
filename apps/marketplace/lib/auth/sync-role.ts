@@ -24,12 +24,24 @@ export async function syncRoleAfterSignIn(user: User): Promise<void> {
   if (shouldBeAdmin && profile.role !== "admin") {
     await updateRole(db, user.id, "admin");
   } else if (!shouldBeAdmin && profile.role === "admin") {
-    const { count } = await db
-      .from("shop_members")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id);
-    await updateRole(db, user.id, count ? "vendor_staff" : "customer");
+    await removeAdminRole(user.id, db);
   }
+}
+
+/**
+ * Takes the admin role from someone no longer listed in ADMIN_EMAILS: back
+ * to shop staff if they are in a shop, otherwise a customer. Also called by
+ * requireAdmin on every admin request (session.ts).
+ */
+export async function removeAdminRole(
+  userId: string,
+  db: ReturnType<typeof createAdminClient> = createAdminClient(),
+): Promise<void> {
+  const { count } = await db
+    .from("shop_members")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId);
+  await updateRole(db, userId, count ? "vendor_staff" : "customer");
 }
 
 async function updateRole(
