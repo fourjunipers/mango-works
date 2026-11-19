@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { FormState } from "@/components/action-form";
+import { canExtras } from "@/lib/extras-permissions";
 import { saveExtrasList, type ExtrasDb } from "@/lib/extras-save";
 import { requireMembership } from "@/lib/session";
 import { createClient } from "@mango/db/platform-server";
@@ -12,7 +13,8 @@ const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
  * Saves a list of extras from a vehicle's Extras tab (productId set) or
  * from Settings › Extras (productId empty: the list offered with every
  * vehicle), through platform.save_product_extras() as the signed-in
- * member. lib/extras-save.ts words the database's answer.
+ * member. Owners and managers only, checked here and again by the database.
+ * lib/extras-save.ts words the database's answer.
  */
 export async function saveExtras(
   _prev: FormState,
@@ -23,6 +25,10 @@ export async function saveExtras(
   if (productId !== "" && !UUID.test(productId))
     return { errors: { form: "extrasProductNotFound" } };
   const { membership } = await requireMembership(slug);
+  // The database refuses anyone but an owner or a manager too
+  // (save_product_extras); this answers them before anything is sent.
+  if (!canExtras(membership.role, "write"))
+    return { errors: { form: "extrasOnlyOwnerOrManager" } };
   const supabase = await createClient();
   const answer = await saveExtrasList(
     supabase as unknown as ExtrasDb,
