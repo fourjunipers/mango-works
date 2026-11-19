@@ -1523,6 +1523,9 @@ isOneToOne: true
 "longest_walkin":
 { Args: { "p_bike_model_id": string,"p_max_days"?: number,"p_start": string }; Returns: number
                            },
+"model_numbers_readable":
+{ Args: { "p_bike_model_id": string }; Returns: boolean
+                           },
 "model_offer":
 { Args: { "p_bike_model_id": string,"p_end": string,"p_start": string }; Returns: {
               "free": number,"mode": string
@@ -1554,6 +1557,9 @@ isOneToOne: true
                            },
 "shop_extra_shop_id":
 { Args: { "p_extra_id": string }; Returns: string
+                           },
+"shop_numbers_readable":
+{ Args: { "p_shop_id": string }; Returns: boolean
                            },
 "shop_open_at":
 { Args: { "p_at": string,"p_shop_id": string }; Returns: boolean
