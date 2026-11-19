@@ -172,7 +172,7 @@ Vendors enter up to five anchor totals per model; the system fills every day in 
 
 **Validation:** the editor warns when a longer rental is cheaper than a shorter one, or when a day total is below the 1-day price.
 
-**Order of calculation at checkout:** rental total from the table → minus promotion → booking fee = 10% of (rental after promotion + paid extras + delivery), never the deposit, rounded to the nearest whole unit half up (minimum ฿50) → amount due at shop = rental after promotion + extras + delivery − booking fee. Delivery is shown on its own line and paid at handover. The fee is fixed at booking.
+**Order of calculation at checkout:** rental total from the table → minus promotion → booking fee = 10% of (rental after promotion + paid extras + delivery), never the deposit, rounded to the nearest whole unit half up (minimum ฿50, never more than the base itself) → amount due at shop = rental after promotion + extras + delivery − booking fee. Delivery is shown on its own line and paid at handover. The fee is fixed at booking.
 
 ## Booking modes and statuses
 
@@ -203,7 +203,7 @@ Requests that are declined or get no reply cost the customer nothing. A confirme
 
 ## Payments and cancellation
 
-The platform collects only the booking fee: 10% of everything booked (the rental after promotions, paid extras and delivery; never the deposit), for the whole booked length, minimum ฿50. The base is what the renter sees: with VAT for a shop whose prices include it, before VAT for a shop that adds it on top. The customer pays the rest to the shop at pickup; there are no vendor statements or payouts.
+The platform collects only the booking fee: 10% of everything booked (the rental after promotions, paid extras and delivery; never the deposit), for the whole booked length, minimum ฿50 and never more than that base. The base is what the renter sees: with VAT for a shop whose prices include it, before VAT for a shop that adds it on top. The customer pays the rest to the shop at pickup; there are no vendor statements or payouts.
 
 **Payment methods**
 
