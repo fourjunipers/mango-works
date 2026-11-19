@@ -84,7 +84,7 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 
 ### Not covered yet
 
-Screens that are on `main` but have no article yet: the Moto Mangos tab on a product, rental gear stock (the Stock tab, Report a problem, Out of service), a product's History tab, and the platform admin's catalog requests. Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, New order, Maintenance's due list) get articles when their phase builds them. Booking rules (notice, cut-off, minimum days) are in the database but have no screen yet.
+Screens that are on `main` but have no article yet: the Moto Mangos tab on a product, rental gear stock (the Stock tab, Report a problem, Out of service), items for sale (Change quantity and stock history), a product's History tab, and the platform admin's catalog requests. Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, New order, Maintenance's due list) get articles when their phase builds them. Booking rules (notice, cut-off, minimum days) are in the database but have no screen yet.
 
 ## Article format
 

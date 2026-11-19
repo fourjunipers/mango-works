@@ -1116,6 +1116,7 @@ The ninth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.3, §6, 
 **For stage 11**
 
 - **A channel picker in Check a price, or on the New order screen**, so a shop can try a booking-page-only or Moto Mangos-only coupon. Check a price judges every code on the staff channel.
+- **Out-of-date screen text:** the gear create form still says 'Prices come in a later stage…' (`general-forms.tsx:195`, `Products.general.pricesLater`). Fix it in stage 11.
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s9` on ports 624xx, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack.
 
