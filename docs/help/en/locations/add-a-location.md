@@ -14,7 +14,7 @@ Who can do this: owners and managers.
 
 ## Steps
 
-1. Open **Locations** from the shop admin menu.
+1. Open **Locations**. It is under **Shop admin**: in the sidebar on a computer, or on the **You and this device** page on a phone (see [Finding your way around](../account/switch-shop-and-device.md)).
 2. Press **Add location**.
 3. Fill in **Name** (required) and **Time zone**. The time zone decides opening hours, due dates and "today" at this location.
 4. Add any of: **Address**, **Map link** (must start with https://), **Email**, **Phone**, **WhatsApp** and **LINE ID**. Phone numbers use the international format, such as +66850550247.

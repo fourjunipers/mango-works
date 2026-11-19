@@ -14,7 +14,7 @@ Who can do this: owners and managers. Owners can give any role. Managers can onl
 
 ## Steps
 
-1. Open **Team** from the shop admin menu.
+1. Open **Team**. It is under **Shop admin**: in the sidebar on a computer, or on the **You and this device** page on a phone (see [Finding your way around](../account/switch-shop-and-device.md)).
 2. Find the person. You are marked "(you)".
 3. In the role box next to their name, choose the new role.
 4. Press **Save**.

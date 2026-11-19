@@ -14,7 +14,7 @@ Who can do this: owners and managers.
 
 ## Steps
 
-1. Open **Shop settings** from the shop admin menu. The **Shop** section opens first.
+1. Open **Shop settings**. It is under **Shop admin**: in the sidebar on a computer, or on the **You and this device** page on a phone (see [Finding your way around](../account/switch-shop-and-device.md)). The **Shop** section opens first.
 2. Change any of:
    - **Shop name**
    - **Country**: choose from the list.
