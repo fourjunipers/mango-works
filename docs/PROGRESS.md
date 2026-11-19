@@ -13,6 +13,15 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Neon move assessment (branch `docs/neon-move-plan`, 19 Nov 2026)
+
+**Docs only: no code, migration or test changed; nothing run against staging or live.** Written from `main` at `d458717`.
+
+- **`docs/platform/neon-move-plan.md`**: every Supabase dependency counted, what Neon offers for each (checked against the vendors' pages on 19 Nov 2026, cited), the RLS pattern and its pitfalls, the test harness, cost at three sizes, a recommendation, a step-by-step plan if the move goes ahead, and 13 open decisions.
+- **Recommendation (Mark has not decided):** stay on Supabase for this database and do not move between Phase 3 and 3M; put small trial projects in a Neon Free organisation; Supabase Pro at BSR go-live. Keep the four "Not tied to Supabase" rules.
+- **Needs a decision before Phase 3 stage 1:** whether Phase 3 reads the caller through two functions of our own (`auth.uid()` and `auth.role()` read in one place each) instead of calling them directly. See the document, §6.3 and decision 5.
+- **Not checked:** either vendor's incident history; the hosted project's dashboard (the send-email hook is not in the repo); two Neon behaviours that only a spike can show (a SQL-made role bypassing RLS; role settings after the Data API switches role).
+
 ## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
 
 **Docs only: no code, migration or test changed.** Written from `main` at `b9e0b33`.
