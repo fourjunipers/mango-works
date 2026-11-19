@@ -8,6 +8,7 @@ import { adjustmentParts } from "@mango/core/season";
 import { codeGiven, couponFoundOf, type CouponInputs } from "@/lib/coupons";
 import { dayText, notAppliedKey, refusalWords } from "@/lib/coupon-words";
 import { formatMinor } from "@/lib/money";
+import { parseWholeNumber } from "@/lib/number-input";
 import type { PricingContext, PricingDraft } from "@/lib/pricing-form";
 import { extrasOf, type PricingInputs } from "@/lib/pricing-inputs";
 import {
@@ -106,9 +107,7 @@ export function CheckPrice({
       : [];
 
   const span = sampleSpan(
-    by === "days"
-      ? { by, pickup, days: Number(days) }
-      : { by, pickup, dropoff },
+    by === "days" ? { by, pickup, days: count(days) } : { by, pickup, dropoff },
     timeZone,
   );
   const row = draftRow(productId, draft, ctx, shared, {
@@ -119,10 +118,10 @@ export function CheckPrice({
     ? checkPrice({
         inputs,
         row,
-        sample: { ...span, quantity: Number(quantity), timeZone },
+        sample: { ...span, quantity: count(quantity), timeZone },
         extras: extras.map((e) => ({
           productId: e.extra_product_id,
-          quantity: Number(extraCounts[e.extra_product_id] || "0"),
+          quantity: count(extraCounts[e.extra_product_id] || "0"),
         })),
         code: applied?.code ?? null,
         coupon: applied?.read ?? null,
@@ -526,6 +525,18 @@ function CouponNote({
       {text}
     </p>
   );
+}
+
+/**
+ * A box of the sample as a whole number, by the platform's one number rule
+ * (lib/number-input.ts). NaN when it is empty or not one ("2e3", "1.5"):
+ * the sample then has no price, as before.
+ */
+function count(text: string): number {
+  const whole = parseWholeNumber(text);
+  return typeof whole === "bigint" && whole <= BigInt(1_000_000)
+    ? Number(whole)
+    : Number.NaN;
 }
 
 const noSubscribe = () => () => {};

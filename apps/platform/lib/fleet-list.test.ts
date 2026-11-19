@@ -182,6 +182,10 @@ describe("the Fleet view: one line per product", () => {
     expect(
       parseFleetList({ product: "x", year: "24", status: "gone" }),
     ).toEqual(defaultFleetList);
+    // The year box is read by the platform's one number rule.
+    expect(parseFleetList({ year: " 2,024 " }).year).toBe(2024);
+    for (const bad of ["2e3", "0x7E4", "+2024", "2024.0", "２０２４", "1949"])
+      expect(parseFleetList({ year: bad }).year, bad).toBeNull();
     expect(fleetFilterCount(defaultFleetList)).toBe(0);
     expect(fleetFilterCount({ ...defaultFleetList, q: "x", year: 2024 })).toBe(
       2,
@@ -362,6 +366,35 @@ describe("CSV import: a product name per row", () => {
         "6 odometer invalidNumber",
       ],
     );
+  });
+
+  it("reads the file's year and odometer by the platform's one number rule", () => {
+    const ok = plan([
+      "product,plate,year,odometer",
+      'Honda PCX 160 2024,N-1,2024,"1,400.5"',
+      "Honda PCX 160 2024,N-2,,12",
+    ]);
+    expect(ok.errors).toEqual([]);
+    expect(ok.units.map((u) => [u.model_year, u.current_odometer_km])).toEqual([
+      [2024, 1400.5],
+      [null, 12],
+    ]);
+    // "12,5" was read as 125 (the comma was dropped). Refused now, as are a
+    // space inside the number and a second decimal place.
+    const bad = plan([
+      "product,plate,year,odometer",
+      'Honda PCX 160 2024,N-1,2e3,"12,5"',
+      "Honda PCX 160 2024,N-2,2024.0,12 345",
+      "Honda PCX 160 2024,N-3,+2024,12.34",
+    ]);
+    expect(bad.errors.map((e) => `${e.line} ${e.column} ${e.code}`)).toEqual([
+      "2 year invalidYear",
+      "2 odometer invalidNumber",
+      "3 year invalidYear",
+      "3 odometer invalidNumber",
+      "4 year invalidYear",
+      "4 odometer invalidNumber",
+    ]);
   });
 
   it("tells the shop where a make, model and years can go", () => {

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { FormState } from "@/components/action-form";
 import { CsvError, parseCsv } from "@/lib/csv";
-import { toKm } from "@/lib/distance";
+import { parseDistance, toKm } from "@/lib/distance";
 import {
   bikeTypes,
   catalogSubmitSchema,
@@ -384,10 +384,8 @@ function distance(
   formData: FormData,
   unit: "km" | "mi",
 ): number | null | "invalid" {
-  const text = field(formData, "odometer").replace(/[\s,]/g, "");
-  if (!text) return null;
-  if (!/^\d+(\.\d)?$/.test(text) || Number(text) > 9_999_999) return "invalid";
-  return toKm(Number(text), unit);
+  const typed = parseDistance(field(formData, "odometer"));
+  return typeof typed === "number" ? toKm(typed, unit) : typed;
 }
 
 /**

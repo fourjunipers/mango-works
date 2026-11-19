@@ -13,7 +13,8 @@
  * So "2,50" can never be read as 250 on one screen and 2.5 on another.
  * Amounts, percentages, multipliers, hours and whole numbers are all read
  * through parseTypedNumber(); their own parsers (lib/money.ts,
- * lib/seasons.ts, lib/coupon-form.ts, lib/fleet.ts) only add their limits.
+ * lib/seasons.ts, lib/coupon-form.ts, lib/fleet.ts, lib/distance.ts and the
+ * whole-number boxes through parseWholeInRange()) only add their limits.
  * Digits are kept as text, so no float touches an amount.
  */
 
@@ -59,4 +60,21 @@ export function parseWholeNumber(input: string): bigint | null | "invalid" {
   if (typed === null || typed === "invalid") return typed;
   if (input.includes(".")) return "invalid";
   return BigInt(typed.whole);
+}
+
+/**
+ * A typed whole number from `min` to `max`, as a plain number: years, counts,
+ * days, engine sizes. Null: left blank. "invalid": not a whole number by the
+ * rule above, or outside the range. Each box says what blank means.
+ */
+export function parseWholeInRange(
+  input: string,
+  min: number,
+  max: number,
+): number | null | "invalid" {
+  const whole = parseWholeNumber(input);
+  if (whole === null || whole === "invalid") return whole;
+  return whole >= BigInt(min) && whole <= BigInt(max)
+    ? Number(whole)
+    : "invalid";
 }

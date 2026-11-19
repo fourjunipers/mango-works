@@ -10,6 +10,7 @@ import {
   TextArea,
   TextInput,
 } from "@/components/action-form";
+import { parseDistance } from "@/lib/distance";
 import { renewalKinds, unitStatuses, workStatuses } from "@/lib/fleet";
 import {
   addDowntime,
@@ -23,6 +24,24 @@ import {
 } from "./actions";
 
 type Option = { value: string; label: string };
+
+/**
+ * Whether the reading typed is lower than the one on record. Both are read
+ * as the server reads them (parseDistance), so the question is asked about
+ * the number that would be saved; text the server will refuse asks nothing.
+ */
+function isLowerReading(
+  typed: FormDataEntryValue | null,
+  current: string,
+): boolean {
+  const reading = parseDistance(String(typed ?? ""));
+  const onRecord = parseDistance(current);
+  return (
+    typeof reading === "number" &&
+    typeof onRecord === "number" &&
+    reading < onRecord
+  );
+}
 
 export type UnitFormValues = {
   id?: string;
@@ -99,10 +118,7 @@ export function UnitForm({
               destination: destination.join(", "),
             }),
           );
-        const typed = Number(
-          String(data.get("odometer") ?? "").replace(/[\s,]/g, ""),
-        );
-        if (Number.isFinite(typed) && typed < Number(values.odometer))
+        if (isLowerReading(data.get("odometer"), values.odometer))
           questions.push(
             t("odometerLowerConfirm", {
               current: values.odometer,
@@ -215,10 +231,7 @@ export function OdometerForm({
       action={updateOdometer}
       hidden={{ slug, id }}
       confirmIf={(data) => {
-        const typed = Number(
-          String(data.get("odometer") ?? "").replace(/[\s,]/g, ""),
-        );
-        return Number.isFinite(typed) && typed < Number(odometer)
+        return isLowerReading(data.get("odometer"), odometer)
           ? t("odometerLowerConfirm", { current: odometer, unit: distanceUnit })
           : undefined;
       }}
