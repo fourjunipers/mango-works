@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { catalogRequestQueue } from "@/lib/admin-queue";
-import { seed, serviceClient } from "./helpers";
+import { deleteTenant, seed, serviceClient } from "./helpers";
 
 const service = serviceClient();
 const tag = Math.random().toString(36).slice(2, 8);
@@ -50,11 +50,20 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await service
+  const { error } = await service
     .from("bike_catalog")
     .delete()
     .in("id", [fromMarketplaceShop, fromPlatformShop]);
-  await service.schema("platform").from("tenants").delete().eq("id", tenantId);
+  if (error) throw error;
+  // Throws if the tenant is still there (helpers.ts).
+  await deleteTenant(tenantId);
+  const left = await service
+    .schema("platform")
+    .from("tenants")
+    .select("id")
+    .eq("id", tenantId);
+  if (left.error) throw left.error;
+  expect(left.data).toEqual([]);
 });
 
 describe("marketplace admin: catalog requests", () => {
