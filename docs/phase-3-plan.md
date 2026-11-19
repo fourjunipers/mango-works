@@ -1,6 +1,6 @@
 # Phase 3 plan: orders and calendar
 
-**Draft 2, 19 Nov 2026.** Plan only: no code, no migration, nothing applied anywhere. Draft 1 (`45dd93f`) was critiqued by Fable ("needs a second draft"); this draft applies every item of that critique and Mark's 25 decisions of 19 Nov 2026. §14 lists each change and where it went.
+**Draft 2, 19 Nov 2026.** Plan only: no code, no migration, nothing applied anywhere. Draft 1 (`45dd93f`) was critiqued by Fable ("needs a second draft"); this draft applies every item of that critique and Mark's 25 decisions of 19 Nov 2026, and then his answers to draft 2's open points (decisions 23 replaced, 26 to 31, same day). §14 lists each change and where it went.
 
 Written from `main` at `b9e0b33` (PR 50 merged; 66 migrations, staging at 66 of 66, live at 53 of 53) **and PR 51's branch** `platform/phase-2-stage-10-review-followups` at `2474a6e` (migration 6, `20261119000100_platform_review_followups`). Every schema statement below is about the database as it will be after migration 6. Phase 2 stage 11 (the read-only New order screen, Settings › Booking rules, the seed) is assumed merged before stage 9 here.
 
@@ -12,10 +12,11 @@ Read for this: `docs/platform/SPEC.md`, `docs/INTEGRATION.md`, `docs/marketplace
 2. **`reserve()` is replaced, not wrapped.** A new `reserve_core` takes the order and its rentals as arguments and inserts them inside the lock order (after the coupon row, before the reservations). `platform.reserve()` is dropped; Phase 2's tests and both server callers move to `create_order` (stage 2b).
 3. **Every order function re-reads under its locks** (read unlocked, take advisory locks, lock the order row, read again, `try_again` if anything moved) and **settles a run-out hold first**. One hold expiry per order.
 4. **Status:** intent is stored (`new`, `draft`, `requested`, `booked`, `archived`, `canceled`); reserved, picked up, returned and mixed are derived from the live reservations. Nothing that is only a read writes.
-5. **Money:** a charge is one `quote()` call; a payment is allocated to charges append-only, with its own net and VAT per rate group from `paymentVat()`, because every payment gets its own tax invoice (decision 25). Balance is independent of allocation.
+5. **Money:** a charge is one `quote()` call; every payment gets its own tax invoice, whose VAT `paymentVat()` works out once on the payment's total per rate group (decisions 25, 27). Allocations record what each charge received, append-only. Balance is independent of allocation.
 6. **Staff permissions are shop settings** checked in the database (decision 6).
-7. **Thirteen stages, nine migrations** (§8). Stage 1 fixes the stage 10 deadlock by making `move_unit()` the only way a vehicle changes product and by removing the multi-row status crossing. The payments ledger comes before the status machine. Nine stages are Fable builds; four are Opus with a Fable check.
-8. **Open points remain** (§11.2), chiefly the Moto Mangos fee base: decision 23 differs from SPEC, INTEGRATION and the marketplace SPEC in four places, listed and not resolved here.
+7. **Thirteen stages, nine migrations** (§8). Stage 1 fixes the stage 10 deadlock by making `move_unit()` the only way a vehicle changes product and by removing the multi-row status crossing. The payments ledger comes before the status machine. Eight stages are Fable builds; five are Opus with a Fable check or review.
+8. **Emails are switched off in Phase 3** (decision 28): end-of-rental and overdue alerts go to the Dashboard; sending turns on in Phase 6 with a verified domain.
+9. **The Moto Mangos fee base is settled** (decision 23, replaced): 10% of everything booked through Moto Mangos (rental after discounts, paid extras, delivery; never the deposit), for the whole booked length. SPEC, INTEGRATION and the marketplace SPEC are corrected in this PR; `fees.ts` needs Phase 8 changes (§7.3). One point is left: whether the fee's receipt (not a tax invoice) is right, to confirm with Korn before Phase 8 (§11.2).
 
 ## 0. Starting point and dependencies
 
@@ -53,7 +54,7 @@ Spec accept line: full new → returned lifecycle in Playwright; drag-extend re-
 | **1b** | Maintenance, service schedules, odometer, keys, GPS, full unit timeline, profit per vehicle, **"Remove for good"** (moved from Phase 3, scope note) | Revenue per unit from period lines (one vehicle per rental); the timeline component takes more row kinds |
 | **4** | KYC documents, blacklist, privacy notice, retention, customer merge, manager override of expired documents | `pickup_blockers()` (§3.5) takes new reasons |
 | **5** | QR check-out and check-in, inspections, signature, damage charges | `pickup_blockers()` gains "no agreement" and "no inspection"; the recorded return time is what Phase 5's check-in records |
-| **6** | Tax invoices (one per payment, **gapless numbering separate from order numbers**, decision 11), credit notes, PDFs, LINE, **order confirmed and order canceled emails**, the verified sending domain (decision 16) | Each allocation already carries the net and VAT its invoice prints (§6.4) |
+| **6** | Tax invoices (one per payment, **gapless numbering separate from order numbers**, decision 11), credit notes, PDFs, LINE, **order confirmed and order canceled emails**, the verified sending domain (decision 16), and **switching email sending on** (decision 28) | Each payment already carries the net and VAT its invoice prints (§6.4); the outbox already holds every message Phase 3 queued (§3.6) |
 | **7** | Stripe, cards, PromptPay, card holds, scheduled charges, payment links, refunds to a card, webhooks, **the payment deadline that makes an order "unpaid past due"**, a shop cancellation-fee setting (decision 18) | Ledger kinds `deposit_hold` and `deposit_release` exist; `order_charges.due_at`; `provider` and `provider_ref` |
 | **8** | Booking page, delivery, documents upload | `create_order` for `booking_page`; the shared booking package |
 | **9** | Open-ended rentals, recurring charges, renewal reminders to customers, **traffic fines** (matched on a rental's `picked_up_at` and recorded `returned_at`) | Month periods with `due_at` |
@@ -83,7 +84,8 @@ payments            append-only ledger
 payment_allocations append-only: how much of a payment went to which charge, with net and VAT per rate group
 ```
 
-- **Decision 2:** an order holds any number of vehicles, each its own rental. A vehicle rental is exactly one specific vehicle; the same unit is never on two overlapping bookings (the exclusion constraint). With overbooking on, a vehicle rental can wait for its unit (`shortage = 1` on its reservation); it is still one vehicle. Only gear has a quantity.
+- **Decision 2:** an order holds any number of vehicles, each its own rental. A vehicle rental is exactly one specific vehicle; the same unit is never on two overlapping bookings (the exclusion constraint). Only gear has a quantity.
+- **Decision 29 (overbooking accepted):** with overbooking on, a vehicle rental may wait for its unit (`shortage = 1` on its reservation), shown as a shortage until a unit is assigned; a rental is still never more than one unit.
 - **A rental's live reservations** are those with its `rental_id` in `held`, `reserved` or `out` (M2). There is no `current_reservation_id`. A swap leaves the old reservation `returned` and adds a new live one; `move_unit()` splitting a gear row copies `rental_id` to the new row.
 - **`rentals.product_id` and `location_id` are "as booked"**: the draft's intent and what the customer booked. While a rental has live reservations, the product and place it is actually on are **derived** from them (`move_unit()` can change them). No order or rental column caches a place; `orders.location_id` is dropped (M2).
 - **Order functions take their advisory locks from the order's reservations, never from `rentals`** (M2).
@@ -258,7 +260,7 @@ A `sale_item` line takes stock at hand-over (`pick_up`) as a `stock_movements` r
 - `notification_outbox.kind` gains `end_of_rental`, `overdue_staff`, `overdue_customer`, with `channel` and `recipient`. **Order confirmed and order canceled emails are Phase 6** (minor). Rows hold facts, not text.
 - Settings on `tenants`: `overdue_alert_days int[]` (default `{1,3,15,30}`), `overdue_customer_days int[]` (empty), `end_of_rental_email` (on), `late_return_grace_minutes` (60, decision 21), `archive_after_days` (7, decision 12).
 - Jobs (migration 9): `queue_due_messages()` (inserts outbox rows only; one runner), `close_expired_holds_on_orders()` (M4: acts **only on `new` orders whose reservations the sweep has already expired**; order row first `for no key update skip locked`, then its rentals; no reservation or block touched), `archive_settled_orders()` (order row `skip locked`; decision 12's conditions).
-- The sender runs in `apps/platform` (scheduled function), sends through Resend, retries, marks `failed`. Sending needs a verified domain (decision 16; open point §11.2).
+- **Phase 3 ships with emails switched off** (decision 28). End-of-rental and overdue alerts go to the Dashboard (the Late tab and the day's items) only. The outbox still records every message as `queued` with a `held: sending off` reason, so nothing is lost; the sender (an `apps/platform` scheduled function through Resend, with retries) is built and tested against a fake transport, behind a shop-independent switch that stays off until Phase 6 verifies the sending domain (decision 16). Turning it on must not flood customers with old messages: messages queued while sending was off are marked `expired` unless still due.
 - The Late tab's "unpaid past due" item waits for Phase 7's payment deadline (minor).
 
 ### 3.7 Columns elsewhere
@@ -438,7 +440,7 @@ On a rental that is out and **not overdue** (an overdue rental is refused `renta
   - a **fixed coupon**, **flat-fee extras** and the **deposit** go on the first charge;
   - a **percentage coupon** applies to every period of the booked length (not to extensions);
   - **minimum spend** is judged on the whole booked rental;
-  - time-priced extras follow each period.
+  - time-priced extras follow each month's charge, and flat-fee extras go on the first charge only (decision 30).
   Core task, stage 6: `planBookedCharges(booking)`, which runs `decideDiscounts` once on the whole booked rental and returns the per-charge quote inputs (coupon placement, deposit on the first), with a test that the redemption amount equals the sum of the coupon's amounts over the charges.
 
 ### 6.4 The ledger and where Phase 7 attaches (M7, S8, decisions 14, 18, 25)
@@ -454,12 +456,15 @@ payments            append-only
   provider, provider_ref     null offline; Phase 7 fills them
   idempotency_key            unique per tenant (S6) for payment and refund
   receipt_ref, received_at, recorded_by, note
+  rate_groups jsonb          per rate group: rate, gross, net, VAT, worked out once on this payment's total (paymentVat)
 payment_allocations append-only
   id, tenant_id, payment_id, charge_id, amount
-  rate_groups jsonb          per rate group: rate, gross, net, VAT (from paymentVat)
+  rate_groups jsonb          per rate group: the gross this charge received from the payment
 ```
 
-- **Every payment received gets its own tax invoice** (decision 25; printed in Phase 6). Its allocations say which charges it paid and how much of each rate group; `paymentVat(charge, amount, already allocated)` in `@mango/core` splits the amount over the charge's rate groups in proportion to their gross and works out VAT on that payment per group (7/107 of the amount when prices include VAT; net then VAT on top when the shop adds it), rounding once. **The last allocation of a charge takes the remainder**, so a charge's allocations add up exactly to its net and VAT.
+- **Every payment received gets its own tax invoice** (decision 25; printed in Phase 6). **Its VAT is worked out once, on the payment's total, per rate group, and shown once at the bottom (total, then net and VAT)**, not summed charge by charge (decision 27). Rounding is half up to the smallest currency unit. This holds for shops whose prices include VAT and shops that add it.
+- **`paymentVat(payment, allocations)`** in `@mango/core`: from the charges the payment is allocated to, it adds up the gross the payment puts into each rate group, then per group works out VAT once on that gross (rate ÷ (100 + rate) of it, half up) and net = gross − VAT. It is the same formula for both tax styles, because a payment is always a gross amount: for a shop that adds VAT on top, the charge's gross already includes the VAT added. The result is stored on the `payments` row.
+- **Allocations** still record what each charge received (its gross per rate group, the payment's amount split over the charge's groups in proportion to their gross, the charge's last allocation taking the rounding remainder so a charge's allocations add up exactly to its total). They decide when a charge is settled; they are not where invoice VAT comes from. A charge's own VAT (its snapshot) and the VAT on the invoices that paid it can differ by a minor unit per group; the invoices are the documents of record.
 - **Balance = total of non-void charges − payments + refunds (+ credit write-offs), whatever the allocation. A charge is settled when its allocations equal its total.** Deposits are outside it.
 - **Credits:** a negative balance. Cancelling an order with payments voids its charges and leaves the payments as credit (decision 18). A credit stays until refunded (`staff_can_refund`) or written off (`staff_can_write_off_credit`), and blocks archiving (decisions 12, 14).
 - **The currency** is held by the foreign keys on `orders`, `order_charges` and `payments` (no cascade: a currency change is refused while any exists), not by `tenants_lock_currency()`'s unlocked `exists` (S8).
@@ -479,25 +484,44 @@ Designed here, built in 3M with its own plan.
 
 `create_booking` → `create_order` with `channel = marketplace`, in the §4.2 order: product-and-location locks → unit locks → unit rows → products → **listing rows** (the cap) → coupon → **customer upsert** by `(tenant, marketplace_account_id)` → order insert → rentals → reservations → blocks → charges and lines → `marketplace_events` → counter. Request mode: `status = requested`, no unit held, counted against `request_units` under the listing row; accepting runs `reserve_core`.
 
-### 7.3 The fee record (decision 23, open point §11.2)
+### 7.3 The fee record (decision 23, replaced 19 Nov 2026; decision 26)
 
-The fee record is marketplace-owned (`public.marketplace_fees`, keyed by order id), **fixed at booking**. Decision 23's base: 10% of the rental price for the first 30 days at most, before shop-added VAT, excluding extras, delivery and the deposit; minimum ฿50. It is checked against the other documents in §11.2.
+The fee record is marketplace-owned (`public.marketplace_fees`, keyed by order id) and **fixed at booking**.
+
+- **Base: everything booked through Moto Mangos at booking, for the whole booked length** (a 90-day booking pays on all 90 days; no 30-day cap): the rental after any discounts or coupons, plus paid extras (phone holder, insurance or cover, and so on) and delivery.
+- **Never the security deposit.**
+- **VAT:** the base is what the renter sees: including VAT for a shop whose prices include it; before VAT for a shop that adds it on top.
+- **Fee:** 10% of the base, **rounded to the nearest whole unit of the currency, half up**; at least the market currency's minimum (฿50 for THB).
+- **Extensions and further months** arranged with the shop afterwards are outside Moto Mangos and carry no fee. Moto Mangos never tracks or charges recurring monthly rentals; an order's later `extension` and `period` charges are invisible to the fee.
+- **Receipt:** Moto Mangos's own fee gets a standard receipt from Mango Works, not a tax invoice (decision 26). **Confirm with Korn before Phase 8.**
+- `create_booking` returns the base it used (rental after discounts, extras, delivery, and whether VAT is inside), so the marketplace computes the fee from the platform's figures and stores both.
+
+**`apps/marketplace/lib/fees.ts` against this, Phase 8 code changes** (not changed here):
+
+| `fees.ts` today | Change needed |
+| --- | --- |
+| `bookingFee(rentalAfterPromotion, …)`: the base is the rental after promotion only; "extras never count" | The base adds paid extras and delivery |
+| No VAT input | Take the base as shown to the renter (gross with VAT included; before VAT when added on top) |
+| `feeRoundingUnit` lets a market round to a multiple (e.g. ฿10) | Nearest whole unit only (decision 23); drop the setting or fix it at 1 |
+| `min(…, rentalAfterPromotion)`: the fee is never more than the rental | Not in decision 23. With the minimum, a very small booking would pay a fee above its base unless this cap stays: keep the cap (now on the whole base) unless Mark says otherwise |
+| `priceBreakdown`: due at shop = rental after promotion − fee + extras; no delivery line | Due at shop = base − fee (+ delivery when paid at handover); the breakdown gains a delivery line, and the fee line includes extras and delivery |
+| Minimum per market currency; half-up rounding; integers in minor units | Already as decided |
 
 ## 8. Build stages
 
-One PR each. Migrations local only until Mark says otherwise; staging as each merges, on his word. **Fable build** = built on Fable (locks, RLS, money, availability, security-definer reads, job SQL). **Opus + Fable check** = built on Opus, reviewed by Fable before merge.
+One PR each. Migrations local only until Mark says otherwise; staging as each merges, on his word. **Fable build** = built on Fable (locks, RLS, money, availability, job SQL). **Opus + Fable check** or **review** = built on Opus, reviewed by Fable before merge (the security-definer reads of stage 7 are reviewed, decision 31).
 
 | # | Stage | Migration | Model | Accept tests |
 | --- | --- | --- | --- | --- |
 | 1 | **Unit lock rules** | 1 | Fable build | Two opposite `move_unit()` calls on a gate: 0 deadlocks, 30 rounds × 3 shops; direct product change refused; two-unit status change vs two-product booking on a gate: 0 deadlocks (fails on today's trigger); lost while out and with future bookings succeeds, future bookings at risk; catalog review vs product delete: 0 deadlocks; the static lock-strength test |
 | 2a | **Orders: tables, RLS, customers, settings** | 2 | Fable build | **Migration 2 deletes every Phase 2 reservation, its allocation and hold blocks, and every coupon redemption, on staging and locally; the seed is rerun after it.** On live the count before the push must be 0, or the push stops. Isolation for every new table (5 roles × 2 shops, stranger, MM customer, anon); `staff_may` for each setting and role; customer contacts never in audit; `move_unit` split copies `rental_id`; currency FK refuses a currency change |
 | 2b | **The core and the test port** | 3 | Fable build | `reserve_core` with orders and rentals; `platform.reserve()` gone; **Phase 2's database tests (`reservations`, `availability`, `booking-rules`, `coupons`, `product-extras` races and checks) ported to `create_order`, with the same rounds and outcomes; `staff-booking.ts` and `book-online.ts` call `create_order`; `bookOnline()` moved to the shared package**; a non-unit FK failure raised, never `unit_taken`; any inner refusal leaves nothing written; idempotent `create_order`; 200-line booking timed, 201 refused; per-customer coupon limit under a race; numbering: 50 parallel orders, no duplicate number or code |
-| 3 | **Payments ledger** | 4 | Fable build | Append-only for every role; balance exact after 20 parallel payments, a refund and a cancel in any order; `paymentVat` over many partial payments sums exactly to each charge's net and VAT (inclusive and on top, THB, USD, VND); idempotent payment and refund; refund and write-off per setting; deposits outside the balance |
+| 3 | **Payments ledger** | 4 | Fable build | Append-only for every role; balance exact after 20 parallel payments, a refund and a cancel in any order; `paymentVat` works VAT once on each payment's total per rate group, half up (inclusive and on top, THB, USD, VND), and a payment covering three month charges gives one VAT figure per group, not a sum of three; a charge's allocations add up exactly to its total; idempotent payment and refund; refund and write-off per setting; deposits outside the balance |
 | 4 | **Status machine** | 5 | Fable build | Every transition and revert by each role and setting; derived state for every mix; pickup blockers; late return clipped, never refused; late charge after 60 minutes' grace, waivable per setting; revert-return voids its charge and is refused with money allocated; sale stock out and back; held-order expiry settled first by every function |
 | 5 | **Order edits, add to order, coupon swap** | 6 | Fable build | §5.2 races; `add_to_order` on reserved and picked-up orders; date change keeps units when free; `chargeDifference` core (stage task) on a paid charge; repeat hold then confirm; **gate test: `save_order` adding a rental against `pick_up` of the same order** (one waits, the other `try_again` or both clean) |
 | 6 | **Rental changes and long rentals** | 7 | Fable build | Redesign's swap tests; swap refused on an overdue rental; breakdown swap into repair; extend vs a booking of the next days; **gate test: `extend_rental` against `move_unit()` of its unit** (`try_again` or clean, never a half move); early return vs a booking of the freed time; `edit_return_time` with and without money against the late charge; month periods telescope; `planBookedCharges` (decision 17) and the redemption sum; stacking coupon with a credit |
-| 7 | **Reads** | 8 | Fable build | `order_list` filters (status, payment status, shortage, at risk, overdue, channel, dates, search by number, customer, phone, plate) per role; `today_board` writes nothing; `order_history` for staff without audit access; cross-tenant test per read; response times |
-| 8 | **Jobs, outbox and email** | 9 | Fable build (job SQL); sender Opus + Fable check | Each job twice writes once; the close job touches only orders the sweep already expired, `skip locked`; overdue 1/3/15/30 in a DST shop; end-of-rental email in the customer's language; renewal reminders sent; sender retry and failure |
+| 7 | **Reads** | 8 | Opus build + Fable review (decision 31) | `order_list` filters (status, payment status, shortage, at risk, overdue, channel, dates, search by number, customer, phone, plate) per role; `today_board` writes nothing; `order_history` for staff without audit access; cross-tenant test per read; response times |
+| 8 | **Jobs, outbox and email** | 9 | Fable build (job SQL); sender Opus + Fable check | Each job twice writes once; the close job touches only orders the sweep already expired, `skip locked`; overdue 1/3/15/30 in a DST shop shown on the Dashboard; **with sending off, nothing reaches the transport** and every message is queued; against the fake transport with the switch on: end-of-rental email in the customer's language, renewal reminders, retry and failure, old messages expired rather than sent |
 | 9 | **New order and the order page** | None | Opus + Fable check | Playwright 375 and 1280 px: **full new → reserved → picked up → returned → archived**; an overlap refused "This vehicle is booked from … (order #…)"; add to order; hold expiry; Thai at phone width |
 | 10 | **Today board, order list, Settings › Orders** | None | Opus + Fable check | Four tabs with counts, Late highlighted; search by plate and phone; the six staff permissions switch screens and are refused by the database when off |
 | 11 | **Gantt and month calendar** | None | Opus + Fable check | Drag to reassign; drag-extend **re-prices** with a confirmation; drag onto a taken slot refused in words; phone read-only |
@@ -561,35 +585,29 @@ Not truly testable: race tests prove the timings they hit; real Resend sends (on
 | 13 | Coupons on extensions judged on the original pickup and length; no new use; not re-judged on dates | §5.3, §6.1 |
 | 14 | Credit stays until refunded or written off; write-off per setting, in the ledger stage | §6.4, stage 3 |
 | 15 | `bookOnline()` to a shared server-only package; `marketplace_api` service-role only; static test over both apps | §7.1, stage 2b |
-| 16 | Neutral Mango Works sender, reply-to the shop; needs a verified sending domain (Phase 6) | §3.6, §11.2 |
+| 16 | Neutral Mango Works sender, reply-to the shop; needs a verified sending domain (Phase 6) | §3.6 |
 | 17 | Long-rental charges: fixed coupon, flat-fee extras and deposit on the first; percentage coupon on every booked period, not extensions; minimum spend on the whole booked rental | §6.3 |
 | 18 | Cancelling with payments leaves a credit; refunds per setting; cancellation fee in Phase 7 | §6.4 |
 | 19 | Lost at any time; an out rental stays open; future bookings at risk | §2.6, stage 1 |
 | 20 | `add_to_order` for reserved and picked-up orders | §3.3, stage 5 |
 | 21 | Late-return grace: shop setting, default 60 minutes | §3.6, §6.3 |
 | 22 | A draft can be held again; one hold expiry per order | §2.3 |
-| 23 | Moto Mangos fee base (below) | §7.3, §11.2 |
+| 23 | **Replaced, 19 Nov 2026.** Moto Mangos fee: 10% of everything booked through Moto Mangos at booking, for the whole booked length (no 30-day cap): the rental after discounts or coupons, plus paid extras and delivery; never the deposit; extensions and later months arranged with the shop carry no fee and are never tracked; the base is what the renter sees (with VAT when prices include it, before VAT when it is added on top); a minimum per currency (฿50 for THB); rounded to the nearest whole unit, half up; fixed at booking. SPEC, INTEGRATION and the marketplace SPEC corrected; `fees.ts` changes listed for Phase 8 | §7.3, §13 |
 | 24 | Phase 2 reservations and redemptions cleared on staging and in the seed at migration 2 | stage 2a |
-| 25 | Every payment gets its own tax invoice; VAT per payment per rate group; last allocation takes the remainder | §6.4 |
+| 25 | Every payment gets its own tax invoice | §6.4 |
+| 26 | Moto Mangos's own fee gets a standard receipt from Mango Works, not a tax invoice. **Confirm with Korn before Phase 8** | §7.3, §11.2 |
+| 27 | A payment's tax invoice works VAT out once on the payment's total, per rate group, shown once at the bottom (total, net, VAT); not summed charge by charge; half up to the smallest unit; for both tax styles. Allocations still record what each charge received | §6.4, stage 3 |
+| 28 | Phase 3 ships with emails switched off; end-of-rental and overdue alerts on the Dashboard only; sending turns on in Phase 6 once a domain is verified | §3.6, §1.2, stage 8 |
+| 29 | Overbooking accepted: a vehicle rental may wait for its unit, shown as a shortage; never more than one unit | §2.2 |
+| 30 | Long rentals: time-priced extras follow each month's charge; flat-fee extras on the first charge only | §6.3 |
+| 31 | Stage 7 (reads) is an Opus build with a Fable review | §8 |
 
 ### 11.2 Open points
 
-1. **Decision 23 against the documents.** Where they differ (not resolved here):
+1. **Moto Mangos fee receipt** (decision 26): a standard receipt from Mango Works, not a tax invoice. **Confirm with Korn before Phase 8.**
+2. **The fee's ceiling** (found checking `fees.ts`): today the fee is never more than the rental. Decision 23 does not say; with a ฿50 minimum, a booking whose whole base is under ฿50 would otherwise pay more in fee than it costs. §7.3 keeps the ceiling (now on the whole base) for Phase 8 unless Mark says otherwise.
 
-   | Point | Decision 23 | SPEC / INTEGRATION / marketplace SPEC / `fees.ts` |
-   | --- | --- | --- |
-   | Length counted | The first 30 days at most | 10% of the whole rental (INTEGRATION §1, §3.12; marketplace SPEC "Payments"); no cap |
-   | Promotions | "The rental price" | "The rental **after promotions**" in all three documents and `fees.ts` (`rentalAfterPromotion`). Does a platform coupon reduce the fee base? |
-   | VAT | Before shop-added VAT | Not stated anywhere. For a shop whose prices include VAT the base would include it; to confirm that is intended |
-   | Minimum | ฿50 | Platform SPEC's market table: "each currency sets its own minimum"; `fees.ts` takes the market's minimum and a rounding unit. ฿50 is Thailand's value |
-   | Extras, delivery, deposit excluded; fixed at booking | Yes | Consistent (extras and delivery excluded in the marketplace SPEC; extensions are off-platform with no fee there). Not stated: rounding (`fees.ts` rounds to whole units, never above the rental) |
-   | Where the fee is charged | — | Platform SPEC "Product scope" item 4 still says a Stripe Connect platform fee; superseded by the review decision (fee on Moto Mangos' own account). The spec line needs correcting |
-
-2. **Sending domain (decision 16).** Stage 8 builds the sender, but decision 16 places the verified domain in Phase 6. Either the domain is verified during Phase 3 so end-of-rental and overdue emails go out, or stage 8 ships with sending switched off until Phase 6 (queueing only, Dashboard alerts only). Mark to choose.
-3. **`paymentVat` when the shop adds VAT on top** (decision 25 says "on top"): working VAT as net × rate after splitting a gross payment can differ by a minor unit from amount × rate ÷ (100 + rate). The last-allocation remainder keeps each charge exact either way; Korn to confirm which line a tax invoice prints.
-4. **One invoice per payment when a payment covers several month charges** (decision 3 with 25): the invoice lists each charge's allocated groups; its VAT is the sum of the allocations' VAT, not VAT recomputed on the total. Korn to confirm.
-5. **Overbooked vehicle rental** (decision 2 says a rental is exactly one unit): with overbooking on, a vehicle rental can exist without its unit until assigned. Confirm that is acceptable, or overbooking is limited to gear.
-6. **Flat-fee extras on long rentals** (decision 17) go on the first charge; time-priced extras follow each period. Confirm the second half.
+Draft 2's other open points (the VAT on a payment, one invoice for several month charges, the sending domain, overbooked vehicles, extras on long rentals) are settled by decisions 27 to 30, with no Korn check left on them.
 
 ## 12. Risks
 
@@ -599,7 +617,7 @@ Not truly testable: race tests prove the timings they hit; real Resend sends (on
 | Stale reads between the unlocked read and the locks | The re-read and `try_again` (M3), with gate tests |
 | Intent and derived state disagreeing | One `order_state()`; an invariant check after every race round |
 | Money drift | No cached balance; balance and settled status are computed from charges, payments and allocations |
-| Allocation VAT not adding up | Last allocation takes the remainder; property tests over random partial payments |
+| A charge's VAT and its paying invoices' VAT differing by a minor unit | Expected (decision 27: VAT is worked on each payment's total); the invoices are the documents of record; a test pins the difference to at most one minor unit per rate group per payment |
 | Porting Phase 2's tests loses coverage | Same files, same rounds, same outcomes, counted before and after in stage 2b |
 | Clearing Phase 2 rows (decision 24) | Staging and seed only; live must count 0 before the push |
 | Scope: thirteen stages | Database first; screens on Opus with Fable checks |
@@ -607,9 +625,10 @@ Not truly testable: race tests prove the timings they hit; real Resend sends (on
 
 ## 13. Doc edits this plan will need (owner keeps the spec)
 
-- `docs/platform/SPEC.md`: Data model (orders, rentals, charges, lines, payments, allocations, customers; `allocations` → `reservations` + `unit_blocks`); Orders and calendar (§2.3's statuses); Phase 3 accept line; "Remove for good" under Phase 1b; Product scope item 4's fee wording.
+- `docs/platform/SPEC.md`: Data model (orders, rentals, charges, lines, payments, allocations, customers; `allocations` → `reservations` + `unit_blocks`); Orders and calendar (§2.3's statuses); Phase 3 accept line; "Remove for good" under Phase 1b. **Done in this PR:** the Moto Mangos fee wording (Product scope item 4 and the market table).
 - Root `CLAUDE.md`: §4.2's lock order (stage 2b); `apps/platform/CLAUDE.md`'s "allocations/downtime".
-- `docs/INTEGRATION.md`: at 3M, §7 and the fee base once §11.2 item 1 is settled.
+- `docs/INTEGRATION.md`: at 3M, §7. **Done in this PR:** the fee base (§1, §3.9, §3.12).
+- `docs/marketplace/SPEC.md`: **done in this PR:** the fee base (extras, delivery, checkout order, receipt).
 - `docs/PROGRESS.md`: an entry per stage.
 
 ## 14. Changes since draft 1
@@ -637,3 +656,10 @@ Not truly testable: race tests prove the timings they hit; real Resend sends (on
 | Minor | Swap refused when overdue; breakdown swap into repair; `closed_at` column; gear return wording; fines on `picked_up_at`/`returned_at`; confirmed and canceled emails to Phase 6; "unpaid past due" waits for Phase 7 | §6.2, §3.2, §2.2, §1.2, §3.6 |
 | Scope | "Remove for good" moved to Phase 1b (migration and stage removed) | §1.2, §3.7, PROGRESS |
 | Decisions 1–25 | Written in; draft 1's 16 questions replaced | §11.1 |
+| **Decision 23 replaced** (19 Nov 2026) | Fee on everything booked through Moto Mangos for the whole booked length, deposit never, VAT as the renter sees it, per-currency minimum, whole-unit half-up rounding, fixed at booking; `fees.ts` differences listed for Phase 8; SPEC, INTEGRATION and the marketplace SPEC corrected | §7.3, §11.1, §13; `docs/platform/SPEC.md`, `docs/INTEGRATION.md`, `docs/marketplace/SPEC.md` |
+| **Decision 26** | Fee receipt, not a tax invoice; confirm with Korn before Phase 8 | §7.3, §11.2 |
+| **Decision 27** | Invoice VAT once on each payment's total per rate group; `paymentVat()` and the allocation rule rewritten; "pending Korn" marks removed | §6.4, §8 stage 3, §12 |
+| **Decision 28** | Emails switched off in Phase 3; Dashboard alerts only; sending on in Phase 6 | §3.6, §1.2, §8 stage 8 |
+| **Decision 29** | Overbooked vehicle rentals accepted | §2.2 |
+| **Decision 30** | Time-priced extras per month charge; flat-fee extras on the first only | §6.3 |
+| **Decision 31** | Stage 7 an Opus build with a Fable review | §8, Summary |
