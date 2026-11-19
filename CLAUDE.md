@@ -79,14 +79,33 @@ A booking reads prices before its transaction and never locks a pricing row, a p
 
 Never push migrations to live from a branch. Stripe stays in test mode until the owner says otherwise. Never commit secrets: keys live in each app's `.env.local` (git-ignored), and each app's `.env.example` lists every variable.
 
-## Not tied to Supabase
+## Not tied to Supabase: the Neon move
 
-The owner plans to move the database from Supabase to Neon after Phase 3. Four standing rules keep that move small. They bind all new code; code that does not follow them yet is listed in `docs/PROGRESS.md`, so don't spread it.
+**Decided 19 Nov 2026: the database moves from Supabase to Neon after Phase 3, before 3M and before BSR goes live.** A spike comes first, with a go or no-go for Mark; the move goes ahead only if it shows no meaningful performance loss on live. Live is always on, in Singapore, with no scale-to-zero; staging may scale to zero. The plan, its stages and their rollbacks are in `docs/platform/neon-move-plan.md`. Until the cutover everything still runs on Supabase, and the rest of this file describes that.
 
-- **All database access goes through `packages/db`.** An app or another package gets its client from `@mango/db` and never creates one itself or imports `@supabase/*`. Queries and RPC calls are made with that client.
+Six standing rules keep the move small. They bind all new code; code that does not follow them yet is listed in `docs/PROGRESS.md`, so don't spread it.
+
+- **All database access goes through `packages/db`.** An app or another package gets its client from `@mango/db` and never creates one itself or imports `@supabase/*`. Queries and RPC calls are made with that client, using only `.from()`, `.rpc()` and `.schema()`.
 - **File storage sits behind one module.** Uploading, deleting and making the address of a stored file go through that module and nothing else calls `.storage`.
 - **Sign-in goes through one helper, with no Supabase-only features.** Signing in, signing out, the session and "who is this" are asked of that helper. Use only what any sign-in provider offers (email and password or link, OAuth, a session); nothing that exists on Supabase alone.
 - **RLS uses the `my_tenant_ids()`-style helpers, not `auth.uid()` directly.** A policy asks `platform_private.my_tenant_ids()`, `my_role()` or `has_role()`. Who the caller is, is read in those helpers and nowhere else in a policy, so moving changes the helpers and not every policy.
+- **Who is calling is read in our own functions and nowhere else.** From Phase 3 stage 1, new SQL (functions, triggers, column defaults, the audit) asks the platform's own "who is calling" functions for the caller's id and whether the caller is the service role. They are the only places `auth.uid()` and `auth.role()` are read. Their names are in the Phase 3 plan.
+- **Database jobs only queue.** A scheduled job writes rows; whatever calls the outside world (email, LINE, a webhook, a payment provider) runs in the app. A job must be safe when it does not run: staging on Neon has no schedule.
+
+**Do not start using** (each would make the move harder; ask first if a feature seems to need one):
+
+- **Realtime**: channels, `postgres_changes`, broadcast, presence.
+- **Edge Functions**, and `supabase.functions.invoke()`.
+- **`pg_net`, the `http` extension and Database Webhooks**: no HTTP call from inside the database.
+- **Vault and pgsodium.** Secrets live in the app's environment.
+- **Supabase Queues (`pgmq`)** and **Supabase Cron jobs that call a URL or an Edge Function.** A pg_cron job that runs SQL is fine.
+- **GraphQL** (`pg_graphql`, the `graphql_public` API).
+- **Storage beyond the one module**: no new policy on `storage.objects`, no `storage.foldername()` in new SQL, no image transformations, no signed addresses made outside the module.
+- **Auth features only Supabase has**: its MFA, phone and SMS sign-in, anonymous sign-in, SSO or SAML, new Auth hooks (custom access token, before user created), `app_metadata` or custom claims read by a policy, `auth.admin.*` outside the sign-in helper and the scripts.
+- **The `auth` schema in new SQL**: no new foreign key to `auth.users` (point at `profiles` or a platform table), no new trigger on it, no read of any `auth.*` table, no `auth.jwt()`.
+- **A new extension** before checking that Neon supports it (`https://neon.com/docs/extensions/pg-extensions`).
+- **A setting made only in the Supabase dashboard.** If one is needed, write it down in the runbook the same day: the send-email hook is in no file in this repo.
+- **Supabase branching, log drains and the dashboard's SQL editor** as part of any workflow.
 
 ## Built for any country
 

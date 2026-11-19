@@ -95,16 +95,16 @@ The stack keeps your existing tools (GitHub, Netlify, Tailwind, Resend, GA) and 
 | Layer | Choice | Why |
 | --- | --- | --- |
 | App framework | Next.js (App Router) + TypeScript, in a monorepo: platform app (admin, staff app, booking pages, API) and marketplace app, sharing packages | One repo, shared rules; server actions; works on Netlify or Vercel |
-| Database | Supabase Postgres | Range types + exclusion constraints for availability; row-level security for tenants |
-| Auth | Supabase Auth: email, Google, LINE (OIDC); 2FA for staff | Built in; LINE login matters for Thai staff |
-| File storage | Supabase Storage, private buckets per tenant | Passports, licences, damage photos, signed PDFs |
+| Database | Supabase Postgres until the Neon move (after Phase 3); then Neon Postgres, Singapore, always on | Range types + exclusion constraints for availability; row-level security for tenants |
+| Auth | Supabase Auth until the Neon move; then Better Auth run in the apps: email, Google, LINE; 2FA for staff | LINE login matters for Thai staff |
+| File storage | Supabase Storage until the Neon move; then Cloudflare R2. Private storage per tenant, behind one module | Passports, licences, damage photos, signed PDFs |
 | UI | Tailwind CSS + shadcn/ui, light/dark | Fast to build, consistent, accessible |
 | Payments | Stripe Connect (Standard accounts) for shop payments; Stripe Billing for SaaS subscriptions | Money goes straight to each shop; you never hold their revenue |
 | Email | Resend + React Email templates | Already in your stack |
 | Messaging | LINE Messaging API (per-tenant channel) | Thai customers and staff |
 | PDFs | Server-side render (react-pdf) | Contracts, invoices, quotes |
-| Background jobs | Supabase cron + Edge Functions (or Inngest) | Reminders, expiry alerts, recurring charges |
-| Hosting | Netlify (one site per app) + one shared Supabase project (Singapore region) | Low latency for Thailand |
+| Background jobs | pg\_cron jobs that only queue; the app sends (scheduled functions). No Edge Functions | Reminders, expiry alerts, recurring charges |
+| Hosting | Netlify (one site per app) + one shared database in Singapore (Supabase today, Neon after the move) | Low latency for Thailand |
 | Monitoring | Sentry + Supabase logs; uptime check | Catch errors before shops do |
 | Testing | Vitest (unit), Playwright (end-to-end), pgTAP or SQL tests for RLS | Availability and tenant isolation must be tested |
 | i18n | next-intl; English + Thai | Admin and booking pages |
@@ -488,7 +488,7 @@ This is general information, not legal advice. Have a Thai lawyer review the pri
 
 These came from an independent review of the plan after Phase 0. They are binding and override anything earlier in this spec that disagrees. Items marked for a later phase are settled when that phase is prepared.
 
-**Build order.** 0 → 1a → 2 → 3 → 3M → 1b → 4 onward. Phase 1 is split in two:
+**Build order.** 0 → 1a → 2 → 3 → Neon move → 3M → 1b → 4 onward (the Neon move was added on 19 Nov 2026; see Hosting and data below). Phase 1 is split in two:
 
 - **1a Fleet core:** locations, optional catalog link, models, units, CSV import, QR stickers, unit blocks (downtime), the audit table, and the legacy-table mapping.
 - **1b Fleet care:** maintenance log, service schedules, odometer alerts, tax and insurance renewals, keys, GPS, vehicle notes (fitted accessories; see Vehicle record), unit timeline, profit per vehicle. It runs after Phase 3, because profit needs orders and payments. Update 11 Nov 2026: the tax and insurance renewal records, expiry dates and reminder settings were built in Phase 1a with dashboard reminders and a queue for the messages. Nothing sends yet: email arrives with Phase 3 and LINE with Phase 6.
@@ -520,7 +520,8 @@ These came from an independent review of the plan after Phase 0. They are bindin
 **Hosting and data.**
 
 - Functions stay on Netlify Personal (US East) while building; tests allow for the slower preview. Move functions to Singapore (Netlify Pro) before Phase 4 stores real passports, or before Gate A if that comes first.
-- Before Gate A or the first real marketplace booking on the platform: live Supabase on a paid plan with backups and point-in-time recovery, and a restore drill.
+- Before Gate A or the first real marketplace booking on the platform: the live database on a paid plan with backups and point-in-time recovery, and a restore drill. After the Neon move that is Neon Launch with a 7-day restore window.
+- **The Neon move (decided 19 Nov 2026).** The database moves from Supabase to Neon after Phase 3, before 3M and before BSR goes live: Neon Postgres, the Neon Data API for the calls, Better Auth in the apps for sign-in, pg\_cron for the jobs. Never a part move that keeps Supabase Auth. **A spike comes first, with a go or no-go for Mark; the move goes ahead only if it shows no meaningful performance loss on live.** Live is Neon Launch, always on, in Singapore, with no scale-to-zero. Staging is a Neon Free project that may scale to zero, so the hold sweep is not scheduled there. Phase 3 adds the platform's own "who is calling" functions from its stage 1. The assessment, the stages and their rollbacks are in docs/platform/neon-move-plan.md; root CLAUDE.md has the standing rules and the "do not start using" list.
 - The repo is private (10 Nov 2026).
 - The shop Google Drive document option is deferred until after Gate B. A 'download all my files' export covers data ownership instead.
 
@@ -754,6 +755,7 @@ This log tracks your additions and removals. Each one is already worked into the
 
 | # | Request | Type | Where in the spec | Phase |
 | --- | --- | --- | --- | --- |
+| 49 | Move the database from Supabase to Neon after Phase 3 (before 3M and BSR's go-live), spike first, live always on; Better Auth for sign-in | Decision | Tech stack; Review decisions › Build order, Hosting and data; docs/platform/neon-move-plan.md | After 3 |
 | 48 | Price-per-day mode (request 41) dropped; over 30 days runs month to month plus a long-stay daily rate (replaces request 26's ÷ 30 rule); VAT once per invoice and rate | Change | Pricing; Products redesign and pricing | 2 |
 | 47 | Stage D pricing: price lists (amounts or multipliers), Pricing tab, Settings for rounding, tax profiles, seasons and deposit modes; coupon switch now, coupons in Phase 2 | Add | Products redesign and pricing | 2 (built) |
 | 46 | Products redesign: one Products list for vehicles, gear, items for sale and services; no make or model on platform screens; Moto Mangos settings in their own table | Change | Products redesign and pricing; Data model | 1a (built) |
@@ -806,6 +808,7 @@ This log tracks your additions and removals. Each one is already worked into the
 
 Phases 0–1 can start without these. Each one is needed by the phase noted.
 
+- [ ] Neon move: the spike's go or no-go, the line for "no meaningful performance loss", and Netlify Pro for functions in Singapore before the spike (docs/platform/neon-move-plan.md, section 8).
 - [ ] Platform product name and domain, and the Moto Mangos domain (before Phase 8).
 - [ ] SaaS pricing (draft, confirm before Phase 11): staff app in every tier. Tier 1 = management system; Tier 2 adds online booking; Tier 3 adds multi-store. Possibly also priced by fleet size: under 100 vehicles one price, 100+ another. Moto Mangos stays separate and free to join (Marketplace plan), and links with Tiers 1 and 2.
 - [ ] Thai tax invoice format: confirm with Korn which fields the platform needs on invoices and receipts (before Phase 6).
