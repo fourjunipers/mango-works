@@ -124,10 +124,10 @@ begin
     or coalesce(p_renewal ->> 'unit_id', '')
       !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     or (p_renewal ->> 'kind') is null
-    or coalesce(p_renewal ->> 'expires_at', '') !~ '^\d{4}-\d{2}-\d{2}$'
+    or coalesce(p_renewal ->> 'expires_at', '') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
     or (p_renewal ->> 'starts_at') is not null
-      and (p_renewal ->> 'starts_at') !~ '^\d{4}-\d{2}-\d{2}$'
-    or (p_renewal ->> 'cost') is not null and (p_renewal ->> 'cost') !~ '^\d{1,18}$'
+      and (p_renewal ->> 'starts_at') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    or (p_renewal ->> 'cost') is not null and (p_renewal ->> 'cost') !~ '^[0-9]{1,18}$'
   then
     raise exception 'invalid_renewal' using errcode = '22023';
   end if;
@@ -224,8 +224,8 @@ begin
         or (e ->> 'weekday') !~ '^[0-6]$'
         or jsonb_typeof(e -> 'open') is distinct from 'string'
         or jsonb_typeof(e -> 'close') is distinct from 'string'
-        or (e ->> 'open') !~ '^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
-        or (e ->> 'close') !~ '^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
+        or (e ->> 'open') !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        or (e ->> 'close') !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
     )
   then
     raise exception 'invalid_hours' using errcode = '22023';
@@ -351,6 +351,29 @@ revoke all on function platform_private.platform_admins_audit()
 create trigger platform_admins_audit
 after insert or update or delete on platform.platform_admins
 for each row execute function platform_private.platform_admins_audit();
+
+-- TRUNCATE fires no row trigger, so it would empty the table with nothing
+-- recorded. Nobody truncates it: the grant goes from every role that had
+-- it, and the trigger refuses the table's owner as well. Admins are removed
+-- one by one, each removal recorded above.
+create function platform_private.platform_admins_no_truncate()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'platform_admins_are_not_truncated' using errcode = '42501';
+end;
+$$;
+
+revoke all on function platform_private.platform_admins_no_truncate()
+  from public, anon, authenticated;
+
+create trigger platform_admins_no_truncate
+before truncate on platform.platform_admins
+for each statement execute function platform_private.platform_admins_no_truncate();
+
+revoke truncate on platform.platform_admins from public, anon, authenticated, service_role;
 
 create function platform_private.platform_admin_events_keep()
 returns trigger

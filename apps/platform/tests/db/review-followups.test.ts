@@ -350,6 +350,23 @@ describe("record_renewal(): a renewal and its cost in one transaction", () => {
       ],
       ["a cost that is not digits", { cost: "12.50" }, "invalid_renewal"],
       ["a cost as a number", { cost: 100 }, "invalid_renewal"],
+      // Digits are 0 to 9 only: other scripts' digits get the function's own
+      // refusal, not a cast error from further in.
+      [
+        "a cost in full-width digits",
+        { cost: "\uFF11\uFF12" },
+        "invalid_renewal",
+      ],
+      [
+        "a cost in Arabic-Indic digits",
+        { cost: "\u0661\u0662" },
+        "invalid_renewal",
+      ],
+      [
+        "a date in full-width digits",
+        { expires_at: "\uFF12\uFF10\uFF12\uFF17-\uFF10\uFF11-\uFF10\uFF11" },
+        "invalid_renewal",
+      ],
       [
         "a setting it does not know",
         { recorded_by: shop.members.manager.id },
@@ -545,6 +562,12 @@ describe("save_location_hours(): a location's week as one atomic set", () => {
       ["the same weekday twice", [...good, day(3), day(3, "10:00", "11:00")]],
       ["a time that is not one", [...good, day(3, "25:00", "26:00")]],
       ["a time as words", [...good, day(3, "nine", "six")]],
+      // Digits are 0 to 9 only: the function's own refusal, not a cast error.
+      ["a time in full-width digits", [...good, day(3, "0\uFF19:00", "18:00")]],
+      [
+        "a close in Arabic-Indic digits",
+        [...good, day(3, "09:00", "1\u0668:00")],
+      ],
       ["no close", [...good, { weekday: 3, open: "09:00" }]],
       [
         "a setting it does not know",
@@ -792,6 +815,54 @@ describe("every change to platform_admins is recorded", () => {
         );
       }
       expect(await eventsOf(admin.id)).toHaveLength(1);
+    } finally {
+      await deleteUser(admin);
+    }
+  });
+
+  it("platform_admins can't be truncated, which would empty it with nothing recorded: not by the service role, not by the database's superuser", async () => {
+    const admin = await createUser("rf-admin-truncate");
+    try {
+      await service
+        .from("platform_admins")
+        .insert({ user_id: admin.id })
+        .throwOnError();
+      const admins = () =>
+        sql(`select count(*) from platform.platform_admins;`).out;
+      const before = admins();
+      expect(Number(before)).toBeGreaterThan(0);
+      const events = (await eventsOf(admin.id)).length;
+
+      // The service role has no grant to try.
+      const asService = sql(`
+        begin;
+        set local role service_role;
+        truncate platform.platform_admins;
+        commit;
+      `);
+      expect(asService.failed).toContain(
+        "permission denied for table platform_admins",
+      );
+      // The owner of the table is stopped by the table itself.
+      for (const statement of [
+        `truncate platform.platform_admins;`,
+        `truncate platform.platform_admins cascade;`,
+      ]) {
+        expect(sql(statement).failed, statement).toContain(
+          "platform_admins_are_not_truncated",
+        );
+      }
+      expect(admins()).toBe(before);
+      expect(await eventsOf(admin.id)).toHaveLength(events);
+      // Nobody but the owner holds the grant.
+      expect(
+        sql(`
+          select coalesce(string_agg(grantee, ',' order by grantee), 'nobody')
+          from information_schema.role_table_grants
+          where table_schema = 'platform' and table_name = 'platform_admins'
+            and privilege_type = 'TRUNCATE' and grantee <> 'postgres';
+        `).out,
+      ).toBe("nobody");
     } finally {
       await deleteUser(admin);
     }

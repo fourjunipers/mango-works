@@ -960,6 +960,7 @@ describe("review follow-ups: the stage 10 table and functions", () => {
       "platform_admin_events_keep_all platform_private.platform_admin_events_keep",
       "platform_admin_events_keep_rows platform_private.platform_admin_events_keep",
       "platform_admins_audit platform_private.platform_admins_audit",
+      "platform_admins_no_truncate platform_private.platform_admins_no_truncate",
       "unit_renewals_audit platform_private.audit_row",
       "unit_renewals_set_recorded_by platform_private.unit_renewals_set_recorded_by",
       "unit_renewals_set_updated_at platform_private.set_updated_at",
@@ -979,7 +980,8 @@ describe("review follow-ups: the stage 10 table and functions", () => {
         and p.proname in (
           'record_renewal', 'save_location_hours', 'coupon_inputs_by_id',
           'unit_renewals_set_recorded_by', 'platform_admins_audit',
-          'platform_admin_events_keep', 'normalize_coupon_code',
+          'platform_admin_events_keep', 'platform_admins_no_truncate',
+          'normalize_coupon_code',
           'tenants_lock_currency', 'currency_locked')
       order by 1;
     `);
@@ -998,6 +1000,7 @@ describe("review follow-ups: the stage 10 table and functions", () => {
       // Trigger functions: nobody calls them.
       'platform_private.platform_admin_events_keep false false false false | false search_path=""',
       'platform_private.platform_admins_audit false false false false | true search_path=""',
+      'platform_private.platform_admins_no_truncate false false false false | false search_path=""',
       'platform_private.tenants_lock_currency false false false false | true search_path=""',
       'platform_private.unit_renewals_set_recorded_by false false false false | true search_path=""',
     ]);
