@@ -99,7 +99,7 @@ The stack keeps your existing tools (GitHub, Netlify, Tailwind, Resend, GA) and 
 | Auth | Supabase Auth: email, Google, LINE (OIDC); 2FA for staff | Built in; LINE login matters for Thai staff |
 | File storage | Supabase Storage, private buckets per tenant | Passports, licences, damage photos, signed PDFs |
 | UI | Tailwind CSS + shadcn/ui, light/dark | Fast to build, consistent, accessible |
-| Payments | Stripe Connect (Standard accounts) for shop payments; Stripe Billing for SaaS subscriptions | Money goes straight to each shop; you never hold their revenue |
+| Payments | Stripe Connect (Standard accounts) for shop payments; Mango Works' own invoices for SaaS subscriptions, with Stripe only to collect (card, PromptPay QR) and bank transfer marked paid by hand | Money goes straight to each shop; you never hold their revenue |
 | Email | Resend + React Email templates | Already in your stack |
 | Messaging | LINE Messaging API (per-tenant channel) | Thai customers and staff |
 | PDFs | Server-side render (react-pdf) | Contracts, invoices, quotes |
@@ -482,7 +482,7 @@ This is general information, not legal advice. Have a Thai lawyer review the pri
 - Enforced 2FA option; session list; audit log viewer.
 - CSV import for models, units and customers. A Booqable importer migrates BSR's data.
 - Platform admin: tenants, plans, usage, impersonate-with-consent for support, feature flags.
-- SaaS billing: plans and trials via Stripe Billing; limits per plan (vehicles, seats, locations).
+- SaaS billing: plans and trials on Mango Works' own invoices and ledger, with Stripe only to collect (decided 19 Nov 2026; docs/platform/payments-design.md §7); limits per plan (vehicles, seats, locations).
 
 ## Review decisions (10 Nov 2026)
 
@@ -513,7 +513,7 @@ These came from an independent review of the plan after Phase 0. They are bindin
 
 **Payments.** Provider-neutral from the start of the schema (before Phase 3): payment\_accounts (tenant, provider, external id, capabilities) and payments.provider + provider\_ref, an append-only payments ledger, and a webhook\_events table unique on provider + event id. Features switch on capabilities (hold, save card, partial refund, platform fee). Goal: support the major payment providers in each country; Stripe and PromptPay first for Thailand. The Moto Mangos booking fee is charged fee-only on Moto Mangos' own account (as in INTEGRATION), not as a Connect platform fee. Stripe's written answers on Thai Connect limits come before Phase 2. Tap to Pay moves to Later (needs a native app; Stripe Terminal doesn't serve Thailand).
 
-**Stripe in Thailand (Stripe's answers, 10 Nov 2026).** Shops get their own connected accounts through Stripe-hosted Connect Onboarding (Accounts v2 or controller properties; Stripe liable for negative balances; the shop pays processing and dispute fees). Payments are direct charges on the shop's account. A Thai platform can't take an application fee from Thai shops, so Mango Works earns through its subscription (Stripe Billing), and the Moto Mangos booking fee is charged on Moto Mangos' own account. Stripe keeps its fee on refunds (cards 3.65% + ฿10 domestic, 4.75% + ฿10 foreign; PromptPay 1.65%).
+**Stripe in Thailand (Stripe's answers, 10 Nov 2026).** Shops get their own connected accounts through Stripe-hosted Connect Onboarding (Accounts v2 or controller properties; Stripe liable for negative balances; the shop pays processing and dispute fees). Payments are direct charges on the shop's account. A Thai platform can't take an application fee from Thai shops, so Mango Works earns through its subscription (its own invoices, with Stripe only to collect), and the Moto Mangos booking fee is charged on Moto Mangos' own account. Stripe keeps its fee on refunds (cards 3.65% + ฿10 domestic, 4.75% + ฿10 foreign; PromptPay 1.65%).
 
 **When the renter pays.** Moto Mangos bookings: free cancellation until 72 hours before pickup. At booking the card is saved with explicit consent (checkbox, terms stating timing and amount; recorded); it is charged off-session 72 hours before pickup (unscheduled), and monthly for long-term rentals (recurring). Bookings made within 72 hours are charged at booking. PromptPay can't be charged later, so PromptPay bookings pay in full at booking. **Deposit:** for a shop's own bookings (booking page, staff app), each shop picks a security deposit mode: (1) none; (2) a percentage of the order total, including or excluding the deposit amount; (3) per-model deposits set on each model; (4) a fixed amount per order. Every card payment, deposit or not, can be charged or authorized. An authorization carries an at-expiry action chosen by staff (shop default, per-order override): release, or capture shortly before the hold's capture\_before time (about 7 days). Staff can capture or release by hand at any time before then. A captured deposit that is later refunded loses Stripe's fee; the shop is told this in settings. If Stripe grants extended authorisation (requires removing Link as a payment method), holds can last up to about 30 days. Cash deposits stay outside revenue in the cash close.
 
@@ -688,7 +688,7 @@ Read the phases left to right, band by band. Nothing reaches other shops until B
    - Accept: a 3-month rental auto-charges each month in test clock; a failed charge alerts staff.
 10. **Sales history, reports + import.** Dashboard KPIs, sales history page (periods, compare, filters, saved views, drill-down), revenue basis switch, cash paid out + daily cash close + evening LINE summary, other reports, CSV/Excel export, Booqable importer (products, stock items, customers, future orders).
     - Accept: import of BSR's Booqable export reconciles counts exactly. **Gate A:** BSR runs in parallel for 2 weeks.
-11. **SaaS layer.** Marketing site with pricing page; self-serve signup, payment and automatic shop setup (country sets currency, timezone, language and tax; no manual step by Mango Works) + onboarding wizard, 5 shop website templates, plans and trials (Stripe Billing), plan limits, multi-location, platform admin, enforced 2FA, public API + webhooks.
+11. **SaaS layer.** Marketing site with pricing page; self-serve signup, payment and automatic shop setup (country sets currency, timezone, language and tax; no manual step by Mango Works) + onboarding wizard, 5 shop website templates, plans and trials (own invoices; Stripe only to collect), plan limits, multi-location, platform admin, enforced 2FA, public API + webhooks.
     - Accept: a new shop goes from signup to first online booking in under 30 minutes without help.
 12. **BSR cutover + hardening.** Fix pilot issues, Stripe Tap to Pay in the staff app, backups and restore drill, load test, security review, terms/privacy pages, help docs.
     - Accept: restore from backup works; no open P1 bugs for 2 weeks. **Gate B:** cancel Booqable, open signups.
@@ -709,7 +709,7 @@ The root CLAUDE.md also applies. Work only in apps/platform, packages/ and supab
 
 ## Stack
 Next.js (App Router) + TypeScript strict, Supabase (Postgres, Auth, Storage, RLS),
-Tailwind + shadcn/ui, Stripe Connect + Billing, Resend, LINE Messaging API, next-intl (en, th).
+Tailwind + shadcn/ui, Stripe Connect, Resend, LINE Messaging API, next-intl (en, th).
 
 ## Rules
 - Every table has tenant_id and an RLS policy. Add an RLS test for every new table.
