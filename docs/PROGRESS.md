@@ -13,6 +13,15 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
+
+**Docs only: no code, migration or test changed.** Written from `main` at `b9e0b33`.
+
+- **46 help articles** in `docs/help/en/<area>/<slug>.md` (English only; Thai after Korn's review), one task each, with front matter (title, summary, keywords in English and Thai script, screens, updated), short steps and a "Common problems" section quoting every refusal message from `en.json`. Areas: sign-in and device, team, locations, shop settings, fleet, products and prices, pricing and tax settings, seasons, price lists, coupons. A script checked every bold quote against `en.json` and every link.
+- `docs/help/README.md`: index by area, the article format, and the rule that each PR changing a screen updates its article. `docs/help/PENDING.md`: what PR 51 will change (the number rule, coupon code messages, the coupon list's uses, the renewal cost, saving opening hours).
+- **Written from the screens, not the spec, where they differ:** platform screens have no make or model (a product is known by its name) and no year bands (the panel was removed in Products stage A); a product can be restored but there is no button to retire one; booking rules have no screen yet, so they have no article. Not covered yet: the Moto Mangos tab, gear stock, product History, platform admin.
+- **Spec: vehicle notes.** SPEC's units table and Vehicle record now have a notes field (fitted accessories). `platform.units.notes` already exists (text, up to 2,000 characters, since `20261110000500_platform_fleet.sql`); it is on the vehicle's Details form for owners and managers, shown on the vehicle page, and audited by the `units_audit` trigger. Still to build: show it on the staff app's bike card and make the Fleet search find it (Fleet search today matches product name, plate, frame and engine number). Listed under Phase 1b below.
+
 ## Next.js security upgrade (branch `security/next-upgrade`, 17 Nov 2026)
 
 `next build` warned that the Next.js version is affected by a known security vulnerability.
@@ -2599,6 +2608,10 @@ Mapping first: `docs/platform/MAPPING.md` (legacy marketplace tables → tenants
 - `packages/config` (`@mango/config`): tsconfig base, ESLint presets with the monorepo boundaries, Prettier base.
 - Root npm workspaces with one lockfile; CI (`.github/workflows/ci.yml`); `apps/marketplace/netlify.toml` with an ignore command.
 - Docs: `docs/platform/SPEC.md`, `docs/marketplace/*`, the merged `docs/INTEGRATION.md`, and CLAUDE.md files at the root, in the marketplace and in the platform.
+
+## Phase 1b: fleet care (to build)
+
+- Vehicle notes field (fitted accessories), see SPEC Vehicle record: column exists, screen only. Still to do: the staff app's bike card and the Fleet search.
 
 ## Next
 
