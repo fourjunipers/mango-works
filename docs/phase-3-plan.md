@@ -1,6 +1,6 @@
 # Phase 3 plan: orders and calendar
 
-**Draft 2, 19 Nov 2026.** Plan only: no code, no migration, nothing applied anywhere. Draft 1 (`45dd93f`) was critiqued by Fable ("needs a second draft"); this draft applies every item of that critique and Mark's 25 decisions of 19 Nov 2026, then his answers to draft 2's open points (decisions 23 replaced, 26 to 32, same day), the ledger changes from the payments design (PR 56 §10, decisions 33 to 42), the decision to stay on Supabase with our own caller functions (decision 43), and Fable's re-check of draft 2 ("fix these first", 16 plan-text fixes; the design stands). §14 lists each change and where it went.
+**Draft 2, 19 Nov 2026.** Plan only: no code, no migration, nothing applied anywhere. Draft 1 (`45dd93f`) was critiqued by Fable ("needs a second draft"); this draft applies every item of that critique and Mark's 25 decisions of 19 Nov 2026, then his answers to draft 2's open points (decisions 23 replaced, 26 to 32, same day), the ledger changes from the payments design (PR 56 §10, decisions 33 to 42), our own caller functions ahead of the planned move to Neon (decision 43), and Fable's re-check of draft 2 ("fix these first", 16 plan-text fixes; the design stands). §14 lists each change and where it went.
 
 Written from `main` at `b9e0b33` (PR 50 merged; 66 migrations, staging at 66 of 66, live at 53 of 53) **and PR 51's branch** `platform/phase-2-stage-10-review-followups` at `2474a6e` (migration 6, `20261119000100_platform_review_followups`). Every schema statement below is about the database as it will be after migration 6. Phase 2 stage 11 (the read-only New order screen, Settings › Booking rules, the seed) is assumed merged before stage 9 here.
 
@@ -336,7 +336,7 @@ Six booleans on `tenants`, written by `save_staff_permissions` (owner, manager),
 
 ### 3.11 Who is calling (decision 43)
 
-Mango Works stays on Supabase (decided 19 Nov 2026, after the Neon assessment, `docs/platform/neon-move-plan.md`). Phase 3 still reads the caller through functions of its own, so a later move, or a change in how Supabase exposes the caller, touches two function bodies.
+Mark has decided to **move from Supabase to Neon after Phase 3**, before 3M and before BSR goes live, with a spike first as a go/no-go and live on an always-on compute (19 Nov 2026; `docs/platform/neon-move-plan.md`, branch `docs/neon-move-plan`). Sign-in then moves to Better Auth. **`app_uid()` and `app_role()` exist so that move changes one function body each, not every function**: Phase 3 reads the caller only through them.
 
 - **Two functions in `platform_private`, created in stage 1 (migration 1):**
   - `platform_private.app_uid()` returns `uuid`: `select auth.uid()`.
@@ -684,7 +684,7 @@ Not truly testable: race tests prove the timings they hit; real Resend sends (on
 | 40 | `record_payment`, `record_refund` and `record_deposit` split into a private core the system can call and a staff wrapper | §3.3, §6.4, stage 3 |
 | 41 | Room in the lists: `card` and `promptpay` in `payments.method`; `cancellation_fee` in `order_charges.kind`; a `withholding` payment kind | §3.2, §6.4 |
 | 42 | VAT on deposits is a shop setting: on receipt with a credit note on return, or none (pending Korn K3); `rate_groups` allowed on deposit rows; the tax-invoice rule in one function | §6.4, stage 3 |
-| 43 | Mango Works stays on Supabase. Phase 3 adds `platform_private.app_uid()` and `app_role()` in stage 1; every new or re-created function, default and policy calls them instead of `auth.uid()` or `auth.role()`; older code converted only when a stage re-creates it; a static test pins the remaining direct uses so the count only goes down | §3.11, §3.8, §8 stage 1, §12 |
+| 43 | Ahead of the planned move to Neon and Better Auth after Phase 3, Phase 3 adds `platform_private.app_uid()` and `app_role()` in stage 1, so the move changes one function body, not every function; every new or re-created function, default and policy calls them instead of `auth.uid()` or `auth.role()`; older code converted only when a stage re-creates it; a static test pins the remaining direct uses so the count only goes down | §3.11, §3.8, §8 stage 1, §12 |
 
 ### 11.2 Open points
 
@@ -706,7 +706,7 @@ Draft 2's other open points (the VAT on a payment, one invoice for several month
 | Porting Phase 2's tests loses coverage | Same files, same rounds, same outcomes, counted before and after in stage 2b |
 | Clearing Phase 2 rows (decision 24) | Staging and seed only; live must count 0 before the push |
 | Scope: thirteen stages | Database first; screens on Opus with Fable checks |
-| Supabase-only reads of the caller spreading | Mango Works stays on Supabase (decision 43); Phase 3 reads the caller only through `app_uid()` and `app_role()`, and a static test keeps the count of direct `auth.uid()` and `auth.role()` uses from rising. Jobs only queue; the sender is app-side |
+| **The planned move to Neon after Phase 3** (before 3M and BSR's go-live; `docs/platform/neon-move-plan.md`, branch `docs/neon-move-plan`) | **A spike first, as a go/no-go**, checking latency, cold start, the RLS bypass role, Data API timeouts, Better Auth with LINE sign-in and pg_cron; live then runs on an always-on compute. Phase 3 keeps the move small: the caller is read only through `app_uid()` and `app_role()` (decision 43) and a static test keeps direct `auth.uid()` and `auth.role()` uses from rising; jobs only queue and the sender is app-side; the root `CLAUDE.md` "Not tied to Supabase" rules bind every stage |
 
 ## 13. Doc edits this plan will need (owner keeps the spec)
 
@@ -776,4 +776,4 @@ Draft 2's other open points (the VAT on a payment, one invoice for several month
 | **Decision 41** (room in the lists) | `card`, `promptpay`, `cancellation_fee`, `withholding` | §3.2, §3.8, §6.4 |
 | **Decision 42** (VAT on deposits) | `deposit_vat_mode` setting, default `none` pending K3; `rate_groups` on deposit rows; `deposit_needs_tax_invoice()` | §6.4, §3.8, §8 stage 3 |
 | Lock order and stages (decisions 33 to 42) | No new lock class: every ledger write takes the order row (3.1) then rows of class 3.9; provider duplicates serialise on the order row. All land in stage 3 / migration 4, except the two kind values in migration 2 (stage 2a), the deposit status read (stage 7) and its screen (stage 9); writers of `marketplace_fee` (3M) and of card, PromptPay, chargebacks and `cancellation_fee` (Phase 7) come later | §3.8, §4.3, §8 |
-| **Decision 43** (who is calling) | `app_uid()` and `app_role()` in `platform_private`, created in stage 1 (migration 1); used by all new and re-created Phase 3 code; no sweeping rewrite; `caller-functions.test.ts` pins the remaining direct uses. Names: the fallback, since `neon-move-plan.md` §5 names none. No lock impact | §3.11, §3.8, §8 stage 1, §11.1, §12 |
+| **Decision 43** (who is calling) | `app_uid()` and `app_role()` in `platform_private`, created in stage 1 (migration 1), so the move to Neon and Better Auth after Phase 3 changes one function body, not every function; used by all new and re-created Phase 3 code; no sweeping rewrite; `caller-functions.test.ts` pins the remaining direct uses. Names: the fallback, since `neon-move-plan.md` §5 names none. No lock impact. **Corrected 19 Nov 2026:** first written as "stays on Supabase"; Mark has decided to move to Neon after Phase 3 | §3.11, §3.8, §8 stage 1, §11.1, §12 |
