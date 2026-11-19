@@ -13,6 +13,17 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Payments design (branch `docs/payments-design`, 19 Nov 2026)
+
+**Docs only: no code, migration or test changed.** Written from `main` at `d458717` and `docs/phase-3-plan.md` draft 2 (`f996c4e`).
+
+- `docs/platform/payments-design.md`: the design Phase 7 will build, and the Moto Mangos fee. Provider interface, shop payments on each shop's own Stripe account (direct charges), the fee as a separate charge on Mango Works' own account, webhooks and reconciliation, tax document data, vendor billing, security, ten build stages, and what Phase 8 adds.
+- **Provider facts were checked against the providers' own pages on 19 Nov 2026** and are cited in the document; nothing was tested against an account. Points the pages leave unclear are listed as questions for Stripe (§11.3).
+- **For Phase 3's plan, nine changes while it is on paper** (§10): the overpayment refusal binds staff entry only; a refund names its payment; reversal and chargeback rows; a card hold is not money; a `marketplace_fee` line on Moto Mangos orders; unique provider rows with no staff member; ledger cores the system can call; room in the method and charge-kind lists; and no "deposit has no VAT" rule built into the table until Korn answers.
+- **Open:** 16 decisions for Mark (§11.1), 13 questions for Korn (§11.2), 10 for Stripe (§11.3). The one to settle first: whether Stripe supports vehicle rental shops through Connect in Thailand ("transportation services" is a restricted category there).
+- **Found against a settled decision:** the Revenue Department's order Por.73/2541 reads as taxing a rental security deposit when it is received. The design keeps "no VAT until kept" and asks Korn (K3).
+- Doc edits the design will need are listed in its §12 and not made here (among them: `apps/marketplace/CLAUDE.md` still says the fee is a Connect application fee).
+
 ## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
 
 **Docs only: no code, migration or test changed.** Written from `main` at `b9e0b33`.
