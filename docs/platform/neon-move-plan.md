@@ -28,6 +28,11 @@ The assessment had recommended staying (§6). Its cost and risk findings stand a
 | 10 | **Phase 3 adds our own "who is calling" functions from stage 1** | Already sent to the Phase 3 plan. They are the only places `auth.uid()` and `auth.role()` are read |
 | 11 | **A "do not start using" list in root CLAUDE.md** | Added with this document |
 | 12 | **Point-in-time recovery: Neon's restore window on live** | What it covers: §7.4 |
+| 13 | **The line for "no meaningful performance loss": 10% or 20 ms on median and 95th percentile, whichever is larger** | Spike row 1, §7.1 |
+| 14 | **The spike may read and write a throwaway shop on staging, and must remove it afterwards** | §7.1 |
+| 15 | **Staff 2FA is built after the move, on Better Auth** | Noted against Phase 11 in SPEC. Supabase's MFA is on the "do not start using" list |
+| 16 | **Keep the rule that queries use only `.from()`, `.rpc()` and `.schema()`** | Root CLAUDE.md, first rule |
+| 17 | **Netlify Pro is not taken now.** It is a final step of the build, just before go-live: upgrade to Pro and move the functions to Singapore | Stage 11, §7.8. The spike measures from today's function region, US East |
 
 ## 1. What depends on Supabase today
 
@@ -220,7 +225,7 @@ On throwaway Neon projects in the new Free organisation and a throwaway Netlify 
 
 | # | Question | How | Passes when |
 | --- | --- | --- | --- |
-| 1 | **Latency from Netlify server functions to Neon in Singapore, against today's Supabase in Singapore** | The same two calls, 200 times each, warm, from one Netlify function: a typical read (a product list with its prices, through the data API) and an RPC-style write (a booking function that takes locks and writes). Median and 95th percentile. Run from the function region the sites use today, and from Singapore if Mark takes the plan that allows it (below) | Neon's median and 95th percentile are no worse than Supabase's by more than 10% or 20 ms, whichever is larger (my proposed line; Mark sets it) |
+| 1 | **Latency from Netlify server functions to Neon in Singapore, against today's Supabase in Singapore** | The same two calls, 200 times each, warm, from one Netlify function: a typical read (a product list with its prices, through the data API) and an RPC-style write (a booking function that takes locks and writes). Median and 95th percentile. **Both measured the same way, from today's function region (US East)**, in the same run | **Neon's median and 95th percentile are each no worse than Supabase's by more than 10% or 20 ms, whichever is larger** (Mark's line, 19 Nov 2026) |
 | 2 | **Cold start** of a scaled-to-zero compute, and **none on an always-on compute** | First call after 10 idle minutes on a Free project, 20 times. The same on a Launch project with scale-to-zero off, after 1 hour and after a night idle | Always on: the first call is no slower than the rest. Scale-to-zero: the number is written down for staging (Neon says "a few hundred milliseconds") |
 | 3 | **Can a role made in SQL bypass RLS?** (our `service_role`) | Create it in SQL with BYPASSRLS; if refused, create it through the Console or API. Read a table whose policy would hide the row | A `service_role` exists that bypasses RLS, and the app's own login role does not |
 | 4 | **Does the Data API apply a role's statement timeout?** | `alter role authenticated set statement_timeout = '8s'`, then a 10-second call through the Data API | The call is cancelled at 8 seconds with `57014`. If not, find where the timeout can be set, or fail the point |
@@ -233,10 +238,11 @@ On throwaway Neon projects in the new Free organisation and a throwaway Netlify 
 
 - **Where functions run today:** US East. Netlify's default for new sites is `cmh` (Ohio). `docs/PROGRESS.md` (10 Nov 2026) records "Functions run in US East (the plan can't change the region), so each page waits on round trips to Singapore".
 - **How it is set:** in the Netlify UI under the site's Functions settings (Region, Configure), then a redeploy; old deploys keep their region. A `region` set for one function in code or `netlify.toml` overrides the site's.
-- **Whether the plan allows it:** Netlify's docs say choosing a region is "available on all Pro and Enterprise plans", and the pricing page shows it as not included on Free and Personal. Singapore is offered (`sin`). Pro is $20 a month. SPEC already says to move functions to Singapore on Netlify Pro before Phase 4 or Gate A.
-- **So the spike compares like with like:** both databases from US East (today), and both from Singapore (after Pro). The move must not be blamed for, or flattered by, a change of function region made at the same time.
+- **Whether the plan allows it:** Netlify's docs say choosing a region is "available on all Pro and Enterprise plans", and the pricing page shows it as not included on Free and Personal. Singapore is offered (`sin`). Pro is $20 a month.
+- **Netlify Pro is not taken now (Mark, 19 Nov 2026).** It is a final step of the build, just before go-live: upgrade to Pro and move the functions to Singapore (stage 11, §7.8).
+- **So the spike compares Neon and Supabase from US East, both measured the same way.** What it answers is whether Neon is slower than Supabase, not how fast the sites will be. **Absolute latencies will drop for both once the functions move to Singapore**, because every call stops crossing to Singapore and back. A difference of a few milliseconds between the vendors is a small share of a US East round trip and a larger share of a Singapore one, which is why the line has a fixed part (20 ms) as well as a share (10%), and why stage 11 measures again.
 
-**The Supabase side of the comparison needs staging.** A read and one write against `mango-works-staging`, in a throwaway shop that the spike deletes. **This is only done on Mark's word**; otherwise the spike measures Neon alone and compares with figures taken from the running sites.
+**The Supabase side of the comparison uses staging (allowed by Mark, 19 Nov 2026).** The spike may read and write a throwaway shop on `mango-works-staging`, and **must remove it afterwards**: the shop, its users and everything under it, with a count before and after in the write-up to show nothing was left. It touches no other shop's rows and never touches live.
 
 **Rollback:** delete the throwaway projects and site. Nothing else exists.
 
@@ -281,6 +287,7 @@ Neon's "instant restore" on the Launch plan:
 | 8 | **Neon projects, staging's move and the rehearsal.** Create the paid organisation, the live project (Launch, always on, Singapore, 7-day window) and the staging project (Free). Move staging first, on Mark's word. Then rehearse the whole cutover into the still-empty live project with a copy of staging's data, time it, and practise the rollback | Fable (the copy script and the rehearsal); Mark runs anything that touches staging | The script runs start to finish without a hand edit; the read-only checks match on both sides; rollback practised once | Staging: point its sites back at the Supabase staging project, which is kept. Live project: empty it |
 | 9 | **Cutover of live** (§7.6) | Fable, with Mark at the keyboard for every command on live | The checks match and Mark says go | §7.7 |
 | 10 | **Clean-up, 30 days later, on Mark's word**: remove the switches and the Supabase side; drop `@supabase/*`; pause, then delete the Supabase projects; update CLAUDE.md, the runbook and the specs | Opus + Fable check | Nothing in the repo names Supabase except history | Before the projects are deleted: restore the switches from git. After: none, which is why it waits 30 days and for Mark's word |
+| 11 | **Go-live preparation: Netlify Pro, functions to Singapore** (§7.8). The last step of the build, just before go-live; not tied to the cutover | Mark makes the change in Netlify; Opus + Fable check for the measurement and the test timeouts | Both sites' functions run in `sin`; the spike's two calls measured again from Singapore | Set the region back and redeploy; the plan can be lowered again |
 
 Stages 3 to 7 can overlap once stage 2 is merged; 4 needs 3. Stage 8 needs all of 2 to 7.
 
@@ -311,19 +318,28 @@ On the day, in a quiet hour for Bangkok:
 - **After it comes down, the point of no return is the first real booking or payment on Neon.** From then a rollback loses what was written since, unless it is copied back by hand. So the smoke test in step 7 must be complete, and the first day is watched: if something is wrong, the maintenance page goes back up first, and the choice is fix forward or copy back the few rows by hand.
 - Because the move happens before BSR is live, there should be no real bookings yet, and rollback stays free for as long as Supabase is kept.
 
+### 7.8 Stage 11: go-live preparation
+
+Decided 19 Nov 2026: **Netlify Pro is not taken during the build.** Functions stay in US East until then, and the tests keep their longer waits for previews.
+
+The last step of the build, just before go-live:
+
+1. Upgrade the Netlify team to Pro ($20 a month on 19 Nov 2026).
+2. Set both sites' function region to Singapore (`sin`) in the Functions settings, and redeploy both. Old deploys keep their old region.
+3. Measure the spike's two calls again, from Singapore, against the live Neon project, and write the numbers beside the spike's. Expect them to be far lower than the spike's: the calls no longer cross to Singapore and back.
+4. Check that nothing relied on the slow path: test timeouts, the 8-second statement timeout and the 6-second lock timeout are unchanged; the Playwright waits for previews can come down.
+
+It is independent of the Neon cutover and comes after it. **Rollback:** set the region back to the default and redeploy.
+
 ## 8. Still open
 
-Decided on 19 Nov 2026: the table under the Summary. What is left:
+Decided on 19 Nov 2026: the seventeen rows under the Summary, Mark's answers to this section's earlier questions among them (13 to 17). What is left:
 
 | # | Open | Options | My recommendation | Needed by |
 | --- | --- | --- | --- | --- |
-| 1 | The line for "no meaningful performance loss" | (a) 10% or 20 ms on median and 95th percentile, whichever is larger; (b) Mark's own figure | **(a)** | Before the spike |
-| 2 | May the spike read and write a throwaway shop on staging, for the Supabase side of the comparison? | (a) Yes, on Mark's word, deleted after; (b) no: measure Neon alone | **(a)**: without it there is nothing to compare with | Before the spike |
-| 3 | Netlify Pro, for functions in Singapore ($20 a month) | (a) Take it before the spike, so the spike measures the real path; (b) at Phase 4 or Gate A, as SPEC says now | **(a)**. It helps on either vendor and removes the largest delay there is today | Before the spike |
-| 4 | Migration tool (decision 9) | (a) Supabase CLI pointed at Neon; (b) a small SQL-file runner | Decide after the spike; I lean **(b)** | Stage 2 |
-| 5 | Staff 2FA (SPEC: before Gate A) | (a) Build it after the move, on Better Auth; (b) build it on Supabase first and build it again | **(a)**: Supabase's MFA is on the "do not start using" list | When Gate A work is planned |
-| 6 | Staging once the move is done | (a) Stay on Neon Free; (b) a paid project if the cold start or the 100 hours get in the way | **(a)** until it annoys | After stage 8 |
-| 7 | Neon plan for live later | (a) Stay on Launch; (b) Scale, for the 99.95% promise at about twice the compute price | **(a)** until a shop asks for the promise in writing | When a shop asks |
+| 1 | Migration tool (decision 9; confirmed 19 Nov 2026 that it waits for the spike) | (a) Supabase CLI pointed at Neon; (b) a small SQL-file runner | Decide after the spike; I lean **(b)** | Stage 2 |
+| 2 | Staging once the move is done | (a) Stay on Neon Free; (b) a paid project if the cold start or the 100 hours get in the way | **(a)** until it annoys | After stage 8 |
+| 3 | Neon plan for live later | (a) Stay on Launch; (b) Scale, for the 99.95% promise at about twice the compute price | **(a)** until a shop asks for the promise in writing | When a shop asks |
 
 ## 9. Sources
 
