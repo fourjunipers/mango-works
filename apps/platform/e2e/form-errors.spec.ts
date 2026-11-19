@@ -9,10 +9,16 @@
  *    aria-describedby and is marked aria-invalid, so a screen reader reads
  *    the message with the field.
  *
- * On the new-coupon form, which has every kind of field. Nothing is ever
- * saved: each attempt is refused, so the test leaves no coupon behind.
+ *  - A list of checkboxes or of radios is marked as a group and names its
+ *    message the same way; its first box, or its chosen radio, takes the
+ *    focus.
+ *
+ * On the new-coupon form, which has every kind of single field, and on the
+ * new-product forms, whose lists can be refused. Nothing is ever saved: each
+ * attempt is refused, so the tests leave nothing behind and can run in any
+ * order, any number of times.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { demo, signIn } from "./helpers";
 
 test("after a refused save, focus is on the first field with an error, and each error is tied to its field", async ({
@@ -90,23 +96,111 @@ test("after a refused save, focus is on the first field with an error, and each 
   await expect(page).toHaveURL(/\/bsr\/settings\/coupons\/new$/);
 });
 
-test("a checkbox and a radio list of the shared form carry the same wiring", async ({
+/** A message as a pattern, whatever its words: the copy is not the test. */
+const containing = (text: string) =>
+  new RegExp(text.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+
+/**
+ * What every refused group must show: it is marked, it names its message,
+ * every id it names is on the page once, and a screen reader reads the
+ * message with it.
+ */
+async function expectGroupTiedToError(
+  page: Page,
+  group: Locator,
+  errorId: string,
+) {
+  const error = page.locator(`#${errorId}`);
+  await expect(error).toHaveCount(1);
+  await expect(error).toHaveAttribute("role", "alert");
+  await expect(error).not.toBeEmpty();
+  await expect(group).toHaveAttribute("aria-invalid", "true");
+  await expect(group).toHaveAttribute(
+    "aria-describedby",
+    new RegExp(`(^| )${errorId}( |$)`),
+  );
+  const ids = ((await group.getAttribute("aria-describedby")) ?? "")
+    .split(" ")
+    .filter(Boolean);
+  for (const id of ids) await expect(page.locator(`#${id}`)).toHaveCount(1);
+  await expect(group).toHaveAccessibleDescription(
+    containing(await error.innerText()),
+  );
+}
+
+test("a refused save whose error is on a list of checkboxes: the list is marked, names its message, and its first box takes the focus", async ({
   page,
 }) => {
   await signIn(page, demo.bsrOwner);
-  await page.goto("/bsr/settings/coupons/new");
-  // The two ticks at the foot of the form have help lines: each help line
-  // has an id and its box names it, error or not.
-  for (const name of ["withReturningDiscount", "withSeasonDiscount"]) {
-    const box = page.locator(`#${name}`);
-    const described = await box.getAttribute("aria-describedby");
-    if (described === null) {
-      // No help line on this box: then there is nothing to name.
-      await expect(page.locator(`#${name}-help`)).toHaveCount(0);
-      continue;
-    }
-    expect(described.split(" ")).toContain(`${name}-help`);
-    await expect(page.locator(`#${name}-help`)).toHaveCount(1);
-    await expect(box).not.toHaveAttribute("aria-invalid", "true");
-  }
+  // A new vehicle product: a motorbike (the kind it opens on) needs a
+  // category, and none is ticked. The save is refused, so nothing is added.
+  await page.goto("/bsr/products/new");
+  const boxes = page.locator('input[type="checkbox"][name="category"]');
+  const group = page.locator("fieldset", { has: boxes });
+  const form = page.locator("form", { has: group });
+  await expect(group).toHaveCount(1);
+  await expect(boxes.first()).not.toBeChecked();
+  await expect(group.locator("input:checked")).toHaveCount(0);
+
+  // Before anything is sent: not marked, and it names its help line alone.
+  await expect(group).not.toHaveAttribute("aria-invalid");
+  await expect(group).toHaveAttribute("aria-describedby", "category-help");
+  await expect(page.locator("#category-help")).toHaveCount(1);
+  await expect(page.locator("#category-error")).toHaveCount(0);
+
+  await form.locator("#name").fill("E2E form errors");
+  await form.locator('button[type="submit"]').click();
+
+  await expectGroupTiedToError(page, group, "category-error");
+  // The list can't take the focus itself: its first box does.
+  await expect(boxes.first()).toBeFocused();
+  // The kind above it was not what was wrong: it is not marked.
+  await expect(
+    page.locator('[role="radiogroup"]', {
+      has: page.locator('input[name="vehicle_type"]'),
+    }),
+  ).not.toHaveAttribute("aria-invalid");
+
+  // Still the new-product form, with what was typed: nothing was saved.
+  await expect(page).toHaveURL(/\/bsr\/products\/new$/);
+  await expect(form.locator("#name")).toHaveValue("E2E form errors");
+});
+
+test("a refused save whose error is on a list of radios: the group is marked, names its message, and the chosen radio takes the focus", async ({
+  page,
+}) => {
+  await signIn(page, demo.bsrOwner);
+  // A new general product. Its type is one of three radios, so the page
+  // can't send a wrong one by itself: the chosen radio is given a value the
+  // server does not know (what an out-of-date page would send), and the
+  // server refuses it under the radios. Nothing is added.
+  await page.goto("/bsr/products/new");
+  await page.locator('input[name="product_choice"][value="general"]').check();
+  const radios = page.locator('input[type="radio"][name="type"]');
+  const group = page.locator('[role="radiogroup"]', { has: radios });
+  const form = page.locator("form", { has: group });
+  await expect(group).toHaveCount(1);
+  await expect(radios).toHaveCount(3);
+
+  // Before anything is sent: not marked, and nothing to name.
+  await expect(group).not.toHaveAttribute("aria-invalid");
+  await expect(group).not.toHaveAttribute("aria-describedby");
+  await expect(page.locator("#type-error")).toHaveCount(0);
+
+  // The second radio is chosen, so "the chosen one" is not also the first.
+  await radios.nth(1).check();
+  await form.locator("#name").fill("E2E form errors");
+  await radios
+    .nth(1)
+    .evaluate((radio: HTMLInputElement) => (radio.value = "no-such-type"));
+  await form.locator('button[type="submit"]').click();
+
+  await expectGroupTiedToError(page, group, "type-error");
+  // The group can't take the focus itself: its chosen radio does.
+  await expect(radios.nth(1)).toBeChecked();
+  await expect(radios.nth(1)).toBeFocused();
+
+  // Still the new-product form, with what was typed: nothing was saved.
+  await expect(page).toHaveURL(/\/bsr\/products\/new$/);
+  await expect(form.locator("#name")).toHaveValue("E2E form errors");
 });

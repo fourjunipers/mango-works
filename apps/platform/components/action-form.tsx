@@ -115,19 +115,36 @@ export function ActionForm({
   // the focus itself.
   const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
-    if (!state.errors || Object.keys(state.errors).length === 0) return;
+    const keys = Object.keys(state.errors ?? {});
+    if (keys.length === 0) return;
     const form = formRef.current;
     if (!form) return;
-    const marked = form.querySelector<HTMLElement>(
-      '[aria-invalid="true"]:not([disabled])',
-    );
-    // A group of radios is marked as a group: its first choice takes focus.
+    // Only the whole-form error: its own message takes the focus, not a
+    // field or a note the screen itself marked before the save (the pricing
+    // form marks days as they are typed).
+    const formOnly = keys.length === 1 && keys[0] === "form";
+    const marked = formOnly
+      ? null
+      : form.querySelector<HTMLElement>(
+          '[aria-invalid="true"]:not([disabled])',
+        );
+    // A group is marked as a group, and a group can't take focus: of a
+    // group of radios the chosen one does (the one Tab stops at), else the
+    // group's first field that can.
     const field = marked?.matches("input, select, textarea")
       ? marked
-      : marked?.querySelector<HTMLElement>(
-          "input:not([disabled]), select, textarea",
-        );
-    const target = field ?? form.querySelector<HTMLElement>('[role="alert"]');
+      : (marked?.querySelector<HTMLElement>(
+          'input[type="radio"]:checked:enabled',
+        ) ??
+        marked?.querySelector<HTMLElement>(
+          "input:enabled, select:enabled, textarea:enabled",
+        ));
+    const target =
+      field ??
+      (formOnly
+        ? form.querySelector<HTMLElement>("[data-form-error]")
+        : null) ??
+      form.querySelector<HTMLElement>('[role="alert"]');
     if (!target) return;
     if (!field && !target.hasAttribute("tabindex")) target.tabIndex = -1;
     target.focus();
@@ -192,7 +209,11 @@ export function ActionForm({
             </p>
           )}
           {state.errors?.form && (
-            <p role="alert" className="text-sm text-destructive">
+            <p
+              role="alert"
+              data-form-error=""
+              className="text-sm text-destructive"
+            >
               {error("form")}
             </p>
           )}
