@@ -122,15 +122,40 @@
     "searchingFor": "Searching for “{query}”"
   },
   "NewOrder": {
-    "title": "New order",
-    "intro": "Book a vehicle and take payment. These steps fill in as the phases land.",
-    "dates": "Pick dates",
-    "bike": "See the vehicles available",
-    "customer": "Choose or add the customer",
-    "extras": "Extras and delivery",
-    "price": "Price and discount",
-    "sign": "Sign the agreement",
-    "pay": "Take payment"
+    "title": "Price check",
+    "intro": "See what is free and what it costs for any dates, as a booking from the counter, your booking page or Moto Mangos would.",
+    "nothingBooked": "This only checks. Nothing is booked or held, and no coupon use is counted. Making orders comes in Phase 3.",
+    "noLocation": "Add a location first.",
+    "location": "Location",
+    "pickup": "Pickup",
+    "return": "Return",
+    "channel": "Booked from",
+    "channelHelp": "Each way of booking has its own rules: your minimum notice applies online only, and a coupon can be for some of them.",
+    "channels": {
+      "walk_in": "The counter",
+      "booking_page": "Your booking page",
+      "marketplace": "Moto Mangos"
+    },
+    "check": "Check",
+    "badDates": "The return must be after the pickup.",
+    "noProducts": "Nothing to rent at this location yet.",
+    "results": "Free for these dates: {channel}",
+    "seePrice": "Price",
+    "priceFor": "{name}: price from {channel}",
+    "count": {
+      "free": "{free} of {stock} free",
+      "service": "A service: nothing to count"
+    },
+    "refused": {
+      "tooShort": "Too short: at least {min, plural, one {# day} other {# days}} on this channel.",
+      "tooSoon": "Too soon: the earliest pickup on this channel is {when}.",
+      "closedPickup": "Closed at the pickup time.",
+      "closedReturn": "Closed at the return time.",
+      "noHours": "This location has no opening hours, so it takes no online bookings.",
+      "notListed": "Not listed on Moto Mangos.",
+      "noneFree": "None free for these dates.",
+      "noneFreeShortage": "None free. Overbooking is on, so staff could still save it as a shortage."
+    }
   },
   "Maintenance": {
     "title": "Maintenance",

@@ -37,10 +37,13 @@ const tabsByRole: Record<Role, readonly StaffTab[]> = {
   owner: staffTabs,
   manager: staffTabs,
   staff: staffTabs,
-  // Mechanics work on bikes: maintenance, plus what's due today.
-  mechanic: ["dashboard", "maintenance"],
-  // Drivers: today's deliveries and collections, and the orders behind them.
-  driver: ["dashboard", "orders"],
+  // Mechanics work on bikes: maintenance, plus what's due today, and what
+  // is free for some dates (New order's price check, counts only; Phase 2
+  // stage 11, the owner's answer of 20 Nov 2026).
+  mechanic: ["dashboard", "new-order", "maintenance"],
+  // Drivers: today's deliveries and collections, the orders behind them,
+  // and what is free (counts only).
+  driver: ["dashboard", "orders", "new-order"],
 };
 
 /** The tabs a role sees, in tab-bar order. */
