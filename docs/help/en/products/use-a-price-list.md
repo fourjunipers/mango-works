@@ -3,7 +3,7 @@ title: Use a shared price list on a product
 summary: Put a product on one of the shop's shared price lists, so it follows that list's prices, optionally times a base price.
 keywords: [price list, shared prices, same price, price group, base price, multiplier, ตารางราคา, ใช้ตารางราคา, ราคาฐาน]
 screens: [/[tenant]/products/[id], /[tenant]/settings/price-lists]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Use a shared price list on a product
@@ -29,6 +29,8 @@ The long-stay daily rate, deposit and tax stay on the product: see [Set a long-s
 
 - **"There are no shared price lists yet."** Create one in Settings › Price lists.
 - **"Required."** Under **Price list**: no list is chosen. Under **Base price**: the list holds multipliers and needs this product's base price.
-- **"Enter an amount, such as 45000 or 45000.50."** The base price isn't a valid amount.
+- **"Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has."** The base price isn't a valid amount: use a dot for decimals and no spaces.
 - **"A price can't be 0. To charge nothing, choose Free."** The base price can't be 0.
 - **"You can't make that change."** Only owners and managers can change prices.
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).
