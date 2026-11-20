@@ -1,6 +1,6 @@
 # Shop file storage (Google Drive): design
 
-**Draft 1, 20 Nov 2026, for a Fable critique.** Design only: no code, no migration, no test, nothing applied anywhere, no Google Cloud project created.
+**Draft 2, 20 Nov 2026, for a Fable critique.** Design only: no code, no migration, no test, nothing applied anywhere, no Google Cloud project created. Draft 1 put fourteen decisions to Mark; **he decided all fourteen as recommended on 20 Nov 2026** (§12). §15 lists what changed.
 
 **Mark's decision (19 Nov 2026, Phase 1b plan decision 10):** private files are not stored on the platform. Each shop connects its own Google Drive; the platform keeps only a link (the Drive file id). One module serves every file feature. A shop with no connected Drive can't attach files; everything else works.
 
@@ -20,7 +20,7 @@ Written from `main` at `9622342`, and these branches as they stood on 20 Nov 202
 8. **Every failure is a state the screens show**: Drive disconnected or refused, file missing, file in the Drive bin, Drive full, Google slow. The links are never removed by a failure; reconnecting the same account brings everything back (§6).
 9. **Mango Works pays Google nothing today.** Standard Drive API use has no charge [D2]. Google says charges for going **over** quota are planned "later in 2026" with at least 90 days' notice [D2]; our expected use is far under quota (§10). The shop pays Google if its own Drive fills past its free 15 GB [D5].
 10. **Eight stages: a Fable spike, four Fable builds (tokens, uploads, viewing, deletion), three Opus with a Fable check**, between 1b and Phase 4: 0 → 1a → 2 → 3 → Neon move → 3M → 1b → **file storage** → 4 (§11).
-11. **Fourteen decisions for Mark** (§12). The ones that change the shape: whether a check-out can complete without photos when no Drive is connected (decision 6), where tax-invoice PDFs live given the 5-year keeping rule (decision 8), and where Mango Works' own files go (decision 9).
+11. **Fourteen decisions, all decided by Mark on 20 Nov 2026** (§12). The ones that shape the design: a check-out without a connected Drive completes without photos, with a clear warning on the check-out screen that no photos will be kept (decision 6); tax-invoice data is the record and the PDF is regenerated (decision 8); Mango Works' own files go to Mango Works' own Drive (decision 9); Mango Works staff never open shop files, and support asks the shop for a screenshot instead (decision 12).
 
 ## 1. What lives where
 
@@ -63,7 +63,7 @@ The Neon plan's stage 6 ("Files": rule 2's module, R2 buckets, the six storage p
 - **Point-in-time recovery does not cover private files** (Neon plan §7.4 already says R2 is outside it). Neither does anything of ours: the shop's Drive is the only copy. §6.6 says what that means.
 - **The "do not start using" list** already forbids policies on `storage.objects` and Vault; this design uses neither.
 
-Edit to make in `docs/platform/neon-move-plan.md` once Mark accepts this design: stage 6's row and §5's 50-shop line, as above.
+The edits to `docs/platform/neon-move-plan.md` are listed exactly in §13.3, for the consolidation pass.
 
 ## 2. Connecting a Drive
 
@@ -94,7 +94,7 @@ Sign-in with Google (Better Auth, after the Neon move) asks only for name and em
 - **Two Google Cloud projects**: one for local and staging, one for live. Both set to **In production**, not Testing, or every staging connection dies after 7 days [G8]. Verification is not mandatory for either [G2]; brand verification is for live.
 - **Brand verification needs the product's name, a domain, a homepage and a privacy policy.** The platform has no name yet (root `CLAUDE.md`, Names). Until it does, the consent screen can't carry a verified brand. Decision 10.
 - **Lead time:** 2 to 3 business days by Google's estimate, plus the time to put up the homepage and privacy policy and verify the domain. Start it with stage 2, so it is done long before the first shop connects.
-- **Limited Use and "no human reading":** Mango Works staff (support, platform admins) must not open a shop's files. Nothing in the platform gives them a way to (§4.2, decision 12). The privacy policy says so.
+- **Limited Use and "no human reading":** Mango Works staff (support, platform admins) never open a shop's files. Nothing in the platform gives them a way to (§4.2, decision 12); when support needs to see a file, it asks the shop for a screenshot. The privacy policy says so.
 - **Drive API quota:** projects created on or after 1 May 2026 get the new unit-based quotas [D2] (§10).
 
 ### 2.3 One connection per shop, and who may touch it
@@ -155,7 +155,7 @@ platform.storage_connection_status       a view or security-definer read for own
 
 Drive offers simple and multipart uploads up to 5 MB, and **resumable** uploads for larger files or poor networks [D1]. A resumable session address stays valid for a week; an interrupted upload asks Drive how many bytes arrived (`Content-Range: */<total>`, answered `308` with a `Range` header) and sends the rest; chunks are multiples of 256 KB [D1].
 
-| | **A. Browser to Drive, session opened by our server** (recommended) | B. Browser to our server, server to Drive |
+| | **A. Browser to Drive, session opened by our server** (decided) | B. Browser to our server, server to Drive (the fallback) |
 | --- | --- | --- |
 | Token | Stays on the server. The browser gets only one session address, good for one file | Stays on the server |
 | Bytes through our functions | None | All of them: every photo crosses our function host twice (in and out) |
@@ -165,7 +165,7 @@ Drive offers simple and multipart uploads up to 5 MB, and **resumable** uploads 
 | Unknowns | Drive's pages **do not say** whether a browser may send to a session address across origins (CORS), nor say outright that the address needs no token on later requests. Their samples send the token only on the request that opens the session [D1]. Google Cloud Storage, a different product, documents both: the address works without further authentication, and CORS works when the opening request carries an `Origin` header [D3] | None; the plainest to build |
 | What a leaked session address allows | Writing that one file, for a week | Nothing |
 
-**Recommendation: A, with B as the fallback** if the spike shows Drive refuses the browser (decision 1). The spike's test: open a session server-side with an `Origin` header, upload from a browser on another origin, interrupt it, resume it.
+**Decided (decision 1): A, with B as the fallback** if the spike shows Drive refuses the browser. The spike's test: open a session server-side with an `Origin` header, upload from a browser on another origin, interrupt it, resume it.
 
 ### 3.3 The upload, step by step
 
@@ -217,7 +217,7 @@ Proposed, following Phase 3 §3.9 and Phase 1b decision 9. Each is checked in `o
 | Payment slips, cash receipts | Yes | Yes | Yes | No | No | No |
 | Job receipts | Yes | Yes | With "staff can enter and see job costs" | Yes | No | No |
 | Renewal documents, vehicle purchase and sale receipts | Yes (purchase and sale: owner and manager only, like `unit_financials`) | Yes | Renewals yes | Renewals yes | No | No |
-| Mango Works staff, platform admins, support | **No**, for every kind (decision 12; Limited Use [G13]) | | | | | |
+| Mango Works staff, platform admins, support | **Never**, for every kind and by any route (decision 12; Limited Use [G13]). When support needs to see a file, it asks the shop for a screenshot | | | | | |
 
 ### 4.3 Previews and speed at the counter
 
@@ -329,8 +329,8 @@ A one-page note for the privacy review before Phase 4 goes live: where the files
 | Every file field | Shown, disabled, with "Connect Google Drive in Settings to attach files" (owner sees a link to Settings; others see "ask the owner") |
 | Maintenance jobs, renewals (1b) | Saved in full; the reference number and notes carry what the receipt would |
 | Customer documents (Phase 4) | Number, country, expiry and who checked them are recorded; the expiry rule that blocks a pickup works on the expiry date, not on an image (decision 7) |
-| Check-out and check-in (Phase 5) | Odometer, fuel, damage marks on the diagram and their notes work; photos can't be taken (decision 6) |
-| Signed agreement (Phase 5, 6) | Decision 6: kept as data (text snapshot, signature strokes, hash) so a pickup can still be signed; the PDF only when connected |
+| Check-out and check-in (Phase 5) | Completes without photos (decision 6). Odometer, fuel, damage marks on the diagram and their notes work. **The check-out screen shows a clear warning before the photo step, and again where the hand-over is confirmed: "Google Drive is not connected, so no photos will be kept for this rental."** The inspection is recorded as done without photos, and the order shows "No photos kept (Drive not connected)" |
+| Signed agreement (Phase 5, 6) | Decision 6: kept as data (rendered text, signature strokes, hash) so a pickup can still be signed; the PDF is made only when a Drive is connected |
 | Invoices and tax invoices (Phase 6) | Decision 8: made from data, sent by email and LINE, regenerated on request; a Drive copy only when connected |
 | Bookings, payments, calendar, fleet, reports | Unaffected |
 | Public listing photos | Unaffected (platform-hosted) |
@@ -401,35 +401,85 @@ Order: 1, then 2, then 3; 4 and 6 need 3; 5 needs 3 and 4; 7 needs 4 and 5; 8 la
 
 **Not truly testable here:** Google's own behaviour at scale and its future charges; a real Workspace admin block (tested with a fake answer, and once by hand if a Workspace account is available); RISC (not built).
 
-## 12. Decisions for Mark
+## 12. Decisions (Mark, 20 Nov 2026)
 
-| # | Decision | Options | Recommendation |
+**All fourteen decided as recommended in draft 1, on 20 Nov 2026.** The options considered are kept for the record.
+
+| # | Decision | Decided | Options considered |
 | --- | --- | --- | --- |
-| 1 | **How bytes reach Drive** | (a) Browser to Drive through a session our server opens; (b) through our server | **(a)**, subject to the spike; (b) as the fallback. No bytes through our functions, resume on poor signal for a week, no function size limits |
-| 2 | **Who connects, reconnects and disconnects** | (a) Owner only; (b) owner and manager | **(a)**, like payment accounts. A manager sees the state and is told to ask the owner |
-| 3 | **Switching to another Google account** | (a) Allowed after typing the old account's email; old files stay unreadable until it is reconnected; (b) the same, plus a "copy my files to the new account" job that runs while both tokens work (server-side copy, about one download and one upload per file); (c) not allowed: disconnect only | **(a) now, (b) as a later stage** if a shop needs it. (b) is real work and quota for a rare event |
-| 4 | **Personal data in Drive file and folder names** | (a) None: order or document numbers only; (b) the customer's name in the file name | **(a)**. Names would sit in Drive's search and notifications and outlive the platform's deletion of the link |
-| 5 | **Previews** | (a) Our own small preview file per photo, made in the browser, stored beside it; (b) Drive's `thumbnailLink`; (c) none, full images only | **(a)**. Fast on a phone, no Google address in a browser, one extra small file per photo |
-| 6 | **Check-out without a connected Drive** (Phase 5 needs a completed inspection and a signed agreement before pickup) | (a) Inspection completes without photos, with a warning on the order; the agreement is kept as data (rendered text, signature strokes, hash) and its PDF is made only when a Drive is connected; (b) a shop must connect a Drive before its first check-out; (c) the signed agreement PDF is the one file the platform keeps | **(a)**. The agreement as data is not a stored file, keeps signing working, and the hash still proves it. (c) breaks the decision; (b) makes Drive a condition of renting at all |
-| 7 | **Phase 4 for a shop that refuses to connect a Drive** (1b §7, question 6) | (a) Allowed: document number, country, expiry and who checked it, with no images; (b) Drive required for Phase 4's KYC | **(a)**. The expiry rule needs dates, not images, and the shop's choice not to keep copies is lawful under data minimisation |
-| 8 | **Tax-invoice and receipt PDFs** (kept 5 years by Thai law, payments §6.1 [T15]) | (a) The document's data is the record, frozen at issue and kept 5 years on the platform; the PDF is regenerated identically on request; a copy goes to Drive when connected and is never deleted by the PDPA job; (b) the PDF in Drive is the only copy | **(a)**. Under (b) a disconnected or deleted Drive loses records the shop must keep, and a shop without a Drive could not keep them at all. Pending Korn's K9: if an e-Tax scheme requires the issued file itself to be kept, this is revisited |
-| 9 | **Mango Works' own files** (vendor billing: bank transfer slips, withholding certificates; payments §7) | (a) Mango Works' own Google Drive, through the same module, as a platform connection; (b) a private bucket on the platform; (c) outside the platform (finance keeps them by hand) | **(a)**. One module, no private bucket. These are Mango Works' records, never a shop's Drive |
-| 10 | **The name and domain on Google's consent screen** | (a) Choose the platform's product name and domain before stage 2; (b) launch under "Mango Works" on a Mango Works domain and rebrand later (a new brand verification) | **(a)** if the name is close; otherwise **(b)**. Brand verification needs the homepage and privacy policy on a verified domain [G3] |
-| 11 | **Google client library** | (a) Plain `fetch` against the documented endpoints in the module; (b) Google's `googleapis` package (a new dependency) | **(a)**. About eight endpoints; nothing to ask about, nothing large to bundle. Asked here because the root `CLAUDE.md` asks before any dependency |
-| 12 | **Mango Works staff and support access to shop files** | (a) None, by any route; (b) only with the owner's written consent per case, through a time-limited grant the owner switches on | **(a) now**. Google's Limited Use forbids human reading without affirmative agreement [G13]; (b) can be designed later if support needs it |
-| 13 | **Caching when viewing** | (a) `no-store` for identity documents, 5 minutes private for previews and other photos; (b) `no-store` for everything | **(a)**. A grid at the counter would reload every preview on every visit under (b) |
-| 14 | **Workspace shared drives** | (a) Not in the first build: the connected account's My Drive only; (b) supported from the start | **(a)**. Google's pages leave unclear whether a `drive.file` app can write to a shared drive [D16]; the spike checks, and a later stage can add it |
+| 1 | **How bytes reach Drive** | **Browser to Drive, through a resumable session our server opens.** Through our server only as the fallback, if the spike shows Drive refuses the browser. No bytes through our functions; resume on poor signal for a week; no function size limits | (a) Browser to Drive through a session our server opens; (b) through our server |
+| 2 | **Who connects, reconnects and disconnects** | **The owner only**, like payment accounts. A manager sees the state and is told to ask the owner | (a) Owner only; (b) owner and manager |
+| 3 | **Switching to another Google account** | **Allowed after the owner types the old account's email.** Old files stay unreadable until that account is reconnected. A "copy my files to the new account" job is a later stage, built if a shop needs it | (a) Typed confirmation, old files unreadable; (b) the same plus a copy job now; (c) not allowed, disconnect only |
+| 4 | **Personal data in Drive file and folder names** | **None.** Order or document numbers only (§5) | (a) None; (b) the customer's name in the file name |
+| 5 | **Previews** | **Our own small preview file per photo**, made in the browser and stored beside it (§4.3) | (a) Our own preview; (b) Drive's `thumbnailLink`; (c) none |
+| 6 | **Check-out without a connected Drive** | **The check-out completes without photos, with a clear warning on the check-out screen that no photos will be kept** (§8: before the photo step and again where the hand-over is confirmed; the order then shows "No photos kept"). The signed agreement is kept as data (rendered text, signature strokes, hash); its PDF is made only when a Drive is connected | (a) Completes without photos, agreement as data; (b) a Drive required before the first check-out; (c) the signed PDF as the one file the platform keeps |
+| 7 | **Phase 4 for a shop that won't connect a Drive** (1b §7, question 6) | **Allowed**: document number, country, expiry and who checked it, with no images. The expiry rule works on dates | (a) Allowed without images; (b) Drive required for Phase 4's KYC |
+| 8 | **Tax-invoice and receipt PDFs** (kept 5 years by Thai law, payments §6.1 [T15]) | **The document's data is the record**, frozen at issue and kept 5 years on the platform; the PDF is regenerated identically on request; a copy goes to the shop's Drive when one is connected and is never deleted by the PDPA job. Revisited if Korn's answer to K9 says an e-Tax scheme requires the issued file itself to be kept | (a) Data is the record, PDF regenerated; (b) the PDF in Drive as the only copy |
+| 9 | **Mango Works' own files** (vendor billing: transfer slips, withholding certificates; payments §7) | **Mango Works' own Google Drive, through the same module**, as a platform connection. Never a shop's Drive, never a private bucket | (a) Mango Works' Drive through the module; (b) a private bucket on the platform; (c) kept by hand outside the platform |
+| 10 | **The name and domain on Google's consent screen** | **Choose the platform's product name and domain before stage 2** if the name is close; otherwise launch as Mango Works on a Mango Works domain and verify the new brand later. Brand verification needs the homepage and privacy policy on a verified domain [G3] | (a) Name first; (b) Mango Works now, rebrand later |
+| 11 | **Google client library** | **Plain `fetch`** against the documented endpoints inside the module. No new dependency | (a) Plain `fetch`; (b) Google's `googleapis` package |
+| 12 | **Mango Works staff and support access to shop files** | **Never, by any route.** No screen, role, function or support tool lets Mango Works staff or platform admins open a shop's file. **When support needs to see a file, it asks the shop for a screenshot.** The privacy policy says so (Limited Use [G13]) | (a) None; (b) a time-limited grant the owner switches on per case |
+| 13 | **Caching when viewing** | **`no-store` for identity documents; 5 minutes, private, for previews and other photos.** Never a shared cache, never a cache on our side | (a) As decided; (b) `no-store` for everything |
+| 14 | **Workspace shared drives** | **Not in the first build**: the connected account's My Drive only. The spike checks whether a `drive.file` app can write to a shared drive [D16]; a later stage can add it | (a) Not now; (b) supported from the start |
 
-## 13. Doc edits, when this design is accepted
+## 13. Doc edits for the consolidation pass
 
-Not made in this PR.
+**Not made in this PR.** PRs 54 (Phase 1b plan, with its SPEC corrections), 55 (Neon move plan) and 56 (payments design) merge as a batch; these edits are applied in one consolidation pass after that, to the merged files on `main`. Each edit names the file, the exact text to find (as it stands on that PR's branch, at the commit named) and the exact text to put in its place. Where two batch PRs touch the same line, the anchor is a part both versions share.
 
-- `docs/platform/SPEC.md` (after PR 54 merges; its Drive lines are on that branch): Customers and KYC › Document storage points at this design instead of "its design is still to be written"; Data model gains `storage_connections`, `files`, `file_access_log`; `tenants.google_drive_folder` is replaced by the connection table; `customer_documents.file_front_ref` and `file_back_ref`, `inspections.photos` and `signature_file`, `documents.pdf`, `cash_expenses.receipt_file`, `maintenance_jobs.receipt_file` and `unit_renewals.file` become links to `files`; Build plan: the file storage stage between 1b and 4; Check-out: decision 6's answer.
-- `docs/phase-1b-plan.md` §7: points here; its seven questions are answered in §2.2 (1), §2.5 (2), §3 (3), §2.3 (4), §9 (5), decision 7 (6), §7.4 (7).
-- `docs/platform/neon-move-plan.md`: stage 6 and §5 as §1.3 says.
-- `docs/platform/payments-design.md`: §8.2's encryption helper is shared with the storage token; §7.2's slip and certificate files go through decision 9's route.
-- Root `CLAUDE.md`, "Not tied to Supabase", rule 2: "File storage sits behind one module. Public images on the platform's store; every private file in the shop's connected provider (docs/platform/file-storage-design.md)."
-- `docs/PROGRESS.md`: an entry per stage.
+### 13.1 `docs/platform/SPEC.md` (its Drive lines come from PR 54, `platform/phase-1b-plan` at `ac8a615`)
+
+1. **Tech stack, the File storage row.** Find:
+   `| File storage | The shop's own connected Google Drive; the platform keeps only a link (file id) per file, behind one storage module (decided 19 Nov 2026) | Passports, licences, damage photos, signed PDFs, receipts. No files are stored on the platform |`
+   Replace with:
+   `| File storage | Private files: the shop's own connected Google Drive; the platform keeps only a link (file id) per file, behind one storage module (decided 19 Nov 2026; design decided 20 Nov 2026 in docs/platform/file-storage-design.md). Public listing images (shop, model and catalog photos, logos) stay on the platform's own store | Passports, licences, damage photos, signed PDFs, receipts. No private file is stored on the platform |`
+2. **Data model, the `tenants` row.** Find `line\_channel, google\_drive\_folder (the shop's connected Drive), charge\_before\_days` and replace with `line\_channel, charge\_before\_days` (the connection moves to `storage_connections`, edit 9).
+3. **Data model, the `unit_renewals` row.** Find `file (a link to the shop's Drive, added with the file storage stage)` and replace with `file\_id (→ files, added with the file storage stage)`.
+4. **Data model, the `maintenance_jobs` row.** Find `done\_by (staff or garage), receipt\_file, notes` and replace with `done\_by (staff or garage), receipt\_file\_id (→ files), notes`.
+5. **Data model, the `customer_documents` row.** Find `file\_front\_ref, file\_back\_ref (links to files in the shop's Drive)` and replace with `file\_front\_id, file\_back\_id (→ files)`.
+6. **Data model, the `inspections` row.** Find `fuel\_level, photos, damage\_marks (JSON on diagram), notes, signed\_by\_customer, signature\_file, at` and replace with `fuel\_level, photos (→ files; none when no Drive is connected), damage\_marks (JSON on diagram), notes, signed\_by\_customer, at`.
+7. **Data model, the `documents` row.** Find `| documents | order\_id, kind (contract, addendum, invoice, receipt, credit\_note), number, pdf, signed\_at, sent\_at | Numbered per tenant per kind |` and replace with `| documents | order\_id, kind (contract, addendum, invoice, receipt, credit\_note), number, content\_snapshot, signature\_strokes, hash, pdf\_file\_id (→ files; made only when a Drive is connected), signed\_at, sent\_at | Numbered per tenant per kind. The data is the record (kept 5 years for tax documents); the PDF is regenerated from it on request |`.
+8. **Data model, the `cash_expenses` row.** Find `description, receipt\_file, paid\_by` and replace with `description, receipt\_file\_id (→ files), paid\_by`.
+9. **Data model, three new rows**, added directly after the `customer_documents` row:
+   `| storage\_connections | tenant\_id, provider, account\_id, account\_email, root\_folder\_id, folder\_ids, state, granted\_scopes, connected\_by, connected\_at, last\_ok\_at, last\_error, encrypted refresh token | One active per shop; owner connects; token readable by no signed-in role (file-storage-design §2.5) |`
+   `| files | tenant\_id, connection\_id, provider\_file\_id, preview\_file\_id, kind, owner record, name, mime, size, sha256, state, created\_by, delete\_after, deleted\_at | A link to one file in the shop's Drive; no path or URL stored |`
+   `| file\_access\_log | tenant\_id, file\_id, kind, user\_id, action, purpose, at | Append-only; written in the same call that opens the file |`
+10. **Check-out and check-in, step 4.** Find `4. Take guided photos: front, back, left, right, dash; extra photos optional.` and replace with `4. Take guided photos: front, back, left, right, dash; extra photos optional. Without a connected Google Drive the check-out completes without photos, and the screen warns clearly, before this step and again where the hand-over is confirmed, that no photos will be kept (decided 20 Nov 2026).`
+11. **Check-out and check-in, step 7.** Find `7. Customer reviews and signs the contract on screen. The PDF is generated, stored, then emailed or sent by LINE.` and replace with `7. Customer reviews and signs the contract on screen. The signed agreement is kept as data (its text, the signature strokes and a hash); the PDF is made from it, stored in the shop's Drive when one is connected, then emailed or sent by LINE.`
+12. **Customers and KYC › Document storage, the "One module" bullet.** Find `` (outline in `docs/phase-1b-plan.md` §7; its design is still to be written). `` and replace with `` (design: `docs/platform/file-storage-design.md`, decided 20 Nov 2026). ``
+13. **Customers and KYC › Document storage, two new bullets**, added directly after the "Trade-offs to know" bullet:
+    `- **Public images stay on the platform.** Shop, model and catalog photos and logos are shown on the public sites and stay on the platform's own store. Everything else is a private file in the shop's Drive.`
+    `- **Mango Works never opens a shop's files** (decided 20 Nov 2026). No screen, role or support tool reaches them; when support needs to see a file, it asks the shop for a screenshot.`
+14. **Documents and messages, the invoice bullet.** Find `- Invoice, tax invoice/receipt and credit note, numbered per tenant (e.g. INV-2026-00042). Templates per tenant: logo, colours, terms, custom fields.` and replace with `- Invoice, tax invoice/receipt and credit note, numbered per tenant (e.g. INV-2026-00042). Templates per tenant: logo, colours, terms, custom fields. Each document's data is frozen at issue and kept 5 years on the platform; its PDF is regenerated identically on request, with a copy in the shop's Drive when one is connected (decided 20 Nov 2026).`
+15. **Review decisions › Build order.** In the line that starts `**Build order.**`, find `1b → 4 onward` and replace with `1b → file storage → 4 onward` (the anchor is the same on `main` and on PR 55's version, which adds the Neon move earlier in the line).
+16. **Build plan, Phase 4.** Find `documents stored in the shop's connected Google Drive (the file storage stage comes first)` and replace with `documents stored in the shop's connected Google Drive (the file storage stage, docs/platform/file-storage-design.md, comes first; a shop without a Drive records document numbers and expiry without images)`.
+17. **Change log**, a new row at the top with the next free number (PR 54 and PR 55 both add a row numbered 49; the consolidation pass numbers them in merge order first):
+    `| <next> | File storage design decided: private files in the shop's Drive through one module; owner connects; uploads straight to Drive; viewing through the server with an access log; check-out without a Drive completes without photos, with a warning; agreements and tax documents kept as data with the PDF regenerated; Mango Works never opens shop files | Decision | Tech stack; Data model; Check-out; Customers › Document storage; Documents; Build order | Before 4 |`
+
+### 13.2 `docs/phase-1b-plan.md` (PR 54, `platform/phase-1b-plan` at `ac8a615`)
+
+1. **Summary, point 8.** Find `outlined in §7 and still to be designed.` and replace with `` outlined in §7 and designed in `docs/platform/file-storage-design.md` (decided 20 Nov 2026). ``
+2. **§6.2, open point 1.** Find `1. **The design of "Shop file storage (Google Drive)"** (§7): its own Fable design, later, before Phase 4.` and replace with `` 1. ~~**The design of "Shop file storage (Google Drive)"** (§7): its own Fable design, later, before Phase 4.~~ Designed in `docs/platform/file-storage-design.md`; Mark decided its fourteen points on 20 Nov 2026. ``
+3. **§7, first paragraph.** Find `**Not part of Phase 1b. Its own stage, before Phase 4, with its own Fable design to be written later.** This outline only fixes what Mark decided (decision 10) and what the design must answer.` and replace with `` **Not part of Phase 1b. Its own stage, before Phase 4.** Its design is `docs/platform/file-storage-design.md` (decided 20 Nov 2026), which replaces the shape below wherever they differ. The seven questions are answered there: 1 in §2.2, 2 in §2.5, 3 in §3, 4 in §2.3, 5 in §9, 6 by decision 7, 7 in §7.4. ``
+
+### 13.3 `docs/platform/neon-move-plan.md` (PR 55, `docs/neon-move-plan` at `a3f84f9`)
+
+§1 to §6 are the assessment, kept as written; only the plan changes.
+
+1. **§7.5, stage 6's row.** Find `| 6 | **Files**: rule 2's module; R2 buckets; the six storage policies become server-side checks that hand out upload addresses; a copy script that can be run again |` and replace with `` | 6 | **Files, public photos only**: rule 2's module, built with room for the private store of `docs/platform/file-storage-design.md` (the shop's Drive, added by that stage); R2 for the three public photo buckets; the six storage policies become server-side checks that hand out upload addresses; a copy script that can be run again. No private bucket: private files never go to R2 | ``. The row's other cells stay.
+2. **§7.5, a note after the line `Stages 3 to 7 can overlap once stage 2 is merged; 4 needs 3. Stage 8 needs all of 2 to 7.`**, as its own paragraph: `` **Files after the decision of 19 Nov 2026** (private files in each shop's Google Drive, designed in `docs/platform/file-storage-design.md`): only public photos move to R2, so §2's "Medium for Phase 4 documents" and §5's "50 GB of files with documents" no longer apply; at 50 shops the public photos stay inside R2's free 10 GB. Private files are outside the restore window as well as outside R2: the shop's Drive is their only copy. ``
+
+### 13.4 `docs/platform/payments-design.md` (PR 56, `docs/payments-design` at `10a8c87`)
+
+1. **§8.2, the row "A shop's keys for a provider with no platform model".** Find `` decrypted only inside `@mango/payments`. Not Supabase Vault, so the move to Neon does not touch it | `` and replace with `` decrypted only inside `@mango/payments`. Not Supabase Vault, so the move to Neon does not touch it. The same encryption helper keeps each shop's Google Drive refresh token (`docs/platform/file-storage-design.md` §2.5); whichever stage comes first builds it | ``
+2. **§7.2, the `invoice_payments` line in the code block.** Find (28 leading spaces) `withholding amount and certificate file, slip file, received_at, recorded_by, provider_ref` and replace with `withholding amount and certificate file id, slip file id (both in Mango Works' own Drive), received_at, recorded_by, provider_ref`; then add one line directly after the code block: `` Slips and withholding certificates are Mango Works' records, kept in Mango Works' own Google Drive through the storage module (`docs/platform/file-storage-design.md`, decision 9), never in a shop's Drive. ``
+
+### 13.5 Root `CLAUDE.md` (the line is the same on `main` and on PR 55's branch)
+
+1. **"Not tied to Supabase", rule 2.** Find `` - **File storage sits behind one module.** Uploading, deleting and making the address of a stored file go through that module and nothing else calls `.storage`. `` and replace with `` - **File storage sits behind one module.** Uploading, deleting, viewing and making the address of a stored file go through that module, and nothing else calls `.storage` or a file provider's API. Public images live on the platform's own store; every private file lives in the shop's connected provider (Google Drive today), with only a link kept (`docs/platform/file-storage-design.md`). Mango Works staff never open a shop's files. ``
+
+### 13.6 Already in this PR
+
+- `docs/PROGRESS.md`: the entry for this design (updated with Mark's decisions). Later, an entry per stage.
 
 ## 14. Sources
 
@@ -475,4 +525,15 @@ All read on **20 Nov 2026**.
 
 **Other:** [T15] is the payments design's source for the 5-year keeping rule for tax invoices (`docs/platform/payments-design.md` §13, branch `docs/payments-design`).
 
-**Not checked, and said so above:** whether a browser may upload to a Drive session address across origins; whether `thumbnailLink` needs sign-in; `about.get` under `drive.file`; folders under `drive.file` after a user moves them; shared drives under `drive.file`; which changes a `drive.file` app is notified of; Netlify's function limits and bandwidth prices; OneDrive, Dropbox and any other provider; whether brand verification has a fee (none stated).
+**Not checked, and said so above (still true in draft 2):** whether a browser may upload to a Drive session address across origins; whether `thumbnailLink` needs sign-in; `about.get` under `drive.file`; folders under `drive.file` after a user moves them; shared drives under `drive.file`; which changes a `drive.file` app is notified of; Netlify's function limits and bandwidth prices; OneDrive, Dropbox and any other provider; whether brand verification has a fee (none stated).
+
+## 15. Changes since draft 1
+
+| What | Change | Where |
+| --- | --- | --- |
+| Status | Draft 2: Mark decided all fourteen points as recommended, 20 Nov 2026. Still for a Fable critique | Header, Summary 11 |
+| Decisions | §12 rewritten as decided, with the date, each decision in full and the options considered kept | §12 |
+| Decision 6 | The check-out screen warns clearly, before the photo step and where the hand-over is confirmed, that no photos will be kept; the order shows "No photos kept (Drive not connected)". The warning is Phase 5's to build; it is in SPEC edit 13.1.10 so the Phase 5 plan picks it up | §8, §12, §13.1 |
+| Decision 12 | Mango Works staff never open shop files, by any route; support asks the shop for a screenshot | §2.2, §4.2, §12, §13.1, §13.5 |
+| Decision 1 | Browser to Drive is decided; through our server is the fallback | §3.2 |
+| Doc edits | §13 rewritten as an exact list for one consolidation pass after PRs 54, 55 and 56 merge: each edit names the file, the branch commit, the text to find and the text to put in its place. Every "find" text was checked to occur exactly once in its file on that branch, and the Build order and `CLAUDE.md` anchors also on PR 55's versions. None of these edits is made in this PR | §13 |
