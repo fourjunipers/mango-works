@@ -13,6 +13,16 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Shop file storage design (branch `docs/file-storage-design`, 20 Nov 2026)
+
+**Docs only: no code, migration or test changed; no Google Cloud project created.** Draft 1, for a Fable critique. Written from `main` at `9622342` with the Phase 1b plan (§7), the Neon move plan, the payments design and the Phase 3 plan draft as they stood on their branches.
+
+- `docs/platform/file-storage-design.md`: the one module for private files, kept in each shop's connected Google Drive with only a link on the platform (Mark's decision, 19 Nov 2026). What lives where, connecting (`drive.file`, owner only, encrypted refresh token), uploads (browser straight to Drive through a session our server opens), viewing (through our server, with the access log written in the same call), folders and names, failure states, PDPA deletion through the API, the no-Drive case, later providers, cost, eight stages and fourteen decisions for Mark.
+- **Google facts were checked against Google's own pages on 20 Nov 2026** and are cited (§14). `drive.file` is non-sensitive and verification is not mandatory for it; brand verification (2 to 3 business days) needs the product name, a verified domain, a homepage and a privacy policy. Points Google's pages leave unclear (browser uploads to a session address, `thumbnailLink`, `about.get` and folders under `drive.file`, shared drives) are the spike's checks.
+- **The Neon plan's stage 6 shrinks** to the three public photo buckets; no private bucket on R2.
+- **Where it sits:** after 1b and before Phase 4 (0 → 1a → 2 → 3 → Neon move → 3M → 1b → file storage → 4).
+- Doc edits it will need are listed in its §13 and not made here.
+
 ## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
 
 **Docs only: no code, migration or test changed.** Written from `main` at `b9e0b33`.
