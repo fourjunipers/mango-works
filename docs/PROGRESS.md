@@ -1124,7 +1124,28 @@ The ninth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.3, §6, 
 
 ## Phase 2, stage 10: review follow-ups and migration 6 (branch `platform/phase-2-stage-10-review-followups`, 19 Nov 2026)
 
-The tenth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.8, and the items the reviews of PR 48 and PR 50 carried here). From `main` at `b9e0b33` (PR 50 merged; staging at 66 of 66). **One migration, `20261119000100_platform_review_followups`, applied to the local database only.** Nothing on staging or live was touched. **Done.**
+The tenth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.8, and the items the reviews of PR 48 and PR 50 carried here). From `main` at `b9e0b33` (PR 50 merged; staging at 66 of 66). **One migration, `20261119000100_platform_review_followups`.** **Migration on staging since 20 Nov 2026, 67/67** (see "On staging" below); **not on live.** **Done.**
+
+**On staging since 20 Nov 2026; not on live.** Migration 20261119000100 pushed to staging, 67/67. The migration (`20261119000100_platform_review_followups`) was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 00:58 UTC, from `main` at `9622342` (PR 51 squash-merged), with `supabase db push --db-url` (never `--linked`); the connection string was checked to name the staging project, and not live's, before each use. Live was not touched.
+
+- **Read-only checks first** (single `select` statements; the pooler does not take a read-only session option, so nothing but reads was sent); all passed:
+  1. 66 migrations on record, newest `20261118000100`, `20261119000100` not among them. The dry run listed exactly this one.
+  2. The three bodies the migration's guard expects, by MD5 of the stored source (`md5(prosrc)`, as the guard computes it): `normalize_coupon_code` `0c22d994…`, `tenants_lock_currency` `4325072b…`, `currency_locked` `af9db486…`. None of the seven new functions existed.
+  3. Snapshot: 29 `platform` tables, every one with RLS on and at least one policy; table grants (none to `anon`); 110 functions in `platform` and `platform_private`, none executable by `public` or `anon`; row counts of every `platform` table.
+  4. **Stored coupon codes: staging has no coupons**, so 0 would change and 0 would collide; nothing in the catalog depends on `normalize_coupon_code()` (0 dependents).
+- **The push** applied the one migration in about four seconds (00:58:23 to 00:58:27 UTC). Output: `Applying migration 20261119000100_platform_review_followups.sql...`, `Finished supabase db push.`
+- **After, read-only:**
+  - 67 migrations on record, newest `20261119000100`.
+  - All ten MD5s match PR 51's final table. The three guarded ones have the new bodies: `normalize_coupon_code` `c974d1ad…`, `tenants_lock_currency` `4ec30464…`, `currency_locked` `fe3d2da0…`. The new ones: `record_renewal` `7b742423…`, `save_location_hours` `029af139…` (with `lock_timeout=6s`), `coupon_inputs_by_id` `27e5d4ec…`, `platform_admins_no_truncate` `46da61d6…`, `unit_renewals_set_recorded_by` `5f339c0d…`, `platform_admins_audit` `b944c451…`, `platform_admin_events_keep` `0397f187…`.
+  - `platform_admin_events` exists, empty, RLS on, one policy ("No signed-in user reads admin events", `select` for `authenticated`, `using (false)`); `select` for `service_role` only, no other grant. Its two triggers are there (`platform_admin_events_keep_rows`, before update or delete; `platform_admin_events_keep_all`, before truncate).
+  - `platform_admins`: `TRUNCATE` held by the owner (`postgres`) only (`service_role` lost it, its other privileges are as before; `authenticated` `select`). `platform_admins_audit` (after row) and `platform_admins_no_truncate` (before truncate) are there.
+  - `audit_events_tenant_id_fkey` is `ON DELETE RESTRICT`. `unit_renewals` has `unit_renewals_set_recorded_by` (before insert or update, per row) beside its audit and `updated_at` triggers.
+  - Execute: `record_renewal()` and `save_location_hours()` by `authenticated` only; `coupon_inputs_by_id()` by `authenticated` and `service_role`; the three trigger functions by nobody; `normalize_coupon_code()` and `currency_locked()` as before (`authenticated`, `service_role`), `tenants_lock_currency()` by nobody. `public` and `anon` have none.
+  - Against the snapshot, nothing else changed: the one new table (30, every one with RLS and a policy), the `platform_admins` grant above, the seven new functions and the three new bodies (117 functions, still none for `public` or `anon`).
+  - Generated types: regenerated against staging (`supabase gen types typescript --db-url`, schemas `public,graphql_public,platform`), no difference from `packages/db/src/database.types.ts` on `main`.
+- **Counts, the same before and after** (the migration writes no rows; `platform_admin_events` is new and empty): 3 tenants, 32 products, 205 units, 21 unit blocks, 0 reservations, 10 renewals, 8 renewal costs, 7 opening-hours rows, 0 coupons, 1 platform admin, 3,423 audit rows.
+- **The demo seed must now run from `main`** (at or after `9622342`). The seed from before PR 51 inserted renewals as the service role, which `unit_renewals_set_recorded_by` now refuses (`recorded_by_required`). The seed was not run for this push.
+- **Not checked here:** nothing in a browser against staging, and no function was called.
 
 **What was built**
 
@@ -1312,7 +1333,7 @@ The cause was the same everywhere: a holder session kept its transaction open wi
 - The Thai lines need Korn's check.
 - `docs/platform/SPEC.md`'s data model does not have `platform_admin_events` or the two new functions (plan §12).
 
-**Before this goes to staging** (the owner's word each time, plan Q17): staging must be at 66 of 66 with `main`'s bodies; **the guard checks the three functions and stops with nothing changed if one differs.** Count first: `select count(*) from platform.coupons where platform_private.normalize_coupon_code(code) is distinct from code` must be 0 (the migration checks it too, and stops if not). Afterwards: `audit_events_tenant_id_fkey` reads `ON DELETE RESTRICT`; `platform_admin_events` is empty, RLS on, one policy, select for the service role only; `record_renewal()` and `save_location_hours()` are executable by `authenticated` only; `currency_locked()` answers as before for every shop; counts of tenants, renewals, opening hours, coupons and audit rows are unchanged. **A script that inserts renewals with the service role (the demo seed before this branch) is refused from then on: run the seed from this branch.**
+**Before this goes to staging** (the owner's word each time, plan Q17): staging must be at 66 of 66 with `main`'s bodies; **the guard checks the three functions and stops with nothing changed if one differs.** Count first: `select count(*) from platform.coupons where platform_private.normalize_coupon_code(code) is distinct from code` must be 0 (the migration checks it too, and stops if not). Afterwards: `audit_events_tenant_id_fkey` reads `ON DELETE RESTRICT`; `platform_admin_events` is empty, RLS on, one policy, select for the service role only; `record_renewal()` and `save_location_hours()` are executable by `authenticated` only; `currency_locked()` answers as before for every shop; counts of tenants, renewals, opening hours, coupons and audit rows are unchanged. **A script that inserts renewals with the service role (the demo seed before this branch) is refused from then on: run the seed from this branch.** **Done on 20 Nov 2026: see "On staging" above.**
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s10` on ports 6262x, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. The stacks of stage 8 and stage 9 were stopped (not removed); another project's stack was left alone.
 
@@ -1339,7 +1360,7 @@ The last build stage of Phase 2 (`docs/phase-2-plan.md` §7, §8 stage 11, §9).
    - **CI runs the marketplace's database tests** as their own job (`marketplace-db`, `permissions: contents: read`).
 8. **The accept suite**: `packages/core/src/phase-2-accept.test.ts` (63: 50 pricing; the never-falls property from 1 hour to 400 days, five plays over four starts; New York; VND), `apps/platform/tests/db/phase-2-accept.test.ts` (4: the three races for the last unit, 8 rounds each, and downtime) and `apps/platform/tests/phase-2-accept-suites.test.ts` (10), which checks that the two name every clause and that the spec's line has no weekend and no pricing modes. The click-through list for staging is in the PR description.
 9. **SPEC**: the Phase 2 accept line drops "weekend" and "in both pricing modes" (Q14).
-10. **Help**: `en/orders/price-check.md`, `en/booking-rules/set-booking-rules.md`, `en/fleet/bookings-on-a-vehicle.md`; tabs per role, the coupon refusals and Check a price updated; every bold quote checked against `en.json`. `docs/help/PENDING.md` has PR 59's two changes (the notice line; catalog approval). PENDING's PR 51 entries (merged) are still to do: not in this stage.
+10. **Help**: `en/orders/price-check.md`, `en/booking-rules/set-booking-rules.md`, `en/fleet/bookings-on-a-vehicle.md`; tabs per role, the coupon refusals and Check a price updated; every bold quote checked against `en.json`. `docs/help/PENDING.md` has PR 59's two changes (the notice line; catalog approval). (PR 51's entries were applied by PR 60.)
 11. **Thai**: 79 new or changed lines on `docs/platform/thai-review-products.md` ("Phase 2, stage 11") for Korn.
 
 **Catalog approval switches the Moto Mangos listing on.** The owner (20 Nov 2026): it must not; the shop switches it on itself. It is set in the database, so it is not fixed here (no migration in stage 11): see "Next platform migration".
@@ -1369,7 +1390,6 @@ The last build stage of Phase 2 (`docs/phase-2-plan.md` §7, §8 stage 11, §9).
 
 - **A stuck test process from another session** (a single `product-extras.test.ts` run started 17 Nov 2026, 1.4 seconds of CPU since) is left running on this machine: not this worktree's, so not stopped.
 - On the dev server (`next dev`), a few phone-width tests that wait 5 seconds for a page to move on fail now and then; on the production build they pass.
-- PR 51's entries in `docs/help/PENDING.md` are still to apply to the articles.
 - The Thai lines need Korn's check.
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s11` on ports 627xx, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` and `apps/marketplace/.env.local` name the same stack.

@@ -3,7 +3,7 @@ title: Import vehicles from a CSV file
 summary: Add many vehicles at once from a spreadsheet saved as CSV, creating any missing products on the way.
 keywords: [import, CSV, spreadsheet, Excel, bulk upload, many vehicles, template, นำเข้า CSV, นำเข้ารถ, ไฟล์ CSV, สเปรดชีต]
 screens: [/[tenant]/fleet/import]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Import vehicles from a CSV file
@@ -47,7 +47,7 @@ If anything is wrong you see "N problems found. Nothing was imported." and a tab
 - **"This plate appears on an earlier line."** The same plate is in the file twice.
 - **"A vehicle in your fleet already has this plate."** The vehicle is already in your fleet; remove the row.
 - **"Not a date in YYYY-MM-DD form."** Write dates like 2025-03-31.
-- **"Not a number."** / **"Not an amount in your currency."** / **"Not a year, such as 2024."**
+- **"Not a number."** / **"Not an amount in your currency."** / **"Not a year, such as 2024."** The **odometer**, **purchase_price** and **year** columns follow the platform's number rule: a dot for decimals, a comma only between thousands, no spaces. A price with a thousands comma, such as 1,400, must be in quotes in the file ("1,400") or typed without the comma (1400); 12,5 is refused. See [Typing amounts, percentages and other numbers](../general/typing-numbers.md).
 - **"No location has this name."** Use a name from your Locations page.
 - **"Use motorbike, car, atv, boat or other."** Check **vehicle_type**.
 - **"This isn't one of the categories for that kind of vehicle."** Use a category listed under **Categories** for that kind.

@@ -3,7 +3,7 @@ title: Set tax and insurance reminders
 summary: Choose how many days before a road tax or insurance expiry the dashboard reminds you, and switch on a monthly digest.
 keywords: [reminders, road tax, insurance, expiry, renewal reminder, monthly digest, alert, notification, การแจ้งเตือนภาษีและประกัน, ภาษีรถ, พ.ร.บ., ประกันหมดอายุ, แจ้งเตือน]
 screens: [/[tenant]/settings, /[tenant]/dashboard]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Set tax and insurance reminders
@@ -26,5 +26,5 @@ Today the reminders show on the dashboard. Email and LINE messages come in later
 
 ## Common problems
 
-- **"Enter up to 10 whole numbers from 1 to 365, separated by commas."** Check for decimals, numbers over 365, or more than 10 numbers.
+- **"Enter up to 10 whole numbers from 1 to 365, separated by commas."** Check for decimals, numbers over 365, or more than 10 numbers. Each number is a whole number of days; the commas go between the numbers, never inside one.
 - **"Choose a day from 1 to 28."** The digest day must exist in every month.

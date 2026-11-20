@@ -3,7 +3,7 @@ title: Set a deposit on a vehicle
 summary: Give a vehicle its own security deposit when the shop takes deposits per vehicle.
 keywords: [deposit, security deposit, bond, damage deposit, per vehicle deposit, เงินมัดจำ, มัดจำ, ค่ามัดจำรถ]
 screens: [/[tenant]/products/[id], /[tenant]/settings/pricing]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Set a deposit on a vehicle
@@ -25,4 +25,6 @@ Who can do this: owners and managers.
 ## Common problems
 
 - **No Deposit card?** Only vehicles have a deposit. Rental gear, services and items for sale have no Deposit card on their Pricing tab.
-- **"Enter an amount, such as 45000 or 45000.50."**
+- **"Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has."**
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).

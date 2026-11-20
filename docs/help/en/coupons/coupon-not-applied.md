@@ -15,7 +15,7 @@ When you type a code in **Check a price** and press **Apply**, you see "Coupon {
 ## Messages and what to do
 
 - **"Not applied: the shop doesn’t accept coupons. Switch on “Accept coupons” in Settings › Pricing and tax."** See [Switch coupons on or off for the shop](../pricing-settings/accept-coupons.md).
-- **"Not applied: no coupon has this code."** Check the spelling. Codes are letters and numbers only; spaces are ignored.
+- **"Not applied: no coupon has this code."** Check the spelling. Codes are letters and numbers only; spaces are ignored, and full-width letters and numbers (such as Ａ or ０) are read as plain ones.
 - **"Not applied: this coupon is switched off or archived."** Switch it on in Settings › Coupons, or bring it back.
 - **"Not applied: this coupon can’t be used by staff."** Tick **By staff, at the counter or on the phone** under **Where it can be used**.
 - **"Not applied: this coupon can’t be used on your booking page."** / **"Not applied: this coupon can’t be used on Moto Mangos."** Shown by the [New order price check](../orders/price-check.md) when you try a coupon for that channel. Tick that channel under **Where it can be used** if it should work there.
