@@ -111,11 +111,27 @@ describe("M5: the audit log can't be changed", () => {
   });
 
   it("a shop with audit rows can't be deleted, so its log can't go with it", async () => {
+    const before = rows();
+    expect(Number(before)).toBeGreaterThan(0);
+    // Two rules refuse it, and the first to see it answers: the audit log's
+    // key to its shop is "on delete restrict" (20261119000100), and behind
+    // it this migration's trigger refuses deleting the rows themselves
+    // (shown with the key out of the way in the test above, by delete and
+    // by truncate ... cascade).
     const tried = sql(
       `begin; delete from platform.tenants where id = '${shop.id}'; rollback;`,
     );
-    expect(tried.failed).toContain("audit_events_are_kept");
-    expect(Number(rows())).toBeGreaterThan(0);
+    expect(tried.failed).toMatch(
+      /audit_events_tenant_id_fkey|audit_events_are_kept/,
+    );
+    expect(
+      sql(`select count(*) from platform.tenants where id = '${shop.id}';`).out,
+    ).toBe("1");
+    expect(rows()).toBe(before);
+    // The server's key gets the same answer.
+    const { error } = await service.from("tenants").delete().eq("id", shop.id);
+    expect(error?.code).toBe("23503");
+    expect(rows()).toBe(before);
   });
 
   it("still: a user who is named in the log can be deleted, and only their name goes from the row", async () => {
