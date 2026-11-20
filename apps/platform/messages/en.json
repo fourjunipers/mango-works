@@ -681,7 +681,8 @@
     "bookingRulesMinDays": "Enter whole days from 1 to 365, or leave it blank.",
     "bookingRulesOwnerOrManager": "Only an owner or a manager can change the booking rules.",
     "bookingRulesInvalid": "These rules couldn't be saved as they were sent. Reload the page and try again.",
-    "bookingRulesVehicleGone": "One of these vehicles no longer exists. Reload the page."
+    "bookingRulesVehicleGone": "One of these vehicles no longer exists. Reload the page.",
+    "bookingRulesTryAgain": "Someone is saving a booking right now, so nothing was saved. Please save again."
   },
   "Fleet": {
     "title": "Fleet",

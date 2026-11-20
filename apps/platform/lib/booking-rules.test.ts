@@ -20,7 +20,12 @@ const read = {
     },
   ],
   vehicles: [
-    { id: bike, name: "Click 125", min_days_advance: null, min_days_walkin: null },
+    {
+      id: bike,
+      name: "Click 125",
+      min_days_advance: null,
+      min_days_walkin: null,
+    },
   ],
 };
 
@@ -145,7 +150,10 @@ describe("Booking rules: the form read into save_booking_rules()' payload", () =
   it("reads only the locations and vehicles of the page, never ids the browser added", () => {
     const stranger = "30000000-0000-4000-8000-000000000009";
     const answer = readBookingRulesForm(
-      form({ ...filled, [ruleField.vehicle(stranger, "min_days_advance")]: "9" }),
+      form({
+        ...filled,
+        [ruleField.vehicle(stranger, "min_days_advance")]: "9",
+      }),
       read,
     );
     expect(answer.ok && answer.payload.products.map((p) => p.id)).toEqual([
@@ -179,5 +187,9 @@ describe("Booking rules: the form read into save_booking_rules()' payload", () =
     expect(bookingRulesErrorKey({ message: "anything else" })).toBe(
       "saveFailed",
     );
+    for (const code of ["57014", "55P03"])
+      expect(
+        bookingRulesErrorKey({ code, message: "canceling statement" }),
+      ).toBe("bookingRulesTryAgain");
   });
 });

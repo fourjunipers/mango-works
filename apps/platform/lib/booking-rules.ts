@@ -1,5 +1,6 @@
 import { hoursToMinutes, minutesToHours } from "./fleet";
 import { parseWholeInRange } from "./number-input";
+import { isTryAgain } from "./try-again";
 
 /**
  * Settings › Booking rules (Phase 2 stage 11; docs/phase-2-plan.md §7):
@@ -176,9 +177,16 @@ export function readBookingRulesForm(
 /**
  * save_booking_rules()' refusals, as "FormErrors" keys for the whole form.
  * It raises only_owner_or_manager, invalid_rules, location_not_found,
- * product_not_found and not_a_vehicle; anything else is "Couldn't save".
+ * product_not_found and not_a_vehicle. It takes rows only, with no lock
+ * timeout of its own: a save that waits behind a booking holding a
+ * vehicle's row can run into the API's statement timeout (57014), and that
+ * is "nothing was saved, save again". Anything else is "Couldn't save".
  */
-export function bookingRulesErrorKey(error: { message?: string }): string {
+export function bookingRulesErrorKey(error: {
+  code?: string;
+  message?: string;
+}): string {
+  if (isTryAgain(error)) return "bookingRulesTryAgain";
   switch (error.message) {
     case "only_owner_or_manager":
       return "bookingRulesOwnerOrManager";
