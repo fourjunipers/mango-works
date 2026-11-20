@@ -1028,7 +1028,20 @@
       }
     },
     "list": "Vehicles by product",
-    "vehicleCounts": "{vehicles, plural, =0 {No vehicles} one {# vehicle} other {# vehicles}} · {available} available"
+    "vehicleCounts": "{vehicles, plural, =0 {No vehicles} one {# vehicle} other {# vehicles}} · {available} available",
+    "bookings": {
+      "title": "Bookings",
+      "intro": "The bookings this vehicle is set aside for. Times are {zone} time. Bookings are made and changed from orders, which come in Phase 3.",
+      "none": "No bookings now or coming up.",
+      "range": "{from} to {to}",
+      "held": "Held until {until}, while the customer pays",
+      "heldNoEnd": "Held while the customer pays",
+      "booked": "Booked",
+      "out": "Out with the customer",
+      "overdue": "Out and overdue: still blocked until it comes back",
+      "returned": "Returned",
+      "past": "Earlier bookings"
+    }
   },
   "Products": {
     "title": "Products",
