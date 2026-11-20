@@ -123,24 +123,26 @@
   },
   "NewOrder": {
     "title": "Price check",
-    "intro": "See what is free and what it costs for any dates, as a booking from the counter, your booking page or Moto Mangos would.",
-    "nothingBooked": "This only checks. Nothing is booked or held, and no coupon use is counted. Making orders comes in Phase 3.",
+    "nothingBooked": "Only a check: nothing is booked or held, and no coupon use is counted.",
     "noLocation": "Add a location first.",
     "location": "Location",
     "pickup": "Pickup",
     "return": "Return",
     "channel": "Booked from",
-    "channelHelp": "Each way of booking has its own rules: your minimum notice applies online only, and a coupon can be for some of them.",
     "channels": {
       "walk_in": "The counter",
       "booking_page": "Your booking page",
       "marketplace": "Moto Mangos"
     },
     "check": "Check",
+    "search": "Product",
+    "searchPlaceholder": "Find a product: name, kind or category",
+    "noMatch": "Nothing matches “{query}”.",
+    "recent": "Recent",
+    "pickHint": "Find a product to see how many are free and its price for these dates.",
+    "pickHintCounts": "Find a product to see how many are free for these dates.",
     "badDates": "The return must be after the pickup.",
     "noProducts": "Nothing to rent at this location yet.",
-    "results": "Free for these dates: {channel}",
-    "seePrice": "Price",
     "priceFor": "{name}: price from {channel}",
     "count": {
       "free": "{free} of {stock} free",
@@ -1682,7 +1684,9 @@
       "returningOff": "The shop’s returning-customer discount is off (Settings › Pricing and tax).",
       "breakdown": "Price breakdown",
       "discountReturning": "Returning-customer discount",
-      "discountCoupon": "Coupon {code}"
+      "discountCoupon": "Coupon {code}",
+      "more": "Quantity and extras",
+      "moreQuantity": "Quantity"
     },
     "basis": {
       "hours": "{hours, plural, one {# hour} other {# hours}} at {hourly}",

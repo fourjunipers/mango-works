@@ -138,28 +138,26 @@ export function PriceCheckSkeleton() {
   return (
     <Loading>
       <HeaderBones />
-      <div className="max-w-3xl space-y-6">
-        <div className="space-y-4 rounded-lg border bg-card p-4 sm:p-5">
-          <div className="grid gap-4 sm:grid-cols-3">
-            {Array.from({ length: 3 }, (_, i) => (
-              <div key={i} className="space-y-2">
-                <Bone className="h-4 w-20" />
+      <div className="max-w-4xl rounded-lg border bg-card">
+        <div className="space-y-3 p-3 sm:p-4">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div
+                key={i}
+                className={cn("space-y-1", i < 2 && "col-span-2 sm:col-span-1")}
+              >
+                <Bone className="h-3 w-16" />
                 <Bone className="h-11 w-full" />
               </div>
             ))}
           </div>
-          <Bone className="h-11 w-full sm:w-2/3" />
+          <div className="flex gap-2">
+            <Bone className="h-11 flex-1" />
+            <Bone className="h-11 w-20" />
+          </div>
         </div>
-        <div className="divide-y rounded-lg border bg-card">
-          {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="flex items-center justify-between gap-4 p-3">
-              <div className="flex-1 space-y-2">
-                <Bone className="h-4 w-1/3" />
-                <Bone className="h-3 w-1/4" />
-              </div>
-              <Bone className="h-11 w-20" />
-            </div>
-          ))}
+        <div className="border-t p-3 sm:p-4">
+          <Bone className="h-4 w-2/3" />
         </div>
       </div>
     </Loading>
