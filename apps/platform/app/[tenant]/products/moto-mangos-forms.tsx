@@ -15,6 +15,7 @@ import {
   TextArea,
   TextInput,
 } from "@/components/action-form";
+import { FocusedAlert } from "@/components/focused-alert";
 import { transmissions } from "@/lib/fleet";
 import { Field, inputClass } from "@/components/form";
 import {
@@ -354,11 +355,11 @@ export function ListingSwitch({
         {pending ? tCommon("saving") : t(on ? "switchOn" : "switchOff")}
       </p>
       {error && !pending && (
-        <p role="alert" className="text-sm text-destructive">
+        <FocusedAlert answer={state} className="text-sm text-destructive">
           {tErrors.has(error as "saveFailed")
             ? tErrors(error as "saveFailed")
             : tErrors("saveFailed")}
-        </p>
+        </FocusedAlert>
       )}
     </form>
   );

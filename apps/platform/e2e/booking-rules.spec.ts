@@ -103,7 +103,9 @@ test("the Moto Mangos tab says when the shop's minimum notice is the stricter on
       .throwOnError();
     const { data: unit } = await db
       .from("units")
-      .select("product_id, products!inner(type, lead:product_listings(lead_time_hours))")
+      .select(
+        "product_id, products!inner(type, lead:product_listings(lead_time_hours))",
+      )
       .eq("tenant_id", tenantId)
       .eq("location_id", location!.id)
       .eq("status", "active")
@@ -113,17 +115,23 @@ test("the Moto Mangos tab says when the shop's minimum notice is the stricter on
       .throwOnError();
     const lead = (
       unit!.products as unknown as {
-        lead: { lead_time_hours: number | null }[] | { lead_time_hours: number | null } | null;
+        lead:
+          | { lead_time_hours: number | null }[]
+          | { lead_time_hours: number | null }
+          | null;
       }
     ).lead;
     const leadHours =
-      (Array.isArray(lead) ? lead[0]?.lead_time_hours : lead?.lead_time_hours) ??
-      0;
+      (Array.isArray(lead)
+        ? lead[0]?.lead_time_hours
+        : lead?.lead_time_hours) ?? 0;
     const notice = Math.min(720, leadHours + 48);
     await db
       .rpc("save_booking_rules", {
         p_tenant_id: tenantId,
-        p_rules: { locations: [{ id: location!.id, min_notice_hours: notice }] },
+        p_rules: {
+          locations: [{ id: location!.id, min_notice_hours: notice }],
+        },
       })
       .throwOnError();
 
