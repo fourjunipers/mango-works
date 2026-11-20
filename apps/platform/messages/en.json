@@ -1736,7 +1736,9 @@
         "wrongDatesFrom": "Not applied: the pickup must be on or after {from}.",
         "wrongDatesUntil": "Not applied: the pickup must be on or before {to}.",
         "tooShort": "Not applied: the rental must be at least {days, plural, one {# day} other {# days}}.",
-        "belowMinimum": "Not applied: this coupon’s products must come to at least {amount} after seasonal prices."
+        "belowMinimum": "Not applied: this coupon’s products must come to at least {amount} after seasonal prices.",
+        "wrongChannelBookingPage": "Not applied: this coupon can’t be used on your booking page.",
+        "wrongChannelMarketplace": "Not applied: this coupon can’t be used on Moto Mangos."
       }
     }
   }

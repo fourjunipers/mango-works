@@ -404,6 +404,7 @@ export function CheckPrice({
           lookupFailed={lookupFailed}
           money={money}
           locale={locale}
+          channel={channel}
         />
 
         <div aria-live="polite">
@@ -504,7 +505,9 @@ function CouponNote({
   lookupFailed,
   money,
   locale,
+  channel,
 }: {
+  channel: BookingChannel;
   checked: Checked | null;
   applied: { code: string; read: CouponInputs } | null;
   lookupFailed: boolean;
@@ -523,7 +526,15 @@ function CouponNote({
       const found = couponFoundOf(applied.read);
       const words = refusalWords(decision.reason, found?.settings ?? null);
       const v = words.values;
-      text = t(`refused.${words.key}` as "refused.unknown", {
+      // "Can't be used by staff" is the counter's; the New order price
+      // check can be on the booking page or Moto Mangos (stage 11).
+      const key =
+        words.key === "wrongChannel" && channel === "booking_page"
+          ? "wrongChannelBookingPage"
+          : words.key === "wrongChannel" && channel === "marketplace"
+            ? "wrongChannelMarketplace"
+            : words.key;
+      text = t(`refused.${key}` as "refused.unknown", {
         from: v.from ? dayText(v.from, locale) : "",
         to: v.to ? dayText(v.to, locale) : "",
         days: v.days ?? 0,
