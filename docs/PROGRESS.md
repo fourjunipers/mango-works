@@ -13,6 +13,28 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Phase 3: plan draft, for a Fable critique (branch `platform/phase-3-plan-draft`, 19 Nov 2026)
+
+**No code and no migration. Not approved.** The draft is `docs/phase-3-plan.md`, written from `main` at `b9e0b33`, assuming PR 51 (Phase 2 stage 10) and Phase 2 stage 11 merge first.
+
+- **Shape:** orders, rentals, billed-period lines and charges on top of Phase 2's `reservations` (Q1); `booking_id` becomes the order's id; one vehicle per rental (Q2); a charge is one `quote()` call and what a payment pays.
+- **Eight migrations, twelve stages.** Stage 1 fixes stage 10's "two bikes swapping models" deadlock and states one global lock order for Phase 3 (plan §4).
+- **Found while planning:** the Phase 2 rule that online bookings reach `reserve()` only through `bookOnline()` in `apps/platform/lib` can't serve the marketplace app at 3M (an app may not import from another app). Plan Q15.
+- **16 open decisions** in §11, each with a recommendation. Nothing in the spec, INTEGRATION or the root `CLAUDE.md` is changed; §13 lists what each will need.
+
+**Draft 2 (19 Nov 2026), after Fable's critique ("needs a second draft") and Mark's 25 decisions.** Written against `main` plus PR 51's branch (migration 6). Every critique item (M1–M8, S1–S10, minor, scope) is applied; plan §14 lists each with the section it changed, §11.1 the decisions.
+
+- `reserve_core` takes the order and its rentals and inserts them inside the lock order; `platform.reserve()` is dropped and Phase 2's tests are ported to `create_order` (stage 2b). Line cap 200.
+- Every order function reads unlocked, takes its advisory locks from the order's reservations, locks the order row, reads again (`try_again` if anything moved), and settles a run-out hold first.
+- Intent status stored; reserved, picked up, returned and mixed derived. Shortage, at risk and completed rentals computed, not stored.
+- Payments ledger and append-only allocations with VAT per payment (`paymentVat`); balance independent of allocation; staff permissions as six shop settings checked in the database.
+- **Thirteen stages, nine migrations**; stage 1 makes `move_unit()` the only way a vehicle changes product and turns the counts trigger statement-level (the stage 10 deadlock and the multi-row crossing).
+- **"Remove for good" (deleting a vehicle that has bookings, 12 Nov proposal) moved from Phase 3 to Phase 1b.**
+- **Open points settled the same day** (decisions 23 replaced, 26 to 31): the Moto Mangos fee is 10% of everything booked through Moto Mangos (rental after discounts, paid extras, delivery; never the deposit) for the whole booked length, corrected in `docs/platform/SPEC.md`, `docs/INTEGRATION.md` and `docs/marketplace/SPEC.md`, with the `fees.ts` changes listed for Phase 8 (plan §7.3); invoice VAT once on each payment's total; emails off in Phase 3; overbooked vehicle rentals accepted; extras on long rentals; stage 7 on Opus with a Fable review. **Still open:** the fee's receipt (not a tax invoice), to confirm with Korn before Phase 8; whether the fee keeps its "never more than the base" ceiling.
+- **Fable's re-check of draft 2 ("fix these first", 19 Nov 2026): 16 plan-text fixes applied, design unchanged** (plan §14, "Re-check 1" to "16"). Decision 32: the Moto Mangos fee is never more than its base, now in SPEC, INTEGRATION and the marketplace SPEC; INTEGRATION §3.12 has `createBooking` return the fee base, with no fee passed in. **Still open:** the fee receipt, to confirm with Korn before Phase 8.
+- **Ledger changes from the payments design (PR 56 §10), decided 19 Nov 2026 as decisions 33 to 42** (plan §6.4, §11.1, §14): overpayment refused for staff entry only; refunds name their payment; reversals and chargebacks; a card hold is not money; deposits never in the balance, once per rental, with their own status, never converted between hold and charge; a negative `marketplace_fee` line on Moto Mangos orders; provider rows unique with a `source`; ledger cores and staff wrappers; room for card, PromptPay, `cancellation_fee` and `withholding`; VAT on deposits a shop setting pending Korn (K3). All in stage 3 / migration 4 bar two kind values (migration 2) and the deposit status read and screen (stages 7, 9). **Clash noted for PR 56:** its §3.6 offers to turn an expiring hold into a charged deposit, which decision 37 rules out.
+- **Open points of draft 2 as first written** (plan §11.2, since settled): the Moto Mangos fee base in decision 23 differs from SPEC, INTEGRATION, the marketplace SPEC and `fees.ts` on the 30-day cap, promotions, VAT, the per-currency minimum, and the spec's old "Connect platform fee" line; when the sending domain is verified; two VAT questions for Korn; overbooked vehicle rentals; time-priced extras on long rentals.
+
 ## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
 
 **Docs only: no code, migration or test changed.** Written from `main` at `b9e0b33`.
@@ -2386,7 +2408,7 @@ Fifth round (owner's click-through, 13 Nov 2026):
 
 Open, for the owner:
 
-- **Deleting a vehicle that has bookings (from Phase 3).** The owner wants vendors to be able to remove any vehicle for good while past sales history stays. A real delete can't do both: it erases the vehicle's own records and would leave past orders pointing at nothing. Proposed for Phase 3: "Remove for good" marks the vehicle as removed (never shown again, not restorable from the app, plate free to reuse) and keeps the row for past orders and reports. Needs a column and every vehicle query to leave removed ones out.
+- **Deleting a vehicle that has bookings (from Phase 3).** The owner wants vendors to be able to remove any vehicle for good while past sales history stays. A real delete can't do both: it erases the vehicle's own records and would leave past orders pointing at nothing. Proposed for Phase 3: "Remove for good" marks the vehicle as removed (never shown again, not restorable from the app, plate free to reuse) and keeps the row for past orders and reports. Needs a column and every vehicle query to leave removed ones out. **Moved to Phase 1b** (Phase 3 plan, draft 2, 19 Nov 2026).
 - **"Edit" button beside Save on the make & model page:** not built; the page is already an edit form. Waiting for the owner to say what could not be changed.
 
 Known limits and open points:

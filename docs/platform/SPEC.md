@@ -85,7 +85,7 @@ This is a multi-tenant SaaS: each rental shop signs up, gets its own workspace, 
 1. **One source of truth.** Every shop's fleet, prices, availability and bookings live here. A marketplace booking is just an order with channel = marketplace, so it lands on the shop's calendar and staff app like any other booking, with no double-booking.
 2. **Shops opt in.** A setting per shop: "List my bikes on the marketplace". Only opted-in shops and models appear there.
 3. **Shops without a subscription can still list.** They get a free "Marketplace" plan: fleet, calendar, bookings and the staff app, without sales history, maintenance or the other paid modules. This replaces the separate vendor backend in Bike-Booking, and it doubles as a way to sign up new paying shops.
-4. **Marketplace rules stay marketplace-only.** The 10% booking fee (min ฿50), request-to-book, referrals and the shop ranking run in the marketplace front end. The booking fee is taken through Stripe Connect as a platform fee on marketplace orders only; direct bookings stay commission-free.
+4. **Marketplace rules stay marketplace-only.** The booking fee, request-to-book, referrals and the shop ranking run in the marketplace front end. The booking fee is 10% of everything booked through Moto Mangos (the rental after discounts or coupons, paid extras and delivery; never the deposit), for the whole booked length, with a minimum per currency (฿50 for THB) and never more than its base, rounded to the nearest whole unit (half up) and fixed at booking. The base is what the renter sees: with VAT for a shop whose prices include it, before VAT for a shop that adds it on top; extensions arranged with the shop afterwards carry no fee. It is charged on Moto Mangos' own Stripe account (not as a Connect platform fee; see Review decisions › Payments), on marketplace orders only; direct bookings stay commission-free. Decided 19 Nov 2026 (docs/phase-3-plan.md §7.3).
 5. **Order of work.** Decided: one system in one monorepo on one database (see Repository and database). The Bike-Booking vendor backend stays paused; its customer site reads shop data through its adapter. After Phase 3 the adapter switches from its temporary tables to this platform's marketplace\_api functions, so Phase 8 needs no separate marketplace API. The contract is docs/INTEGRATION.md (its rules section is binding here). The marketplace can launch with BSR at Phase 8; the legacy Bike-Booking shop tables are dropped after the switch. Other shops join after Phase 11, when sign-up and the free Marketplace plan exist.
 
 ## Tech stack and architecture
@@ -208,7 +208,7 @@ A market is a place Moto Mangos operates: a city or region, or a whole country. 
 | Parent | Thailand |
 | Status | Hidden, coming soon, live |
 | Currency, time zone, languages | THB, Asia/Bangkok, en + th |
-| Booking fee | 10%, minimum ฿50 (each currency sets its own minimum) |
+| Booking fee | 10% of everything booked (rental after discounts, paid extras, delivery; never the deposit; with VAT when prices include it, before VAT when added on top), minimum ฿50 (each currency sets its own minimum), never more than its base |
 | Referral program | On, 50% of the booking fee (Thailand); off until reviewed elsewhere |
 | Area | Map boundary; a shop belongs to the market its address falls in |
 | Stations | Bangkok's BTS/MRT list |
