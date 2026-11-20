@@ -32,7 +32,9 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * New order, as a price check (Phase 2 stage 11; docs/phase-2-plan.md §7).
+ * The Price check (Phase 2 stage 11; docs/phase-2-plan.md §7), on the
+ * New order tab's route until the real New order arrives in Phase 3 stage
+ * 9; the tab and the page are called "Price check" (the owner, 20 Nov 2026).
  * Pick a location, a pickup, a return and where the booking would come
  * from (the counter, the shop's booking page, Moto Mangos): each product
  * shows how many are free and, when it can't be booked, why. Owners,

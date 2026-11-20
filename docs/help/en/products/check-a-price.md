@@ -8,7 +8,7 @@ updated: 2026-11-20
 
 # Check a price
 
-**Check a price** sits on every product's **Pricing** tab. It prices a sample rental with the prices on screen, saved or not, using the same pricing as bookings, so Check a price and Save always agree. Here a coupon is judged as for a booking at the counter; to try one for your booking page or Moto Mangos, use the [New order price check](../orders/price-check.md), which opens the same **Check a price** with the saved prices.
+**Check a price** sits on every product's **Pricing** tab. It prices a sample rental with the prices on screen, saved or not, using the same pricing as bookings, so Check a price and Save always agree. Here a coupon is judged as for a booking at the counter; to try one for your booking page or Moto Mangos, use the [Price check](../price-check/price-check.md), which opens the same **Check a price** with the saved prices.
 
 Who can use it: owners, managers and staff.
 

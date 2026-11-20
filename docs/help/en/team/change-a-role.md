@@ -26,8 +26,8 @@ Who can do this: owners and managers. Owners can give any role. Managers can onl
 | Owner | Everything, including changing a location's time zone and making other owners |
 | Manager | Everything in shop admin except the owner-only items; can change staff, mechanics and drivers |
 | Staff | The four staff-app tabs. Updates odometers, vehicle status (Active or Maintenance), downtime and tax and insurance records. Sees products, fleet and prices but can't change product setup or prices |
-| Mechanic | Dashboard, New order (what is free, no prices) and Maintenance; updates odometers, vehicle status, downtime and tax and insurance records. Can't see prices |
-| Driver | Dashboard, Orders and New order (what is free, no prices). Can see the fleet but can't change vehicles |
+| Mechanic | Dashboard, Price check (what is free, no prices) and Maintenance; updates odometers, vehicle status, downtime and tax and insurance records. Can't see prices |
+| Driver | Dashboard, Orders and Price check (what is free, no prices). Can see the fleet but can't change vehicles |
 
 ## Adding someone new
 

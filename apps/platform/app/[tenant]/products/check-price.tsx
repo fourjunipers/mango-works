@@ -42,7 +42,7 @@ import { lookUpCoupon } from "./check-price-actions";
  * Read-only: the code is looked up (coupon_inputs()) and judged by
  * decideDiscounts() as a counter booking would be, but nothing is reserved
  * and no use is counted. Used on the Pricing tab (the price as it is being
- * edited, on the walk-in channel) and on the New order price check (the
+ * edited, on the walk-in channel) and on the Price check tab (the
  * saved price, on the channel picked there; Phase 2 stage 11).
  */
 export function CheckPrice({
@@ -526,7 +526,7 @@ function CouponNote({
       const found = couponFoundOf(applied.read);
       const words = refusalWords(decision.reason, found?.settings ?? null);
       const v = words.values;
-      // "Can't be used by staff" is the counter's; the New order price
+      // "Can't be used by staff" is the counter's; the Price check
       // check can be on the booking page or Moto Mangos (stage 11).
       const key =
         words.key === "wrongChannel" && channel === "booking_page"

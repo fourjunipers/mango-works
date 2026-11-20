@@ -220,7 +220,7 @@ export type CheckAsked = {
   now: Date;
   /**
    * The channel the booking would come from, for a coupon's "where it can be
-   * used" (stage 11's channel picker on New order). Walk-in when not given,
+   * used" (stage 11's channel picker on the Price check). Walk-in when not given,
    * as the Pricing tab's Check a price always is.
    */
   channel?: BookingChannel;

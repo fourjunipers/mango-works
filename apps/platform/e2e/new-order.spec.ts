@@ -1,5 +1,5 @@
 /**
- * Phase 2, stage 11: New order as a price check, at 375 px and 1280 px.
+ * Phase 2, stage 11: the Price check tab (route /new-order), at 375 px and 1280 px.
  *
  *  - It says it books nothing.
  *  - The free counts fall after the seeded bookings (scripts/seed.mts), and
@@ -271,6 +271,9 @@ for (const who of ["bsrMechanic", "bsrDriver"] as const) {
     await expect(page.locator("li[data-product]").first()).toContainText(
       / of \d+ free|A service/,
     );
-    await expect(page.getByRole("link", { name: /^Price/ })).toHaveCount(0);
+    // No Price button on any product (the tab itself is "Price check").
+    await expect(
+      page.locator("li[data-product]").getByRole("link", { name: /^Price/ }),
+    ).toHaveCount(0);
   });
 }

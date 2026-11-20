@@ -38,7 +38,7 @@ const tabsByRole: Record<Role, readonly StaffTab[]> = {
   manager: staffTabs,
   staff: staffTabs,
   // Mechanics work on bikes: maintenance, plus what's due today, and what
-  // is free for some dates (New order's price check, counts only; Phase 2
+  // is free for some dates (the Price check, route /new-order, counts only; Phase 2
   // stage 11, the owner's answer of 20 Nov 2026).
   mechanic: ["dashboard", "new-order", "maintenance"],
   // Drivers: today's deliveries and collections, the orders behind them,

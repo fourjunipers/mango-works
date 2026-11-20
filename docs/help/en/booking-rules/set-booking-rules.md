@@ -8,7 +8,7 @@ updated: 2026-11-20
 
 # Set your booking rules
 
-**Booking rules** decide what can be booked: how far ahead, how short, the time kept free around each rental, how long a booking is held while the customer pays, and whether staff can take a booking when every vehicle is gone. The rules are checked on every booking, and the [New order price check](../orders/price-check.md) shows them at work.
+**Booking rules** decide what can be booked: how far ahead, how short, the time kept free around each rental, how long a booking is held while the customer pays, and whether staff can take a booking when every vehicle is gone. The rules are checked on every booking, and the [Price check](../price-check/price-check.md) shows them at work.
 
 Who can do this: owners and managers. Everyone else is answered "Page not found".
 

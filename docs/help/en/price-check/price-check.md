@@ -1,16 +1,16 @@
 ---
-title: Check what is free and what it costs (New order price check)
+title: Check what is free and what it costs (Price check)
 summary: For any dates, see how many of each vehicle, gear and service are free, why one can't be booked, and its price from the counter, your booking page or Moto Mangos. Nothing is booked.
-keywords: [new order, price check, availability, what is free, how many free, is it available, quote, price for dates, coupon, booking page, Moto Mangos, walk-in, notice, เช็กราคา, ว่างไหม, รถว่าง, ราคา, ออเดอร์ใหม่, คูปอง]
+keywords: [price check, new order, availability, what is free, how many free, is it available, quote, price for dates, coupon, booking page, Moto Mangos, walk-in, notice, เช็กราคา, ว่างไหม, รถว่าง, ราคา, ออเดอร์ใหม่, คูปอง]
 screens: [/[tenant]/new-order]
 updated: 2026-11-20
 ---
 
-# Check what is free and what it costs (New order price check)
+# Check what is free and what it costs (Price check)
 
-The **New order** tab is a **Price check** for now. Pick a pickup and a return, and where the booking would come from. Every product shows how many are free and, when it can't be booked, why. Tap one to see its price, with your seasons, extras, a coupon and the returning-customer discount.
+The **Price check** tab shows what is free and what it costs, for any dates. Pick a pickup and a return, and where the booking would come from. Every product shows how many are free and, when it can't be booked, why. Tap one to see its price, with your seasons, extras, a coupon and the returning-customer discount.
 
-It only checks. Nothing is booked or held, and trying a coupon does not count a use. Making orders comes in Phase 3, on this same tab.
+It only checks. Nothing is booked or held, and trying a coupon does not count a use. Making orders comes with the New order screen in Phase 3.
 
 **Who can do this**
 
@@ -19,7 +19,7 @@ It only checks. Nothing is booked or held, and trying a coupon does not count a 
 
 ## Steps
 
-1. Open the **New order** tab.
+1. Open the **Price check** tab.
 2. If your shop has more than one location, choose the **Location**.
 3. Set the **Pickup** and the **Return**. They start as tomorrow at 10:00 to the day after, on the location's clock.
 4. Under **Booked from**, choose one:

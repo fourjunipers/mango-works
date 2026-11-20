@@ -15,7 +15,7 @@ import {
 import { addCalendarDays, dateInZone, fromLocalInput } from "./shop-time";
 
 /**
- * The New order screen as a price check (Phase 2 stage 11;
+ * The Price check (route /new-order; Phase 2 stage 11;
  * docs/phase-2-plan.md §7): for a location, a pickup, a return and a
  * channel, each product's free count and, when it can't be booked, why.
  * Pure: the reads (booking_inputs(), availability()) are the page's. Nothing

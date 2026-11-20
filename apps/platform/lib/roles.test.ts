@@ -17,7 +17,7 @@ describe("tabs per role", () => {
     }
   });
 
-  it("gives mechanics Dashboard, New order (counts only) and Maintenance, opening on Maintenance", () => {
+  it("gives mechanics Dashboard, Price check (counts only) and Maintenance, opening on Maintenance", () => {
     expect(tabsFor("mechanic")).toEqual([
       "dashboard",
       "new-order",
@@ -26,7 +26,7 @@ describe("tabs per role", () => {
     expect(homeTab("mechanic")).toBe("maintenance");
   });
 
-  it("gives drivers Dashboard, Orders and New order (counts only), opening on Dashboard", () => {
+  it("gives drivers Dashboard, Orders and Price check (counts only), opening on Dashboard", () => {
     expect(tabsFor("driver")).toEqual(["dashboard", "orders", "new-order"]);
     expect(homeTab("driver")).toBe("dashboard");
   });

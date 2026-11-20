@@ -3,7 +3,7 @@ import { createClient } from "@mango/db/platform-server";
 import type { AvailabilityRow, BookingInputs } from "./booking-inputs";
 
 /**
- * The reads of the New order price check (Phase 2 stage 11): the shop's
+ * The reads of the Price check (Phase 2 stage 11): the shop's
  * locations, its rentable products, and for one location and one span the
  * two existing reads, platform.booking_inputs() and platform.availability().
  * As the signed-in person: both functions let every member of the shop read

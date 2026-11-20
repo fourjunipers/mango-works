@@ -1343,7 +1343,7 @@ describe("Check a price in New York: a coupon's valid dates on the shop's clock,
   });
 });
 
-describe("the New order price check: a coupon judged on the channel picked (stage 11)", () => {
+describe("the Price check: a coupon judged on the channel picked (stage 11)", () => {
   const ask = (
     channels: CouponInputs["coupon"] extends infer C
       ? C extends { channels: infer X }

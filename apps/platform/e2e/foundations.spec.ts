@@ -34,7 +34,7 @@ test("an owner gets all four tabs and the admin pages", async ({
   await signIn(page, demo.bsrOwner);
   await expect(page).toHaveURL(/\/bsr\/dashboard$/);
   const nav = mainNav(page, isPhone(info.project.name));
-  for (const tab of ["Dashboard", "Orders", "New order", "Maintenance"]) {
+  for (const tab of ["Dashboard", "Orders", "Price check", "Maintenance"]) {
     await expect(nav.getByRole("link", { name: tab })).toBeVisible();
   }
 
@@ -47,8 +47,9 @@ test("an owner gets all four tabs and the admin pages", async ({
   await expect(page).toHaveURL(/filter=overdue/);
   await expect(page.getByText("Searching for “1กข-1234”")).toBeVisible();
 
-  // New order is a price check until orders arrive in Phase 3 (stage 11).
-  await nav.getByRole("link", { name: "New order" }).click();
+  // The Price check tab (route /new-order) until the real New order
+  // arrives in Phase 3 stage 9.
+  await nav.getByRole("link", { name: "Price check" }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: "Price check" }),
   ).toBeVisible();
@@ -74,8 +75,8 @@ test("a mechanic opens on Maintenance and sees only its tabs", async ({
   // The sidebar also lists Products and Fleet, which every role can read.
   await expect(nav.getByRole("link")).toHaveText(
     isPhone(info.project.name)
-      ? ["Dashboard", "New order", "Maintenance"]
-      : ["Dashboard", "New order", "Maintenance", "Products", "Fleet"],
+      ? ["Dashboard", "Price check", "Maintenance"]
+      : ["Dashboard", "Price check", "Maintenance", "Products", "Fleet"],
   );
 
   // A tab the role doesn't have sends it home; admin pages don't exist for it.
@@ -98,8 +99,8 @@ test("a driver gets Dashboard and Orders", async ({ page }, info) => {
     mainNav(page, isPhone(info.project.name)).getByRole("link"),
   ).toHaveText(
     isPhone(info.project.name)
-      ? ["Dashboard", "Orders", "New order"]
-      : ["Dashboard", "Orders", "New order", "Products", "Fleet"],
+      ? ["Dashboard", "Orders", "Price check"]
+      : ["Dashboard", "Orders", "Price check", "Products", "Fleet"],
   );
 });
 

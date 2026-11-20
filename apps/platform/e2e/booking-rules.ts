@@ -6,7 +6,7 @@ import { ownerClient } from "./shop-settings";
 
 /**
  * A shop's booking rules (Settings › Booking rules; Phase 2 stage 11) are
- * shared by every screen that judges a booking: the New order price check
+ * shared by every screen that judges a booking: the Price check
  * reads them too. Browser tests that change them, or that read an answer
  * that depends on them, run one at a time across every worker and both
  * widths, and put every rule back as it was, pass or fail.

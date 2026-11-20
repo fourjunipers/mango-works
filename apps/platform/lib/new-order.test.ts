@@ -120,7 +120,7 @@ const span = (pickupUtc: string, days: number) => {
   return { start, end: new Date(start.getTime() + days * 86_400_000) };
 };
 
-describe("New order price check: the channel and the booking it stands for", () => {
+describe("Price check: the channel and the booking it stands for", () => {
   it("the counter books as staff; the booking page and Moto Mangos book ahead", () => {
     expect(howFor("walk_in")).toEqual({ channel: "walk_in", mode: "staff" });
     expect(howFor("booking_page")).toEqual({
@@ -134,7 +134,7 @@ describe("New order price check: the channel and the booking it stands for", () 
   });
 });
 
-describe("New order price check: the search", () => {
+describe("Price check: the search", () => {
   const locations = [
     { id: LOC, timezone: zone },
     { id: OTHER, timezone: "Asia/Ho_Chi_Minh" },
@@ -208,7 +208,7 @@ describe("New order price check: the search", () => {
   });
 });
 
-describe("New order price check: each product's answer", () => {
+describe("Price check: each product's answer", () => {
   const rows = [
     row(BIKE, "vehicle", 3, 8),
     row(HELMET, "gear", 0, 20),

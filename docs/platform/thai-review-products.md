@@ -1217,7 +1217,7 @@ Four lines reworded and three new. The four are the refusals on the screens wher
 
 ## Phase 2, stage 11: wrap-up (20 Nov 2026)
 
-New and changed Thai lines on the branch `platform/phase-2-stage-11-wrap-up`: the New order price check (เช็กราคา), Settings › Booking rules (กฎการจอง), the Bookings section on a vehicle's page, the Moto Mangos tab's notice line, the coupon refusals for the booking page and Moto Mangos, and the gear form's line about prices. Claude's translations; please check. Words chosen: เช็กราคา (price check), กฎการจอง (booking rules), แจ้งล่วงหน้า (notice), จองเกิน (overbooking), การจองที่ขาดรถ (a shortage), กันไว้ (held), หน้าจองของร้าน (your booking page), walk-in kept in English as staff say it. Gone: `NewOrder.dates`, `NewOrder.bike`, `NewOrder.customer`, `NewOrder.extras`, `NewOrder.price`, `NewOrder.sign`, `NewOrder.pay` (the placeholder steps), `Products.general.pricesLater` (now `pricesAfterSave`).
+New and changed Thai lines on the branch `platform/phase-2-stage-11-wrap-up`: the Price check tab (เช็กราคา; it replaces the New order tab until Phase 3), Settings › Booking rules (กฎการจอง), the Bookings section on a vehicle's page, the Moto Mangos tab's notice line, the coupon refusals for the booking page and Moto Mangos, and the gear form's line about prices. Claude's translations; please check. Words chosen: เช็กราคา (price check), กฎการจอง (booking rules), แจ้งล่วงหน้า (notice), จองเกิน (overbooking), การจองที่ขาดรถ (a shortage), กันไว้ (held), หน้าจองของร้าน (your booking page), walk-in kept in English as staff say it. Gone: `NewOrder.dates`, `NewOrder.bike`, `NewOrder.customer`, `NewOrder.extras`, `NewOrder.price`, `NewOrder.sign`, `NewOrder.pay` (the placeholder steps), `Products.general.pricesLater` (now `pricesAfterSave`).
 
 | Key | English | Thai |
 | --- | --- | --- |
@@ -1302,3 +1302,4 @@ New and changed Thai lines on the branch `platform/phase-2-stage-11-wrap-up`: th
 | `Pricing.coupon.refused.wrongChannelMarketplace` | Not applied: this coupon can’t be used on Moto Mangos. | ไม่ได้ใช้: ใช้คูปองนี้บน Moto Mangos ไม่ได้ |
 | `NewOrder.refused.capReached` | Moto Mangos has used all the units you list there for these dates. | Moto Mangos ใช้จำนวนรถที่คุณลงขายไว้ครบแล้วในวันที่เลือก |
 | `Fleet.bookings.ranOut` | Hold ran out | การกันรถหมดเวลาแล้ว |
+| `Nav.new-order` | Price check | เช็กราคา |

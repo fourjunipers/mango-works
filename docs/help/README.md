@@ -85,9 +85,9 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 
 - [Set your booking rules](en/booking-rules/set-booking-rules.md): notice, cut-off, minimum days, time free, hold length, overbooking
 
-### New order (`en/orders`)
+### Price check (`en/price-check`)
 
-- [Check what is free and what it costs (New order price check)](en/orders/price-check.md)
+- [Check what is free and what it costs (Price check)](en/price-check/price-check.md)
 
 ### Coupons (`en/coupons`)
 
@@ -97,7 +97,7 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 
 ### Not covered yet
 
-Screens that are on `main` but have no article yet: the Moto Mangos tab on a product, rental gear stock (the Stock tab, Report a problem, Out of service), items for sale (Change quantity and stock history), a product's History tab, and the platform admin's catalog requests. Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, Maintenance's due list) get articles when their phase builds them. New order is a price check until orders arrive in Phase 3.
+Screens that are on `main` but have no article yet: the Moto Mangos tab on a product, rental gear stock (the Stock tab, Report a problem, Out of service), items for sale (Change quantity and stock history), a product's History tab, and the platform admin's catalog requests. Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, Maintenance's due list) get articles when their phase builds them. The New order screen arrives in Phase 3 (stage 9); until then its tab is the Price check.
 
 ## Article format
 
