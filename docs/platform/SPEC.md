@@ -95,16 +95,16 @@ The stack keeps your existing tools (GitHub, Netlify, Tailwind, Resend, GA) and 
 | Layer | Choice | Why |
 | --- | --- | --- |
 | App framework | Next.js (App Router) + TypeScript, in a monorepo: platform app (admin, staff app, booking pages, API) and marketplace app, sharing packages | One repo, shared rules; server actions; works on Netlify or Vercel |
-| Database | Supabase Postgres | Range types + exclusion constraints for availability; row-level security for tenants |
-| Auth | Supabase Auth: email, Google, LINE (OIDC); 2FA for staff | Built in; LINE login matters for Thai staff |
-| File storage | The shop's own connected Google Drive; the platform keeps only a link (file id) per file, behind one storage module (decided 19 Nov 2026) | Passports, licences, damage photos, signed PDFs, receipts. No files are stored on the platform |
+| Database | Supabase Postgres until the Neon move (after Phase 3); then Neon Postgres, Singapore, always on | Range types + exclusion constraints for availability; row-level security for tenants |
+| Auth | Supabase Auth until the Neon move; then Better Auth run in the apps: email, Google, LINE; 2FA for staff | LINE login matters for Thai staff |
+| File storage | Private files (receipts, renewal documents, passports and licences, inspection and damage photos, signed agreements, tax-invoice PDFs): only in the shop's connected Google Drive; the platform keeps a link (file id) per file (decision 49, 19 Nov 2026). Public listing images (Moto Mangos shop and bike photos): Supabase Storage until the Neon move, then Cloudflare R2. Both behind one storage module | Passports, licences, damage photos, signed PDFs, receipts; shop and bike photos for Moto Mangos listings. No private files are stored on the platform |
 | UI | Tailwind CSS + shadcn/ui, light/dark | Fast to build, consistent, accessible |
 | Payments | Stripe Connect (Standard accounts) for shop payments; Stripe Billing for SaaS subscriptions | Money goes straight to each shop; you never hold their revenue |
 | Email | Resend + React Email templates | Already in your stack |
 | Messaging | LINE Messaging API (per-tenant channel) | Thai customers and staff |
 | PDFs | Server-side render (react-pdf) | Contracts, invoices, quotes |
-| Background jobs | Supabase cron + Edge Functions (or Inngest) | Reminders, expiry alerts, recurring charges |
-| Hosting | Netlify (one site per app) + one shared Supabase project (Singapore region) | Low latency for Thailand |
+| Background jobs | pg\_cron jobs that only queue; the app sends (scheduled functions). No Edge Functions | Reminders, expiry alerts, recurring charges |
+| Hosting | Netlify (one site per app) + one shared database in Singapore (Supabase today, Neon after the move) | Low latency for Thailand |
 | Monitoring | Sentry + Supabase logs; uptime check | Catch errors before shops do |
 | Testing | Vitest (unit), Playwright (end-to-end), pgTAP or SQL tests for RLS | Availability and tenant isolation must be tested |
 | i18n | next-intl; English + Thai | Admin and booking pages |
@@ -489,13 +489,13 @@ This is general information, not legal advice. Have a Thai lawyer review the pri
 
 These came from an independent review of the plan after Phase 0. They are binding and override anything earlier in this spec that disagrees. Items marked for a later phase are settled when that phase is prepared.
 
-**Build order.** 0 → 1a → 2 → 3 → 3M → 1b → 4 onward. Phase 1 is split in two:
+**Build order.** 0 → 1a → 2 → 3 → Neon move → 3M → 1b → 4 onward → go-live preparation (the Neon move and the go-live preparation step were added on 19 Nov 2026; see Hosting and data below). Phase 1 is split in two:
 
 - **1a Fleet core:** locations, optional catalog link, models, units, CSV import, QR stickers, unit blocks (downtime), the audit table, and the legacy-table mapping.
 - **1b Fleet care:** maintenance log, service schedules, odometer alerts, tax and insurance renewals, keys, GPS, vehicle notes (fitted accessories; see Vehicle record), unit timeline, profit per vehicle. It runs after Phase 3, because profit needs orders and payments. Update 11 Nov 2026: the tax and insurance renewal records, expiry dates and reminder settings were built in Phase 1a with dashboard reminders and a queue for the messages. Nothing sends yet: email arrives with Phase 3 and LINE with Phase 6.
 - **3M Marketplace switch:** a named phase for the adapter switch (marketplace\_api functions, createBooking, markets table, baht to minor units, dropping legacy tables). Accept: search results identical before and after on a seeded dataset; two parallel marketplace bookings for the last bike give one success.
 - **Phase 3 also gets** the basic customer record, the payments ledger with cash and transfer recording, and the jobs + outbox + email plumbing. Phase 4 keeps KYC, Phase 6 templates and LINE, Phase 7 card payments.
-- **Before Gate A** (pulled forward from Phase 11): team invites, enforced 2FA for owners, managers and anyone with document access, and a session list. Website templates and the public API move past Gate B.
+- **Before Gate A** (pulled forward from Phase 11): team invites, enforced 2FA for owners, managers and anyone with document access, and a session list. **2FA is built after the Neon move, on Better Auth** (decided 19 Nov 2026), not on Supabase's MFA. Website templates and the public API move past Gate B.
 
 **Data model and isolation (Phase 1a onward).**
 
@@ -520,8 +520,9 @@ These came from an independent review of the plan after Phase 0. They are bindin
 
 **Hosting and data.**
 
-- Functions stay on Netlify Personal (US East) while building; tests allow for the slower preview. Move functions to Singapore (Netlify Pro) before Phase 4 stores real passports, or before Gate A if that comes first.
-- Before Gate A or the first real marketplace booking on the platform: live Supabase on a paid plan with backups and point-in-time recovery, and a restore drill.
+- Functions stay on Netlify Personal (US East) while building; tests allow for the slower preview. **Go-live preparation (decided 19 Nov 2026): Netlify Pro is not taken during the build. As a final step of the build, just before go-live, upgrade to Netlify Pro and move both sites' functions to Singapore**, then measure again. This replaces the earlier "before Phase 4 or Gate A". Latency measured before then, the Neon spike's included, is from US East; absolute figures drop once functions are in Singapore.
+- Before Gate A or the first real marketplace booking on the platform: the live database on a paid plan with backups and point-in-time recovery, and a restore drill. After the Neon move that is Neon Launch with a 7-day restore window.
+- **The Neon move (decided 19 Nov 2026).** The database moves from Supabase to Neon after Phase 3, before 3M and before BSR goes live: Neon Postgres, the Neon Data API for the calls, Better Auth in the apps for sign-in, pg\_cron for the jobs. Never a part move that keeps Supabase Auth. **A spike comes first, with a go or no-go for Mark; the move goes ahead only if it shows no meaningful performance loss on live.** Live is Neon Launch, always on, in Singapore, with no scale-to-zero. Staging is a Neon Free project that may scale to zero, so the hold sweep is not scheduled there. Phase 3 adds the platform's own "who is calling" functions from its stage 1. The assessment, the stages and their rollbacks are in docs/platform/neon-move-plan.md; root CLAUDE.md has the standing rules and the "do not start using" list.
 - The repo is private (10 Nov 2026).
 - ~~The shop Google Drive document option is deferred until after Gate B. A 'download all my files' export covers data ownership instead.~~ **Reversed 19 Nov 2026:** files live only in the shop's connected Google Drive, built as its own stage before Phase 4 (Customers and KYC › Document storage).
 
@@ -689,10 +690,12 @@ Read the phases left to right, band by band. Nothing reaches other shops until B
    - Accept: a 3-month rental auto-charges each month in test clock; a failed charge alerts staff.
 10. **Sales history, reports + import.** Dashboard KPIs, sales history page (periods, compare, filters, saved views, drill-down), revenue basis switch, cash paid out + daily cash close + evening LINE summary, other reports, CSV/Excel export, Booqable importer (products, stock items, customers, future orders).
     - Accept: import of BSR's Booqable export reconciles counts exactly. **Gate A:** BSR runs in parallel for 2 weeks.
-11. **SaaS layer.** Marketing site with pricing page; self-serve signup, payment and automatic shop setup (country sets currency, timezone, language and tax; no manual step by Mango Works) + onboarding wizard, 5 shop website templates, plans and trials (Stripe Billing), plan limits, multi-location, platform admin, enforced 2FA, public API + webhooks.
+11. **SaaS layer.** Marketing site with pricing page; self-serve signup, payment and automatic shop setup (country sets currency, timezone, language and tax; no manual step by Mango Works) + onboarding wizard, 5 shop website templates, plans and trials (Stripe Billing), plan limits, multi-location, platform admin, enforced 2FA (built after the Neon move, on Better Auth; decided 19 Nov 2026), public API + webhooks.
     - Accept: a new shop goes from signup to first online booking in under 30 minutes without help.
 12. **BSR cutover + hardening.** Fix pilot issues, Stripe Tap to Pay in the staff app, backups and restore drill, load test, security review, terms/privacy pages, help docs.
     - Accept: restore from backup works; no open P1 bugs for 2 weeks. **Gate B:** cancel Booqable, open signups.
+
+**Go-live preparation** (the last step of the build, just before go-live; decided 19 Nov 2026): upgrade Netlify to Pro and move both sites' functions to Singapore; measure the booking path again from Singapore.
 
 **Later (not in v1):** native app wrapper, Claude-powered assistant (daily briefing, ask-your-data), Xero, Zapier, Meta Pixel, route planning for deliveries, more languages and currencies.
 
@@ -755,6 +758,7 @@ This log tracks your additions and removals. Each one is already worked into the
 
 | # | Request | Type | Where in the spec | Phase |
 | --- | --- | --- | --- | --- |
+| 51 | Move the database from Supabase to Neon after Phase 3 (before 3M and BSR's go-live), spike first, live always on; Better Auth for sign-in | Decision | Tech stack; Review decisions › Build order, Hosting and data; docs/platform/neon-move-plan.md | After 3 |
 | 50 | Phase 1b decisions: expired renewals never block a pickup (reminders and a check-out warning only); a lower odometer reading is confirmed and audited; no registration renewal kind | Change | Fleet › Vehicle record; Data model (unit\_renewals) | 1b |
 | 49 | No files stored on the platform: every file lives in the shop's connected Google Drive, with only a link kept; a separate stage before Phase 4. Reverses the deferral in request 45 and the "option" in request 10 | Decision | Tech stack; Customers › Document storage; Data model; Review decisions | Before 4 |
 | 48 | Price-per-day mode (request 41) dropped; over 30 days runs month to month plus a long-stay daily rate (replaces request 26's ÷ 30 rule); VAT once per invoice and rate | Change | Pricing; Products redesign and pricing | 2 |
@@ -809,6 +813,7 @@ This log tracks your additions and removals. Each one is already worked into the
 
 Phases 0–1 can start without these. Each one is needed by the phase noted.
 
+- [ ] Neon move: the spike's go or no-go, and the migration tool after it (docs/platform/neon-move-plan.md, section 8). Settled 19 Nov 2026: the line for "no meaningful performance loss" is 10% or 20 ms on median and 95th percentile, whichever is larger; Netlify Pro waits for go-live preparation.
 - [ ] Platform product name and domain, and the Moto Mangos domain (before Phase 8).
 - [ ] SaaS pricing (draft, confirm before Phase 11): staff app in every tier. Tier 1 = management system; Tier 2 adds online booking; Tier 3 adds multi-store. Possibly also priced by fleet size: under 100 vehicles one price, 100+ another. Moto Mangos stays separate and free to join (Marketplace plan), and links with Tiers 1 and 2.
 - [ ] Thai tax invoice format: confirm with Korn which fields the platform needs on invoices and receipts (before Phase 6).

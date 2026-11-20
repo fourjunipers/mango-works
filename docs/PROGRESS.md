@@ -11,7 +11,26 @@ What's done, open decisions and known issues, across both apps. Update this at t
 | Platform (`apps/platform`) | **Phase 0** (foundations) merged to `main` (PR #7, 10 Nov 2026) and deployed on the Netlify site `mango-works-platform` (staging data): auth, tenants, memberships, roles, RLS, app shell, staff app with its 4 tabs (placeholders), demo seed, CI. **Phase 1a** (fleet core) is built on `platform/phase-1a-fleet-core`, PR open |
 | Database | 53 migrations on `main`, **all 53 on live since 12 Nov 2026** (see below). Platform tables live in the `platform` schema from Phase 1a. Live = today's Bike-Booking project (migrations only from `main`). Staging = Supabase project `mango-works-staging` (Singapore), with all 48 and the demo seed |
 
-Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
+Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
+
+## Neon move: assessment, decisions and plan (branch `docs/neon-move-plan`, 19 Nov 2026)
+
+**Docs only: no code, migration or test changed; nothing run against staging or live.** Written from `main` at `d458717`.
+
+- **`docs/platform/neon-move-plan.md`**: every Supabase dependency counted, what Neon offers for each (checked against the vendors' pages on 19 Nov 2026, cited), the RLS pattern and its pitfalls, the test harness, cost at three sizes, the assessment's recommendation, Mark's decisions, the staged plan with the spike first, and what is still open.
+- **The assessment recommended staying** (the move is about 12 to 15 PRs and saves roughly nothing a month). Its cost and risk findings are kept in the document as written.
+- **Mark decided on 19 Nov 2026 to move, if the spike passes.** The twelve decisions are in the document under its Summary. In short:
+  - **Full move to Neon after Phase 3, before 3M and before BSR goes live.** Never a part move that keeps Supabase Auth.
+  - **A spike comes first, as its own stage, with a go or no-go for Mark.** It measures latency from Netlify functions against today's Supabase, cold start, a `service_role` that bypasses RLS, the Data API's timeouts and RPC handling (the gate tests' `lock_timeout` behaviour included), LINE and Google through Better Auth, and pg_cron running the minute sweep. No meaningful performance loss on live, or the move stops.
+  - **Live: Neon Launch, always on, Singapore, no scale-to-zero, 7-day restore window.** Staging: a Neon Free project that may scale to zero, with no scheduled hold sweep. Trial projects: a Neon Free organisation, from now.
+  - Calls through the Neon Data API (fallback: PostgREST run by us in Singapore; if that fails too, no-go). Sign-in by Better Auth in the apps. Jobs on pg_cron. Migration tool decided after the spike.
+  - **Phase 3 adds our own "who is calling" functions from stage 1** (sent to the Phase 3 plan).
+- **Root `CLAUDE.md`:** the "Not tied to Supabase" section now states the decision, keeps the four rules, adds two (who is calling is read in our own functions; database jobs only queue), and has a "do not start using" list. **`docs/platform/SPEC.md`:** tech stack rows, build order (… 3 → Neon move → 3M …), Hosting and data, change request 51, one open decision.
+- **Twelve stages**, each with its model and a rollback (document §7.5): 0 caller functions inside Phase 3; 1 spike; 2 baseline, roles and local stack; 3 sign-in helper on Supabase; 4 Better Auth; 5 data path; 6 public listing images to R2; 7 jobs; 8 Neon projects, staging's move and the rehearsal; 9 cutover of live; 10 clean-up after 30 days; 11 go-live preparation (Netlify Pro, functions to Singapore). `main` stays able to run on Supabase until the cutover: each stage adds the Neon side behind a switch.
+- **Functions run in US East** (Netlify's default, `cmh`; choosing a region needs Netlify Pro), so today every call crosses to Singapore and back. **Netlify Pro is not taken now (Mark, 19 Nov 2026): it is a final step of the build, just before go-live, when the functions move to Singapore** (the plan's stage 11; SPEC's "go-live preparation"). The spike compares Neon and Supabase from US East, both measured the same way; absolute latencies will drop once functions are in Singapore.
+- **Mark's answers, 19 Nov 2026:** the line for "no meaningful performance loss" is 10% or 20 ms on median and 95th percentile, whichever is larger; the spike may read and write a throwaway shop on staging and must remove it afterwards; staff 2FA is built after the move, on Better Auth (noted against Phase 11 in SPEC); the `.from()`/`.rpc()`/`.schema()` rule stays in CLAUDE.md.
+- **Still open** (document §8): the migration tool, decided after the spike; later, whether staging stays on Neon Free and whether live needs the Scale plan.
+- **Not checked:** either vendor's incident history; the hosted project's dashboard (the send-email hook is not in the repo); two Neon behaviours that only a spike can show (a SQL-made role bypassing RLS; role settings after the Data API switches role).
 
 ## Phase 1b: plan only (branch `platform/phase-1b-plan`, 19 Nov 2026)
 
