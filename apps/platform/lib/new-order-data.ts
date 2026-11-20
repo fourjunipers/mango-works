@@ -15,6 +15,10 @@ export type PriceCheckProduct = {
   id: string;
   name: string;
   type: "vehicle" | "gear" | "service";
+  /** A vehicle's kind (lib/vehicle-kinds); null for gear and services. */
+  kind: string | null;
+  /** A vehicle's categories (lib/vehicle-kinds); empty for gear and services. */
+  categories: string[];
 };
 
 export async function getPriceCheckLocations(
@@ -38,14 +42,20 @@ export async function getPriceCheckProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("id, name, type")
+    .select("id, name, type, vehicle_type, categories")
     .eq("tenant_id", tenantId)
     .in("type", ["vehicle", "gear", "service"])
     .is("retired_at", null)
     .order("type", { ascending: false })
     .order("name");
   if (error) throw error;
-  return data as PriceCheckProduct[];
+  return data.map((p) => ({
+    id: p.id,
+    name: p.name,
+    type: p.type as PriceCheckProduct["type"],
+    kind: p.type === "vehicle" ? (p.vehicle_type ?? "other") : null,
+    categories: p.type === "vehicle" ? (p.categories ?? []) : [],
+  }));
 }
 
 /** Both functions take up to 200 products at a time. */
