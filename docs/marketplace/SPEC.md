@@ -81,7 +81,7 @@ Shops create their own paid extras, e.g. damage/theft cover, use outside Bangkok
 | Active | On/off toggle without deleting, like every other shop option |
 
 - Customers tick extras at checkout. Extras appear in the price breakdown and are **paid at the shop**.
-- The 10% platform fee applies to the rental only, never to extras.
+- The 10% booking fee includes paid extras (decided 19 Nov 2026).
 - The vendor's booking notice lists the extras and includes them in the amount to collect.
 - Extras chosen on a booking are copied onto the booking (name, unit, price, quantity, total), so later price edits never change existing bookings.
 
@@ -90,7 +90,7 @@ Shops create their own paid extras, e.g. damage/theft cover, use outside Bangkok
 - Delivery radius in km and fee: flat, or distance zones.
 - Optional minimum rental length for delivery, in days (blank = deliver for any rental length).
 - Every delivery booking needs vendor approval, including Instant models. Vendor checks address and time, then accepts or declines.
-- Delivery fee is paid to the vendor at handover. The 10% platform fee applies to the rental only.
+- Delivery fee is paid to the vendor at handover. The 10% booking fee includes delivery (decided 19 Nov 2026).
 
 ## Fleet management
 
@@ -172,7 +172,7 @@ Vendors enter up to five anchor totals per model; the system fills every day in 
 
 **Validation:** the editor warns when a longer rental is cheaper than a shorter one, or when a day total is below the 1-day price.
 
-**Order of calculation at checkout:** rental total from the table → minus promotion → booking fee = 10% of that (minimum ฿50) → amount due at shop = rental after promotion − booking fee + extras. Delivery fee is shown separately and paid at handover. Extras never count towards the booking fee.
+**Order of calculation at checkout:** rental total from the table → minus promotion → booking fee = 10% of (rental after promotion + paid extras + delivery), never the deposit, rounded to the nearest whole unit half up (minimum ฿50, never more than the base itself) → amount due at shop = rental after promotion + extras + delivery − booking fee. Delivery is shown on its own line and paid at handover. The fee is fixed at booking.
 
 ## Booking modes and statuses
 
@@ -203,7 +203,7 @@ Requests that are declined or get no reply cost the customer nothing. A confirme
 
 ## Payments and cancellation
 
-The platform collects only the booking fee: 10% of the rental after promotions, minimum ฿50. The customer pays the rest to the shop at pickup; there are no vendor statements or payouts.
+The platform collects only the booking fee: 10% of everything booked (the rental after promotions, paid extras and delivery; never the deposit), for the whole booked length, minimum ฿50 and never more than that base. The base is what the renter sees: with VAT for a shop whose prices include it, before VAT for a shop that adds it on top. The customer pays the rest to the shop at pickup; there are no vendor statements or payouts.
 
 **Payment methods**
 
@@ -237,7 +237,7 @@ The platform collects only the booking fee: 10% of the rental after promotions, 
 | Request declined or expired | Nothing charged |
 | No-show | Fee kept |
 
-**Receipts:** every fee payment emails a receipt from the platform company. VAT registration is needed once fee revenue passes ฿1.8M a year.
+**Receipts:** every fee payment emails a standard receipt from Mango Works, not a tax invoice (decided 19 Nov 2026; confirm with Korn before Phase 8). VAT registration is needed once fee revenue passes ฿1.8M a year.
 
 ## Customer screens
 
@@ -274,7 +274,7 @@ Customers can browse without logging in; login is required at checkout. A rental
 | Pay now (booking fee, 10%) | 288 |
 | Pay at shop | 2,592 |
 
-With extras, each ticked extra is listed under "Pay at shop" (e.g. "Damage/theft cover, 14 days × ฿200 = ฿2,800") and added to the pay-at-shop total. The booking fee does not change.
+With extras, each ticked extra is listed (e.g. "Damage/theft cover, 14 days × ฿200 = ฿2,800") and counts towards the booking fee: with that extra the fee is 10% of ฿5,680 = ฿568, and the pay-at-shop total is ฿5,112.
 
 ## Vendor screens
 

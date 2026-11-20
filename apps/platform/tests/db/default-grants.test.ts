@@ -916,3 +916,105 @@ describe("coupons: the three tables and the stage 8 functions", () => {
     ]);
   });
 });
+
+describe("review follow-ups: the stage 10 table and functions", () => {
+  it("platform_admin_events: the service role reads and nothing else; nobody signed in has any grant; signed-out visitors get nothing", () => {
+    const rows = lines(`
+      select r || ' ' || coalesce(string_agg(p, ',' order by p)
+        filter (where has_table_privilege(r, 'platform.platform_admin_events', p)), 'none')
+      from unnest(array['anon', 'authenticated', 'service_role']) r,
+           unnest(array['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger']) p
+      group by r order by r;
+    `);
+    expect(rows).toEqual([
+      "anon none",
+      "authenticated none",
+      "service_role select",
+    ]);
+    const migrations = migrationsText();
+    expect(migrations).toMatch(
+      /grant select on platform\.platform_admin_events to service_role/,
+    );
+    expect(migrations).not.toMatch(
+      /grant [a-z, ]*(insert|update|delete)[a-z, ]* on platform\.platform_admin_events/,
+    );
+  });
+
+  it("row level security is on, with one policy that lets nobody signed in read; a change or removal is stopped by the table's own triggers", () => {
+    const rows = lines(`
+      select c.relname || ' ' || c.relrowsecurity::text
+      from pg_class c where c.oid = 'platform.platform_admin_events'::regclass;
+      select polname || ' ' || polcmd::text || ' ' || polroles::regrole[]::text
+        || ' ' || pg_get_expr(polqual, polrelid)
+      from pg_policy where polrelid = 'platform.platform_admin_events'::regclass;
+      select t.tgname || ' ' || t.tgfoid::regproc::text
+      from pg_trigger t
+      where t.tgrelid in ('platform.platform_admin_events'::regclass,
+        'platform.platform_admins'::regclass, 'platform.unit_renewals'::regclass)
+        and not t.tgisinternal
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      "platform_admin_events true",
+      "No signed-in user reads admin events r {authenticated} false",
+      "platform_admin_events_keep_all platform_private.platform_admin_events_keep",
+      "platform_admin_events_keep_rows platform_private.platform_admin_events_keep",
+      "platform_admins_audit platform_private.platform_admins_audit",
+      "platform_admins_no_truncate platform_private.platform_admins_no_truncate",
+      "unit_renewals_audit platform_private.audit_row",
+      "unit_renewals_set_recorded_by platform_private.unit_renewals_set_recorded_by",
+      "unit_renewals_set_updated_at platform_private.set_updated_at",
+    ]);
+  });
+
+  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned; the two saves are members' calls, not the server's", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || has_function_privilege('service_role', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+        || ' | ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in (
+          'record_renewal', 'save_location_hours', 'coupon_inputs_by_id',
+          'unit_renewals_set_recorded_by', 'platform_admins_audit',
+          'platform_admin_events_keep', 'platform_admins_no_truncate',
+          'normalize_coupon_code',
+          'tenants_lock_currency', 'currency_locked')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
+      // The list read: as its caller, so RLS decides. Members and the server.
+      'platform.coupon_inputs_by_id false true true false | false search_path=""',
+      // Re-created to count any coupon use; grants as before.
+      'platform.currency_locked false true true false | true search_path=""',
+      // As its caller: the tables' own policies decide. A member's call.
+      'platform.record_renewal false true false false | false search_path=""',
+      // As its caller; waits for the location's row, so it has the timeout.
+      'platform.save_location_hours false true false false | false search_path="",lock_timeout=6s',
+      // Re-created to fold full-width letters and digits; grants as before.
+      'platform_private.normalize_coupon_code false true true false | false search_path=""',
+      // Trigger functions: nobody calls them.
+      'platform_private.platform_admin_events_keep false false false false | false search_path=""',
+      'platform_private.platform_admins_audit false false false false | true search_path=""',
+      'platform_private.platform_admins_no_truncate false false false false | false search_path=""',
+      'platform_private.tenants_lock_currency false false false false | true search_path=""',
+      'platform_private.unit_renewals_set_recorded_by false false false false | true search_path=""',
+    ]);
+  });
+
+  it("the audit log's foreign key to its shop is on delete restrict", () => {
+    expect(
+      lines(`
+        select pg_get_constraintdef(oid) from pg_constraint
+        where conrelid = 'platform.audit_events'::regclass
+          and conname = 'audit_events_tenant_id_fkey';
+      `),
+    ).toEqual([
+      "FOREIGN KEY (tenant_id) REFERENCES platform.tenants(id) ON DELETE RESTRICT",
+    ]);
+  });
+});

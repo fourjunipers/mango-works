@@ -3,7 +3,7 @@ title: Why a coupon wasn't applied
 summary: What each "Not applied" message means when you try a coupon code, and how to fix it.
 keywords: [coupon not working, code not applied, invalid coupon, coupon expired, coupon used up, discount not working, คูปองใช้ไม่ได้, โค้ดใช้ไม่ได้, คูปองหมดอายุ, ส่วนลดไม่ขึ้น]
 screens: [/[tenant]/products/[id], /[tenant]/settings/coupons]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Why a coupon wasn't applied
@@ -15,7 +15,7 @@ When you type a code in **Check a price** and press **Apply**, you see "Coupon {
 ## Messages and what to do
 
 - **"Not applied: the shop doesn’t accept coupons. Switch on “Accept coupons” in Settings › Pricing and tax."** See [Switch coupons on or off for the shop](../pricing-settings/accept-coupons.md).
-- **"Not applied: no coupon has this code."** Check the spelling. Codes are letters and numbers only; spaces are ignored.
+- **"Not applied: no coupon has this code."** Check the spelling. Codes are letters and numbers only; spaces are ignored, and full-width letters and numbers (such as Ａ or ０) are read as plain ones.
 - **"Not applied: this coupon is switched off or archived."** Switch it on in Settings › Coupons, or bring it back.
 - **"Not applied: this coupon can’t be used by staff."** Tick **By staff, at the counter or on the phone** under **Where it can be used**.
 - **"Not applied: this coupon can be used from {from}."** Its valid dates haven't started.

@@ -6,6 +6,10 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 
 ## Index
 
+### Typing numbers (`en/general`)
+
+- [Typing amounts, percentages and other numbers](en/general/typing-numbers.md)
+
 ### Signing in and your device (`en/account`)
 
 - [Sign in to your shop](en/account/sign-in.md)

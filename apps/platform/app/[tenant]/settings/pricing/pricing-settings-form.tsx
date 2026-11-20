@@ -9,7 +9,7 @@ import {
   TextInput,
   useFieldError,
 } from "@/components/action-form";
-import { Field, inputClass } from "@/components/form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import {
   depositModes,
   type DepositMode,
@@ -216,6 +216,7 @@ function DefaultProfile({
         defaultValue={initial}
         className={inputClass}
         aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy("defaultTaxId", { help, error })}
       >
         <option value="">{none}</option>
         {profiles.map((p) => (
@@ -244,7 +245,12 @@ function Choice({
 }) {
   const error = useFieldError(name);
   return (
-    <fieldset className="space-y-2">
+    <fieldset
+      role="radiogroup"
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describedBy(name, { error })}
+      className="space-y-2"
+    >
       <legend className="sr-only">{legend}</legend>
       {options.map((option) => (
         <label
@@ -270,7 +276,11 @@ function Choice({
         </label>
       ))}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          id={`${name}-error`}
+          role="alert"
+          className="text-sm text-destructive"
+        >
           {error}
         </p>
       )}

@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@mango/db/platform-server";
 import type { CouponRecord } from "./coupon-form";
-import { readCoupon, type CouponDb } from "./coupons";
+import { readCouponsById, type CouponListDb } from "./coupons";
 import { exactAuditRows, type AuditRow } from "./history";
 
 /**
@@ -62,30 +62,22 @@ export async function getCoupon(
 }
 
 /**
- * Each coupon's uses, from coupon_inputs().uses.total: the database's own
- * count, which leaves out a hold that has run out and not been swept. Never
- * a count of coupon_redemptions here, which would include those.
+ * Each coupon's uses, from coupon_inputs_by_id().uses.total: the database's
+ * own count, which leaves out a hold that has run out and not been swept.
+ * Never a count of coupon_redemptions here, which would include those.
  *
- * coupon_inputs() looks a coupon up by its code (the live one first, else
- * the one archived last). An archived coupon whose code a newer coupon has
- * taken can't be reached that way, so its uses are not known here (null):
- * the list says so rather than show the newer coupon's count.
+ * One call for the whole list, by id: an archived coupon whose code a newer
+ * coupon has taken is found by its own id, with its own uses.
  */
 export async function getCouponUses(
   tenantId: string,
-  coupons: readonly Pick<CouponRecord, "id" | "code">[],
-): Promise<Map<string, number | null>> {
-  const supabase = (await createClient()) as unknown as CouponDb;
-  const answers = await Promise.all(
-    coupons.map(async (c) => {
-      const read = await readCoupon(supabase, tenantId, c.code);
-      return [
-        c.id,
-        read.coupon?.id === c.id ? (read.uses?.total ?? 0) : null,
-      ] as const;
-    }),
+  couponIds: readonly string[],
+): Promise<Map<string, number>> {
+  const supabase = (await createClient()) as unknown as CouponListDb;
+  const read = await readCouponsById(supabase, tenantId, couponIds);
+  return new Map(
+    [...read].map(([id, inputs]) => [id, inputs.uses?.total ?? 0] as const),
   );
-  return new Map(answers);
 }
 
 /** The live coupon that has this code (stored form), for "code_taken". */

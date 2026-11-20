@@ -114,6 +114,37 @@ export async function readCoupon(
   return data as CouponInputs;
 }
 
+/** A client that can call platform.coupon_inputs_by_id(). */
+export type CouponListDb = {
+  rpc(
+    fn: "coupon_inputs_by_id",
+    args: Record<string, unknown>,
+  ): PromiseLike<{
+    data: unknown;
+    error: { code?: string; message: string } | null;
+  }>;
+};
+
+/**
+ * coupon_inputs_by_id(): what readCoupon() answers, for a list of coupon
+ * ids in one call. An id that is not this shop's coupon, or that the caller
+ * may not read, is absent from the answer.
+ */
+export async function readCouponsById(
+  db: CouponListDb,
+  tenantId: string,
+  couponIds: readonly string[],
+): Promise<Map<string, CouponInputs>> {
+  if (couponIds.length === 0) return new Map();
+  const { data, error } = await db.rpc("coupon_inputs_by_id", {
+    p_tenant_id: tenantId,
+    p_coupon_ids: [...couponIds],
+  });
+  if (error)
+    throw Object.assign(new Error(error.message), { code: error.code });
+  return new Map(Object.entries(data as Record<string, CouponInputs>));
+}
+
 /** The coupon found and its uses, for decideDiscounts(). Null: no such code. */
 export function couponFoundOf(
   read: CouponInputs | null,

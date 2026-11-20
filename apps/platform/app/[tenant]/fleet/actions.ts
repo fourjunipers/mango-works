@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { FormState } from "@/components/action-form";
 import { CsvError, parseCsv } from "@/lib/csv";
-import { toKm } from "@/lib/distance";
+import { parseDistance, toKm } from "@/lib/distance";
 import {
   bikeTypes,
   catalogSubmitSchema,
@@ -384,10 +384,8 @@ function distance(
   formData: FormData,
   unit: "km" | "mi",
 ): number | null | "invalid" {
-  const text = field(formData, "odometer").replace(/[\s,]/g, "");
-  if (!text) return null;
-  if (!/^\d+(\.\d)?$/.test(text) || Number(text) > 9_999_999) return "invalid";
-  return toKm(Number(text), unit);
+  const typed = parseDistance(field(formData, "odometer"));
+  return typeof typed === "number" ? toKm(typed, unit) : typed;
 }
 
 /**
@@ -555,27 +553,17 @@ export async function addRenewal(
     };
   }
 
-  const { data, error } = await supabase
-    .from("unit_renewals")
-    .insert({
+  // The renewal and its cost are saved together or not at all
+  // (platform.record_renewal).
+  const { error } = await supabase.rpc("record_renewal", {
+    p_tenant_id: tenant.id,
+    p_renewal: {
       ...parsed.data,
-      tenant_id: tenant.id,
       unit_id: field(formData, "id"),
-    })
-    .select("id")
-    .single();
+      ...(cost === null ? {} : { cost: String(cost) }),
+    },
+  });
   if (error) return { errors: { form: dbErrorKey(error) } };
-  if (cost !== null) {
-    const { error: costError } = await supabase
-      .from("unit_renewal_costs")
-      .insert({
-        tenant_id: tenant.id,
-        renewal_id: data.id,
-        currency: tenant.currency,
-        cost,
-      });
-    if (costError) return { errors: { cost: dbErrorKey(costError) } };
-  }
   refresh(slug);
   return { ok: true };
 }
