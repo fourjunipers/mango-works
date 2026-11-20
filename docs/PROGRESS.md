@@ -13,6 +13,23 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Phase 1b: plan only (branch `platform/phase-1b-plan`, 19 Nov 2026)
+
+**No code, no migration, no test.** The plan is `docs/phase-1b-plan.md`, **draft 2**, written from `main` at `d458717`, PR 51's branch (`record_renewal()`) and the Phase 3 plan, draft 2. Draft 1 put fifteen questions to Mark; **he answered all fifteen on 19 Nov 2026** and they are in the plan's §6.
+
+- **Already built in 1a** (plan §1.2): renewal records and costs, reminder settings, the hourly reminder queue, dashboard renewal items, downtime blocks, `units.notes`, one current odometer value. **Not built, though the spec listed them:** `track_maintenance_costs`, `avg_daily_km`, keys.
+- **Decided, 19 Nov 2026:**
+  - What is due is worked out on read; an hourly job only for messages and follow-ups. Intervals in km and/or days or calendar months. Counting starts the day the schedule is saved, with an optional "last done" per vehicle and task.
+  - **Only a task marked "block when overdue" blocks a pickup**, with an override by owners and managers, and by staff behind a new staff permission (off). The tag users see is "Service due". Availability never depends on service state.
+  - **Expired renewals never block a pickup.** Reminders only, plus a warning at check-out.
+  - Standard cost per task only when no parts or labour cost is typed. Cost tracking off keeps saved costs, hidden. Job costs: owners, managers, mechanics; staff behind a second new staff permission (off); drivers never.
+  - Key numbers, IMEI and SIM: everyone except drivers. No `registration` renewal kind. Average km per day is an estimate on the vehicle page and drives nothing. Service messages (Phase 6) default to staff, mechanics and owners.
+  - "Remove for good": a unit status, `removed`; everything is kept, hidden; a product whose vehicles are all removed can be removed too.
+- **No files on the platform (decision 10). This reverses the 10 Nov 2026 review decision that deferred the Google Drive option until after Gate B.** The storage module, receipt photos and renewal documents leave Phase 1b. A new, separate stage, **"Shop file storage (Google Drive)", comes before Phase 4**: each shop connects its own Drive, the platform keeps only a file id per file, one module serves 1b receipts, renewal documents, Phase 4 passports and licences and Phase 5 inspection photos, and a shop with no connected Drive can't attach files. Outline in the plan's §7; **its design is still to be written (Fable)**, and Phase 4 can't start without it.
+- **`docs/platform/SPEC.md` corrected in this PR:** expired renewals as reminders; a lower odometer reading confirmed and audited (the Vehicle record line still said "manager override"); the `unit_renewals` kind list; file storage in the shop's Drive (Tech stack, Data model, Customers and KYC, Review decisions, Phase 4's build line, change requests 49 and 50).
+- **Lock order:** no new advisory-lock class; the new rows sit inside class 3.9 of the Phase 3 plan's §4.2. A function holding a unit's lock takes the unit's row without waiting. **For the Phase 5 plan:** check-out and check-in write the odometer inside `pick_up` and `return_rental`, so there the unit's row is taken `for no key update nowait` (plan §2.7, rule 3).
+- **Ten new tables, eight migrations, eleven stages**; seven Fable builds, four Opus with a Fable check or review. The plan re-creates five Phase 3 objects (`units_guard`, `move_unit()`, `staff_may()`, `save_staff_permissions()`, `pickup_blockers()`), each behind an MD5 guard.
+
 ## Phase 3: plan draft, for a Fable critique (branch `platform/phase-3-plan-draft`, 19 Nov 2026)
 
 **No code and no migration. Not approved.** The draft is `docs/phase-3-plan.md`, written from `main` at `b9e0b33`, assuming PR 51 (Phase 2 stage 10) and Phase 2 stage 11 merge first.
@@ -2851,6 +2868,7 @@ Mapping first: `docs/platform/MAPPING.md` (legacy marketplace tables → tenants
 
 ## Phase 1b: fleet care (to build)
 
+- Plan: `docs/phase-1b-plan.md` (draft 1, 19 Nov 2026).
 - Vehicle notes field (fitted accessories), see SPEC Vehicle record: column exists, screen only. Still to do: the staff app's bike card and the Fleet search.
 
 ## Next
