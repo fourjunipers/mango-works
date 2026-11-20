@@ -10,7 +10,7 @@ import {
   useFieldError,
   type FormAction,
 } from "@/components/action-form";
-import { Field, inputClass } from "@/components/form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import { generalTypes, type GeneralType } from "@/lib/general-products";
 import { cn } from "@/lib/utils";
 import {
@@ -102,9 +102,7 @@ export function GeneralForm({
   };
 }) {
   const t = useTranslations("Products.general");
-  const tType = useTranslations("Products.type");
   const [type, setType] = useState<GeneralType>(values?.type ?? "gear");
-  const typeError = useFieldError("type");
   return (
     <ActionForm
       action={values ? saveGeneralProduct : createGeneralProduct}
@@ -115,38 +113,7 @@ export function GeneralForm({
       submitLabel={values ? undefined : t("save")}
       className="max-w-3xl"
     >
-      {!values && (
-        <fieldset>
-          <legend className="mb-2 block text-sm font-medium">
-            {t("typeLegend")}
-          </legend>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {generalTypes.map((value) => (
-              <label key={value} className={choiceClass(type === value)}>
-                <input
-                  type="radio"
-                  name="type"
-                  value={value}
-                  checked={type === value}
-                  onChange={() => setType(value)}
-                  className="mt-0.5 size-5 accent-primary"
-                />
-                <span>
-                  <span className="block font-medium">{tType(value)}</span>
-                  <span className="block text-sm text-muted-foreground">
-                    {t(`typeHelp.${value}`)}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
-          {typeError && (
-            <p role="alert" className="mt-2 text-sm text-destructive">
-              {typeError}
-            </p>
-          )}
-        </fieldset>
-      )}
+      {!values && <TypeChoice type={type} onChange={setType} />}
       <TextInput
         name="name"
         label={t("name")}
@@ -199,6 +166,66 @@ export function GeneralForm({
   );
 }
 
+/**
+ * The type of a new general product. A component of its own so that it sits
+ * inside the form and can read the form's error for "type".
+ */
+function TypeChoice({
+  type,
+  onChange,
+}: {
+  type: GeneralType;
+  onChange: (type: GeneralType) => void;
+}) {
+  const t = useTranslations("Products.general");
+  const tType = useTranslations("Products.type");
+  const error = useFieldError("type");
+  return (
+    <fieldset>
+      <legend id="type-legend" className="mb-2 block text-sm font-medium">
+        {t("typeLegend")}
+      </legend>
+      {/* The group of radios is what can be invalid (a radio's role does not
+          take aria-invalid): it is marked and names its error. */}
+      <div
+        role="radiogroup"
+        aria-labelledby="type-legend"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy("type", { error })}
+        className="grid gap-2 sm:grid-cols-3"
+      >
+        {generalTypes.map((value) => (
+          <label key={value} className={choiceClass(type === value)}>
+            <input
+              type="radio"
+              name="type"
+              value={value}
+              checked={type === value}
+              onChange={() => onChange(value)}
+              className="mt-0.5 size-5 accent-primary"
+            />
+            <span>
+              <span className="block font-medium">{tType(value)}</span>
+              <span className="block text-sm text-muted-foreground">
+                {t(`typeHelp.${value}`)}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {error && (
+        <p
+          id="type-error"
+          role="alert"
+          className="mt-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
 // The Stock tab --------------------------------------------------------------------------
 
 /** "How many", with its own id so several forms can share a page. */
@@ -225,7 +252,7 @@ function CountField({
         autoComplete="off"
         defaultValue={defaultValue}
         aria-invalid={error ? true : undefined}
-        aria-describedby={help ? `${id}-help` : undefined}
+        aria-describedby={describedBy(id, { help, error })}
         className={cn(inputClass, "max-w-28")}
       />
     </Field>
@@ -354,6 +381,7 @@ function LabelField({
         defaultValue={defaultValue}
         placeholder={t("labelPlaceholder")}
         aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(id, { error })}
         className={cn(inputClass, "max-w-64")}
       />
     </Field>

@@ -87,14 +87,18 @@ export function bangkokDay(days: number): string {
 /**
  * Removes a platform tenant a test created.
  *
- * A tenant with audit rows can't be hard-deleted, and no audit row can be
- * deleted (20261120000200); every tenant has one from the moment it is
- * created. So, as the platform's own test helper does, the tenant is removed
- * as the local database's superuser: its audit rows first, with the table's
+ * A tenant with audit rows can't be hard-deleted (20261119000100: the audit
+ * log's key to its shop is "on delete restrict"), and every tenant has one
+ * from the moment it is created. So, as the platform's own test helper
+ * does, the tenant is removed as the local database's superuser, its audit
+ * rows first, in one transaction, with a short lock timeout so that it fails
+ * rather than waits. Throws if it could not: a test must not leave a tenant
+ * behind without saying so. Only tests do this; no app can delete a tenant.
+ *
+ * No audit row can be deleted either (20261120000200: the table's own
+ * triggers refuse it, its owner included), so the audit rows go with those
  * triggers switched off for that one statement (session_replication_role,
- * which only a superuser may set), then the tenant, in one transaction, with
- * a short lock timeout so that it fails rather than waits. Throws if it could
- * not. Only tests do this; no app can delete a tenant.
+ * which only a superuser may set).
  */
 export async function deleteTenant(tenantId: string | undefined) {
   if (!tenantId) return;

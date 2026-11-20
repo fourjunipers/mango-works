@@ -1,8 +1,15 @@
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import {
+  execFileSync,
+  spawn,
+  spawnSync,
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { afterAll, afterEach } from "vitest";
 import type { Database } from "@mango/db/database.types";
 import type { Role } from "@/lib/roles";
 
@@ -125,13 +132,16 @@ export async function createTenant(
 /**
  * Removes a tenant (memberships cascade) and its users.
  *
- * A tenant with audit rows can't be hard-deleted, and no audit row can be
- * deleted (20261120000200); every tenant has one from the moment it is
- * created. So a test's tenant is removed as the local database's superuser:
- * its audit rows first, with the table's triggers switched off for that one
- * statement (session_replication_role, which only a superuser may set), then
- * the tenant, in one transaction, with a lock timeout so that it fails
- * rather than waits. Only tests do this: no app can delete a tenant.
+ * A tenant with audit rows can't be hard-deleted (20261119000100), and every
+ * tenant has one from the moment it is created. So a test's tenant is
+ * removed as the local database's superuser, its audit rows first, in one
+ * transaction, with a lock timeout of 5 seconds so that it fails rather
+ * than waits. Only tests do this: the app has no way to delete a tenant.
+ *
+ * No audit row can be deleted either (20261120000200: the table's own
+ * triggers refuse it, its owner included), so the audit rows go with those
+ * triggers switched off for that one statement (session_replication_role,
+ * which only a superuser may set).
  */
 export async function deleteTenant(tenant: TestTenant | undefined) {
   if (!tenant) return;
@@ -139,6 +149,9 @@ export async function deleteTenant(tenant: TestTenant | undefined) {
     throw new Error(`Not a tenant id: ${tenant.id}`);
   }
   const service = serviceClient();
+  // In a session of its own, never blocking this process, and with a short
+  // lock timeout: if something still holds one of the shop's rows, this
+  // fails loudly and soon rather than wait behind it.
   const removed = await sqlBackground(
     [
       "begin;",
@@ -261,7 +274,9 @@ export const modelSpec = {
  * supabase/config.toml, because another checkout of the repo may have its own
  * local database running beside this one.
  */
+let container: string | undefined;
 function dbContainer(): string {
+  if (container) return container;
   const config = readFileSync(
     fileURLToPath(new URL("../../../../supabase/config.toml", import.meta.url)),
     "utf8",
@@ -276,31 +291,43 @@ function dbContainer(): string {
   ).trim();
   if (running !== name)
     throw new Error(`The local Supabase database (${name}) isn't running`);
-  return name;
+  return (container = name);
 }
+
+/**
+ * Every psql session a test file opens carries this application_name, so
+ * that the file can end, after each test, whatever session a failed test
+ * left behind (leftSessions(), and the afterEach below).
+ */
+const SESSION_NAME = `platform-db-test-${randomUUID().slice(0, 8)}`;
+
+const psql = () => [
+  "exec",
+  "-i",
+  "-e",
+  `PGAPPNAME=${SESSION_NAME}`,
+  dbContainer(),
+  "psql",
+  "-U",
+  "postgres",
+  "-At",
+];
 
 /**
  * Runs SQL straight in the local database, as its superuser unless the SQL
  * itself switches role. For what the API can't reach: functions in the
  * platform_private schema. Returns psql's output; `failed` is its error text.
+ *
+ * It blocks this process until psql answers. Never use it to look at the
+ * database while a call of the test's own is on its way there (the call
+ * can't be sent while this waits), and never for anything that may wait for
+ * a lock: use watch() or sqlBackground() for those.
  */
 export function sql(statements: string): { out: string; failed: string } {
-  const container = dbContainer();
-  const run = spawnSync(
-    "docker",
-    [
-      "exec",
-      "-i",
-      container,
-      "psql",
-      "-U",
-      "postgres",
-      "-At",
-      "-v",
-      "ON_ERROR_STOP=1",
-    ],
-    { input: statements, encoding: "utf8" },
-  );
+  const run = spawnSync("docker", [...psql(), "-v", "ON_ERROR_STOP=1"], {
+    input: statements,
+    encoding: "utf8",
+  });
   return { out: run.stdout.trim(), failed: run.status === 0 ? "" : run.stderr };
 }
 
@@ -318,6 +345,9 @@ export function sqlAs(userId: string, statement: string) {
   );
 }
 
+/** The psql sessions this file has open: holders, waiters, gates. */
+const sessions = new Set<ChildProcess>();
+
 /**
  * Like sql(), but doesn't wait: for a second session that must run while
  * another holds a transaction open. Resolves when psql exits.
@@ -325,29 +355,339 @@ export function sqlAs(userId: string, statement: string) {
 export function sqlBackground(
   statements: string,
 ): Promise<{ out: string; failed: string }> {
-  const container = dbContainer();
   return new Promise((resolve) => {
-    const child = spawn("docker", [
-      "exec",
-      "-i",
-      container,
-      "psql",
-      "-U",
-      "postgres",
-      "-At",
-      "-v",
-      "ON_ERROR_STOP=1",
-    ]);
+    const child = spawn("docker", [...psql(), "-v", "ON_ERROR_STOP=1"]);
+    sessions.add(child);
     let out = "";
     let err = "";
     child.stdout.on("data", (chunk) => (out += chunk));
     child.stderr.on("data", (chunk) => (err += chunk));
-    child.on("close", (code) =>
-      resolve({ out: out.trim(), failed: code === 0 ? "" : err }),
-    );
+    child.on("close", (code) => {
+      sessions.delete(child);
+      resolve({ out: out.trim(), failed: code === 0 ? "" : err });
+    });
     child.stdin.end(statements);
   });
 }
+
+// ------------------------------------------------------------------ watching
+// Looking at the database while a test's own call is in flight (is a session
+// waiting for a lock? is the holder still at its gate?) goes through one
+// psql session that stays open for the whole file. It answers in
+// milliseconds whatever the machine is doing, where a new `docker exec` per
+// look costs a second or more on a busy one; and it never blocks this
+// process, so the call being watched can be sent in the meantime.
+
+type Watcher = {
+  child: ChildProcessWithoutNullStreams;
+  /** One look at a time: each waits for the one before it. */
+  last: Promise<unknown>;
+};
+let watcher: Watcher | undefined;
+let looks = 0;
+
+function watcherSession(): Watcher {
+  if (watcher && watcher.child.exitCode === null) return watcher;
+  const child = spawn("docker", psql());
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  return (watcher = { child, last: Promise.resolve() });
+}
+
+/**
+ * Runs `statements` in the file's watching session and answers what they
+ * printed. Never blocks this process. `failed` is what psql wrote as errors.
+ * For reads that do not wait for a lock; anything that may wait goes in a
+ * session of its own (sqlBackground).
+ */
+export function watch(
+  statements: string,
+): Promise<{ out: string; failed: string }> {
+  const session = watcherSession();
+  const mark = `<<look ${++looks}>>`;
+  const run = session.last.then(
+    () =>
+      new Promise<{ out: string; failed: string }>((resolve, reject) => {
+        const { child } = session;
+        let out = "";
+        let err = "";
+        const done = (result: { out: string; failed: string } | Error) => {
+          child.stdout.off("data", onOut);
+          child.stderr.off("data", onErr);
+          child.off("close", onClose);
+          if (result instanceof Error) reject(result);
+          else resolve(result);
+        };
+        const onOut = (chunk: string) => {
+          out += chunk;
+          const at = out.indexOf(mark);
+          if (at < 0) return;
+          // Errors come down another pipe: give them a moment to arrive.
+          setTimeout(
+            () => done({ out: out.slice(0, at).trim(), failed: err.trim() }),
+            15,
+          );
+        };
+        const onErr = (chunk: string) => (err += chunk);
+        const onClose = () =>
+          done(new Error(`The watching session ended: ${err}`));
+        child.stdout.on("data", onOut);
+        child.stderr.on("data", onErr);
+        child.on("close", onClose);
+        child.stdin.write(`${statements}\n;\nselect '${mark}';\n`);
+      }),
+  );
+  session.last = run.catch(() => undefined);
+  return run;
+}
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The longest a poll looks for a session that is waiting for a lock. Inside
+ * the 6-second lock_timeout of the booking functions and the API's 8
+ * seconds: past it the waiting call has given up, and nothing is left to
+ * see.
+ */
+export const WAIT_SEEN_WITHIN = 5_000;
+
+/**
+ * Polls `statement` in the watching session until `done` says its answer
+ * is the one wanted; at least twice, 25 ms apart, for `within` ms at most.
+ */
+async function polled(
+  statement: string,
+  done: (out: string) => boolean,
+  what: string,
+  within: number,
+): Promise<string> {
+  const deadline = Date.now() + within;
+  let last = "";
+  for (let i = 0; i < 2 || Date.now() < deadline; i++) {
+    const { out, failed } = await watch(statement);
+    if (failed) throw new Error(`Looking for ${what}: ${failed}`);
+    if (done(out)) return out;
+    last = out;
+    await pause(25);
+  }
+  throw new Error(
+    `Gave up after ${within} ms waiting for ${what}${last ? ` (last answer: ${last})` : ""}`,
+  );
+}
+
+/**
+ * Waits until another session is running a statement that carries
+ * `marker`: a holder has reached its gate. If `session` is that holder and
+ * it ends first, says why at once.
+ */
+export async function holding(
+  marker: string,
+  session?: Promise<{ out: string; failed: string }>,
+): Promise<void> {
+  let ended: { out: string; failed: string } | undefined;
+  void session?.then((result) => (ended = result));
+  const text = marker.replaceAll("'", "''");
+  await polled(
+    `select count(*) from pg_stat_activity where state = 'active' and query like '%${text}%' and pid <> pg_backend_pid();`,
+    (out) => {
+      if (ended)
+        throw new Error(
+          `The session ended before ${marker}: ${ended.failed || ended.out}`,
+        );
+      return out === "1";
+    },
+    `a session to reach ${marker}`,
+    20_000,
+  );
+}
+
+/**
+ * The session carrying `marker` is still at its gate, its locks in hand:
+ * whatever answered before this did not wait for it.
+ */
+export async function stillHolding(marker: string): Promise<void> {
+  const text = marker.replaceAll("'", "''");
+  const { out, failed } = await watch(
+    `select count(*) from pg_stat_activity where query like '%${text}%' and state = 'active' and pid <> pg_backend_pid();`,
+  );
+  if (failed || out !== "1")
+    throw new Error(
+      `The holder ${marker} is no longer at its gate (${failed || out})`,
+    );
+}
+
+/**
+ * Polls `statement` until it answers something other than an empty string,
+ * and answers that. For a look at a call that is waiting for a lock, so
+ * bounded like seenWaitingForLock().
+ */
+export function until(
+  statement: string,
+  within = WAIT_SEEN_WITHIN,
+): Promise<string> {
+  return polled(
+    statement,
+    (out) => out !== "",
+    `"${statement.trim().replace(/\s+/g, " ").slice(0, 120)}"`,
+    within,
+  );
+}
+
+// --------------------------------------------------------------------- gates
+// A test that needs one session to hold its locks while another waits used
+// to keep the holder open with pg_sleep(n) and race that clock. A gate has
+// no clock: the holder waits at the gate after its writes, the test looks
+// at whatever it needs to see for as long as that takes, and then opens the
+// gate.
+//
+// The gate is an advisory lock of its own class (not the booking functions'
+// 1a01 and 1a02), held by a session of its own. A holder asks for it shared
+// inside its transaction, so it waits there, locks and all, until the
+// gate's session lets go.
+//
+// No test can leave a holder at its gate: every gate is kept in a list here,
+// and an afterEach registered by this file opens them all, waits for the
+// sessions the test opened to end, and ends any that has not (endOfTest()).
+// A test that fails half-way therefore goes red, and the next one starts
+// with nothing held.
+
+/** The advisory-lock class of every gate. */
+export const GATE_CLASS = 27262;
+
+/**
+ * In pg_stat_activity.query, what a session waiting at a gate is running.
+ * For a poll that looks for "a session waiting for a lock" and must not
+ * take the holder at its gate for one: `a.query not like '%${GATE_WAIT}%'`.
+ */
+export const GATE_WAIT = `pg_advisory_xact_lock_shared(${GATE_CLASS}`;
+
+/**
+ * The timeout of a test that uses a gate, and of the hooks around it. Sized
+ * for a busy machine: such a test opens several database sessions, each a
+ * `docker exec` that can take seconds to start there. A file with gate
+ * tests sets it at its top: `vi.setConfig(GATE_TIMEOUTS)`.
+ */
+export const GATE_TEST_TIMEOUT = 60_000;
+export const GATE_TIMEOUTS = {
+  testTimeout: GATE_TEST_TIMEOUT,
+  hookTimeout: GATE_TEST_TIMEOUT,
+};
+
+export type Gate = {
+  /**
+   * The statement a holder runs, inside its transaction, where pg_sleep()
+   * used to be: it waits here until the gate is opened. `marker` is found
+   * in pg_stat_activity.query, as it was with pg_sleep.
+   */
+  wait(marker: string): string;
+  /** Lets every holder at the gate go on. Safe to call more than once. */
+  open(): Promise<void>;
+};
+
+let gateCount = 0;
+const gateBase = Math.floor(Math.random() * 1_000_000) * 1_000;
+/** Every gate that is still closed. */
+const closedGates = new Set<Gate>();
+
+/**
+ * A gate, closed. Open it when the test has seen what it came for. A test
+ * that fails first leaves it to this file's afterEach, which opens every
+ * gate still closed.
+ */
+export async function closedGate(): Promise<Gate> {
+  const key = gateBase + ++gateCount;
+  const child = spawn("docker", [...psql(), "-v", "ON_ERROR_STOP=1"]);
+  sessions.add(child);
+  const closed = new Promise<void>((resolve) =>
+    child.on("close", () => {
+      sessions.delete(child);
+      resolve();
+    }),
+  );
+  child.stderr.resume();
+  // The session says so itself once it has the lock: nothing to poll.
+  const locked = new Promise<void>((resolve, reject) => {
+    let out = "";
+    child.stdout.on("data", (chunk) => {
+      out += chunk;
+      if (out.includes("gate closed")) resolve();
+    });
+    void closed.then(() => reject(new Error("A gate's session ended early")));
+  });
+  child.stdin.write(
+    `select pg_advisory_lock(${GATE_CLASS}, ${key});\nselect 'gate closed';\n`,
+  );
+  let opened = false;
+  const gate: Gate = {
+    wait: (marker) =>
+      `select pg_advisory_xact_lock_shared(${GATE_CLASS}, ${key}) /* ${marker} */;`,
+    open: async () => {
+      if (!opened) {
+        opened = true;
+        closedGates.delete(gate);
+        // The session ends, and its lock with it.
+        child.stdin.end(`select pg_advisory_unlock(${GATE_CLASS}, ${key});\n`);
+      }
+      await closed;
+    },
+  };
+  closedGates.add(gate);
+  await locked;
+  return gate;
+}
+
+/**
+ * Waits until a session whose current statement contains `queryLike` is
+ * waiting for a lock (and is not a holder at its gate). Polled with a
+ * bound, never slept: the test goes on the moment it is so.
+ */
+export async function seenWaitingForLock(
+  queryLike: string,
+  within = WAIT_SEEN_WITHIN,
+): Promise<void> {
+  const text = queryLike.replaceAll("'", "''");
+  await polled(
+    `select (count(*) > 0)::text from pg_stat_activity a where a.wait_event_type = 'Lock' and a.query like '%${text}%' and a.query not like '%${GATE_WAIT}%' and a.pid <> pg_backend_pid();`,
+    (out) => out === "true",
+    `a session running ${queryLike} to wait for a lock`,
+    within,
+  );
+}
+
+/** The sessions of this file that are still in the database, as text. */
+export async function leftSessions(): Promise<string> {
+  const { out } = await watch(
+    `select pid || ' ' || state || ' ' || coalesce(wait_event_type, '-') || ' ' || left(query, 80) from pg_stat_activity where application_name = '${SESSION_NAME}' and pid <> pg_backend_pid();`,
+  );
+  return out;
+}
+
+/**
+ * After every test: opens each gate still closed, gives the sessions the
+ * test opened ten seconds to finish, then ends in the database whichever
+ * has not. So a test that failed with a holder at its gate, or a call still
+ * waiting, leaves nothing that the next test or the file's clean-up could
+ * wait behind.
+ */
+async function endOfTest() {
+  await Promise.all([...closedGates].map((gate) => gate.open()));
+  const deadline = Date.now() + 10_000;
+  while (sessions.size > 0 && Date.now() < deadline) await pause(25);
+  if (sessions.size === 0) return;
+  const left = await leftSessions();
+  await watch(
+    `select pg_terminate_backend(pid) from pg_stat_activity where application_name = '${SESSION_NAME}' and pid <> pg_backend_pid();`,
+  );
+  for (const child of sessions) child.kill();
+  sessions.clear();
+  console.warn(`Ended sessions a test left behind:\n${left}`);
+}
+
+afterEach(endOfTest);
+afterAll(() => {
+  watcher?.child.stdin.end();
+  watcher = undefined;
+});
 
 /** A product's Moto Mangos listing under the names its settings had as columns. */
 export type ListingValues = {

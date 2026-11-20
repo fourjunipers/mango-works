@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { Check, Lightbulb } from "lucide-react";
 import { useFieldError } from "@/components/action-form";
+import { describedBy } from "@/components/form";
 import { kindIcons } from "@/components/fleet/kind-icon";
 import { cn } from "@/lib/utils";
 import {
@@ -59,10 +60,21 @@ export function WhatFields({
   return (
     <div className="space-y-5">
       <fieldset>
-        <legend className="mb-2 block text-sm font-medium">
+        <legend
+          id="vehicle_type-legend"
+          className="mb-2 block text-sm font-medium"
+        >
           {t("kindLegend")}
         </legend>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {/* The group of radios is what can be invalid (a radio's role does
+            not take aria-invalid): it is marked and names its error. */}
+        <div
+          role="radiogroup"
+          aria-labelledby="vehicle_type-legend"
+          aria-invalid={kindError ? true : undefined}
+          aria-describedby={describedBy("vehicle_type", { error: kindError })}
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+        >
           {kindTypes.map((type) => {
             const Icon = kindIcons[type];
             return (
@@ -90,7 +102,11 @@ export function WhatFields({
           })}
         </div>
         {kindError && (
-          <p role="alert" className="mt-2 text-sm text-destructive">
+          <p
+            id="vehicle_type-error"
+            role="alert"
+            className="mt-2 text-sm text-destructive"
+          >
             {kindError}
           </p>
         )}
@@ -138,9 +154,8 @@ function CategoryChips({
   if (categories.length === 0) return null;
   return (
     <fieldset
-      aria-describedby={
-        error ? "category-help category-error" : "category-help"
-      }
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describedBy("category", { help: true, error })}
     >
       <legend className="mb-1 block text-sm font-medium">
         {t("category")}

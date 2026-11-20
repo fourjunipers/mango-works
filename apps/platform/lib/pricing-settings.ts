@@ -10,6 +10,7 @@
  */
 
 import { minorDecimal, parseMinorUnits } from "./money";
+import { parseWholeInRange } from "./number-input";
 import type { PricingInputs } from "./pricing-inputs";
 import { parsePercentBp, percentInput } from "./seasons";
 
@@ -144,14 +145,14 @@ export function settingsPayload(
   else if (returningBp === null && draft.returningEnabled)
     errors.returningPercent = "returningPercentRequired";
   else payload.returning_percent_bp = returningBp;
-  const rentals = draft.returningRentals.trim();
-  if (
-    !/^\d{1,4}$/.test(rentals) ||
-    Number(rentals) < 1 ||
-    Number(rentals) > MAX_RETURNING_RENTALS
-  )
+  const rentals = parseWholeInRange(
+    draft.returningRentals,
+    1,
+    MAX_RETURNING_RENTALS,
+  );
+  if (typeof rentals !== "number")
     errors.returningRentals = "returningRentalsRange";
-  else payload.returning_rentals_needed = Number(rentals);
+  else payload.returning_rentals_needed = rentals;
 
   return Object.keys(errors).length > 0
     ? { ok: false, errors }

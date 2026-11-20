@@ -2,10 +2,14 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { ActionForm, Panel, useFieldError } from "@/components/action-form";
-import { Field, inputClass } from "@/components/form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import { percentInput, percentLabel } from "@/lib/seasons";
 import type { TaxProfileUse } from "@/lib/settings-data";
-import { addUsualTaxProfile, archiveTaxProfile, saveTaxProfile } from "./actions";
+import {
+  addUsualTaxProfile,
+  archiveTaxProfile,
+  saveTaxProfile,
+} from "./actions";
 
 /**
  * The shop's tax profiles (docs/products-redesign.md §9.7): add one, change
@@ -110,9 +114,7 @@ export function TaxProfiles({
           hidden={{ slug }}
           submitLabel={t("addUsual", { name: usual.name })}
           confirmIf={() =>
-            firstSave
-              ? tFirst("firstSaveConfirm", { currency })
-              : undefined
+            firstSave ? tFirst("firstSaveConfirm", { currency }) : undefined
           }
           className="mt-4"
         />
@@ -181,6 +183,7 @@ function ProfileFields({
           maxLength={80}
           autoComplete="off"
           aria-invalid={nameError ? true : undefined}
+          aria-describedby={describedBy(`${prefix}-name`, { error: nameError })}
           className={inputClass}
         />
       </Field>
@@ -197,6 +200,10 @@ function ProfileFields({
           inputMode="decimal"
           autoComplete="off"
           aria-invalid={rateError ? true : undefined}
+          aria-describedby={describedBy(`${prefix}-rate`, {
+            help: true,
+            error: rateError,
+          })}
           className={inputClass}
         />
       </Field>

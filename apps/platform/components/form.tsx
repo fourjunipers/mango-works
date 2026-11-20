@@ -4,6 +4,21 @@ import type { ReactNode } from "react";
 export const inputClass =
   "block h-11 w-full rounded-md border border-input bg-card px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 aria-invalid:border-destructive md:text-sm";
 
+/**
+ * The ids of a field's help and error lines, for its input's
+ * aria-describedby: a screen reader then reads them with the field. Field
+ * gives the lines these ids (`<id>-help`, `<id>-error`).
+ */
+export function describedBy(
+  id: string,
+  has: { help?: unknown; error?: unknown },
+): string | undefined {
+  const ids = [has.help && `${id}-help`, has.error && `${id}-error`].filter(
+    Boolean,
+  );
+  return ids.length > 0 ? ids.join(" ") : undefined;
+}
+
 /** A labelled form field with optional help and error text. */
 export function Field({
   id,

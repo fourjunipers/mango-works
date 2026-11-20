@@ -189,6 +189,10 @@ and no error. If one fails, the ones before it stay applied: go to
 4. Open the marketplace and click through: the home page, a search, a shop
    page, a bike page, `/vendor/fleet` and "add a bike" as a shop, and
    `/admin/catalog` as admin (open one entry). All read the catalog.
+5. Scheduled jobs: `docs/platform/pg-cron-go-live-checklist.md` lists every
+   job the migrations schedule and the checks to run after a push. Phase 2's
+   migrations add the hold sweep (`platform-release-expired-holds`, every
+   minute) to the hourly reminder job this runbook's B8 checks.
 
 ### 6. Dashboard (owner)
 

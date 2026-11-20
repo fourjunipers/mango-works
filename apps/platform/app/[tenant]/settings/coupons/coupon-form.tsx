@@ -329,7 +329,7 @@ export function CouponForm({
 function ErrorFor({ name }: { name: string }) {
   const error = useFieldError(name);
   return error ? (
-    <p role="alert" className="text-sm text-destructive">
+    <p id={`${name}-error`} role="alert" className="text-sm text-destructive">
       {error}
     </p>
   ) : null;

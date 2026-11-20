@@ -92,7 +92,9 @@ export function ExtrasHistoryItem({
     <li className="p-3 text-sm" data-history="extras">
       <p className="font-medium">{line}</p>
       <p className="text-xs text-muted-foreground">
-        <time dateTime={at}>{formatInstant(new Date(at), timezone, locale)}</time>
+        <time dateTime={at}>
+          {formatInstant(new Date(at), timezone, locale)}
+        </time>
       </p>
       {sub.length > 0 && (
         <ul className="mt-2 space-y-1">

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseWholeInRange } from "./number-input";
 
 /**
  * General products (docs/products-redesign.md §5.7): rental gear, items for
@@ -171,11 +172,8 @@ export const maxSaleQuantity = 100_000;
 
 /** A quantity as typed: blank is none; whole numbers only, up to `max`. */
 export function parseQuantity(text: string, max: number): number | "invalid" {
-  const typed = text.trim();
-  if (!typed) return 0;
-  if (!/^\d{1,6}$/.test(typed)) return "invalid";
-  const quantity = Number(typed);
-  return quantity > max ? "invalid" : quantity;
+  // The platform's one number rule (lib/number-input.ts).
+  return parseWholeInRange(text, 0, max) ?? 0;
 }
 
 /**

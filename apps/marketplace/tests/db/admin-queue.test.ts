@@ -50,11 +50,20 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await service
+  const { error } = await service
     .from("bike_catalog")
     .delete()
     .in("id", [fromMarketplaceShop, fromPlatformShop]);
+  if (error) throw error;
+  // Throws if the tenant is still there (helpers.ts).
   await deleteTenant(tenantId);
+  const left = await service
+    .schema("platform")
+    .from("tenants")
+    .select("id")
+    .eq("id", tenantId);
+  if (left.error) throw left.error;
+  expect(left.data).toEqual([]);
 });
 
 describe("marketplace admin: catalog requests", () => {
