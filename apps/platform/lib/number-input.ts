@@ -78,3 +78,22 @@ export function parseWholeInRange(
     ? Number(whole)
     : "invalid";
 }
+
+/**
+ * A typed year: four digits and nothing else (Phase 2 stage 11). Years are
+ * the one whole number the thousands comma never applies to: nobody writes
+ * "2,024", and a four-character box could not hold it. Spaces round it are
+ * trimmed. Null: left blank. "invalid": anything but four digits, or outside
+ * `min` to `max`.
+ */
+export function parseYear(
+  input: string,
+  min = 1950,
+  max = 2100,
+): number | null | "invalid" {
+  const text = input.trim();
+  if (!text) return null;
+  if (!/^\d{4}$/.test(text)) return "invalid";
+  const year = Number(text);
+  return year >= min && year <= max ? year : "invalid";
+}

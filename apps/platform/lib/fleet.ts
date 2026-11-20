@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseScaled, parseWholeNumber } from "./number-input";
+import { parseScaled, parseWholeNumber, parseYear } from "./number-input";
 import { isTimeZone } from "./tenant-settings";
 
 /**
@@ -88,7 +88,13 @@ const checkbox = z.preprocess((v) => v === "on" || v === "true", z.boolean());
 
 const uuid = z.uuid("required");
 
-const year = z.preprocess(typedWhole, wholeNumber(1950, 2100, "invalidYear"));
+/** What a year box sent: four digits only, no thousands comma (parseYear). */
+export function typedYear(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  return parseYear(value, 0, 9999);
+}
+
+const year = z.preprocess(typedYear, wholeNumber(1950, 2100, "invalidYear"));
 
 /** International phone format: + and 7 to 15 digits. Spaces and dashes are dropped. */
 const optionalPhone = z.preprocess(
@@ -142,7 +148,10 @@ export const unitSchema = z
     frame_number: optionalText(40),
     engine_number: optionalText(40),
     colour: optionalText(40),
-    model_year: optionalInt(1950, 2100, "invalidYear"),
+    model_year: z.preprocess(
+      (value) => typedYear(value) ?? null,
+      wholeNumber(1950, 2100, "invalidYear").nullable(),
+    ),
     notes: optionalText(2000),
   })
   .strict()
@@ -318,7 +327,7 @@ export const catalogSubmitSchema = z
     // The year of the shop's own bike. The range of years the list entry
     // covers is the reviewer's to set at approval.
     year: z.preprocess(
-      (value) => typedWhole(value) ?? undefined,
+      (value) => typedYear(value) ?? undefined,
       wholeNumber(1950, 2100, "invalidYear").optional(),
     ),
     note: optionalText(500),
