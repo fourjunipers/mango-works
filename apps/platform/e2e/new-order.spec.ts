@@ -65,7 +65,7 @@ async function seeded() {
     starts: local(r.starts_at as string),
     ends: local(r.ends_at as string),
   }));
-  return { db, tenantId, booked, zone };
+  return { db, tenantId, booked, zone, locationId: location.id as string };
 }
 
 async function search(
@@ -89,11 +89,24 @@ test("it says it books nothing, and the free counts fall after the seeded bookin
   page,
 }) => {
   await withBookingRules(demo.bsrOwner, "bsr", async () => {
-    const { db, tenantId, booked } = await seeded();
-    // Overbooking on, as the seed leaves it.
+    const { db, tenantId, booked, locationId } = await seeded();
+    // Overbooking on, as the seed leaves it, and no notice or minimum days
+    // at the location, whatever another run left: the answers below are
+    // the counts alone.
     const { error } = await db.rpc("save_booking_rules", {
       p_tenant_id: tenantId,
-      p_rules: { shop: { allow_overbooking: true } },
+      p_rules: {
+        shop: { allow_overbooking: true },
+        locations: [
+          {
+            id: locationId,
+            min_notice_hours: null,
+            booking_cutoff_minutes: null,
+            min_days_advance: null,
+            min_days_walkin: null,
+          },
+        ],
+      },
     });
     if (error) throw error;
     const scooters = booked.find((b) => b.shortage === 0 && b.quantity >= 2);
@@ -112,8 +125,9 @@ test("it says it books nothing, and the free counts fall after the seeded bookin
 
     await search(page, scooters!.starts, scooters!.ends, "The counter");
     await expect(rowOf(page, scooters!.name)).toContainText(/\d+ of \d+ free/);
-    const text = await rowOf(page, scooters!.name).innerText();
-    const [, free, stock] = /(\d+) of (\d+) free/.exec(text)!;
+    const count = rowOf(page, scooters!.name).locator("[data-count]");
+    const free = await count.getAttribute("data-count");
+    const stock = await count.getAttribute("data-stock");
     expect(Number(stock) - Number(free)).toBeGreaterThanOrEqual(
       scooters!.quantity,
     );

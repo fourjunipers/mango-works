@@ -57,7 +57,9 @@ async function readRules(db: Db, tenantId: string): Promise<Read> {
       .from("products")
       .select("id, min_days_advance, min_days_walkin")
       .eq("tenant_id", tenantId)
-      .eq("type", "vehicle"),
+      .eq("type", "vehicle")
+      // A retired vehicle is "not found" to save_booking_rules().
+      .is("retired_at", null),
   ]);
   for (const answer of [shop, locations, products])
     if (answer.error) throw answer.error;
@@ -85,10 +87,24 @@ export async function withBookingRules<T>(
     try {
       return await body();
     } finally {
-      const { error } = await db.rpc("save_booking_rules", {
-        p_tenant_id: tenantId,
-        p_rules: before,
-      });
+      // Only what is still there: other tests delete their own vehicles
+      // while this one runs, and a vehicle gone is product_not_found. One
+      // can go between the read and the save, so it is tried again.
+      let error: { message: string } | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const now = await readRules(db, tenantId);
+        const products = new Set(now.products.map((p) => p.id));
+        const locations = new Set(now.locations.map((l) => l.id));
+        ({ error } = await db.rpc("save_booking_rules", {
+          p_tenant_id: tenantId,
+          p_rules: {
+            shop: before.shop,
+            locations: before.locations.filter((l) => locations.has(l.id)),
+            products: before.products.filter((p) => products.has(p.id)),
+          },
+        }));
+        if (!error || !/not_found/.test(error.message)) break;
+      }
       if (error) throw error;
     }
   } finally {

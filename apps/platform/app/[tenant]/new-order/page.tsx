@@ -76,12 +76,7 @@ export default async function NewOrderPage({
         <p className="text-sm text-muted-foreground">{t("noLocation")}</p>
       ) : (
         <div className="max-w-3xl space-y-6">
-          <SearchForm
-            slug={slug}
-            asked={asked}
-            locations={locations}
-            t={t}
-          />
+          <SearchForm slug={slug} asked={asked} locations={locations} t={t} />
           <Results
             slug={slug}
             tenantId={tenant.id}
@@ -187,9 +182,7 @@ function SearchForm({
             </label>
           ))}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          {t("channelHelp")}
-        </p>
+        <p className="mt-2 text-xs text-muted-foreground">{t("channelHelp")}</p>
       </fieldset>
       <button type="submit" className={cn(buttonVariants(), "h-11 px-6")}>
         {t("check")}
@@ -236,7 +229,13 @@ async function Results({
   );
   if (!reads)
     return <p className="text-sm text-muted-foreground">{t("noProducts")}</p>;
-  const answers = answersFor(reads.inputs, reads.rows, span, asked.channel, now);
+  const answers = answersFor(
+    reads.inputs,
+    reads.rows,
+    span,
+    asked.channel,
+    now,
+  );
   const byId = new Map(products.map((p) => [p.id, p]));
   // A product with nothing at this location is left out; a service always shows.
   const shown = answers.filter((a) => a.stock === null || a.stock > 0);
@@ -280,7 +279,11 @@ async function Results({
                 >
                   <div className="min-w-0">
                     <p className="font-medium">{product.name}</p>
-                    <p className="text-sm tabular-nums text-muted-foreground">
+                    <p
+                      data-count={answer.available ?? "service"}
+                      data-stock={answer.stock ?? "service"}
+                      className="text-sm text-muted-foreground tabular-nums"
+                    >
                       {countText(answer, t)}
                     </p>
                     {answer.refused && (
