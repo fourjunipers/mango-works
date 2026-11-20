@@ -405,6 +405,8 @@ function refusedText(
       return t("refused.closedPickup");
     case "not_listed":
       return t("refused.notListed");
+    case "cap_reached":
+      return t("refused.capReached");
     case "none_free":
       return refused.overbooking
         ? t("refused.noneFreeShortage")

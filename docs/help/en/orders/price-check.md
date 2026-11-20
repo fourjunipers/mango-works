@@ -39,6 +39,7 @@ A coupon is judged for the channel you chose. A coupon that is only for your boo
 - **"Closed at the pickup time."** / **"Closed at the return time."** The location is closed then (opening hours or a closure).
 - **"This location has no opening hours, so it takes no online bookings."** Set opening hours on the location. See [Set opening hours](../locations/set-opening-hours.md).
 - **"Not listed on Moto Mangos."** The vehicle is not switched on for Moto Mangos.
+- **"Moto Mangos has used all the units you list there for these dates."** Moto Mangos bookings already take every Instant and Request unit you list for this vehicle. Raise the counts on its Moto Mangos tab if you want to offer more.
 - **"None free for these dates."** Every one is booked or blocked.
 - **"None free. Overbooking is on, so staff could still save it as a shortage."** Staff can still take the booking at the counter once orders arrive, and a vehicle must be found before pickup. Online bookings are never overbooked.
 

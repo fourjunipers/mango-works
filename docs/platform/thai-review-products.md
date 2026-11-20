@@ -1300,3 +1300,4 @@ New and changed Thai lines on the branch `platform/phase-2-stage-11-wrap-up`: th
 | `Products.general.pricesAfterSave` | Once it is saved, set its price on its Pricing tab. Selling items comes with orders. | เมื่อบันทึกแล้ว ตั้งราคาได้ที่แท็บราคาของสินค้านี้ ส่วนการขายสินค้าจะมาพร้อมระบบออเดอร์ |
 | `Pricing.coupon.refused.wrongChannelBookingPage` | Not applied: this coupon can’t be used on your booking page. | ไม่ได้ใช้: ใช้คูปองนี้ในหน้าจองของร้านไม่ได้ |
 | `Pricing.coupon.refused.wrongChannelMarketplace` | Not applied: this coupon can’t be used on Moto Mangos. | ไม่ได้ใช้: ใช้คูปองนี้บน Moto Mangos ไม่ได้ |
+| `NewOrder.refused.capReached` | Moto Mangos has used all the units you list there for these dates. | Moto Mangos ใช้จำนวนรถที่คุณลงขายไว้ครบแล้วในวันที่เลือก |

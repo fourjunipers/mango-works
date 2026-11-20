@@ -5,7 +5,9 @@ import {
   type BookingChannel,
   type BookingHow,
 } from "@mango/core/booking-rules";
+import { listingOfferFromPeaks } from "@mango/core/listing";
 import {
+  lineAvailabilityOf,
   offerInputsOf,
   type AvailabilityRow,
   type BookingInputs,
@@ -119,12 +121,14 @@ export type ProductAnswer = {
     | Exclude<Bookable, { ok: true }>
     | { ok: false; reason: "none_free"; overbooking: boolean }
     | { ok: false; reason: "not_listed" }
+    | { ok: false; reason: "cap_reached" }
     | null;
 };
 
 /**
  * Each product's answer, in the order of `rows`. Moto Mangos books only
- * vehicles that are listed there; staff can save a booking with none free
+ * vehicles that are listed there, within the listing's Instant and Request
+ * units less what Moto Mangos already holds; staff can save a booking with none free
  * as a shortage when the shop allows overbooking, online channels never.
  */
 export function answersFor(
@@ -168,10 +172,23 @@ export function answersFor(
         refused: {
           ok: false,
           reason: "none_free",
-          overbooking:
-            channel === "walk_in" && inputs.shop.allow_overbooking,
+          overbooking: channel === "walk_in" && inputs.shop.allow_overbooking,
         },
       };
+    // Moto Mangos books a vehicle only within its listing's Instant and
+    // Request units, less what Moto Mangos already holds over these dates:
+    // the same check offer() makes (listingOfferFromPeaks, @mango/core).
+    if (channel === "marketplace" && row.type === "vehicle") {
+      const listing = lineAvailabilityOf([row])[0].marketplace!;
+      const offer = listingOfferFromPeaks({
+        settings: listing,
+        available: available ?? Number.MAX_SAFE_INTEGER,
+        peaks: listing,
+        quantity: 1,
+      });
+      if (offer.mode === null)
+        return { ...answer, refused: { ok: false, reason: "cap_reached" } };
+    }
     return answer;
   });
 }

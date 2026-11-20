@@ -15,13 +15,15 @@ const HELMET = "20000000-0000-4000-8000-000000000002";
 const DELIVERY = "20000000-0000-4000-8000-000000000003";
 const zone = "America/New_York";
 
-const inputs = (change: {
-  notice?: number | null;
-  minAdvance?: number | null;
-  minWalkin?: number | null;
-  overbooking?: boolean;
-  listed?: boolean;
-} = {}): BookingInputs => ({
+const inputs = (
+  change: {
+    notice?: number | null;
+    minAdvance?: number | null;
+    minWalkin?: number | null;
+    overbooking?: boolean;
+    listed?: boolean;
+  } = {},
+): BookingInputs => ({
   shop: {
     currency: "USD",
     allow_overbooking: change.overbooking ?? false,
@@ -232,7 +234,11 @@ describe("New order price check: each product's answer", () => {
       reason: "none_free",
       overbooking: false,
     });
-    expect(delivery).toMatchObject({ available: null, stock: null, refused: null });
+    expect(delivery).toMatchObject({
+      available: null,
+      stock: null,
+      refused: null,
+    });
   });
 
   it("the shop's notice binds online bookings, never the counter", () => {
@@ -241,14 +247,19 @@ describe("New order price check: each product's answer", () => {
     const online = at("booking_page", { notice: 24 })[0].refused;
     expect(online).toMatchObject({ ok: false, reason: "too_soon" });
     expect(
-      online && "earliestPickup" in online && online.earliestPickup.toISOString(),
+      online &&
+        "earliestPickup" in online &&
+        online.earliestPickup.toISOString(),
     ).toBe("2027-07-03T13:00:00.000Z");
   });
 
   it("minimum days: the walk-in rule at the counter, the advance rule online", () => {
-    expect(at("walk_in", { minWalkin: 3, minAdvance: 1 })[0].refused).toEqual(
-      { ok: false, reason: "too_short", days: 2, minDays: 3 },
-    );
+    expect(at("walk_in", { minWalkin: 3, minAdvance: 1 })[0].refused).toEqual({
+      ok: false,
+      reason: "too_short",
+      days: 2,
+      minDays: 3,
+    });
     expect(
       at("booking_page", { minWalkin: 3, minAdvance: 1 })[0].refused,
     ).toBeNull();
@@ -269,6 +280,44 @@ describe("New order price check: each product's answer", () => {
     const listed = [row(BIKE, "vehicle", 3, 8, true), ...rows.slice(1)];
     expect(
       at("marketplace", { listed: true }, undefined, listed)[0].refused,
+    ).toBeNull();
+  });
+
+  it("Moto Mangos books within the listing's units: when its bookings have used them up, the cap is reached", () => {
+    const listed = (held: number, instant: number, request: number) => ({
+      ...row(BIKE, "vehicle", 3, 8, true),
+      marketplace: {
+        enabled: true,
+        instant_units: 2,
+        request_units: 1,
+        mm_held: held,
+        mm_instant: instant,
+        mm_request: request,
+      },
+    });
+    const at = (r: AvailabilityRow) =>
+      answersFor(
+        inputs({ listed: true }),
+        [r],
+        span("2027-07-02T16:00:00Z", 2),
+        "marketplace",
+        now,
+      )[0].refused;
+    // Three listed (2 instant, 1 request), none used: offered.
+    expect(at(listed(0, 0, 0))).toBeNull();
+    // Two instant used, the request place free: still offered (as a request).
+    expect(at(listed(2, 2, 0))).toBeNull();
+    // All three used, though the shop has 3 bikes free: the cap is reached.
+    expect(at(listed(3, 2, 1))).toEqual({ ok: false, reason: "cap_reached" });
+    // The counter and the booking page are not bound by Moto Mangos' cap.
+    expect(
+      answersFor(
+        inputs({ listed: true }),
+        [listed(3, 2, 1)],
+        span("2027-07-02T16:00:00Z", 2),
+        "walk_in",
+        now,
+      )[0].refused,
     ).toBeNull();
   });
 

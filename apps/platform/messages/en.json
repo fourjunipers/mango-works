@@ -154,7 +154,8 @@
       "noHours": "This location has no opening hours, so it takes no online bookings.",
       "notListed": "Not listed on Moto Mangos.",
       "noneFree": "None free for these dates.",
-      "noneFreeShortage": "None free. Overbooking is on, so staff could still save it as a shortage."
+      "noneFreeShortage": "None free. Overbooking is on, so staff could still save it as a shortage.",
+      "capReached": "Moto Mangos has used all the units you list there for these dates."
     }
   },
   "Maintenance": {
