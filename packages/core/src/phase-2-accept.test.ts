@@ -364,17 +364,60 @@ describe("Phase 2 accept: 50+ unit tests on pricing (tiers, season, VAT inclusiv
 
 describe("Phase 2 accept: the total never falls as days rise", () => {
   const NEW_YORK = "America/New_York";
-  const starts: [Date, string][] = [
-    [bkk("2027-01-31"), BANGKOK], // a month end
-    [bkk("2028-02-29"), BANGKOK], // a leap day
-    [new Date("2027-03-13T15:00:00.000Z"), NEW_YORK], // the day before the clocks go forward
-    [new Date("2027-11-06T14:00:00.000Z"), NEW_YORK], // the day before they go back
-  ];
+  // Every week of two years, at 10:00, Bangkok and New York in turn, and
+  // the four edges by name: a month end, a leap day, the day before each
+  // clock change.
+  const starts: [Date, string, "week" | "edge"][] = [];
+  for (let week = 0; week < 105; week += 1) {
+    const day = new Date(Date.UTC(2027, 0, 1) + week * 7 * 86_400_000);
+    const iso = day.toISOString().slice(0, 10);
+    starts.push(
+      week % 2 === 0
+        ? [bkk(iso), BANGKOK, "week"]
+        : [new Date(`${iso}T15:00:00.000Z`), NEW_YORK, "week"],
+    );
+  }
+  starts.push(
+    [bkk("2027-01-31"), BANGKOK, "edge"],
+    [bkk("2028-02-29"), BANGKOK, "edge"],
+    [new Date("2027-03-13T15:00:00.000Z"), NEW_YORK, "edge"],
+    [new Date("2027-11-06T14:00:00.000Z"), NEW_YORK, "edge"],
+  );
+  /**
+   * 1, 6 and 23 hours, then: from a named edge, every day to 400; from a
+   * week of the two years, every day to 62 (two month ends and the long
+   * stay's first leftover days), then every week to 400.
+   */
+  const endsFrom = (start: Date, timeZone: string, kind: "week" | "edge") => {
+    const ends = [1, 6, 23].map(
+      (h) => new Date(start.getTime() + h * 3_600_000),
+    );
+    for (let d = 1; d <= 400; d += kind === "edge" || d < 62 ? 1 : 7)
+      ends.push(addZonedDays(start, d, timeZone));
+    return ends;
+  };
+  const lengths = starts.reduce(
+    (sum, [s, z, kind]) => sum + endsFrom(s, z, kind).length,
+    0,
+  );
+  const rental = (start: Date, end: Date, timeZone: string) => {
+    const span = { start, end, timeZone };
+    return [
+      line("bike", bike300(), { span }),
+      line("helmet", perDay(thb("50")), {
+        span,
+        quantity: 2,
+        vehicle: false,
+        extraOf: { lineId: "bike", includedQuantity: 1 },
+      }),
+    ];
+  };
+
   const high: SeasonRule = { ...LOW_SEASON, id: "high", adjustBp: 2000 };
   const plays: [string, (lines: QuoteLineInput[]) => Priced][] = [
     ["no discount", (lines) => priced({ lines })],
     [
-      "a season up, all year",
+      "a season up over the whole of both years",
       (lines) =>
         priced({
           lines,
@@ -405,27 +448,13 @@ describe("Phase 2 accept: the total never falls as days rise", () => {
   ];
 
   it.each(plays)(
-    "with %s, and an extra with an included unit, from 1 hour to 400 days",
+    "with %s, and an extra with an included unit, from 1 hour to 400 days, from every week of two years and four named edges",
     (_name, price) => {
       let checked = 0;
-      for (const [start, timeZone] of starts) {
-        const ends = [1, 6, 23].map(
-          (h) => new Date(start.getTime() + h * 3_600_000),
-        );
-        for (let d = 1; d <= 400; d += 1)
-          ends.push(addZonedDays(start, d, timeZone));
+      for (const [start, timeZone, kind] of starts) {
         let before: Priced | null = null;
-        for (const end of ends) {
-          const span = { start, end, timeZone };
-          const q = price([
-            line("bike", bike300(), { span }),
-            line("helmet", perDay(thb("50")), {
-              span,
-              quantity: 2,
-              vehicle: false,
-              extraOf: { lineId: "bike", includedQuantity: 1 },
-            }),
-          ]);
+        for (const end of endsFrom(start, timeZone, kind)) {
+          const q = price(rental(start, end, timeZone));
           if (before) {
             const label = `${timeZone} ${start.toISOString()} → ${end.toISOString()}`;
             expect(q.totals.total >= before.totals.total, label).toBe(true);
@@ -438,9 +467,82 @@ describe("Phase 2 accept: the total never falls as days rise", () => {
           checked += 1;
         }
       }
-      expect(checked).toBe(starts.length * 403);
+      expect(checked).toBe(lengths);
     },
+    120_000,
   );
+
+  /**
+   * A season that lowers only some days of a longer rental can make the
+   * longer rental cheaper: that is the season doing its job (plan §9.1).
+   * So, with a season of 40% off for ten days each year, the property is
+   * asserted step by step: the list price never falls; and each discount
+   * step (the returning-customer discount, then a percentage coupon) never
+   * makes a longer rental cheaper than the price that step was given
+   * allows. When the price going into a step rises, the price coming out
+   * rises too.
+   */
+  it("with a season over part of the rental: the list price, and each discount step on its own, never fall", () => {
+    const part: SeasonRule = {
+      id: "part",
+      startsOn: "2027-03-01",
+      endsOn: "2027-03-10",
+      repeatsYearly: true,
+      adjustBp: -4000,
+      products: "all",
+    };
+    let checked = 0;
+    for (const [start, timeZone, kind] of starts) {
+      let before: number[] | null = null;
+      let beforeList: bigint | null = null;
+      for (const end of endsFrom(start, timeZone, kind)) {
+        const q = withDiscounts(
+          input({ lines: rental(start, end, timeZone), seasonRules: [part] }),
+          {
+            code: percent(1500, { withReturningDiscount: true }),
+            returningCustomer: RETURNING_10,
+            completedRentals: 1,
+          },
+        );
+        // The price after the seasons, then after each discount in the
+        // order they were applied.
+        const order: string[] = [];
+        for (const l of q.lines)
+          for (const d of l.discounts)
+            if (!order.includes(d.discountId)) order.push(d.discountId);
+        const steps: bigint[] = [
+          q.lines.reduce((sum, l) => sum + l.seasonPrice, 0n),
+        ];
+        for (const id of order) {
+          const taken = q.lines.reduce(
+            (sum, l) =>
+              sum +
+              l.discounts
+                .filter((d) => d.discountId === id)
+                .reduce((a, d) => a + d.amount, 0n),
+            0n,
+          );
+          steps.push(steps[steps.length - 1] - taken);
+        }
+        expect(order).toHaveLength(2);
+        const label = `${timeZone} ${start.toISOString()} → ${end.toISOString()}`;
+        if (beforeList !== null)
+          expect(q.totals.listPrice >= beforeList, label).toBe(true);
+        if (before) {
+          for (let k = 1; k < steps.length; k += 1)
+            if (steps[k - 1] >= BigInt(before[k - 1]))
+              expect(steps[k] >= BigInt(before[k]), `${label}, step ${k}`).toBe(
+                true,
+              );
+        }
+        expect(steps[steps.length - 1] >= 0n).toBe(true);
+        before = steps.map(Number);
+        beforeList = q.totals.listPrice;
+        checked += 1;
+      }
+    }
+    expect(checked).toBe(lengths);
+  }, 120_000);
 });
 
 // ------------------------------------------------------------------ clause 5
