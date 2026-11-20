@@ -37,6 +37,8 @@ export async function UnitBookingsPanel({
         return status.until
           ? t("held", { until: formatInstant(status.until, zone, locale) })
           : t("heldNoEnd");
+      case "ranOut":
+        return t("ranOut");
       case "booked":
         return t("booked");
       case "out":

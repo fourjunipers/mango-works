@@ -38,6 +38,8 @@ jobs:
   platform-db:
     name: "@mango/platform: RLS + Playwright"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       # Throwaway password for this run's demo users.
       DEMO_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}

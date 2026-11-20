@@ -17,6 +17,7 @@ Who can do this: everyone in the shop. No prices are shown here.
 1. Open **Fleet** and tap the vehicle (or scan its sticker).
 2. Find **Bookings**. Each booking shows what it is and "from to":
    - **"Held until …, while the customer pays"**: a booking being paid for. It keeps the vehicle until then, for the shop's hold length (see [Set your booking rules](../booking-rules/set-booking-rules.md)).
+   - **"Hold ran out"**: the customer didn't pay in time. It holds nothing, and goes from the list within a minute.
    - **"Booked"**: a confirmed booking.
    - **"Out with the customer"**: picked up.
    - **"Out and overdue: still blocked until it comes back"**: past its return. The vehicle stays blocked until it is back.
@@ -29,5 +30,5 @@ Downtime has its own section under it: see [Block a vehicle for dates (downtime)
 
 ## Common problems
 
-- A hold disappears after its time: it ran out because the customer didn't pay in time.
+- A hold reads "Hold ran out", then disappears: the customer didn't pay in time.
 - "Out" and "Returned" appear once pickup and return are recorded, from Phase 3.

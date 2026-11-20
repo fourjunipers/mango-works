@@ -1043,7 +1043,8 @@
       "out": "Out with the customer",
       "overdue": "Out and overdue: still blocked until it comes back",
       "returned": "Returned",
-      "past": "Earlier bookings"
+      "past": "Earlier bookings",
+      "ranOut": "Hold ran out"
     }
   },
   "Products": {

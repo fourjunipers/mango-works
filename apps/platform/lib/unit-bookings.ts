@@ -25,6 +25,8 @@ export type UnitBooking = {
 /** What the screen says of one booking, as of `now`. */
 export type UnitBookingStatus =
   | { kind: "held"; until: Date | null }
+  /** A hold past its expiry that the sweep has not cleared yet. */
+  | { kind: "ranOut" }
   | { kind: "booked" }
   | { kind: "out" }
   | { kind: "overdue" }
@@ -33,7 +35,12 @@ export type UnitBookingStatus =
 export function statusOf(booking: UnitBooking, now: Date): UnitBookingStatus {
   switch (booking.state) {
     case "held":
-      return { kind: "held", until: booking.holdExpiresAt };
+      // The sweep runs every minute; until it does, the hold is still a
+      // row, but it holds nothing.
+      return booking.holdExpiresAt !== null &&
+        booking.holdExpiresAt.getTime() <= now.getTime()
+        ? { kind: "ranOut" }
+        : { kind: "held", until: booking.holdExpiresAt };
     case "reserved":
       return { kind: "booked" };
     case "out":

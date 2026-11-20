@@ -16,7 +16,8 @@
  *   shorter waits added up to it.
  *
  * Only for a call to one of those functions, or to save_booking_rules()
- * (lib/booking-rules.ts), a writer of rows with no lock timeout of its own,
+ * (its caller is lib/booking-rules-save.ts, its words lib/booking-rules.ts),
+ * a writer of rows with no lock timeout of its own,
  * whose wait behind a booking can reach the API's 57014. From a read, 57014
  * is an error, not an answer.
  */

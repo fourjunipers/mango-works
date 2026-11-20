@@ -9,9 +9,12 @@
  *
  * One block per clause, named as the line names them, so the list can be
  * read off the test names (tests/phase-2-accept-suites.test.ts checks the
- * names). The full races, many rounds in three shops and every other
- * writer, are in reservations.test.ts; this suite is the short version
- * that maps one-to-one onto the line.
+ * names). This file is the end-to-end race: real sessions, at the same
+ * moment, through reserve() itself. That the two really overlapped, and
+ * which lock made the second wait, is proven in reservations.test.ts
+ * (sessions held at gates, the waits read from pg_stat_activity, many
+ * rounds in three shops, and every other writer). This is the short
+ * version that maps one-to-one onto the line.
  *
  * Staff book as a signed-in member (walk-in, phone); online books with the
  * service role on the shop's booking page or the API, model-level (no unit

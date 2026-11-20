@@ -37,6 +37,14 @@ const key = staging
   ? process.env.STAGING_SUPABASE_SECRET_KEY
   : process.env.SUPABASE_SERVICE_ROLE_KEY;
 const password = process.env.DEMO_PASSWORD;
+/**
+ * The publishable (anon) key: a demo member signs in with it and then acts
+ * as themself, as the app does. The secret key above is only for what only
+ * the service role may do (users, memberships, the fleet import).
+ */
+const publishableKey = staging
+  ? process.env.STAGING_ANON_KEY
+  : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 function fail(message: string): never {
   console.error(`seed: ${message}`);
@@ -48,6 +56,12 @@ if (!url || !key)
     staging
       ? "set STAGING_SUPABASE_URL and STAGING_SUPABASE_SECRET_KEY in apps/platform/.env.local"
       : "set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in apps/platform/.env.local",
+  );
+if (!publishableKey)
+  fail(
+    staging
+      ? "set STAGING_ANON_KEY in apps/platform/.env.local"
+      : "set NEXT_PUBLIC_SUPABASE_ANON_KEY in apps/platform/.env.local",
   );
 if (!password || password.length < 8)
   fail("set DEMO_PASSWORD (8+ characters) in apps/platform/.env.local");
@@ -556,7 +570,10 @@ async function seedBsrRenewals(tenantId: string) {
   // role included (20261119000100). So the demo records are written as the
   // shop's demo owner, through record_renewal(), which saves a renewal and
   // its cost together.
-  const owner = createClient(url!, key!, { auth, db: { schema: "platform" } });
+  const owner = createClient(url!, publishableKey!, {
+    auth,
+    db: { schema: "platform" },
+  });
   const signedIn = await owner.auth.signInWithPassword({
     email: "owner@bsr.demo.test",
     password: password!,
@@ -609,7 +626,7 @@ async function seedBsrRenewals(tenantId: string) {
  */
 async function seedBsrBookings(tenantId: string, locationId: string) {
   const signedIn = async (email: string) => {
-    const client = createClient(url!, key!, {
+    const client = createClient(url!, publishableKey!, {
       auth,
       db: { schema: "platform" },
     });

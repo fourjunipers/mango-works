@@ -102,7 +102,7 @@ export default async function UnitPage({
     manage ? getUnitFinancials(tenant.id, id) : null,
     siteOrigin(),
     manage ? countUnitUpcomingBookings(tenant.id, id) : 0,
-    getUnitBookings(tenant.id, id),
+    getUnitBookings(tenant.id, id, new Date()),
   ]);
   if (!unit) notFound();
   const model = fleet.find((m) => m.id === unit.product_id);

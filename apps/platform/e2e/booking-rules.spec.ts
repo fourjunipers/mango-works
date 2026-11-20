@@ -32,11 +32,23 @@ test("an owner saves the booking rules, and finds them after a reload", async ({
       has: page.getByLabel("Booked ahead (days)"),
     });
     const firstAhead = vehicle.first().getByLabel("Booked ahead (days)");
+    const firstWalkin = vehicle.first().getByLabel("Walk-in (days)");
     const overbooking = page.getByLabel("Allow overbooking");
+    const before = page.getByLabel("Time free before (hours)");
+    const after = page.getByLabel("Time free after (hours)");
+    const cutoff = page.getByLabel("Cut-off before closing (minutes)").first();
+    const ahead = page.getByLabel("Minimum days, booked ahead").first();
+    const walkin = page.getByLabel("Minimum days, walk-in").first();
 
     await hold.fill("20");
+    await before.fill("0.5");
+    await after.fill("1.25");
     await notice.fill("24");
+    await cutoff.fill("90");
+    await ahead.fill("2");
+    await walkin.fill("1");
     await firstAhead.fill("2");
+    await firstWalkin.fill("3");
     const wasOn = await overbooking.isChecked();
     await overbooking.setChecked(!wasOn);
     await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -44,8 +56,14 @@ test("an owner saves the booking rules, and finds them after a reload", async ({
 
     await page.reload();
     await expect(hold).toHaveValue("20");
+    await expect(before).toHaveValue("0.5");
+    await expect(after).toHaveValue("1.25");
     await expect(notice).toHaveValue("24");
+    await expect(cutoff).toHaveValue("90");
+    await expect(ahead).toHaveValue("2");
+    await expect(walkin).toHaveValue("1");
     await expect(firstAhead).toHaveValue("2");
+    await expect(firstWalkin).toHaveValue("3");
     await expect(overbooking).toBeChecked({ checked: !wasOn });
 
     // Out of range: refused on its box, focus on it, nothing saved.
