@@ -210,7 +210,7 @@ export function SeasonForm({
 function ProductsError() {
   const error = useFieldError("products");
   return error ? (
-    <p role="alert" className="text-sm text-destructive">
+    <p id="products-error" role="alert" className="text-sm text-destructive">
       {error}
     </p>
   ) : null;

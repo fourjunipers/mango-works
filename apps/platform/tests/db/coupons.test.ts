@@ -16,7 +16,7 @@
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { COUPON_CODE_CASES } from "@mango/core/coupon-code.cases";
 import { isCouponCode, normalizeCouponCode } from "@mango/core/discounts";
 import { quote } from "@mango/core/quote";
@@ -26,9 +26,11 @@ import {
   couponOutcomeOf,
   decideFor,
   readCoupon,
+  readCouponsById,
   returningCustomerOf,
   type CouponDb,
   type CouponInputs,
+  type CouponListDb,
 } from "@/lib/coupons";
 import { quoteInputFor, type PricingInputs } from "@/lib/pricing-inputs";
 import { roles, type Role } from "@/lib/roles";
@@ -40,17 +42,25 @@ import {
 } from "@/lib/staff-booking";
 import {
   anonClient,
+  closedGate,
   createTenant,
   createUser,
+  type Db,
   deleteTenant,
   deleteUser,
+  GATE_TIMEOUTS,
+  holding,
+  seenWaitingForLock,
   serviceClient,
   sql,
   sqlBackground,
-  type Db,
   type TestTenant,
   type TestUser,
+  until,
 } from "./helpers";
+
+// Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 let rival: TestTenant;
@@ -316,38 +326,6 @@ const actingAs = (userId: string | null) =>
   userId
     ? `select set_config('request.jwt.claims', '${JSON.stringify({ sub: userId, role: "authenticated" })}', true); set local role authenticated;`
     : `select set_config('request.jwt.claims', '{"role":"service_role"}', true); set local role service_role;`;
-
-/** Waits until another session is running a statement carrying `marker`. */
-async function holding(
-  marker: string,
-  session?: Promise<{ out: string; failed: string }>,
-) {
-  let ended: { out: string; failed: string } | undefined;
-  void session?.then((result) => (ended = result));
-  for (let i = 0; i < 100; i++) {
-    if (ended)
-      throw new Error(
-        `The session ended before ${marker}: ${ended.failed || ended.out}`,
-      );
-    const { out } = sql(
-      `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
-    );
-    if (out === "1") return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`No session reached ${marker}`);
-}
-
-/** Polls `statement` until it answers something other than an empty string. */
-async function until(statement: string): Promise<string> {
-  for (let i = 0; i < 100; i++) {
-    const { out, failed } = sql(statement);
-    expect(failed).toBe("");
-    if (out) return out;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`Never true: ${statement}`);
-}
 
 /**
  * A session other than this one and the holder is waiting for a row (not an
@@ -1660,12 +1638,15 @@ describe("reserve() with a coupon: counted and written under the coupon's row", 
 // ------------------------------------------------------- giving a use back
 
 describe("a use is given back by a cancel and by a hold that runs out", () => {
-  const expire = (bookingId: string) =>
-    service
-      .from("reservations")
-      .update({ hold_expires_at: new Date(Date.now() - 1000).toISOString() })
-      .eq("booking_id", bookingId)
-      .throwOnError();
+  /** A second ago by the database's clock, which is the one that judges. */
+  const expire = async (bookingId: string) => {
+    const { failed } = sql(`
+      update platform.reservations
+      set hold_expires_at = clock_timestamp() - interval '1 second'
+      where booking_id = '${bookingId}';
+    `);
+    expect(failed).toBe("");
+  };
   const sweep = async () => {
     const { error } = await service.rpc("release_expired_holds");
     expect(error).toBeNull();
@@ -2185,11 +2166,12 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
     const bike = await vehicle(1);
     const mine = await coupon();
     const marker = `coupon-save-held-${tag}-${++counter}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       ${actingAs(shop.members.owner.id)}
       select platform.save_coupon('${shop.id}', '{"id": "${mine.id}", "archived": true}'::jsonb);
-      select pg_sleep(5) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, holder);
@@ -2198,6 +2180,7 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
     expect(await waitingForRow(marker)).toBe(
       "waiting for a row; product locks: 1, unit locks: 1",
     );
+    await gate.open();
     const result = await booking;
     noDeadlock([result]);
     // It was valid when the booking was sent; under the lock it is archived.
@@ -2214,6 +2197,7 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
     const [bike, other] = await Promise.all([vehicle(1), vehicle(1)]);
     const mine = await coupon({ max_uses: 1 });
     const marker = `coupon-booking-held-${tag}-${++counter}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       ${actingAs(null)}
@@ -2222,7 +2206,7 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
           coupon: taking(mine),
         }).p_request,
       )}'::jsonb);
-      select pg_sleep(5) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, holder);
@@ -2232,6 +2216,9 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
     );
     // Another product, so only the coupon's row is in its way.
     const second = staffBook(days(other, 1), { coupon: taking(mine) });
+    // Both are waiting behind the holder's booking before it is let go.
+    await seenWaitingForLock("reserve");
+    await gate.open();
     const [saved, late] = await Promise.all([saving, second]);
     noDeadlock([saved, late]);
     expect(saved.error).toBeNull();
@@ -2252,11 +2239,12 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
       await staffBook(days(bike, 1), { coupon: taking(mine) }),
     );
     const marker = `coupon-cancel-held-${tag}-${++counter}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       ${actingAs(shop.members.staff.id)}
       select platform.cancel_reservation('${shop.id}', '${first.booking_id}');
-      select pg_sleep(5) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, holder);
@@ -2264,6 +2252,7 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
     expect(await waitingForRow(marker)).toBe(
       "waiting for a row; product locks: 1, unit locks: 1",
     );
+    await gate.open();
     const result = await waiting;
     noDeadlock([result]);
     const taken = booked(result);
@@ -2276,15 +2265,17 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
   it("save_coupon() gives up on a lock after its own 6 seconds with 55P03, before the API's 8, and lib/coupon-save.ts answers try_again with nothing written", async () => {
     const mine = await coupon();
     const marker = `coupon-row-held-${tag}-${++counter}`;
+    // The row stays held until the save has answered: the gate is opened
+    // only after it, so the save's own lock timeout is what ends its wait.
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select 1 from platform.coupons where id = '${mine.id}' for update;
-      select pg_sleep(9) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, holder);
     const before = couponRows(shop);
-    const started = Date.now();
     // One call, through the API as the signed-in owner. (Two at once would
     // queue behind each other, and the second's two waits add up to the
     // API's 8 seconds: stage 5 found the same with move_unit().) What the
@@ -2300,15 +2291,26 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
       id: mine.id,
       name: "Never",
     });
-    const waited = Date.now() - started;
-    // lock_not_available, not the statement timeout (57014).
+    // lock_not_available, not the statement timeout (57014): it was the
+    // function's own 6 seconds that ran out, with the row still held, and
+    // not the API's 8. (The setting is read rather than timed: a stopwatch
+    // on the wait depends on the machine.)
     expect(direct?.error?.code).toBe("55P03");
     expect(direct?.error?.message).toMatch(/lock timeout/);
     expect(direct?.data).toBeNull();
     expect(answer).toEqual({ ok: false, reason: "try_again" });
-    expect(waited).toBeGreaterThan(5_500);
-    expect(waited).toBeLessThan(8_000);
+    expect(
+      sql(
+        `select array_to_string(proconfig, ',') from pg_proc where oid = 'platform.save_coupon(uuid, jsonb)'::regprocedure;`,
+      ).out,
+    ).toContain("lock_timeout=6s");
+    expect(
+      sql(
+        `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
+      ).out,
+    ).toBe("1");
     expect(couponRows(shop)).toBe(before);
+    await gate.open();
     expect((await holder).failed).toBe("");
     // Sent again once the row is free, it goes through; and the database's
     // refusals come back as answers.
@@ -2485,13 +2487,16 @@ describe("races for a coupon's last use: exactly one booking gets it, and no dea
             coupon: taking(c),
           }),
         );
-        await service
-          .from("reservations")
-          .update({
-            hold_expires_at: new Date(Date.now() - 1000).toISOString(),
-          })
-          .eq("booking_id", hold.booking_id)
-          .throwOnError();
+        // Run out a second ago by the database's clock, which is the one
+        // that judges it (the test machine's may not agree).
+        expect(
+          sql(`
+            update platform.reservations
+            set hold_expires_at = clock_timestamp() - interval '1 second'
+            where booking_id = '${hold.booking_id}';
+          `).failed,
+          `${where}, round ${round}`,
+        ).toBe("");
         const [one, two, three, cancelled, saved, found, swept] =
           await Promise.all([
             staffBook(days(a, day), { tenant, coupon: taking(c) }),
@@ -2587,13 +2592,21 @@ describe("after the review of PR 48", () => {
     `);
     expect(failed).toBe("");
   };
-  const expired = (bookingId: string) =>
-    until(`
+  /**
+   * Waits until the hold has run out by the database's clock. `holdSeconds`
+   * is how long the hold was given: the poll looks for that long and ten
+   * seconds more, so it can never give up before the hold itself is over.
+   */
+  const expired = (bookingId: string, holdSeconds: number) =>
+    until(
+      `
       select 'expired' from platform.reservations
       where booking_id = '${bookingId}'
         and hold_expires_at + interval '300 milliseconds' < clock_timestamp()
       limit 1;
-    `);
+    `,
+      (holdSeconds + 10) * 1000,
+    );
 
   it("finding 1: a confirm in flight across the hold's expiry holds the coupon's row, so a booking of another product after the same coupon's last use waits for it and is refused: exactly one live use", async () => {
     const [bike, other] = await Promise.all([vehicle(1), vehicle(1)]);
@@ -2601,23 +2614,35 @@ describe("after the review of PR 48", () => {
     const hold = booked(
       await staffBook(days(bike, 1), { hold: true, coupon: taking(mine) }),
     );
-    expiresIn(hold.booking_id, 3);
+    // A hold runs out on the database's own clock, and a confirm that has
+    // begun holds the booking's rows, so the expiry can't be set by hand
+    // afterwards: this one wait is real time. Five seconds for the confirm
+    // to begin (holding() fails by name if it did not make it), then a
+    // bounded poll for the expiry.
+    const holdSeconds = 5;
+    expiresIn(hold.booking_id, holdSeconds);
     // The confirm starts before the hold runs out, and is not saved until
-    // well after it has.
+    // the late booking has been seen waiting behind it.
     const marker = `confirm-in-flight-${tag}-${++counter}`;
+    const gate = await closedGate();
     const confirming = sqlBackground(`
       begin;
       ${actingAs(shop.members.staff.id)}
       select 'confirmed:' || (platform.confirm_hold('${shop.id}', '${hold.booking_id}') ->> 'ok');
-      select pg_sleep(6) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, confirming);
-    await expired(hold.booking_id);
+    await expired(hold.booking_id, holdSeconds);
     // By now coupon_uses() no longer counts the hold. Without the coupon's
     // row in confirm_hold() this booking takes the use at once, and the
     // confirm then commits a second one.
-    const late = await pageBook(days(other, 1), { coupon: taking(mine) });
+    const booking = pageBook(days(other, 1), { coupon: taking(mine) });
+    expect(await waitingForRow(marker)).toBe(
+      "waiting for a row; product locks: 1, unit locks: 1",
+    );
+    await gate.open();
+    const late = await booking;
     const done = await confirming;
     expect(done.failed).toBe("");
     expect(done.out).toContain("confirmed:true");
@@ -2649,7 +2674,7 @@ describe("after the review of PR 48", () => {
       await staffBook(days(bike, 1), { hold: true, coupon: taking(mine) }),
     );
     expiresIn(hold.booking_id, 1);
-    await expired(hold.booking_id);
+    await expired(hold.booking_id, 1);
     const taker = booked(
       await pageBook(days(other, 1), { coupon: taking(mine) }),
     );
@@ -2668,20 +2693,27 @@ describe("after the review of PR 48", () => {
     const third = await vehicle(1);
     const waiting = booked(await staffBook(days(third, 1), { hold: true }));
     const marker = `confirm-waits-${tag}-${++counter}`;
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select platform_private.lock_products_stock(
         array['${third.id}']::uuid[], array['${shop.locationId}']::uuid[]);
-      select pg_sleep(4) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
     await holding(marker, holder);
-    expiresIn(waiting.booking_id, 2);
-    const answer = await confirmHold(
+    // The confirm begins while the hold has all its time left, and is seen
+    // waiting for the product's lock (it holds no row yet). Then the hold
+    // is run out by hand, and only then is the lock let go.
+    const confirming = confirmHold(
       staffDb("staff"),
       shop.id,
       waiting.booking_id,
     );
+    await seenWaitingForLock("confirm_hold");
+    expiresIn(waiting.booking_id, -1);
+    await gate.open();
+    const answer = await confirming;
     expect((await holder).failed).toBe("");
     expect(answer).toMatchObject({ ok: false, reason: "hold_expired" });
     const states = (
@@ -2774,7 +2806,7 @@ describe("after the review of PR 48", () => {
     }
   }, 60_000);
 
-  it("finding 5: every code point in all 17 planes through both normalisers: no difference, and exactly the 26 letters and the 29 removed characters change", () => {
+  it("finding 5: every code point in all 17 planes through both normalisers: no difference, and exactly the 26 letters, the 62 full-width letters and digits and the 29 removed characters change", () => {
     const { out, failed } = sql(`
       select coalesce(string_agg(
         i || ':' || encode(convert_to(
@@ -2798,7 +2830,18 @@ describe("after the review of PR 48", () => {
     expect(seen).toBe(0x10ffff - 0x800);
     // The same code points change, to the same bytes, in both.
     expect(changed.join(",")).toBe(out);
-    expect(changed).toHaveLength(26 + 29);
+    expect(changed).toHaveLength(26 + 62 + 29);
+    // The full-width forms become the plain ones, byte for byte, in both.
+    for (const [from, to] of [
+      [0xff21, 0x41],
+      [0xff3a, 0x5a],
+      [0xff41, 0x41],
+      [0xff5a, 0x5a],
+      [0xff10, 0x30],
+      [0xff19, 0x39],
+    ]) {
+      expect(changed).toContain(`${from}:${hex(String.fromCodePoint(to))}`);
+    }
     // And a code of several of them together.
     const mixed = [0x61, 0xa0, 0x7a, 0x200b, 0xdf, 0xff21, 0x39, 0x3000]
       .map((point) => String.fromCodePoint(point))
@@ -2878,16 +2921,583 @@ describe("after the review of PR 48", () => {
     ).toBe(second.id);
   });
 
-  it("finding 8: a coupon with no limit is not counted under the lock; one with a limit still is", () => {
-    const source = sql(
-      `select prosrc from pg_proc where oid = 'platform.reserve(uuid, jsonb)'::regprocedure;`,
-    ).out;
-    const guardAt = source.indexOf("if v_coupon.max_uses is not null");
-    const countAt = source.indexOf("platform_private.coupon_uses(");
-    expect(guardAt).toBeGreaterThan(0);
-    expect(countAt).toBeGreaterThan(guardAt);
-    // One call of it, inside that condition.
-    expect(source.split("platform_private.coupon_uses(")).toHaveLength(2);
+  it("finding 8: a coupon with no limit is not counted under the lock; one with a limit still is", async () => {
+    // What happens, not what the source says: inside a transaction that is
+    // undone, the count is replaced by one that refuses to be called. A
+    // booking that never counts goes through; one that counts is stopped.
+    const bike = await vehicle(6);
+    const [noLimit, total, perCustomer] = await Promise.all([
+      coupon(),
+      coupon({ max_uses: 5 }),
+      coupon({ max_uses_per_customer: 2 }),
+    ]);
+    // Rows, not states: the hold sweep runs every minute and may expire an
+    // earlier test's hold between the two readings.
+    const rows = () =>
+      sql(`
+        select (select count(*) from platform.reservations where tenant_id = '${shop.id}')
+          || ' reservations, '
+          || (select count(*) from platform.unit_blocks b join platform.units u on u.id = b.unit_id where u.product_id = '${bike.id}')
+          || ' blocks on the bike, '
+          || (select count(*) from platform.coupon_redemptions where tenant_id = '${shop.id}')
+          || ' uses';
+      `).out;
+    const before = rows();
+    const attempt = (day: number, use: Use) => {
+      const body = JSON.stringify(
+        request(shop, "booking_page", "instant", days(bike, day), {
+          coupon: use,
+        }).p_request,
+      );
+      return sql(`
+        begin;
+        create or replace function platform_private.coupon_uses(
+          p_coupon_id uuid, p_customer_id uuid, p_except_booking_id uuid)
+        returns table (total integer, customer integer)
+        language plpgsql stable set search_path = ''
+        as $$ begin raise exception 'coupon_uses_was_called'; end; $$;
+        ${actingAs(null)}
+        select 'answer:' || (platform.reserve('${shop.id}', '${body}'::jsonb) ->> 'ok');
+        rollback;
+      `);
+    };
+    // No limit of either kind: never counted, with or without a customer.
+    for (const use of [taking(noLimit), taking(noLimit, 100, CUSTOMER)]) {
+      const free = attempt(1, use);
+      expect(free.failed).toBe("");
+      expect(free.out).toContain("answer:true");
+    }
+    // A limit per customer and no customer named: nothing to count either.
+    const anonymous = attempt(1, taking(perCustomer));
+    expect(anonymous.failed).toBe("");
+    expect(anonymous.out).toContain("answer:true");
+    // A limit in total, or a limit per customer with the customer named:
+    // counted, so the stand-in is reached.
+    for (const use of [
+      taking(total),
+      taking(total, 100, CUSTOMER),
+      taking(perCustomer, 100, CUSTOMER),
+    ]) {
+      const counted = attempt(1, use);
+      expect(counted.failed).toContain("coupon_uses_was_called");
+      expect(counted.out).not.toContain("answer:");
+    }
+    // Every attempt was undone, and the real count is back.
+    expect(rows()).toBe(before);
+    expect(
+      sql(
+        `select l.lanname from pg_proc p join pg_language l on l.oid = p.prolang where p.oid = 'platform_private.coupon_uses(uuid, uuid, uuid)'::regprocedure;`,
+      ).out,
+    ).toBe("sql");
+    // And on the real function, the observable result agrees: the sixth
+    // booking of a five-use coupon is refused, the sixth of a coupon with
+    // no limit is not.
+    for (let day = 1; day <= 5; day++) {
+      booked(await staffBook(days(bike, day * 3), { coupon: taking(total) }));
+      booked(await staffBook(days(bike, day * 3), { coupon: taking(noLimit) }));
+    }
+    expect(
+      refusal(await staffBook(days(bike, 18), { coupon: taking(total) })),
+    ).toBe("coupon_used_up");
+    booked(await staffBook(days(bike, 18), { coupon: taking(noLimit) }));
+  }, 60_000);
+});
+
+// ------------------------------------------------- stage 10: review follow-ups
+
+describe("stage 10: coupon_inputs_by_id(), coupons and their uses for a list of ids", () => {
+  const byId = (
+    client: Db,
+    tenant: TestTenant,
+    ids: (string | null)[] | null,
+    customerId?: string,
+  ) =>
+    Promise.resolve(
+      client.rpc("coupon_inputs_by_id", {
+        p_tenant_id: tenant.id,
+        p_coupon_ids: ids,
+        ...(customerId ? { p_customer_id: customerId } : {}),
+      } as never),
+    ) as Promise<{
+      data: Record<string, CouponInputs> | null;
+      error: Failure;
+    }>;
+
+  it("the batch equals the per-id results, and coupon_inputs() by code for every live coupon", async () => {
+    const [bike, other] = await Promise.all([vehicle(4), vehicle(1)]);
+    const made = await Promise.all([
+      coupon({ max_uses: 9 }),
+      coupon({ kind: "fixed", amount: 20_000, min_spend: 50_000 }),
+      coupon({ all_products: false, product_ids: [bike.id, other.id] }),
+      coupon({
+        valid_from: "2034-01-01",
+        valid_to: "2034-12-31",
+        pickup_from: "2034-02-01",
+        pickup_to: "2034-11-30",
+        min_days: 2,
+        max_uses_per_customer: 3,
+        channels: ["staff"],
+        with_returning_discount: true,
+        with_season_discount: false,
+      }),
+      coupon({ active: false }),
+    ]);
+    // Uses: two of the first (one by a named customer), one of the second.
+    booked(await staffBook(days(bike, 1), { coupon: taking(made[0]) }));
+    booked(
+      await staffBook(days(bike, 1), {
+        coupon: taking(made[0], 100, CUSTOMER),
+      }),
+    );
+    booked(await staffBook(days(bike, 1), { coupon: taking(made[1], 20_000) }));
+    const ids = made.map((c) => c.id);
+
+    for (const customerId of [undefined, CUSTOMER, OTHER_CUSTOMER]) {
+      const batch = await byId(db("staff"), shop, ids, customerId);
+      expect(batch.error).toBeNull();
+      expect(Object.keys(batch.data!).sort()).toEqual([...ids].sort());
+      for (const c of made) {
+        // One id at a time: the same answer.
+        const single = await byId(db("staff"), shop, [c.id], customerId);
+        expect(single.error).toBeNull();
+        expect(single.data).toEqual({ [c.id]: batch.data![c.id] });
+        // And what coupon_inputs() says for its code.
+        expect(batch.data![c.id], c.code).toEqual(
+          await read(db("staff"), shop, c.code, { customerId }),
+        );
+      }
+    }
+    const counted = (await byId(db("owner"), shop, ids, CUSTOMER)).data!;
+    expect(counted[made[0].id].uses).toEqual({ total: 2, customer: 1 });
+    expect(counted[made[1].id].uses).toEqual({ total: 1, customer: 0 });
+    expect(counted[made[2].id].uses).toEqual({ total: 0, customer: 0 });
+    expect(counted[made[2].id].coupon?.product_ids).toEqual(
+      [bike.id, other.id].sort(),
+    );
+    // The app's own reader (lib/coupons.ts) gives the same, as a map.
+    const viaLib = await readCouponsById(
+      db("manager") as unknown as CouponListDb,
+      shop.id,
+      ids,
+    );
+    expect([...viaLib.keys()].sort()).toEqual([...ids].sort());
+    expect(viaLib.get(made[0].id)?.uses?.total).toBe(2);
+    // The same id twice, an id of no coupon and a null: each coupon once,
+    // the others simply absent.
+    const odd = await byId(db("staff"), shop, [
+      made[0].id,
+      made[0].id,
+      MADE_UP,
+      null,
+    ]);
+    expect(Object.keys(odd.data!)).toEqual([made[0].id]);
+    expect((await byId(db("staff"), shop, [])).data).toEqual({});
+    expect((await byId(db("staff"), shop, null)).data).toEqual({});
+  }, 60_000);
+
+  it("an archived coupon whose code a newer coupon has taken shows its own uses", async () => {
+    const bike = await vehicle(3);
+    const typed = code("TAKEN");
+    const first = await coupon({ code: typed });
+    booked(await staffBook(days(bike, 1), { coupon: taking(first) }));
+    await save(db("owner"), shop, { id: first.id, archived: true });
+    const second = await coupon({ code: typed, kind: "fixed", amount: 100 });
+    booked(await staffBook(days(bike, 1), { coupon: taking(second) }));
+    booked(await staffBook(days(bike, 1), { coupon: taking(second) }));
+
+    // By code, only the new coupon can be reached: the old one's count was
+    // "not shown" on the list for that reason.
+    const byCode = await read(db("owner"), shop, typed);
+    expect(byCode.coupon?.id).toBe(second.id);
+    expect(byCode.uses?.total).toBe(2);
+    // By id, each has its own.
+    const both = (await byId(db("owner"), shop, [first.id, second.id])).data!;
+    expect(both[first.id]).toMatchObject({
+      coupon: { id: first.id, code: typed, archived: true, kind: "percent" },
+      uses: { total: 1, customer: 0 },
+    });
+    expect(both[second.id]).toMatchObject({
+      coupon: { id: second.id, code: typed, archived: false, kind: "fixed" },
+      uses: { total: 2, customer: 0 },
+    });
+    // A use given back is not counted, as for coupon_inputs().
+    const { data: bookings } = await service
+      .from("coupon_redemptions")
+      .select("booking_id")
+      .eq("coupon_id", first.id);
+    await cancelReservation(staffDb("staff"), shop.id, {
+      bookingId: bookings![0].booking_id,
+    });
+    expect(
+      (await byId(db("owner"), shop, [first.id])).data![first.id].uses?.total,
+    ).toBe(0);
+  }, 60_000);
+
+  it("a hold that has run out holds no use here either, swept or not", async () => {
+    const bike = await vehicle(1);
+    const mine = await coupon({ max_uses: 1 });
+    const hold = booked(
+      await staffBook(days(bike, 1), { hold: true, coupon: taking(mine) }),
+    );
+    const total = async () =>
+      (await byId(db("staff"), shop, [mine.id])).data![mine.id].uses?.total;
+    expect(await total()).toBe(1);
+    const { failed } = sql(`
+      update platform.reservations
+      set hold_expires_at = clock_timestamp() - interval '1 second'
+      where booking_id = '${hold.booking_id}';
+    `);
+    expect(failed).toBe("");
+    expect(await total()).toBe(0);
+    expect((await read(db("staff"), shop, mine.code)).uses?.total).toBe(0);
+  });
+
+  it("another shop's ids return nothing, whichever shop is named; RLS decides who reads at all", async () => {
+    const [mine, theirs] = await Promise.all([coupon(), coupon({}, rival)]);
+    // This shop's ids, asked by the other shop's owner, manager and staff.
+    for (const role of ["owner", "manager", "staff"] as const) {
+      for (const tenant of [shop, rival]) {
+        const answer = await byId(db(role, rival), tenant, [mine.id]);
+        expect(answer.error, role).toBeNull();
+        expect(answer.data, role).toEqual({});
+      }
+    }
+    // The other shop's ids, asked by this shop's owner.
+    for (const tenant of [shop, rival]) {
+      expect((await byId(db("owner"), tenant, [theirs.id])).data).toEqual({});
+    }
+    // Both ids in one list: each shop gets its own and no more.
+    expect(
+      Object.keys((await byId(db("owner"), shop, [mine.id, theirs.id])).data!),
+    ).toEqual([mine.id]);
+    expect(
+      Object.keys(
+        (await byId(db("owner", rival), rival, [mine.id, theirs.id])).data!,
+      ),
+    ).toEqual([theirs.id]);
+    // Owners, managers and staff read coupons; a mechanic, a driver and a
+    // stranger find none; the server reads them; a visitor may not call it.
+    for (const role of roles) {
+      const answer = await byId(db(role), shop, [mine.id]);
+      expect(answer.error, role).toBeNull();
+      expect(Object.keys(answer.data!), role).toEqual(
+        ["owner", "manager", "staff"].includes(role) ? [mine.id] : [],
+      );
+    }
+    expect((await byId(outsider.db, shop, [mine.id])).data).toEqual({});
+    expect(
+      Object.keys((await byId(service, shop, [mine.id, theirs.id])).data!),
+    ).toEqual([mine.id]);
+    const visitor = await byId(anonClient(), shop, [mine.id]);
+    expect(visitor.error?.code).toBe("42501");
+    expect(visitor.data).toBeNull();
+  });
+});
+
+describe("stage 10: full-width letters and digits in a code", () => {
+  it("a code typed in full-width forms finds the coupon, is saved as plain letters, and clashes with the plain code", async () => {
+    const plain = code("WIDE");
+    const wide = [...plain]
+      .map((ch) => {
+        const point = ch.codePointAt(0)!;
+        return point >= 0x30 && point <= 0x39
+          ? String.fromCodePoint(point - 0x30 + 0xff10)
+          : String.fromCodePoint(point - 0x41 + 0xff21);
+      })
+      .join("");
+    expect(wide).not.toBe(plain);
+    expect(normalizeCouponCode(wide)).toBe(plain);
+    // Saved from full-width input: stored plain.
+    const made = await coupon({ code: wide });
+    expect(made.code).toBe(plain);
+    // Found by the plain code, the full-width one, and a mix with an
+    // ideographic space, by the database and through the app's reader.
+    for (const typed of [
+      plain,
+      wide,
+      `${wide.slice(0, 2)}　${plain.slice(2).toLowerCase()}`,
+    ]) {
+      expect((await read(db("staff"), shop, typed)).coupon?.id, typed).toBe(
+        made.id,
+      );
+    }
+    // A second live coupon can't take the code by spelling it full-width.
+    const clash = await save(db("owner"), shop, {
+      code: wide,
+      kind: "percent",
+      percent_bp: 500,
+    });
+    expect(clash.error?.message).toBe("code_taken");
+  });
+});
+
+describe("stage 10: a shop's currency change racing save_coupon() and reserve()", () => {
+  const toDollars = (tenant: TestTenant) =>
+    Promise.resolve(
+      service
+        .from("tenants")
+        .update({ currency: "USD" })
+        .eq("id", tenant.id)
+        .select("currency"),
+    );
+  const currencyOf = async (tenant: TestTenant) =>
+    (
+      await service
+        .from("tenants")
+        .select("currency")
+        .eq("id", tenant.id)
+        .single()
+        .throwOnError()
+    ).data!.currency;
+  /** Every coupon of the shop with its currency, and whether any differs. */
+  const coupons = async (tenant: TestTenant) =>
+    (
+      await service
+        .from("coupons")
+        .select("code, currency, kind, amount")
+        .eq("tenant_id", tenant.id)
+        .throwOnError()
+    ).data!;
+  const mismatched = (tenant: TestTenant) =>
+    sql(`
+      select count(*) from platform.coupons c
+      join platform.tenants t on t.id = c.tenant_id
+      where c.tenant_id = '${tenant.id}' and c.currency <> t.currency;
+    `).out;
+  const fixed = (typed: string) =>
+    JSON.stringify({ code: typed, kind: "fixed", amount: 20_000 });
+
+  it("a fixed-amount coupon written and not yet saved: the currency change waits for the shop's row, then is refused; the coupon is in the shop's currency", async () => {
+    const fresh = await createTenant("coupon-race-a", thailand);
+    const gate = await closedGate();
+    try {
+      const typed = code("RACEA");
+      const marker = `currency-race-save-${tag}-${++counter}`;
+      const holder = sqlBackground(`
+        begin;
+        ${actingAs(fresh.members.owner.id)}
+        select platform.save_coupon('${fresh.id}', '${fixed(typed)}'::jsonb);
+        ${gate.wait(marker)}
+        commit;
+      `);
+      await holding(marker, holder);
+      // Not saved yet, so nothing locks the currency for anyone looking.
+      expect(await coupons(fresh)).toEqual([]);
+      let answered = false;
+      const changing = toDollars(fresh).then((result) => {
+        answered = true;
+        return result;
+      });
+      await seenWaitingForLock('"tenants"');
+      expect(answered).toBe(false);
+      await gate.open();
+      const change = await changing;
+      expect((await holder).failed).toBe("");
+      expect(change.error?.message).toBe("currency_locked");
+      expect(await currencyOf(fresh)).toBe("THB");
+      expect(await coupons(fresh)).toEqual([
+        { code: typed, currency: "THB", kind: "fixed", amount: 20_000 },
+      ]);
+      expect(mismatched(fresh)).toBe("0");
+    } finally {
+      await gate.open();
+      await deleteTenant(fresh);
+    }
+  }, 120_000);
+
+  it("the currency change written and not yet saved: a fixed-amount coupon waits for the shop's row, then is refused; no coupon is left in the old currency", async () => {
+    const fresh = await createTenant("coupon-race-b", thailand);
+    const gate = await closedGate();
+    try {
+      const typed = code("RACEB");
+      const marker = `currency-race-change-${tag}-${++counter}`;
+      const holder = sqlBackground(`
+        begin;
+        update platform.tenants set currency = 'USD' where id = '${fresh.id}';
+        ${gate.wait(marker)}
+        commit;
+      `);
+      await holding(marker, holder);
+      let answered = false;
+      const saving = save(
+        db("owner", fresh),
+        fresh,
+        JSON.parse(fixed(typed)),
+      ).then((result) => {
+        answered = true;
+        return result;
+      });
+      await seenWaitingForLock("save_coupon");
+      expect(answered).toBe(false);
+      await gate.open();
+      const saved = await saving;
+      expect((await holder).failed).toBe("");
+      // It read the shop's currency before the change was saved, so its
+      // coupon would have been in baht: the shop's row refuses it.
+      expect(saved.data).toBeNull();
+      expect(saved.error).not.toBeNull();
+      expect(await currencyOf(fresh)).toBe("USD");
+      expect(await coupons(fresh)).toEqual([]);
+      expect(mismatched(fresh)).toBe("0");
+      // Sent again, it is saved in the new currency.
+      const again = await save(
+        db("owner", fresh),
+        fresh,
+        JSON.parse(fixed(typed)),
+      );
+      expect(again.data).toMatchObject({ code: typed, currency: "USD" });
+      expect(mismatched(fresh)).toBe("0");
+    } finally {
+      await gate.open();
+      await deleteTenant(fresh);
+    }
+  }, 120_000);
+
+  it("a booking with a percentage coupon written and not yet saved: the currency change waits, then is refused; the use stays in the currency it was taken in", async () => {
+    const fresh = await createTenant("coupon-race-c", thailand);
+    const gate = await closedGate();
+    try {
+      await settings({ coupons_enabled: true }, fresh);
+      const bike = await vehicle(1, fresh);
+      const mine = await coupon({}, fresh);
+      const marker = `currency-race-booking-${tag}-${++counter}`;
+      const holder = sqlBackground(`
+        begin;
+        ${actingAs(null)}
+        select 'booked:' || (platform.reserve('${fresh.id}', '${JSON.stringify(
+          request(fresh, "booking_page", "instant", days(bike, 1), {
+            coupon: taking(mine, 15_000),
+          }).p_request,
+        )}'::jsonb) ->> 'ok');
+        ${gate.wait(marker)}
+        commit;
+      `);
+      await holding(marker, holder);
+      let answered = false;
+      const changing = toDollars(fresh).then((result) => {
+        answered = true;
+        return result;
+      });
+      await seenWaitingForLock('"tenants"');
+      expect(answered).toBe(false);
+      await gate.open();
+      const change = await changing;
+      const done = await holder;
+      expect(done.failed).toBe("");
+      expect(done.out).toContain("booked:true");
+      expect(change.error?.message).toBe("currency_locked");
+      expect(await currencyOf(fresh)).toBe("THB");
+      expect((await live(mine.id)).map((r) => r.amount)).toEqual([15_000]);
+      expect(mismatched(fresh)).toBe("0");
+    } finally {
+      await gate.open();
+      await deleteTenant(fresh);
+    }
+  }, 120_000);
+
+  it("the currency change written and not yet saved, where only a percentage coupon exists: a booking with that coupon waits at the coupon's row, then is refused by the currency recheck, with nothing written", async () => {
+    // A shop whose only amount-free state is a percentage coupon: the
+    // currency is still free. The settings row that "Accept coupons" needs
+    // would lock it, so it is written inside the holder's transaction,
+    // after the change: one transaction, as a console would do it.
+    const fresh = await createTenant("coupon-race-d", thailand);
+    const gate = await closedGate();
+    try {
+      const bike = await vehicle(1, fresh);
+      const mine = await coupon({}, fresh);
+      expect(mine.currency).toBe("THB");
+      const marker = `currency-race-recheck-${tag}-${++counter}`;
+      const holder = sqlBackground(`
+        begin;
+        update platform.tenants set currency = 'USD' where id = '${fresh.id}';
+        insert into platform.pricing_settings (tenant_id, currency, coupons_enabled)
+        values ('${fresh.id}', 'USD', true);
+        ${gate.wait(marker)}
+        commit;
+      `);
+      await holding(marker, holder);
+      const before = written(fresh);
+      let answered = false;
+      const booking = pageBook(days(bike, 1), {
+        tenant: fresh,
+        coupon: taking(mine),
+      }).then((result) => {
+        answered = true;
+        return result;
+      });
+      // The coupon's row is being moved to the new currency by the shop's
+      // change (on update cascade): the booking waits for it.
+      expect(await waitingForRow(marker)).toBe(
+        "waiting for a row; product locks: 1, unit locks: 1",
+      );
+      expect(answered).toBe(false);
+      await gate.open();
+      const result = await booking;
+      expect((await holder).failed).toBe("");
+      noDeadlock([result]);
+      // It read the shop's currency as baht; under the lock the coupon is
+      // in dollars. No booking, no use.
+      expect(result.data).toEqual({
+        ok: false,
+        reason: "coupon_not_valid",
+        line: null,
+      });
+      expect(written(fresh)).toBe(before);
+      expect(await currencyOf(fresh)).toBe("USD");
+      expect((await coupons(fresh)).map((c) => c.currency)).toEqual(["USD"]);
+      expect(mismatched(fresh)).toBe("0");
+      // Sent again, it reads dollars and goes through.
+      booked(
+        await pageBook(days(bike, 1), { tenant: fresh, coupon: taking(mine) }),
+      );
+    } finally {
+      await gate.open();
+      await deleteTenant(fresh);
+    }
+  }, 120_000);
+});
+
+describe("stage 10: the currency recheck inside reserve(), made to fire", () => {
+  it("with the foreign key that keeps a coupon in its shop's currency dropped inside a transaction that is undone: a coupon in another currency is coupon_not_valid, and the same booking goes through once it is back", async () => {
+    const bike = await vehicle(2);
+    const mine = await coupon();
+    const before = written(shop);
+    const body = JSON.stringify(
+      request(shop, "booking_page", "instant", days(bike, 1), {
+        coupon: taking(mine),
+      }).p_request,
+    );
+    const { out, failed } = sql(`
+      begin;
+      alter table platform.coupons drop constraint coupons_currency_fkey;
+      update platform.coupons set currency = 'USD' where id = '${mine.id}';
+      ${actingAs(null)}
+      select 'other currency:' || platform.reserve('${shop.id}', '${body}'::jsonb)::text;
+      reset role;
+      update platform.coupons set currency = 'THB' where id = '${mine.id}';
+      ${actingAs(null)}
+      select 'own currency:' || (platform.reserve('${shop.id}', '${body}'::jsonb) ->> 'ok');
+      rollback;
+    `);
+    expect(failed).toBe("");
+    const refused = /^other currency:(.*)$/m.exec(out)?.[1];
+    expect(JSON.parse(refused!)).toEqual({
+      ok: false,
+      reason: "coupon_not_valid",
+      line: null,
+    });
+    expect(out).toContain("own currency:true");
+    // All of it undone: the key is back, the coupon is in baht, nothing
+    // was booked.
+    expect(
+      sql(`
+        select count(*) from pg_constraint
+        where conrelid = 'platform.coupons'::regclass
+          and conname = 'coupons_currency_fkey';
+      `).out,
+    ).toBe("1");
+    expect((await read(service, shop, mine.code)).coupon?.currency).toBe("THB");
+    expect(written(shop)).toBe(before);
   });
 });
 
@@ -2972,6 +3582,69 @@ describe("the currency lock counts a coupon that holds an amount of money", () =
       await deleteTenant(fresh);
     }
   }, 60_000);
+
+  it("stage 10: any use of any coupon locks it, a percentage coupon's too, and a use given back still counts", async () => {
+    // coupon_redemptions.amount is what the coupon took off, with no
+    // currency of its own: it is in the currency of the day it was taken.
+    const fresh = await createTenant("coupon-lock-use", thailand);
+    try {
+      // "Accept coupons" needs a settings row, and that row locks the
+      // currency by itself. It is taken away by hand (nothing in the app
+      // deletes one) so that only the use is left to hold the lock.
+      const dropSettings = () =>
+        sql(
+          `delete from platform.pricing_settings where tenant_id = '${fresh.id}';`,
+        ).failed;
+      await settings({ coupons_enabled: true }, fresh);
+      const bike = await vehicle(1, fresh);
+      const mine = await coupon({}, fresh);
+      expect(dropSettings()).toBe("");
+      // A percentage coupon with no minimum spend, never used: still free.
+      expect(await locked(fresh)).toBe(false);
+
+      await settings({ coupons_enabled: true }, fresh);
+      const made = booked(
+        await staffBook(days(bike, 1), {
+          tenant: fresh,
+          coupon: taking(mine, 12_300),
+        }),
+      );
+      expect(dropSettings()).toBe("");
+      expect(await locked(fresh)).toBe(true);
+      expect((await change(fresh)).error?.message).toBe("currency_locked");
+
+      // Given back by a cancel: the row and its amount stay, and so does
+      // the lock.
+      await cancelReservation(staffDb("staff", fresh), fresh.id, {
+        bookingId: made.booking_id,
+      });
+      expect(await live(mine.id)).toHaveLength(0);
+      expect((await redemptions(mine.id)).map((r) => r.amount)).toEqual([
+        12_300,
+      ]);
+      expect(await locked(fresh)).toBe(true);
+      expect((await change(fresh)).error?.message).toBe("currency_locked");
+      expect(
+        (
+          await service
+            .from("tenants")
+            .select("currency")
+            .eq("id", fresh.id)
+            .single()
+        ).data?.currency,
+      ).toBe("THB");
+      // Another shop's member is told nothing.
+      expect(
+        (
+          await db("owner", rival).rpc("currency_locked", {
+            p_tenant_id: fresh.id,
+          })
+        ).data,
+      ).toBe(false);
+    } finally {
+      await deleteTenant(fresh);
+    }
+  }, 120_000);
 });
 
 // ------------------------------------------------------------------ the guard
@@ -3017,7 +3690,59 @@ describe("the migration's guard", () => {
     `);
     expect(drifted.failed).toMatch(/is not the body main has/);
   });
+
+  it("stage 10's migration has the same guard for the three functions it re-creates, and its check of stored codes passes on today's coupons", () => {
+    const migration = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../../../../supabase/migrations/20261119000100_platform_review_followups.sql",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    );
+    const guard = /do \$guard\$[\s\S]*?\$guard\$;/.exec(migration)?.[0];
+    expect(guard).toBeDefined();
+    expect(guard!.match(/'[0-9a-f]{32}'/g)).toHaveLength(3);
+    for (const name of [
+      "'platform_private.normalize_coupon_code(text)'",
+      "'platform_private.tenants_lock_currency()'",
+      "'platform.currency_locked(uuid)'",
+    ]) {
+      expect(guard).toContain(name);
+    }
+    // Today's bodies are the migration's own: run again, the guard refuses
+    // and changes nothing.
+    expect(sql(guard!).failed).toMatch(
+      /is not the body main has \(md5 [0-9a-f]{32}/,
+    );
+    // The check that follows the new normaliser: every stored code reads
+    // the same under it, and no two live coupons of a shop share one. It
+    // only reads; on the coupons this file has made it passes, and says
+    // what it found.
+    const check = /do \$check\$[\s\S]*?\$check\$;/.exec(migration)?.[0];
+    expect(check).toBeDefined();
+    const ran = spawnCheck(check!);
+    expect(ran.failed).toBe("");
+    // And it stops on a stored code the function would change: a code put
+    // in by hand past the table's own check, inside a transaction that is
+    // undone.
+    const drifted = sql(`
+      begin;
+      alter table platform.coupons drop constraint coupons_code_check;
+      update platform.coupons set code = U&'\\FF21' || code
+      where id = (select id from platform.coupons where tenant_id = '${shop.id}' limit 1);
+      ${check}
+      rollback;
+    `);
+    expect(drifted.failed).toMatch(/1 stored code\(s\) would change/);
+  });
 });
+
+/** Runs a DO block as the superuser; psql's notices are not an error. */
+function spawnCheck(block: string) {
+  return sql(`set client_min_messages = warning;\n${block}`);
+}
 
 describe("after every test in this file", () => {
   it("Postgres counted no deadlock", () => {

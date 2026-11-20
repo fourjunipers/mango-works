@@ -201,7 +201,7 @@ describe("why a code is refused", () => {
     }
   });
 
-  it("every code point in all 17 planes: exactly the 26 letters and the 29 removed characters change, and nothing else; a NUL and a lone surrogate are left as they are", () => {
+  it("every code point in all 17 planes: exactly the 26 letters, the 62 full-width letters and digits and the 29 removed characters change, and nothing else; a NUL and a lone surrogate are left as they are", () => {
     const removed = [
       0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002,
       0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028,
@@ -219,12 +219,26 @@ describe("why a code is refused", () => {
       changed.push(point);
       if (point >= 0x61 && point <= 0x7a) {
         expect(stored).toBe(String.fromCodePoint(point - 0x20));
+      } else if (point >= 0xff21 && point <= 0xff3a) {
+        expect(stored).toBe(String.fromCodePoint(point - 0xff21 + 0x41));
+      } else if (point >= 0xff41 && point <= 0xff5a) {
+        expect(stored).toBe(String.fromCodePoint(point - 0xff41 + 0x41));
+      } else if (point >= 0xff10 && point <= 0xff19) {
+        expect(stored).toBe(String.fromCodePoint(point - 0xff10 + 0x30));
       } else {
         expect(stored, point.toString(16)).toBe("");
       }
     }
-    const letters = Array.from({ length: 26 }, (_, i) => 0x61 + i);
-    expect(changed).toEqual([...letters, ...removed].sort((a, b) => a - b));
+    const run = (from: number, length: number) =>
+      Array.from({ length }, (_, i) => from + i);
+    const folded = [
+      ...run(0x61, 26),
+      ...run(0xff21, 26),
+      ...run(0xff41, 26),
+      ...run(0xff10, 10),
+    ];
+    expect(folded).toHaveLength(88);
+    expect(changed).toEqual([...folded, ...removed].sort((a, b) => a - b));
     // Each removed character is removed from inside a code too.
     for (const point of removed) {
       expect(
@@ -254,10 +268,17 @@ describe("why a code is refused", () => {
     );
   });
 
-  it("the normaliser maps a to z alone: no locale's upper case is asked (a sharp s is not SS, a full-width letter is not folded)", () => {
+  it("the normaliser folds from a fixed list: no locale's upper case is asked (a sharp s is not SS), and full-width letters and digits become the plain ones", () => {
     expect(normalizeCouponCode("stra\u00dfe")).toBe("STRA\u00dfE");
     expect("stra\u00dfe".toUpperCase()).toBe("STRASSE");
-    expect(normalizeCouponCode("\uff53")).toBe("\uff53");
+    expect(normalizeCouponCode("\uff53")).toBe("S");
+    expect(
+      normalizeCouponCode("\uff33\uff41\uff56\uff25\uff12\uff10\uff10"),
+    ).toBe("SAVE200");
+    // No Unicode normalisation: other compatibility forms are left alone.
+    expect(normalizeCouponCode("\u2460\u24b6\ufb01")).toBe(
+      "\u2460\u24b6\ufb01",
+    );
     expect(isCouponCode("STRASSE")).toBe(true);
     expect(isCouponCode("STRA\u00dfE")).toBe(false);
     expect(isCouponCode("")).toBe(false);

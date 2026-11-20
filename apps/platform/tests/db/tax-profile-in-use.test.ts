@@ -8,16 +8,27 @@
  * pass, in either order. Lock order: the product, the price list, the tax
  * profile, the pricing row.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Role } from "@/lib/roles";
 import {
+  closedGate,
   createTenant,
   deleteTenant,
+  type Gate,
+  GATE_TEST_TIMEOUT,
+  GATE_TIMEOUTS,
+  GATE_WAIT,
+  holding,
+  seenWaitingForLock,
   serviceClient,
   sql,
   sqlBackground,
   type TestTenant,
+  watch,
 } from "./helpers";
+
+// Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 const service = serviceClient();
@@ -90,34 +101,12 @@ const archivedAt = async (id: string) =>
       .single()
   ).data!.archived_at;
 
-async function holding(marker: string) {
-  for (let i = 0; i < 100; i++) {
-    const { out } = sql(
-      `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
-    );
-    if (out === "1") return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`No session reached ${marker}`);
-}
-
 /**
- * Waits until a session running `call` is waiting for a lock: polled, so
- * the test neither guesses how long that takes nor reads the locks early.
+ * A call made as a member in a session that stays open, the call's locks
+ * held, until the gate is opened (helpers.ts: no clock, so nothing here
+ * depends on how fast the machine is).
  */
-async function waitingOnLock(call: string) {
-  for (let i = 0; i < 80; i++) {
-    const { out } = sql(
-      `select count(*) from pg_stat_activity where wait_event_type = 'Lock' and query like '%${call}%' and pid <> pg_backend_pid();`,
-    );
-    if (Number(out) > 0) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`No session running ${call} came to wait for a lock`);
-}
-
-/** A call made as a member in a session that stays open for `seconds`. */
-function heldAs(role: Role, call: string, marker: string, seconds = 1.5) {
+function heldAs(role: Role, call: string, marker: string, gate: Gate) {
   const claims = JSON.stringify({
     sub: shop.members[role].id,
     role: "authenticated",
@@ -127,9 +116,32 @@ function heldAs(role: Role, call: string, marker: string, seconds = 1.5) {
     select set_config('request.jwt.claims', '${claims}', true);
     set local role authenticated;
     ${call};
-    select pg_sleep(${seconds}) /* ${marker} */;
+    ${gate.wait(marker)}
     commit;
   `);
+}
+
+/**
+ * Starts `call` while a holder is at its gate, and shows that it waits:
+ * it is seen waiting for a lock, it has not answered while the gate is
+ * still closed, and it answers once the gate is opened. `name` is the
+ * function the call runs, as it appears in pg_stat_activity.
+ */
+async function waitsForGate<T>(
+  gate: Gate,
+  name: string,
+  call: () => PromiseLike<T>,
+): Promise<T> {
+  let answered = false;
+  // A query builder sends nothing until it is awaited: start it now.
+  const running = Promise.resolve(call()).then((result) => {
+    answered = true;
+    return result;
+  });
+  await seenWaitingForLock(name);
+  expect(answered, `${name} answered before the holder let go`).toBe(false);
+  await gate.open();
+  return running;
 }
 
 const json = (value: object) => `'${JSON.stringify(value)}'::jsonb`;
@@ -223,15 +235,17 @@ describe("races: whichever locks the profile first goes first", () => {
     const profile = await addProfile();
     const product = await addProduct();
     const marker = `hold-archive-${tag}-${++counter}`;
+    const gate = await closedGate();
     const held = heldAs(
       "owner",
       `select platform.save_tax_profile('${shop.id}', ${json({ id: profile, archived: true })})`,
       marker,
+      gate,
     );
     await holding(marker);
-    const started = Date.now();
-    const { error } = await useProfile(product, profile);
-    expect(Date.now() - started).toBeGreaterThan(700);
+    const { error } = await waitsForGate(gate, "save_product_pricing", () =>
+      useProfile(product, profile),
+    );
     expect(error?.message).toBe("invalid_tax_profile");
     expect((await held).failed).toBe("");
     expect(await archivedAt(profile)).not.toBeNull();
@@ -241,15 +255,17 @@ describe("races: whichever locks the profile first goes first", () => {
     const profile = await addProfile();
     const product = await addProduct();
     const marker = `hold-use-${tag}-${++counter}`;
+    const gate = await closedGate();
     const held = heldAs(
       "manager",
       `select platform.save_product_pricing('${product}', ${json({ tax_profile_id: profile })})`,
       marker,
+      gate,
     );
     await holding(marker);
-    const started = Date.now();
-    const { error } = await archive(profile);
-    expect(Date.now() - started).toBeGreaterThan(700);
+    const { error } = await waitsForGate(gate, "save_tax_profile", () =>
+      archive(profile),
+    );
     expect(error?.message).toBe("tax_profile_in_use");
     expect((await held).failed).toBe("");
     expect(await archivedAt(profile)).toBeNull();
@@ -259,15 +275,17 @@ describe("races: whichever locks the profile first goes first", () => {
   it("archive first, then making it the default: refused", async () => {
     const profile = await addProfile();
     const marker = `hold-archive-default-${tag}-${++counter}`;
+    const gate = await closedGate();
     const held = heldAs(
       "owner",
       `select platform.save_tax_profile('${shop.id}', ${json({ id: profile, archived: true })})`,
       marker,
+      gate,
     );
     await holding(marker);
-    const started = Date.now();
-    const { error } = await setDefault(profile);
-    expect(Date.now() - started).toBeGreaterThan(700);
+    const { error } = await waitsForGate(gate, "save_pricing_settings", () =>
+      setDefault(profile),
+    );
     expect(error?.message).toBe("invalid_tax_profile");
     expect((await held).failed).toBe("");
   });
@@ -275,15 +293,17 @@ describe("races: whichever locks the profile first goes first", () => {
   it("making it the default first, then the archive: refused", async () => {
     const profile = await addProfile();
     const marker = `hold-default-${tag}-${++counter}`;
+    const gate = await closedGate();
     const held = heldAs(
       "manager",
       `select platform.save_pricing_settings('${shop.id}', ${json({ default_tax_profile_id: profile })})`,
       marker,
+      gate,
     );
     await holding(marker);
-    const started = Date.now();
-    const { error } = await archive(profile);
-    expect(Date.now() - started).toBeGreaterThan(700);
+    const { error } = await waitsForGate(gate, "save_tax_profile", () =>
+      archive(profile),
+    );
     expect(error?.message).toBe("tax_profile_is_default");
     expect((await held).failed).toBe("");
     await setDefault(null).throwOnError();
@@ -292,73 +312,85 @@ describe("races: whichever locks the profile first goes first", () => {
 });
 
 describe("lock order: the product, the price list, the tax profile, the pricing row", () => {
-  it("a product save waiting on the profile holds the product and the list, and no pricing row", async () => {
-    const profile = await addProfile();
-    const product = await addProduct();
-    const { data: list, error: listError } = await db("owner").rpc(
-      "save_price_template",
-      {
-        p_tenant_id: shop.id,
-        p_template: {
-          name: `Order ${tag} ${++counter}`,
-          kind: "amounts",
-          days: Array.from({ length: 30 }, (_, i) => ({
-            day: i + 1,
-            value: 30_000 + 1_000 * i,
-            source: "manual",
-          })),
-        } as never,
-      },
-    );
-    if (listError) throw listError;
-    const marker = `hold-profile-${tag}-${++counter}`;
-    const holder = sqlBackground(`
+  it(
+    "a product save waiting on the profile holds the product and the list, and no pricing row",
+    async () => {
+      const profile = await addProfile();
+      const product = await addProduct();
+      const { data: list, error: listError } = await db("owner").rpc(
+        "save_price_template",
+        {
+          p_tenant_id: shop.id,
+          p_template: {
+            name: `Order ${tag} ${++counter}`,
+            kind: "amounts",
+            days: Array.from({ length: 30 }, (_, i) => ({
+              day: i + 1,
+              value: 30_000 + 1_000 * i,
+              source: "manual",
+            })),
+          } as never,
+        },
+      );
+      if (listError) throw listError;
+      const marker = `hold-profile-${tag}-${++counter}`;
+      const gate = await closedGate();
+      const holder = sqlBackground(`
       begin;
       select 1 from platform.tax_profiles where id = '${profile}' for update;
-      select pg_sleep(5) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
-    await holding(marker);
-    const saving = db("manager")
-      .rpc("save_product_pricing", {
-        p_product_id: product,
-        p_settings: {
-          pricing_method: "tiered",
-          price_template_id: list,
-          tax_profile_id: profile,
-        } as never,
-      })
-      // A query builder sends nothing until it is awaited: start it now.
-      .then((result) => result);
-    // The holder keeps the profile for 5 s; the save reaches it well inside.
-    await waitingOnLock("save_product_pricing");
-    const locks = (relation: string) =>
-      sql(`
+      await holding(marker);
+      const saving = db("manager")
+        .rpc("save_product_pricing", {
+          p_product_id: product,
+          p_settings: {
+            pricing_method: "tiered",
+            price_template_id: list,
+            tax_profile_id: profile,
+          } as never,
+        })
+        // A query builder sends nothing until it is awaited: start it now.
+        .then((result) => result);
+      // The holder keeps the profile until its gate is opened, below.
+      await seenWaitingForLock("save_product_pricing");
+      const locks = async (relation: string) =>
+        (
+          await watch(`
         select count(*) from pg_locks l
         join pg_stat_activity a on a.pid = l.pid
         where l.relation = '${relation}'::regclass
           and l.granted
           and a.wait_event_type = 'Lock'
-          and a.query not like '%pg_sleep%'
+          and a.query not like '%${GATE_WAIT}%'
           and a.pid <> pg_backend_pid();
-      `).out;
-    // The waiting save already holds the product's row and the list's row
-    // (their tables carry its row-share lock), and nothing on pricing rows.
-    expect(Number(locks("platform.products"))).toBeGreaterThan(0);
-    expect(Number(locks("platform.price_templates"))).toBeGreaterThan(0);
-    expect(locks("platform.product_pricing")).toBe("0");
-    const { error } = await saving;
-    expect(error).toBeNull();
-    expect((await holder).failed).toBe("");
-  }, 30_000);
+      `)
+        ).out;
+      // The waiting save already holds the product's row and the list's row
+      // (their tables carry its row-share lock), and nothing on pricing rows.
+      expect(Number(await locks("platform.products"))).toBeGreaterThan(0);
+      expect(Number(await locks("platform.price_templates"))).toBeGreaterThan(
+        0,
+      );
+      expect(await locks("platform.product_pricing")).toBe("0");
+      await gate.open();
+      const { error } = await saving;
+      expect(error).toBeNull();
+      expect((await holder).failed).toBe("");
+    },
+    GATE_TEST_TIMEOUT,
+  );
 
   it("the archive locks no settings row and no pricing row", async () => {
     const profile = await addProfile();
     const marker = `hold-archive-locks-${tag}-${++counter}`;
+    const gate = await closedGate();
     const held = heldAs(
       "owner",
       `select platform.save_tax_profile('${shop.id}', ${json({ id: profile, archived: true })})`,
       marker,
+      gate,
     );
     await holding(marker);
     const { out } = sql(`
@@ -371,6 +403,7 @@ describe("lock order: the product, the price list, the tax profile, the pricing 
         and a.query like '%${marker}%';
     `);
     expect(out).toBe("0");
+    await gate.open();
     expect((await held).failed).toBe("");
   });
 });

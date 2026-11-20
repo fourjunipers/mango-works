@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { RenewalKind } from "./fleet";
+import { typedWhole, wholeNumber, type RenewalKind } from "./fleet";
+import { parseWholeInRange } from "./number-input";
 import type { CalendarDate } from "./shop-time";
 
 /**
@@ -106,11 +107,11 @@ export const reminderSettingsSchema = z.object({
       .split(/[\s,;]+/)
       .map((part) => part.trim())
       .filter(Boolean);
-    const days = parts.map(Number);
-    if (
-      parts.some((part) => !/^\d{1,3}$/.test(part)) ||
-      days.some((d) => d < 1 || d > 365)
-    ) {
+    // Each number in the list is read by the platform's one number rule
+    // (lib/number-input.ts). A comma here is between two numbers, never
+    // inside one: no number of days reaches a thousand.
+    const days = parts.map((part) => parseWholeInRange(part, 1, 365));
+    if (!days.every((d): d is number => typeof d === "number")) {
       ctx.addIssue({ code: "custom", message: "invalidReminderDays" });
       return z.NEVER;
     }
@@ -123,12 +124,7 @@ export const reminderSettingsSchema = z.object({
   }),
   /** Day of the month for the digest, 1 to 28; blank = off. */
   renewal_digest_day: z.preprocess(
-    (v) => (v === undefined || v === "" ? null : v),
-    z.coerce
-      .number("invalidDigestDay")
-      .int("invalidDigestDay")
-      .min(1, "invalidDigestDay")
-      .max(28, "invalidDigestDay")
-      .nullable(),
+    (value) => typedWhole(value) ?? null,
+    wholeNumber(1, 28, "invalidDigestDay").nullable(),
   ),
 });
