@@ -3,7 +3,7 @@ title: Update a vehicle's odometer
 summary: Type in the current odometer reading of a vehicle, in km or miles.
 keywords: [odometer, mileage, km, kilometres, miles, reading, meter, เลขไมล์, ระยะทาง, กิโลเมตร, อัปเดตเลขไมล์]
 screens: [/[tenant]/fleet/units/[id], /[tenant]/maintenance]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Update a vehicle's odometer
@@ -22,7 +22,7 @@ The reading is in the shop's distance unit (km or miles, set in **Shop settings*
 
 ## Common problems
 
-- **"Enter a distance, such as 12345."** Type a plain number with no units or spaces.
+- **"Enter a distance, such as 12345."** Type a plain number with no units or spaces. Use a dot for decimals (12345.5, one decimal place at most); a comma is accepted only between thousands, so 12,345 is fine and 12,5 is refused. For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).
 - **"No vehicle matches “{query}”."** On Maintenance, check the plate or frame number. Use **Scan QR** if the sticker is on the vehicle.
 - **"That code isn't one of your vehicle stickers. Keep the camera on a sticker."** The scanner read another QR code. Point it at the vehicle's own sticker.
 - **"The camera is blocked for this site. Allow it in the browser's site settings, then try again."** Allow camera access for the platform in your browser.

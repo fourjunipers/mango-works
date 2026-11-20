@@ -1,3 +1,4 @@
+import { parseWholeInRange } from "./number-input";
 import { isTryAgain } from "./try-again";
 
 /**
@@ -61,13 +62,14 @@ export type ExtrasLineError = {
 };
 
 const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-const WHOLE = /^\d{1,4}$/;
 
-/** A box as a whole number, or null when it is empty. NaN when it is not one. */
+/**
+ * A box as a whole number, or null when it is empty. NaN when it is not one
+ * by the platform's one number rule (lib/number-input.ts).
+ */
 function whole(text: string): number | null {
-  const trimmed = text.trim();
-  if (trimmed === "") return null;
-  return WHOLE.test(trimmed) ? Number(trimmed) : Number.NaN;
+  const typed = parseWholeInRange(text, 0, 9999);
+  return typed === "invalid" ? Number.NaN : typed;
 }
 
 /** The errors of each line, in the order they are shown. */

@@ -133,24 +133,34 @@ export function FormSkeleton({ fields = 5 }: { fields?: number }) {
   );
 }
 
-/** Steps of New order. */
-export function StepsSkeleton() {
+/** The Price check: its search, then a row per product. */
+export function PriceCheckSkeleton() {
   return (
     <Loading>
       <HeaderBones />
-      <div className="space-y-3">
-        {Array.from({ length: 5 }, (_, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-4 rounded-lg border bg-card p-4"
-          >
-            <Bone className="size-9 shrink-0 rounded-full" />
-            <div className="flex-1 space-y-2">
-              <Bone className="h-4 w-1/3" />
-              <Bone className="h-3 w-2/3" />
-            </div>
+      <div className="max-w-3xl space-y-6">
+        <div className="space-y-4 rounded-lg border bg-card p-4 sm:p-5">
+          <div className="grid gap-4 sm:grid-cols-3">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="space-y-2">
+                <Bone className="h-4 w-20" />
+                <Bone className="h-11 w-full" />
+              </div>
+            ))}
           </div>
-        ))}
+          <Bone className="h-11 w-full sm:w-2/3" />
+        </div>
+        <div className="divide-y rounded-lg border bg-card">
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="flex items-center justify-between gap-4 p-3">
+              <div className="flex-1 space-y-2">
+                <Bone className="h-4 w-1/3" />
+                <Bone className="h-3 w-1/4" />
+              </div>
+              <Bone className="h-11 w-20" />
+            </div>
+          ))}
+        </div>
       </div>
     </Loading>
   );

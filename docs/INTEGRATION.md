@@ -25,7 +25,7 @@ This document lists every adapter function, what it needs from Mango Works, and 
 | Bookings (orders), status changes, double-booking protection | Mango Works | Orders from here have `channel = "marketplace"` |
 | Payments to shops (the rest of the rental, deposits) | Mango Works | Under each shop's own settings |
 | Customer accounts and login (LINE, Google, email) | Marketplace | Customer details are sent with each booking |
-| Booking fee: 10% of the rental after promotions, min ฿50 | Marketplace | While payment is fee-only, charged to the marketplace's own Stripe account; shops' Connect accounts (in Mango Works) are only needed for full online payment later |
+| Booking fee: 10% of everything booked through the marketplace (rental after promotions and coupons, paid extras, delivery; never the deposit), for the whole booked length; the base is what the renter sees (with VAT when the shop's prices include it, before VAT when the shop adds it on top); minimum per currency (฿50 for THB), never more than its base; nearest whole unit, half up; fixed at booking; charges created after booking are outside it (decided 19 Nov 2026, docs/phase-3-plan.md §7.3) | Marketplace | While payment is fee-only, charged to the marketplace's own Stripe account; shops' Connect accounts (in Mango Works) are only needed for full online payment later |
 | Ranking: boost levels, weights, the score | Marketplace | Shop signals come from Mango Works (§3.10) |
 | Stations (BTS/MRT/ARL/SRT Red) | Marketplace | Admin-editable, from OpenStreetMap |
 | Referral program, SEO pages, analytics | Marketplace | |
@@ -124,7 +124,7 @@ Needs: `listingId, photoUrls[], deposit, dayPrices[30] (totals for 1…30 days),
 `{ freeUnits, mode, walkinMaxDays }` by §4.3–4.5. Used at checkout to re-check just before booking.
 
 ### 3.9 `getQuote(listingId, start, end): Quote | null`
-`{ days, total, discount, rentalAfterPromotion, perDay }`: `days` by §4.1, `total` by §4.2, `discount` from the shop's promotions (0 until promotions exist), `rentalAfterPromotion = total − discount`, which the marketplace fee is 10% of. Booking phases add extras totals (paid at the shop). `null` if the listing can't be priced.
+`{ days, total, discount, rentalAfterPromotion, perDay }`: `days` by §4.1, `total` by §4.2, `discount` from the shop's promotions (0 until promotions exist), `rentalAfterPromotion = total − discount`. The marketplace fee is 10% of that plus the paid extras and delivery booked with it (§1). Booking phases add extras totals (paid at the shop). `null` if the listing can't be priced.
 
 ### 3.10 `getShopSignals(shopIds): ShopSignals[]`
 What the marketplace ranks shops by. One entry per shop:
@@ -151,13 +151,13 @@ Input (`NewBooking`):
 | `extraIds[]` | Extras the customer ticked (paid at the shop) |
 | `customer {name, email, phone, nationality, lineId}` | Mango Works keeps a customer record per shop |
 | `customerAccountId` | The marketplace account, for "My bookings" |
-| `payment` | Today `{ kind: "fee_only", fee, currency }`: the customer pays only the marketplace fee online (10% of the rental after promotions, min ฿50), charged 3 days before pickup (at booking if pickup is within 3 days) to the **marketplace's own Stripe account**; the rest is paid to the shop under its own settings. Later possibly `{ kind: "full", amount, fee, currency }`: full online payment to the shop's Stripe Connect account (kept in Mango Works) with the fee as the application fee |
+| `payment` | Today `{ kind: "fee_only", currency }`: the customer pays only the marketplace fee online (10% of the rental after promotions plus paid extras and delivery, never the deposit; min ฿50 for THB, never more than the base). **The fee is not passed in:** `createBooking` returns the fee base it used (rental after discounts, extras, delivery, and whether VAT is inside it), and the marketplace works the fee out from that and stores both. The fee is charged 3 days before pickup (at booking if pickup is within 3 days) to the **marketplace's own Stripe account**; the rest is paid to the shop under its own settings. Later possibly `{ kind: "full", amount, fee, currency }`: full online payment to the shop's Stripe Connect account (kept in Mango Works) with the fee as the application fee |
 | `referralCode` | For the marketplace referral program; Mango Works only stores it |
 | `channel` | Always `"marketplace"` |
 
 Mango Works must **recheck price and availability** and refuse with a reason if the booking no longer fits: `unavailable`, `price_changed` (with the new quote), `outside_hours`, `too_short`, `too_soon`. It must prevent double bookings (today: a database transaction that locks the listing before checking).
 
-Output (`Booking`): `{ id, code (6 characters, no 0/O/1/I), status, listingId, shopId, start, end, kind, rentalTotal, fee, dueAtShop, requestExpiresAt, paymentDueAt }`.
+Output (`Booking`): `{ id, code (6 characters, no 0/O/1/I), status, listingId, shopId, start, end, kind, rentalTotal, feeBase {amount, currency, vatIncluded}, requestExpiresAt, paymentDueAt }`. The marketplace works out `fee` and `dueAtShop` from `feeBase` and keeps them in its own fee record.
 
 ### 3.13 `getBooking(id): Booking | null` (booking phases)
 The booking as above, current status. The marketplace also needs, in the booking phases:

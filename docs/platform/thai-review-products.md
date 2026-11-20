@@ -1179,3 +1179,127 @@ New Thai lines on the branch `platform/phase-2-stage-9-coupon-screens`: Settings
 | `FormErrors.couponInvalidPercent` | Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma. | กรอกเปอร์เซ็นต์ เช่น 10 หรือ 12.5 ใช้จุดสำหรับทศนิยม ไม่ใช่จุลภาค |
 | `FormErrors.couponAmountTooLong` | That amount is too long: 18 digits at most. | จำนวนเงินยาวเกินไป: ไม่เกิน 18 หลัก |
 | `Settings.coupons.amountHelp` | Off the coupon’s lines together, never more than they come to. Never off a deposit. Use a dot for decimals. | หักจากรายการของคูปองรวมกัน ไม่เกินยอดของรายการเหล่านั้น และไม่หักจากเงินมัดจำ ใช้จุดสำหรับทศนิยม |
+
+## Phase 2, stage 10: review follow-ups (18 Nov 2026)
+
+Four lines changed; none is new. Two keys are gone.
+
+**One number rule on every screen.** The coupon form's wording for a mistyped amount or percentage (reviewed under "After the review of PR 50", above) is now the wording of the shared keys, because every screen reads numbers the same way: a dot for decimals, a comma only between thousands. The Thai text is the coupon form's, unchanged; only the keys it sits under are new. It now shows on seasons, price lists, Settings › Pricing and tax (deposit, rounding step, the returning-customer percentage), fleet costs and prices, and coupons.
+
+**Full-width letters and numbers in a coupon code** (Ａ, ０) are now read as the plain ones, so the two code messages no longer say they can't be used.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `FormErrors.invalidMoney` | Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has. | กรอกจำนวนเงิน เช่น 200 หรือ 1,234.50 ใช้จุดสำหรับทศนิยม ใช้จุลภาคเฉพาะคั่นหลักพัน (1,000) ห้ามเว้นวรรค และทศนิยมต้องไม่เกินที่สกุลเงินนี้มี |
+| `FormErrors.invalidPercent` | Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma. | กรอกเปอร์เซ็นต์ เช่น 10 หรือ 12.5 ใช้จุดสำหรับทศนิยม ไม่ใช่จุลภาค |
+| `FormErrors.couponInvalidCode` | Use only the letters A to Z and the numbers 0 to 9, up to 40 of them. Spaces are taken out, and full-width letters and numbers (such as Ａ or ０) are read as A or 0. Thai letters can’t be used in a code. | ใช้ได้เฉพาะตัวอักษร A ถึง Z และตัวเลข 0 ถึง 9 ไม่เกิน 40 ตัว ระบบตัดช่องว่างออก และอ่านตัวอักษรและตัวเลขแบบเต็มความกว้าง (เช่น Ａ หรือ ０) เป็น A หรือ 0 ใช้อักษรไทยในรหัสไม่ได้ |
+| `Settings.coupons.codeCantSave` | This code can’t be saved: use only the letters A to Z and the numbers 0 to 9. Thai letters can’t be used. | บันทึกรหัสนี้ไม่ได้: ใช้ได้เฉพาะตัวอักษร A ถึง Z และตัวเลข 0 ถึง 9 ใช้อักษรไทยไม่ได้ |
+
+**Removed:** `FormErrors.couponInvalidAmount` and `FormErrors.couponInvalidPercent` (their text moved to the two shared keys above), and `Settings.coupons.usesUnknown` ("Uses: not shown (its code is used by a newer coupon)": an archived coupon now always shows its own uses).
+
+**Before stage 10 the two shared keys read:** `FormErrors.invalidMoney` "Enter an amount, such as 45000 or 45000.50." / "กรอกจำนวนเงิน เช่น 45000 หรือ 45000.50", and `FormErrors.invalidPercent` "Enter a percentage such as 20 or 12.5." / "กรอกเปอร์เซ็นต์ เช่น 20 หรือ 12.5".
+
+### After the review of PR 51 (19 Nov 2026)
+
+Four lines reworded and three new. The four are the refusals on the screens where a comma or a space stopped being accepted in this stage (price lists, multipliers, buffer hours): each now says the rule, as `FormErrors.invalidMoney` already did. The three new lines are for refusals that showed the general "Couldn't save. Please try again." before: a renewal record or a week of opening hours the database refuses, and a location that has been removed since the page was loaded.
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `FormErrors.invalidHours` | Enter the hours as a number, like 2 or 0.5 (168 at most). Use a dot for decimals; a comma only separates thousands, so 0,5 is not read as a half. | กรอกจำนวนชั่วโมงเป็นตัวเลข เช่น 2 หรือ 0.5 (ไม่เกิน 168) ใช้จุดสำหรับทศนิยม จุลภาคใช้คั่นหลักพันเท่านั้น จึงไม่อ่าน 0,5 เป็นครึ่งชั่วโมง |
+| `Pricing.quick.invalid` | Enter an amount above 0, such as 300 or 1,300.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces. | กรอกราคาที่มากกว่า 0 เช่น 300 หรือ 1,300.50 ใช้จุดสำหรับทศนิยม ใช้จุลภาคเฉพาะคั่นหลักพัน (1,000) ห้ามเว้นวรรค |
+| `Pricing.quick.invalidMultiplier` | Enter a multiplier above 0, such as 3 or 1.1666. Use a dot for decimals; a comma only between thousands (1,000). | กรอกตัวคูณที่มากกว่า 0 เช่น 3 หรือ 1.1666 ใช้จุดสำหรับทศนิยม ใช้จุลภาคเฉพาะคั่นหลักพัน (1,000) |
+| `Pricing.grid.invalidDays` | A day typed by hand isn't a valid price. Use a dot for decimals; a comma only between thousands (1,000). No spaces. | มีวันที่แก้เองซึ่งไม่ใช่ราคาที่ถูกต้อง ใช้จุดสำหรับทศนิยม ใช้จุลภาคเฉพาะคั่นหลักพัน (1,000) ห้ามเว้นวรรค |
+| `FormErrors.invalid_renewal` | This record couldn’t be saved. Check its type, its dates and its cost. | บันทึกรายการนี้ไม่ได้ กรุณาตรวจประเภท วันที่ และค่าใช้จ่าย |
+| `FormErrors.invalid_hours` | These opening hours couldn’t be saved. Check each day’s times: a day closes after it opens. | บันทึกเวลาเปิดทำการไม่ได้ กรุณาตรวจเวลาของแต่ละวัน เวลาปิดต้องหลังเวลาเปิด |
+| `FormErrors.location_not_found` | This location is no longer here. Reload the page. | ไม่พบสาขานี้แล้ว กรุณาโหลดหน้าใหม่ |
+
+**Before this change the four read:** "Enter the hours as a number, like 2 or 0.5 (168 at most)." / "กรอกจำนวนชั่วโมงเป็นตัวเลข เช่น 2 หรือ 0.5 (ไม่เกิน 168)"; "Enter an amount above 0, such as 300 or 300.50." / "กรอกราคาที่มากกว่า 0 เช่น 300 หรือ 300.50"; "Enter a multiplier above 0, such as 3 or 1.1666." / "กรอกตัวคูณที่มากกว่า 0 เช่น 3 หรือ 1.1666"; "A day typed by hand isn't a valid price." / "มีวันที่แก้เองซึ่งไม่ใช่ราคาที่ถูกต้อง".
+
+## Phase 2, stage 11: wrap-up (20 Nov 2026)
+
+New and changed Thai lines on the branch `platform/phase-2-stage-11-wrap-up`: the Price check tab (เช็กราคา; it replaces the New order tab until Phase 3), Settings › Booking rules (กฎการจอง), the Bookings section on a vehicle's page, the Moto Mangos tab's notice line, the coupon refusals for the booking page and Moto Mangos, and the gear form's line about prices. Claude's translations; please check. Words chosen: เช็กราคา (price check), กฎการจอง (booking rules), แจ้งล่วงหน้า (notice), จองเกิน (overbooking), การจองที่ขาดรถ (a shortage), กันไว้ (held), หน้าจองของร้าน (your booking page), walk-in kept in English as staff say it. Gone: `NewOrder.dates`, `NewOrder.bike`, `NewOrder.customer`, `NewOrder.extras`, `NewOrder.price`, `NewOrder.sign`, `NewOrder.pay` (the placeholder steps), `Products.general.pricesLater` (now `pricesAfterSave`).
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `NewOrder.title` | Price check | เช็กราคา |
+| `NewOrder.intro` | See what is free and what it costs for any dates, as a booking from the counter, your booking page or Moto Mangos would. | ดูว่ามีรถว่างอะไรบ้างและราคาเท่าไรในวันที่ต้องการ แบบเดียวกับการจองจากหน้าร้าน หน้าจองของร้าน หรือ Moto Mangos |
+| `NewOrder.nothingBooked` | This only checks. Nothing is booked or held, and no coupon use is counted. Making orders comes in Phase 3. | หน้านี้ใช้เช็กเท่านั้น ไม่มีการจองหรือกันรถไว้ และไม่นับการใช้คูปอง การสร้างออเดอร์จะมาในเฟส 3 |
+| `NewOrder.noLocation` | Add a location first. | เพิ่มสาขาก่อน |
+| `NewOrder.location` | Location | สาขา |
+| `NewOrder.pickup` | Pickup | รับรถ |
+| `NewOrder.return` | Return | คืนรถ |
+| `NewOrder.channel` | Booked from | จองจาก |
+| `NewOrder.channelHelp` | Each way of booking has its own rules: your minimum notice applies online only, and a coupon can be for some of them. | แต่ละช่องทางมีกฎของตัวเอง: การแจ้งล่วงหน้าขั้นต่ำใช้กับการจองออนไลน์เท่านั้น และคูปองอาจใช้ได้เฉพาะบางช่องทาง |
+| `NewOrder.channels.walk_in` | The counter | หน้าร้าน |
+| `NewOrder.channels.booking_page` | Your booking page | หน้าจองของร้าน |
+| `NewOrder.channels.marketplace` | Moto Mangos | Moto Mangos |
+| `NewOrder.check` | Check | เช็ก |
+| `NewOrder.badDates` | The return must be after the pickup. | เวลาคืนรถต้องอยู่หลังเวลารับรถ |
+| `NewOrder.noProducts` | Nothing to rent at this location yet. | สาขานี้ยังไม่มีอะไรให้เช่า |
+| `NewOrder.results` | Free for these dates: {channel} | ว่างในวันที่เลือก: {channel} |
+| `NewOrder.seePrice` | Price | ราคา |
+| `NewOrder.priceFor` | {name}: price from {channel} | {name}: ราคาเมื่อจองจาก{channel} |
+| `NewOrder.count.free` | {free} of {stock} free | ว่าง {free} จาก {stock} |
+| `NewOrder.count.service` | A service: nothing to count | บริการ: ไม่ต้องนับจำนวน |
+| `NewOrder.refused.tooShort` | Too short: at least {min, plural, one {# day} other {# days}} on this channel. | สั้นเกินไป: ช่องทางนี้ต้องเช่าอย่างน้อย {min, plural, other {# วัน}} |
+| `NewOrder.refused.tooSoon` | Too soon: the earliest pickup on this channel is {when}. | เร็วเกินไป: ช่องทางนี้รับรถได้เร็วที่สุด {when} |
+| `NewOrder.refused.closedPickup` | Closed at the pickup time. | ร้านปิดในเวลารับรถ |
+| `NewOrder.refused.closedReturn` | Closed at the return time. | ร้านปิดในเวลาคืนรถ |
+| `NewOrder.refused.noHours` | This location has no opening hours, so it takes no online bookings. | สาขานี้ยังไม่ได้ตั้งเวลาเปิดปิด จึงไม่รับการจองออนไลน์ |
+| `NewOrder.refused.notListed` | Not listed on Moto Mangos. | ไม่ได้ลงขายบน Moto Mangos |
+| `NewOrder.refused.noneFree` | None free for these dates. | ไม่มีว่างในวันที่เลือก |
+| `NewOrder.refused.noneFreeShortage` | None free. Overbooking is on, so staff could still save it as a shortage. | ไม่มีว่าง แต่เปิดการจองเกินไว้ พนักงานจึงยังบันทึกเป็นการจองที่ขาดรถได้ |
+| `Settings.nav.bookingRules` | Booking rules | กฎการจอง |
+| `Settings.bookingRules.title` | Booking rules | กฎการจอง |
+| `Settings.bookingRules.intro` | How far ahead bookings must be made, how short a rental can be, the time kept free around a rental, and how long a booking is held while someone pays. | ต้องจองล่วงหน้านานเท่าไร เช่าสั้นที่สุดได้กี่วัน เวลาที่เว้นว่างไว้ก่อนและหลังการเช่า และจะกันการจองไว้นานเท่าไรระหว่างที่ลูกค้าชำระเงิน |
+| `Settings.bookingRules.shop.title` | The whole shop | ทั้งร้าน |
+| `Settings.bookingRules.shop.intro` | These apply at every location. | ใช้กับทุกสาขา |
+| `Settings.bookingRules.shop.overbooking` | Allow overbooking | อนุญาตให้จองเกิน |
+| `Settings.bookingRules.shop.overbookingHelp` | On: when every vehicle is taken, staff can still save a booking. It is saved as a shortage, waiting for a vehicle to be assigned, and you must find one before pickup. Bookings made online are never overbooked. | เปิด: เมื่อรถถูกจองหมดแล้ว พนักงานยังบันทึกการจองได้ โดยบันทึกเป็นการจองที่ขาดรถ รอให้จัดรถให้ และคุณต้องหารถให้ได้ก่อนวันรับรถ การจองออนไลน์จะไม่มีวันจองเกิน |
+| `Settings.bookingRules.shop.hold` | Hold length (minutes) | ระยะเวลากันการจอง (นาที) |
+| `Settings.bookingRules.shop.holdHelp` | How long a booking keeps its vehicle while the customer pays: 5 to 60 minutes. | การจองจะกันรถไว้นานเท่าไรระหว่างที่ลูกค้าชำระเงิน: 5 ถึง 60 นาที |
+| `Settings.bookingRules.shop.bufferBefore` | Time free before (hours) | เวลาว่างก่อนเช่า (ชั่วโมง) |
+| `Settings.bookingRules.shop.bufferAfter` | Time free after (hours) | เวลาว่างหลังเช่า (ชั่วโมง) |
+| `Settings.bookingRules.shop.bufferHelp` | For vehicles that have no time of their own. Blank is none; up to 168 hours. | ใช้กับรถที่ไม่ได้ตั้งเวลาของตัวเองไว้ เว้นว่างคือไม่มี สูงสุด 168 ชั่วโมง |
+| `Settings.bookingRules.location.title` | Your location | สาขาของคุณ |
+| `Settings.bookingRules.location.titleNamed` | Location: {name} | สาขา: {name} |
+| `Settings.bookingRules.location.intro` | Blank is no rule. Bookings staff make in the app need no notice. | เว้นว่างคือไม่มีกฎ การจองที่พนักงานทำในแอปไม่ต้องแจ้งล่วงหน้า |
+| `Settings.bookingRules.location.notice` | Minimum notice (hours) | แจ้งล่วงหน้าอย่างน้อย (ชั่วโมง) |
+| `Settings.bookingRules.location.noticeHelp` | How long before pickup an online booking must be made: 0 to 720 hours. | การจองออนไลน์ต้องทำก่อนเวลารับรถนานเท่าไร: 0 ถึง 720 ชั่วโมง |
+| `Settings.bookingRules.location.cutoff` | Cut-off before closing (minutes) | ปิดรับก่อนร้านปิด (นาที) |
+| `Settings.bookingRules.location.cutoffHelp` | For “Ride today” on Moto Mangos: no new same-day booking this long before you close. 0 to 1,440 minutes. | สำหรับ “ขี่วันนี้” บน Moto Mangos: ไม่รับการจองวันเดียวกันใหม่ในช่วงเวลานี้ก่อนร้านปิด 0 ถึง 1,440 นาที |
+| `Settings.bookingRules.location.minDaysAdvance` | Minimum days, booked ahead | จำนวนวันขั้นต่ำ จองล่วงหน้า |
+| `Settings.bookingRules.location.minDaysAdvanceHelp` | The shortest rental for a booking made before the day: 1 to 365 days. | การเช่าสั้นที่สุดสำหรับการจองล่วงหน้า: 1 ถึง 365 วัน |
+| `Settings.bookingRules.location.minDaysWalkin` | Minimum days, walk-in | จำนวนวันขั้นต่ำ ลูกค้า walk-in |
+| `Settings.bookingRules.location.minDaysWalkinHelp` | The shortest rental for a customer at the counter, or “Ride today”: 1 to 365 days. | การเช่าสั้นที่สุดสำหรับลูกค้าที่หน้าร้าน หรือ “ขี่วันนี้”: 1 ถึง 365 วัน |
+| `Settings.bookingRules.vehicles.title` | Vehicles | รถ |
+| `Settings.bookingRules.vehicles.intro` | A vehicle's own minimum days, in place of its location's. Blank uses the location's rule. | จำนวนวันขั้นต่ำของรถแต่ละรุ่น ใช้แทนของสาขา เว้นว่างคือใช้กฎของสาขา |
+| `Settings.bookingRules.vehicles.none` | No vehicle products yet. | ยังไม่มีสินค้าประเภทรถ |
+| `Settings.bookingRules.vehicles.advance` | Booked ahead (days) | จองล่วงหน้า (วัน) |
+| `Settings.bookingRules.vehicles.walkin` | Walk-in (days) | walk-in (วัน) |
+| `FormErrors.bookingRulesHold` | Enter a hold length from 5 to 60 minutes. | ใส่ระยะเวลากันการจอง 5 ถึง 60 นาที |
+| `FormErrors.bookingRulesNotice` | Enter whole hours from 0 to 720, or leave it blank. | ใส่จำนวนชั่วโมงเต็ม 0 ถึง 720 หรือเว้นว่าง |
+| `FormErrors.bookingRulesCutoff` | Enter whole minutes from 0 to 1,440, or leave it blank. | ใส่จำนวนนาทีเต็ม 0 ถึง 1,440 หรือเว้นว่าง |
+| `FormErrors.bookingRulesMinDays` | Enter whole days from 1 to 365, or leave it blank. | ใส่จำนวนวันเต็ม 1 ถึง 365 หรือเว้นว่าง |
+| `FormErrors.bookingRulesOwnerOrManager` | Only an owner or a manager can change the booking rules. | เฉพาะเจ้าของหรือผู้จัดการเท่านั้นที่เปลี่ยนกฎการจองได้ |
+| `FormErrors.bookingRulesInvalid` | These rules couldn't be saved as they were sent. Reload the page and try again. | บันทึกกฎเหล่านี้ไม่ได้ตามที่ส่งมา โหลดหน้าใหม่แล้วลองอีกครั้ง |
+| `FormErrors.bookingRulesVehicleGone` | One of these vehicles no longer exists. Reload the page. | รถคันหนึ่งในรายการนี้ไม่มีอยู่แล้ว โหลดหน้าใหม่ |
+| `FormErrors.bookingRulesTryAgain` | Someone is saving a booking right now, so nothing was saved. Please save again. | มีคนกำลังบันทึกการจองอยู่ จึงยังไม่ได้บันทึกอะไร กรุณาบันทึกอีกครั้ง |
+| `Fleet.motoMangos.shopNotice` | Bookings need {hours, plural, one {# hour} other {# hours}}: your shop's minimum notice. | การจองต้องแจ้งล่วงหน้า {hours, plural, other {# ชั่วโมง}}: ตามการแจ้งล่วงหน้าขั้นต่ำของร้าน |
+| `Fleet.bookings.title` | Bookings | การจอง |
+| `Fleet.bookings.intro` | The bookings this vehicle is set aside for. Times are {zone} time. Bookings are made and changed from orders, which come in Phase 3. | การจองที่กันรถคันนี้ไว้ เวลาเป็นเวลา {zone} การสร้างและแก้ไขการจองทำจากออเดอร์ ซึ่งจะมาในเฟส 3 |
+| `Fleet.bookings.none` | No bookings now or coming up. | ไม่มีการจองตอนนี้หรือที่จะมาถึง |
+| `Fleet.bookings.range` | {from} to {to} | {from} ถึง {to} |
+| `Fleet.bookings.held` | Held until {until}, while the customer pays | กันไว้ถึง {until} ระหว่างที่ลูกค้าชำระเงิน |
+| `Fleet.bookings.heldNoEnd` | Held while the customer pays | กันไว้ระหว่างที่ลูกค้าชำระเงิน |
+| `Fleet.bookings.booked` | Booked | จองแล้ว |
+| `Fleet.bookings.out` | Out with the customer | อยู่กับลูกค้า |
+| `Fleet.bookings.overdue` | Out and overdue: still blocked until it comes back | ยังไม่คืนและเลยกำหนด: ยังกันไว้จนกว่าจะคืน |
+| `Fleet.bookings.returned` | Returned | คืนแล้ว |
+| `Fleet.bookings.past` | Earlier bookings | การจองก่อนหน้า |
+| `Products.general.pricesAfterSave` | Once it is saved, set its price on its Pricing tab. Selling items comes with orders. | เมื่อบันทึกแล้ว ตั้งราคาได้ที่แท็บราคาของสินค้านี้ ส่วนการขายสินค้าจะมาพร้อมระบบออเดอร์ |
+| `Pricing.coupon.refused.wrongChannelBookingPage` | Not applied: this coupon can’t be used on your booking page. | ไม่ได้ใช้: ใช้คูปองนี้ในหน้าจองของร้านไม่ได้ |
+| `Pricing.coupon.refused.wrongChannelMarketplace` | Not applied: this coupon can’t be used on Moto Mangos. | ไม่ได้ใช้: ใช้คูปองนี้บน Moto Mangos ไม่ได้ |
+| `NewOrder.refused.capReached` | Moto Mangos has used all the units you list there for these dates. | Moto Mangos ใช้จำนวนรถที่คุณลงขายไว้ครบแล้วในวันที่เลือก |
+| `Fleet.bookings.ranOut` | Hold ran out | การกันรถหมดเวลาแล้ว |
+| `Nav.new-order` | Price check | เช็กราคา |

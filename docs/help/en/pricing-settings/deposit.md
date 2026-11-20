@@ -3,7 +3,7 @@ title: Choose how the shop takes deposits
 summary: Pick no deposit, a percentage of the order, a fixed amount per order, or a deposit per vehicle.
 keywords: [deposit, security deposit, bond, deposit percentage, fixed deposit, per vehicle deposit, no deposit, เงินมัดจำ, มัดจำ, ค่ามัดจำ, ไม่เก็บมัดจำ]
 screens: [/[tenant]/settings/pricing, /[tenant]/products/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Choose how the shop takes deposits
@@ -29,9 +29,11 @@ With **Per vehicle**, set each vehicle's deposit: [Set a deposit on a vehicle](.
 ## Common problems
 
 - **"Required."** Type the percentage or amount for the option you chose.
-- **"Enter a percentage such as 20 or 12.5."**
+- **"Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma."**
 - **"Enter a percentage above 0."**
 - **"At most 1,000%."**
-- **"Enter an amount, such as 45000 or 45000.50."**
+- **"Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has."**
 - **"A price can't be 0. To charge nothing, choose Free."** A fixed deposit per order can't be 0: choose **No deposit** instead.
 - **"Enter the deposit's percentage or amount."**
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).

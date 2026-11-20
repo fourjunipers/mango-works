@@ -243,7 +243,9 @@ describe("the General form", () => {
     expect(parseQuantity("", 1000)).toBe(0);
     expect(parseQuantity(" 20 ", 1000)).toBe(20);
     expect(parseQuantity("1000", 1000)).toBe(1000);
-    for (const bad of ["1001", "-1", "2.5", "lots", "1e3", "1234567"])
+    // The platform's one number rule: a comma between thousands is taken.
+    expect(parseQuantity("1,000", 1000)).toBe(1000);
+    for (const bad of ["1001", "-1", "2.5", "lots", "1e3", "1234567", "1,0"])
       expect(parseQuantity(bad, 1000), bad).toBe("invalid");
   });
 

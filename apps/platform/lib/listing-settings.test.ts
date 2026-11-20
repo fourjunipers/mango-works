@@ -5,6 +5,7 @@ import {
   changedSettings,
   countProblems,
   listingSettingsSchema,
+  shopNoticeLine,
   typedCount,
 } from "./listing-settings";
 
@@ -95,6 +96,11 @@ describe("the Moto Mangos tab's listing settings", () => {
     expect(typedCount(" 3 ")).toBe(3);
     expect(typedCount("-1")).toBeNull();
     expect(typedCount("two")).toBeNull();
+    // The platform's one number rule, as Save reads it.
+    expect(typedCount("1,000")).toBe(1000);
+    expect(typedCount("1e3")).toBeNull();
+    expect(typedCount("3.0")).toBeNull();
+    expect(typedCount("10000")).toBeNull();
   });
 
   it("has the owner's words, in English and Thai", () => {
@@ -110,5 +116,19 @@ describe("the Moto Mangos tab's listing settings", () => {
     );
     expect(th.FormErrors.more_walk_ins_than_active).toBeTruthy();
     expect(th.Fleet.motoMangos.leadTime).toBeTruthy();
+  });
+});
+
+describe("the Moto Mangos tab's notice line (stage 11)", () => {
+  it("shows the shop's notice when it is the stricter one", () => {
+    expect(shopNoticeLine(24, "")).toBe(24);
+    expect(shopNoticeLine(24, "12")).toBe(24);
+    expect(shopNoticeLine(24, "abc")).toBe(24);
+  });
+  it("is not shown when the lead time decides, or the shop asks no notice", () => {
+    expect(shopNoticeLine(24, "24")).toBeNull();
+    expect(shopNoticeLine(24, "48")).toBeNull();
+    expect(shopNoticeLine(null, "")).toBeNull();
+    expect(shopNoticeLine(0, "")).toBeNull();
   });
 });

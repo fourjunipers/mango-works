@@ -3,7 +3,7 @@ title: Add a vehicle to your fleet
 summary: Add one real vehicle, with its plate, frame number, year and location, under a product you already have.
 keywords: [add vehicle, add bike, add motorbike, new bike, inventory, plate, registration, frame number, chassis number, VIN, engine number, fleet, เพิ่มรถ, ทะเบียน, เลขตัวถัง, เลขเครื่อง, รถทั้งหมด, เพิ่มมอเตอร์ไซค์]
 screens: [/[tenant]/fleet, /[tenant]/fleet/units/new, /[tenant]/products/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Add a vehicle to your fleet
@@ -32,7 +32,7 @@ To add many vehicles at once, use [Import vehicles from a CSV file](import-vehic
 - **"Enter the plate, or tick “Plate pending”."** Every vehicle needs a plate or the Plate pending tick.
 - **"Another vehicle in this shop already has that plate."** Plates are unique in the shop. Check you aren't adding the same vehicle twice; search for the plate on **Fleet**.
 - **"Add a product first. Then come back to add the vehicles you have of it."** The shop has no vehicle products yet. Create one first.
-- **"Enter a year, such as 2024."** Type the four-digit year.
-- **"Enter a distance, such as 12345."** Type the odometer as a number, without units.
+- **"Enter a year, such as 2024."** Type the four-digit year, with no decimal point.
+- **"Enter a distance, such as 12345."** Type the odometer as a number, without units or spaces: 12345 or 12,345, with a dot for a decimal (12345.5). A comma anywhere else, such as 12,5, is refused.
 - **"This product is retired. Restore it first."** Open the product and press **Restore product**.
 - **"Couldn't save. Please try again."** Reload the page and try again.

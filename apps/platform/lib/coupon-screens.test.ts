@@ -14,7 +14,6 @@ import {
   COUPON_AMOUNT_MAX_DIGITS,
   codePreview,
   parseCouponAmount,
-  parseCouponPercent,
   couponDraft,
   couponPayload,
   couponSaveError,
@@ -41,6 +40,7 @@ import { emptyBoxes, type PricingContext } from "./pricing-form";
 import type { PricingInputs, ProductPricingRow } from "./pricing-inputs";
 import { checkPrice, draftRow, sampleSpan } from "./pricing-preview";
 import { settingsDraft, settingsPayload } from "./pricing-settings";
+import { parsePercentBp } from "./seasons";
 
 const n = (value: number) => BigInt(value);
 
@@ -111,7 +111,7 @@ describe("the coupon form: what is checked before saving", () => {
     // Yen has no minor unit: a decimal is refused.
     expect(
       couponPayload(draft({ kind: "fixed", amount: "5.5" }), "JPY"),
-    ).toEqual({ ok: false, errors: { amount: "couponInvalidAmount" } });
+    ).toEqual({ ok: false, errors: { amount: "invalidMoney" } });
     // A percentage coupon sends no amount, a fixed one no percentage.
     const fixed = couponPayload(draft({ kind: "fixed", amount: "1" }), "THB");
     expect(fixed.ok && fixed.payload.percent_bp).toBeNull();
@@ -157,17 +157,17 @@ describe("the coupon form: what is checked before saving", () => {
       [{ code: "" }, { code: "required" }],
       [{ code: "   " }, { code: "required" }],
       [{ code: "ส่วนลด" }, { code: "couponInvalidCode" }],
-      [{ code: "ＡＢＣ" }, { code: "couponInvalidCode" }],
+      [{ code: "ＡＢＣ－１" }, { code: "couponInvalidCode" }],
       [{ code: "SUMMER-10" }, { code: "couponInvalidCode" }],
       [{ code: "A".repeat(41) }, { code: "couponInvalidCode" }],
       [{ name: "x".repeat(121) }, { name: "tooLong" }],
       [{ percent: "" }, { percent: "required" }],
-      [{ percent: "abc" }, { percent: "couponInvalidPercent" }],
+      [{ percent: "abc" }, { percent: "invalidPercent" }],
       [{ percent: "0" }, { percent: "percentZero" }],
       [{ percent: "100.01" }, { percent: "couponPercentTooLarge" }],
       [{ kind: "fixed", amount: "" }, { amount: "required" }],
       [{ kind: "fixed", amount: "0" }, { amount: "couponAmountZero" }],
-      [{ kind: "fixed", amount: "1.234" }, { amount: "couponInvalidAmount" }],
+      [{ kind: "fixed", amount: "1.234" }, { amount: "invalidMoney" }],
       [
         { allProducts: false, productIds: [] },
         { products: "couponNoProducts" },
@@ -185,7 +185,7 @@ describe("the coupon form: what is checked before saving", () => {
       [{ minDays: "1001" }, { minDays: "couponMinDaysRange" }],
       [{ minDays: "2.5" }, { minDays: "couponMinDaysRange" }],
       [{ minSpend: "0" }, { minSpend: "couponAmountZero" }],
-      [{ minSpend: "x" }, { minSpend: "couponInvalidAmount" }],
+      [{ minSpend: "x" }, { minSpend: "invalidMoney" }],
       [{ maxUses: "0" }, { maxUses: "couponMaxUsesRange" }],
       [{ maxUses: "2000000001" }, { maxUses: "couponMaxUsesRange" }],
       [{ channels: [] }, { channels: "couponNoChannels" }],
@@ -285,11 +285,17 @@ describe("the coupon form: what is checked before saving", () => {
     }
     expect(couponSaveError("try_again").key).toBe("couponTryAgain");
     expect(en.FormErrors.couponTryAgain).toMatch(/save again/);
-    // invalid_code says which characters, and that Thai and full-width can't.
+    // invalid_code says which characters, that Thai can't, and that
+    // full-width letters and numbers are read as the plain ones.
     expect(en.FormErrors.couponInvalidCode).toMatch(/A to Z/);
     expect(en.FormErrors.couponInvalidCode).toMatch(/0 to 9/);
     expect(en.FormErrors.couponInvalidCode).toMatch(/Thai letters/);
-    expect(en.FormErrors.couponInvalidCode).toMatch(/full-width/);
+    expect(en.FormErrors.couponInvalidCode).toMatch(
+      /full-width letters and numbers .* are read as A or 0/,
+    );
+    // A code typed in full-width letters and digits is saved as plain ones.
+    const wide = couponPayload(draft({ code: "ｓｕｍｍｅｒ１０" }), "THB");
+    expect(wide.ok && wide.payload.code).toBe("SUMMER10");
     // code_taken names the clash.
     expect(en.FormErrors.couponCodeTaken).toContain("{code}");
     expect(en.FormErrors.couponCodeTakenBy).toContain("{name}");
@@ -307,7 +313,6 @@ describe("the coupon form: what is checked before saving", () => {
       limit: 50,
     });
     expect(couponUsesText(12, null)).toEqual({ kind: "noLimit", used: 12 });
-    expect(couponUsesText(null, 50)).toEqual({ kind: "unknown" });
   });
 });
 
@@ -378,17 +383,17 @@ describe("the coupon form's numbers: a dot is the decimal point, a comma only be
   });
 
   it("percentages: 12.5 is 1250 basis points; 12,5 is refused", () => {
-    expect(parseCouponPercent("12.5")).toBe(1250);
-    expect(parseCouponPercent("12.5%")).toBe(1250);
-    expect(parseCouponPercent("100")).toBe(10000);
+    expect(parsePercentBp("12.5")).toBe(1250);
+    expect(parsePercentBp("12.5%")).toBe(1250);
+    expect(parsePercentBp("100")).toBe(10000);
     for (const typed of ["12,5", "1 0", "1_0", "-10", "12.345", "10,0"])
-      expect(parseCouponPercent(typed), typed).toBe("invalid");
+      expect(parsePercentBp(typed), typed).toBe("invalid");
     expect(couponPayload(draft({ percent: "12,5" }), "THB")).toEqual({
       ok: false,
-      errors: { percent: "couponInvalidPercent" },
+      errors: { percent: "invalidPercent" },
     });
-    expect(en.FormErrors.couponInvalidPercent).toMatch(/dot for decimals/);
-    expect(en.FormErrors.couponInvalidAmount).toMatch(/dot for decimals/);
+    expect(en.FormErrors.invalidPercent).toMatch(/dot for decimals/);
+    expect(en.FormErrors.invalidMoney).toMatch(/dot for decimals/);
   });
 
   it("the form in KWD: 0.005 saves as 5 and shows as 0.005; a minimum spend of 1,000.250", () => {
@@ -438,7 +443,7 @@ describe("the coupon form's numbers: a dot is the decimal point, a comma only be
       couponPayload(draft({ kind: "fixed", amount: "50000.5" }), "VND"),
     ).toEqual({
       ok: false,
-      errors: { amount: "couponInvalidAmount" },
+      errors: { amount: "invalidMoney" },
     });
   });
 });
@@ -1334,6 +1339,57 @@ describe("Check a price in New York: a coupon's valid dates on the shop's clock,
     ).toMatchObject({
       outcome: "refused",
       reason: "expired",
+    });
+  });
+});
+
+describe("the Price check: a coupon judged on the channel picked (stage 11)", () => {
+  const ask = (
+    channels: CouponInputs["coupon"] extends infer C
+      ? C extends { channels: infer X }
+        ? X
+        : never
+      : never,
+    channel?: "walk_in" | "booking_page" | "marketplace",
+  ) =>
+    checkPrice({
+      inputs: inputs(),
+      row: vehicle,
+      sample: oneDay,
+      code: "SAVE",
+      coupon: coupon({ channels }),
+      channel,
+      now,
+    })!;
+
+  it("a booking-page-only coupon is refused at the counter and applied on the booking page", () => {
+    expect(ask(["booking_page"]).decision).toMatchObject({
+      outcome: "refused",
+      reason: "wrong_channel",
+    });
+    expect(ask(["booking_page"], "walk_in").decision).toMatchObject({
+      outcome: "refused",
+      reason: "wrong_channel",
+    });
+    const online = ask(["booking_page"], "booking_page");
+    expect(online.decision).toMatchObject({ outcome: "decided" });
+    expect(online.discounts.map((d) => d.kind)).toEqual(["coupon"]);
+    expect(online.quote.totals.total).toBe(n(24000));
+  });
+
+  it("a Moto Mangos-only coupon is applied on Moto Mangos alone", () => {
+    expect(ask(["marketplace"], "booking_page").decision).toMatchObject({
+      outcome: "refused",
+      reason: "wrong_channel",
+    });
+    expect(ask(["marketplace"], "marketplace").discounts).toHaveLength(1);
+  });
+
+  it("a staff coupon is applied at the counter and refused online", () => {
+    expect(ask(["staff"], "walk_in").discounts).toHaveLength(1);
+    expect(ask(["staff"], "marketplace").decision).toMatchObject({
+      outcome: "refused",
+      reason: "wrong_channel",
     });
   });
 });

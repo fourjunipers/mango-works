@@ -227,6 +227,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"platform_admin_events": {
+                  Row: {
+                    "actor": string | null,"at": string,"db_role": string,"id": number,"new_row": Json | null,"old_row": Json | null,"operation": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "actor"?: string | null,"at"?: string,"db_role": string,"id"?: never,"new_row"?: Json | null,"old_row"?: Json | null,"operation": string,"user_id": string
+                  }
+                  Update: {
+                    "actor"?: string | null,"at"?: string,"db_role"?: string,"id"?: never,"new_row"?: Json | null,"old_row"?: Json | null,"operation"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"platform_admins": {
                   Row: {
                     "created_at": string,"note": string | null,"user_id": string
@@ -821,6 +835,9 @@ isOneToOne: false
 "coupon_inputs":
 { Args: { "p_booking_id"?: string,"p_code": string,"p_customer_id"?: string,"p_tenant_id": string }; Returns: Json
                            },
+"coupon_inputs_by_id":
+{ Args: { "p_coupon_ids": (string)[],"p_customer_id"?: string,"p_tenant_id": string }; Returns: Json
+                           },
 "create_general_product":
 { Args: { "p_description"?: string,"p_name": string,"p_quantities"?: Json,"p_tenant_id": string,"p_track_units"?: boolean,"p_type": string }; Returns: string
                            },
@@ -876,6 +893,9 @@ isOneToOne: false
 "queue_renewal_notifications":
 { Args: { "p_now"?: string }; Returns: number
                            },
+"record_renewal":
+{ Args: { "p_renewal": Json,"p_tenant_id": string }; Returns: Json
+                           },
 "release_expired_holds":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
@@ -905,6 +925,9 @@ isOneToOne: false
                            },
 "save_listing":
 { Args: { "p_product_id": string,"p_settings": Json }; Returns: Json
+                           },
+"save_location_hours":
+{ Args: { "p_hours": Json,"p_location_id": string,"p_tenant_id": string }; Returns: Json
                            },
 "save_price_rule":
 { Args: { "p_rule": Json,"p_tenant_id": string }; Returns: string

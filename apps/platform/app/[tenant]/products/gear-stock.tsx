@@ -9,10 +9,11 @@ import {
   TextInput,
   useFieldError,
 } from "@/components/action-form";
-import { Field, inputClass } from "@/components/form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import type { OutState, ProblemKind } from "@/lib/gear-permissions";
 import { maxGearQuantity } from "@/lib/general-products";
+import { parseWholeInRange } from "@/lib/number-input";
 import { cn } from "@/lib/utils";
 import {
   reportProblem,
@@ -111,7 +112,9 @@ function StepperField({
 }) {
   const t = useTranslations("Products.gearStock");
   const error = useFieldError("quantity");
-  const number = /^\d{1,6}$/.test(value) ? Number(value) : null;
+  // Read as the server reads it (parseQuantity): the one number rule.
+  const typed = parseWholeInRange(value, 0, 999_999);
+  const number = typeof typed === "number" ? typed : null;
   const step = (by: number) =>
     onChange(
       String(Math.min(maxGearQuantity, Math.max(0, (number ?? 0) + by))),
@@ -138,7 +141,7 @@ function StepperField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           aria-invalid={error ? true : undefined}
-          aria-describedby={`${id}-help`}
+          aria-describedby={describedBy(id, { help: true, error })}
           className={cn(inputClass, "w-24 text-center tabular-nums")}
         />
         <button
@@ -199,14 +202,13 @@ function CountField({ free }: { free: number }) {
       <input
         id="report-quantity"
         name="quantity"
-        type="number"
         inputMode="numeric"
-        min={1}
-        max={free}
+        maxLength={6}
         required
-        defaultValue={1}
+        autoComplete="off"
+        defaultValue="1"
         aria-invalid={error ? true : undefined}
-        aria-describedby="report-quantity-help"
+        aria-describedby={describedBy("report-quantity", { help: true, error })}
         className={cn(inputClass, "max-w-28")}
       />
     </Field>

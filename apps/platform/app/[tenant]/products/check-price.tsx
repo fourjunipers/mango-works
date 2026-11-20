@@ -8,8 +8,18 @@ import { adjustmentParts } from "@mango/core/season";
 import { codeGiven, couponFoundOf, type CouponInputs } from "@/lib/coupons";
 import { dayText, notAppliedKey, refusalWords } from "@/lib/coupon-words";
 import { formatMinor } from "@/lib/money";
-import type { PricingContext, PricingDraft } from "@/lib/pricing-form";
-import { extrasOf, type PricingInputs } from "@/lib/pricing-inputs";
+import { parseWholeNumber } from "@/lib/number-input";
+import type { BookingChannel } from "@mango/core/booking-rules";
+import type {
+  PricingContext,
+  PricingDraft,
+  ProductType,
+} from "@/lib/pricing-form";
+import {
+  extrasOf,
+  type PricingInputs,
+  type ProductPricingRow,
+} from "@/lib/pricing-inputs";
 import {
   checkPrice,
   draftRow,
@@ -31,48 +41,66 @@ import { lookUpCoupon } from "./check-price-actions";
  *
  * Read-only: the code is looked up (coupon_inputs()) and judged by
  * decideDiscounts() as a counter booking would be, but nothing is reserved
- * and no use is counted. Used on the Pricing tab now, and by the New order
- * screen later (plan §7).
+ * and no use is counted. Used on the Pricing tab (the price as it is being
+ * edited, on the walk-in channel) and on the Price check tab (the
+ * saved price, on the channel picked there; Phase 2 stage 11).
  */
 export function CheckPrice({
   slug,
   productId,
-  draft,
-  ctx,
-  shared,
-  taxProfiles,
-  defaultTaxId,
+  priced,
   inputs,
   timeZone,
   currency,
   pickup: firstPickup,
-  changed,
+  dropoff: firstDropoff,
+  channel = "walk_in",
+  title,
 }: {
   slug: string;
   productId: string;
-  draft: PricingDraft;
-  ctx: PricingContext;
-  shared: SharedList[];
-  taxProfiles: TaxProfile[];
-  defaultTaxId: string | null;
+  /**
+   * What is priced: the Pricing tab's draft, saved or not ("changed" says
+   * which), or the product's saved row as pricing_inputs() returned it.
+   */
+  priced:
+    | {
+        kind: "draft";
+        draft: PricingDraft;
+        ctx: PricingContext;
+        shared: SharedList[];
+        taxProfiles: TaxProfile[];
+        defaultTaxId: string | null;
+        changed: boolean;
+      }
+    | { kind: "saved"; type: ProductType; row: ProductPricingRow | null };
   inputs: PricingInputs;
   timeZone: string;
   currency: string;
   pickup: string;
-  changed: boolean;
+  /** A return to start from: the sample is then "by dates". */
+  dropoff?: string;
+  /** Where the booking would come from: a coupon's channels are judged by it. */
+  channel?: BookingChannel;
+  /** The heading, when it is not "Check a price". */
+  title?: string;
 }) {
   const t = useTranslations("Pricing");
   const locale = useLocale();
-  const [by, setBy] = useState<"days" | "dates">("days");
+  const [by, setBy] = useState<"days" | "dates">(
+    firstDropoff ? "dates" : "days",
+  );
   const [days, setDays] = useState("7");
   const [pickup, setPickup] = useState(firstPickup);
   const [dropoff, setDropoff] = useState(() => {
+    if (firstDropoff) return firstDropoff;
     const span = sampleSpan(
       { by: "days", pickup: firstPickup, days: 7 },
       timeZone,
     );
     return span ? localInput(span.end, timeZone) : firstPickup;
   });
+  const type = priced.kind === "draft" ? priced.ctx.type : priced.type;
   const [quantity, setQuantity] = useState("1");
   const [extraCounts, setExtraCounts] = useState<Record<string, string>>({});
   const [returning, setReturning] = useState(false);
@@ -96,7 +124,7 @@ export function CheckPrice({
     inputs.products.map((p) => [p.product_id, p.product_name]),
   );
   const extras =
-    ctx.type === "vehicle"
+    type === "vehicle"
       ? extrasOf(inputs, productId).filter((e) =>
           inputs.products.some(
             (p) =>
@@ -106,27 +134,31 @@ export function CheckPrice({
       : [];
 
   const span = sampleSpan(
-    by === "days"
-      ? { by, pickup, days: Number(days) }
-      : { by, pickup, dropoff },
+    by === "days" ? { by, pickup, days: count(days) } : { by, pickup, dropoff },
     timeZone,
   );
-  const row = draftRow(productId, draft, ctx, shared, {
-    profiles: taxProfiles,
-    defaultId: defaultTaxId,
-  });
+  const row =
+    priced.kind === "draft"
+      ? draftRow(productId, priced.draft, priced.ctx, priced.shared, {
+          profiles: priced.taxProfiles,
+          defaultId: priced.defaultTaxId,
+        })
+      : priced.row?.pricing_method
+        ? priced.row
+        : null;
   const checked: Checked | null = span
     ? checkPrice({
         inputs,
         row,
-        sample: { ...span, quantity: Number(quantity), timeZone },
+        sample: { ...span, quantity: count(quantity), timeZone },
         extras: extras.map((e) => ({
           productId: e.extra_product_id,
-          quantity: Number(extraCounts[e.extra_product_id] || "0"),
+          quantity: count(extraCounts[e.extra_product_id] || "0"),
         })),
         code: applied?.code ?? null,
         coupon: applied?.read ?? null,
         returning,
+        channel,
         // A coupon's valid dates are judged at the moment Apply was pressed
         // (on the shop's clock, in decideDiscounts); with no code, "now"
         // decides nothing.
@@ -166,10 +198,14 @@ export function CheckPrice({
       className="rounded-lg border bg-card p-4 sm:p-5"
     >
       <h2 id="check-price" className="text-lg font-semibold">
-        {t("check.title")}
+        {title ?? t("check.title")}
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        {t(changed ? "check.introUnsaved" : "check.intro")}
+        {t(
+          priced.kind === "draft" && priced.changed
+            ? "check.introUnsaved"
+            : "check.intro",
+        )}
       </p>
       <fieldset
         disabled={!started}
@@ -368,6 +404,7 @@ export function CheckPrice({
           lookupFailed={lookupFailed}
           money={money}
           locale={locale}
+          channel={channel}
         />
 
         <div aria-live="polite">
@@ -468,7 +505,9 @@ function CouponNote({
   lookupFailed,
   money,
   locale,
+  channel,
 }: {
+  channel: BookingChannel;
   checked: Checked | null;
   applied: { code: string; read: CouponInputs } | null;
   lookupFailed: boolean;
@@ -487,7 +526,15 @@ function CouponNote({
       const found = couponFoundOf(applied.read);
       const words = refusalWords(decision.reason, found?.settings ?? null);
       const v = words.values;
-      text = t(`refused.${words.key}` as "refused.unknown", {
+      // "Can't be used by staff" is the counter's; the Price check
+      // check can be on the booking page or Moto Mangos (stage 11).
+      const key =
+        words.key === "wrongChannel" && channel === "booking_page"
+          ? "wrongChannelBookingPage"
+          : words.key === "wrongChannel" && channel === "marketplace"
+            ? "wrongChannelMarketplace"
+            : words.key;
+      text = t(`refused.${key}` as "refused.unknown", {
         from: v.from ? dayText(v.from, locale) : "",
         to: v.to ? dayText(v.to, locale) : "",
         days: v.days ?? 0,
@@ -526,6 +573,18 @@ function CouponNote({
       {text}
     </p>
   );
+}
+
+/**
+ * A box of the sample as a whole number, by the platform's one number rule
+ * (lib/number-input.ts). NaN when it is empty or not one ("2e3", "1.5"):
+ * the sample then has no price, as before.
+ */
+function count(text: string): number {
+  const whole = parseWholeNumber(text);
+  return typeof whole === "bigint" && whole <= BigInt(1_000_000)
+    ? Number(whole)
+    : Number.NaN;
 }
 
 const noSubscribe = () => () => {};

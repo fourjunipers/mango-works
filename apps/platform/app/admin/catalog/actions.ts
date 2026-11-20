@@ -2,12 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { parseYear } from "@/lib/number-input";
 import { createClient } from "@mango/db/platform-server";
 
 export type ReviewState = { failed?: boolean };
 
-const year = (value: FormDataEntryValue | null) =>
-  /^\d{4}$/.test(String(value ?? "")) ? Number(value) : undefined;
+/** A year box, read by the platform's one number rule; anything else is "not given". */
+const year = (value: FormDataEntryValue | null) => {
+  const typed = parseYear(String(value ?? ""), 0, 9999);
+  return typeof typed === "number" ? typed : undefined;
+};
 
 // Approve: the entry becomes a preset for every shop, and listable on Moto
 // Mangos. Merge: it was a preset already under another spelling. Reject: the

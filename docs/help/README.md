@@ -6,6 +6,10 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 
 ## Index
 
+### Typing numbers (`en/general`)
+
+- [Typing amounts, percentages and other numbers](en/general/typing-numbers.md)
+
 ### Signing in and your device (`en/account`)
 
 - [Sign in to your shop](en/account/sign-in.md)
@@ -41,6 +45,7 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 - [Record road tax, insurance or an inspection](en/fleet/record-tax-and-insurance.md)
 - [Print QR stickers for your vehicles](en/fleet/print-qr-stickers.md)
 - [Delete a vehicle](en/fleet/delete-a-vehicle.md)
+- [See a vehicle's bookings](en/fleet/bookings-on-a-vehicle.md)
 
 ### Products and prices (`en/products`)
 
@@ -55,6 +60,15 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 - [Choose the tax on a product](en/products/product-tax.md)
 - [Offer extras with a vehicle](en/products/offer-extras-with-a-vehicle.md)
 - [Check a price](en/products/check-a-price.md)
+- [Connect a motorbike to Moto Mangos](en/products/connect-a-bike-to-moto-mangos.md): the Moto Mangos tab, send for review
+- [Switch a bike on or off Moto Mangos and set how many are offered](en/products/moto-mangos-listing.md)
+- [Change or disconnect a bike's Moto Mangos model](en/products/change-or-disconnect-moto-mangos-model.md)
+- [See and change how much rental gear you have](en/products/gear-stock-and-quantity.md): the stock tiles, Change quantity
+- [Report a problem with rental gear](en/products/report-a-gear-problem.md)
+- [Handle gear that is out of service](en/products/gear-out-of-service.md)
+- [Label each unit of rental gear](en/products/label-gear-units.md)
+- [Change the quantity of an item for sale and read its stock history](en/products/item-for-sale-stock.md)
+- [Read a product's History](en/products/product-history.md)
 
 ### Pricing and tax settings (`en/pricing-settings`)
 
@@ -76,15 +90,27 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 - [Create a price list](en/price-lists/create-a-price-list.md)
 - [Change or delete a price list](en/price-lists/change-or-delete-a-price-list.md)
 
+### Booking rules (`en/booking-rules`)
+
+- [Set your booking rules](en/booking-rules/set-booking-rules.md): notice, cut-off, minimum days, time free, hold length, overbooking
+
+### Price check (`en/price-check`)
+
+- [Check what is free and what it costs (Price check)](en/price-check/price-check.md)
+
 ### Coupons (`en/coupons`)
 
 - [Create a coupon](en/coupons/create-a-coupon.md)
 - [Change, switch off or archive a coupon](en/coupons/switch-off-or-archive-a-coupon.md)
 - [Why a coupon wasn't applied](en/coupons/coupon-not-applied.md)
 
+### Platform admin (`en/platform-admin`)
+
+- [Review Moto Mangos catalog requests](en/platform-admin/review-catalog-requests.md) (platform admins only)
+
 ### Not covered yet
 
-Screens that are on `main` but have no article yet: the Moto Mangos tab on a product, rental gear stock (the Stock tab, Report a problem, Out of service), items for sale (Change quantity and stock history), a product's History tab, and the platform admin's catalog requests. Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, New order, Maintenance's due list) get articles when their phase builds them. Booking rules (notice, cut-off, minimum days) are in the database but have no screen yet.
+Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, Maintenance's due list) get articles when their phase builds them. The New order screen arrives in Phase 3 (stage 9); until then its tab is the Price check.
 
 ## Article format
 

@@ -9,6 +9,7 @@
  * price is worked out.
  */
 
+import type { BookingChannel } from "@mango/core/booking-rules";
 import { quote, type Quote } from "@mango/core/quote";
 import {
   RETURNING_DISCOUNT_ID,
@@ -217,6 +218,12 @@ export type CheckAsked = {
   returning?: boolean;
   /** The moment the price is checked: "today" for a coupon's valid dates. */
   now: Date;
+  /**
+   * The channel the booking would come from, for a coupon's "where it can be
+   * used" (stage 11's channel picker on the Price check). Walk-in when not given,
+   * as the Pricing tab's Check a price always is.
+   */
+  channel?: BookingChannel;
 };
 
 /** One discount on the breakdown: what it took over every line. */
@@ -291,7 +298,7 @@ export function checkPrice(asked: CheckAsked): Checked | null {
         quote: invoice,
         now: asked.now,
         timeZone: sample.timeZone,
-        channel: "walk_in",
+        channel: asked.channel ?? "walk_in",
         code,
         coupon: code ? (asked.coupon ?? null) : null,
         completedRentals,

@@ -3,7 +3,7 @@ title: Set prices by rental length
 summary: Give a vehicle or gear a total price for every rental length from 1 to 30 days, using quick entry, and adjust any day by hand.
 keywords: [price, rental price, daily price, weekly price, monthly price, hourly price, price table, tiered pricing, rate, 1 day, 7 days, 30 days, ราคา, ราคาเช่า, ราคารายวัน, ราคารายสัปดาห์, ราคารายเดือน, ตั้งราคา, ตารางราคา]
 screens: [/[tenant]/products/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Set prices by rental length
@@ -36,13 +36,15 @@ The first time the shop saves any price, you are asked to confirm the currency: 
 With **Set this product's own prices**, **Save prices** stays greyed out until the prices are ready: daily and monthly filled in, every day valid, and no day cheaper than the day before. Meanwhile the form shows what is missing:
 
 - **"Daily and monthly are both needed."** Shown under the empty one once you have typed the other.
-- **"Enter an amount above 0, such as 300 or 300.50."** A quick-entry box isn't a valid amount.
+- **"Enter an amount above 0, such as 300 or 1,300.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces."** A quick-entry box isn't a valid amount: use a dot for decimals and no spaces.
 - A red box titled **"A longer rental can't cost less"**, with a line for each problem day: "{day} days cost less than {before} days. Raise it, or lower the days before it. Equal prices are fine." Raise that day, or lower the days before it.
-- **"A day typed by hand isn't a valid price."** Fix the day you typed.
+- **"A day typed by hand isn't a valid price. Use a dot for decimals; a comma only between thousands (1,000). No spaces."** Fix the day you typed.
 
 When saving:
 
 - **"A price can't be 0. To charge nothing, choose Free."** The long-stay daily rate can't be 0; leave it blank to use the monthly price ÷ 30.
-- **"Enter an amount, such as 45000 or 45000.50."** The long-stay daily rate isn't a valid amount.
+- **"Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has."** The long-stay daily rate isn't a valid amount: use a dot for decimals and no spaces.
 - **"You can't make that change."** Only owners and managers can change prices.
 - **"Couldn't save. Please try again."** Reload the page and try again.
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).

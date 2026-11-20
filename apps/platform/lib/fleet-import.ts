@@ -1,7 +1,8 @@
 import type { CsvTable } from "./csv";
-import { toKm, type DistanceUnit } from "./distance";
+import { parseDistance, toKm, type DistanceUnit } from "./distance";
 import { isIsoDate, vehicleTypes } from "./fleet";
 import { parseMoney } from "./money";
+import { parseYear } from "./number-input";
 import { categoriesFromText, categoryRequired } from "./vehicle-kinds";
 
 /**
@@ -209,14 +210,10 @@ export function planImport(
       return value || null;
     };
 
-    const yearText = get("year");
-    let year: number | null = null;
-    if (yearText) {
-      const value = Number(yearText);
-      if (!/^\d{4}$/.test(yearText) || value < 1950 || value > 2100)
-        fail("year", "invalidYear");
-      else year = value;
-    }
+    // Numbers in the file are read like numbers typed into a box: the
+    // platform's one number rule (lib/number-input.ts).
+    const year = parseYear(get("year"));
+    if (year === "invalid") fail("year", "invalidYear");
 
     // The product, by name: one the shop has, or a new one.
     const name = text("product");
@@ -252,14 +249,10 @@ export function planImport(
       platesInFile.add(key(plate));
     }
 
-    const odometerText = get("odometer").replace(/[\s,]/g, "");
-    let odometerKm = 0;
-    if (odometerText) {
-      const value = Number(odometerText);
-      if (!/^\d+(\.\d+)?$/.test(odometerText) || value > 9_999_999)
-        fail("odometer", "invalidNumber");
-      else odometerKm = toKm(value, context.distanceUnit);
-    }
+    const odometer = parseDistance(get("odometer"));
+    if (odometer === "invalid") fail("odometer", "invalidNumber");
+    const odometerKm =
+      typeof odometer === "number" ? toKm(odometer, context.distanceUnit) : 0;
 
     const locationName = get("location");
     let locationId: string | undefined = defaultLocation?.id;
@@ -281,7 +274,7 @@ export function planImport(
       frame_number: text("frame_number"),
       engine_number: text("engine_number"),
       colour: text("colour"),
-      model_year: year,
+      model_year: year === "invalid" ? null : year,
       current_odometer_km: odometerKm,
       purchase_date: date("purchase_date"),
       purchase_price: price,
