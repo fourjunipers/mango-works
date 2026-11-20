@@ -1218,7 +1218,7 @@
       "quantityAt": "Quantity at {location}",
       "quantityHelp": "How many you have. You can change it later on the Stock tab.",
       "serviceNote": "A service has no quantity: it is always available.",
-      "pricesLater": "Prices come in a later stage, and selling items comes with orders.",
+      "pricesAfterSave": "Once it is saved, set its price on its Pricing tab. Selling items comes with orders.",
       "save": "Add product"
     },
     "stockTab": {

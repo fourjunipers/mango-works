@@ -204,3 +204,47 @@ test("a refused save whose error is on a list of radios: the group is marked, na
   await expect(page).toHaveURL(/\/bsr\/products\/new$/);
   await expect(form.locator("#name")).toHaveValue("E2E form errors");
 });
+
+// Phase 2, stage 11: the two forms that were not on the shared form.
+
+test("Settings: a refused save puts the focus on the field and ties the error to it", async ({
+  page,
+}) => {
+  await signIn(page, demo.bsrOwner);
+  await page.goto("/bsr/settings");
+  const locale = page.getByLabel("Number and date format", { exact: false });
+  await expect(locale).not.toHaveAttribute("aria-invalid", "true");
+  // Not a language tag: refused by the server, nothing saved.
+  await locale.fill("not a tag!");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  const error = page.locator("#locale-error");
+  await expect(error).toContainText("language tag");
+  await expect(locale).toHaveAttribute("aria-invalid", "true");
+  await expect(locale).toHaveAttribute(
+    "aria-describedby",
+    /(^| )locale-error( |$)/,
+  );
+  await expect(locale).toBeFocused();
+  // Put back: the page is read again, so nothing typed is kept.
+  await page.reload();
+  await expect(locale).not.toHaveValue("not a tag!");
+});
+
+test("Sign in: a wrong password marks both fields, ties them to the message and puts the focus on the first", async ({
+  page,
+}) => {
+  await page.goto("/login");
+  const email = page.getByLabel("Email");
+  const password = page.getByLabel("Password");
+  await email.fill(demo.bsrStaff);
+  await password.fill("not-the-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.locator("#signin-error")).toHaveText(
+    "That email and password don't match.",
+  );
+  for (const field of [email, password]) {
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    await expect(field).toHaveAttribute("aria-describedby", "signin-error");
+  }
+  await expect(email).toBeFocused();
+});

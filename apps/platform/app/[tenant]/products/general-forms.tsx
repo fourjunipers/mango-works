@@ -160,7 +160,7 @@ export function GeneralForm({
         <p className="text-sm text-muted-foreground">{t("serviceNote")}</p>
       )}
       {!values && (
-        <p className="text-sm text-muted-foreground">{t("pricesLater")}</p>
+        <p className="text-sm text-muted-foreground">{t("pricesAfterSave")}</p>
       )}
     </ActionForm>
   );

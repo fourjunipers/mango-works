@@ -2,11 +2,16 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { startTransition, useActionState } from "react";
-import { Field, inputClass } from "@/components/form";
-import { Button } from "@/components/ui/button";
+import {
+  ActionForm,
+  SelectInput,
+  TextInput,
+  useFieldError,
+  type FormAction,
+} from "@/components/action-form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import type { TenantSettings } from "@/lib/tenant-settings";
-import { saveSettings, type SettingsState } from "./actions";
+import { saveSettings } from "./actions";
 
 type Options = {
   countries: { code: string; name: string }[];
@@ -27,6 +32,13 @@ const localeSuggestions = [
   "ko-KR",
 ];
 
+/**
+ * The shop's name, country, currency, distance unit and formats, on the
+ * shared form (Phase 2 stage 11): after a refused save the focus goes to the
+ * first field with an error, and each error is tied to its field with
+ * aria-describedby and aria-invalid. The action answers with keys of
+ * "Settings.errors", so the form is given those words.
+ */
 export function SettingsForm({
   slug,
   initial,
@@ -42,125 +54,68 @@ export function SettingsForm({
   locationsHref: string;
 }) {
   const t = useTranslations("Settings");
-  const tCommon = useTranslations("Common");
-  const [state, action, pending] = useActionState<SettingsState, FormData>(
-    saveSettings,
-    {},
-  );
-  const error = (field: string) => {
-    const key = state.errors?.[field];
-    return key ? t(`errors.${key}`) : undefined;
+  const errorText = (key: string) => {
+    const known = `errors.${key}` as "errors.saveFailed";
+    return t.has(known) ? t(known) : undefined;
   };
-  const invalid = (field: string) => (state.errors?.[field] ? true : undefined);
 
   return (
-    <form
-      action={action}
-      className="max-w-3xl space-y-5 rounded-lg border bg-card p-5"
-      onSubmit={(event) => {
-        // Submitted by hand. Left to the browser, React resets the form when
-        // the save finishes, and a dropdown then shows the value the page
-        // first loaded with, not the one just saved (bug, 11 Nov 2026).
-        event.preventDefault();
-        const data = new FormData(event.currentTarget);
-        startTransition(() => action(data));
-      }}
+    <ActionForm
+      action={saveSettings as FormAction}
+      hidden={{ slug }}
+      errorText={errorText}
+      className="max-w-3xl rounded-lg border bg-card p-5"
     >
-      <input type="hidden" name="slug" value={slug} />
-      <Field id="name" label={t("name")} error={error("name")}>
-        <input
-          id="name"
-          name="name"
-          required
-          maxLength={120}
-          defaultValue={initial.name}
-          aria-invalid={invalid("name")}
-          className={inputClass}
-        />
-      </Field>
+      <TextInput
+        name="name"
+        label={t("name")}
+        required
+        maxLength={120}
+        defaultValue={initial.name}
+        autoComplete="organization"
+      />
       <div className="grid gap-5 md:grid-cols-2">
-        <Field id="country" label={t("country")} error={error("country")}>
-          <select
-            id="country"
-            name="country"
-            defaultValue={initial.country}
-            aria-invalid={invalid("country")}
-            className={inputClass}
-          >
-            {options.countries.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name} ({c.code})
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field
-          id="currency"
+        <SelectInput
+          name="country"
+          label={t("country")}
+          defaultValue={initial.country}
+          options={options.countries.map((c) => ({
+            value: c.code,
+            label: `${c.name} (${c.code})`,
+          }))}
+        />
+        <CurrencyField
           label={t("currency")}
           help={currencyLocked ? t("currencyLockedHelp") : undefined}
-          error={error("currency")}
-        >
-          {/* A disabled select isn't submitted, so the value rides along. */}
-          {currencyLocked && (
-            <input type="hidden" name="currency" value={initial.currency} />
-          )}
-          <select
-            id="currency"
-            name={currencyLocked ? undefined : "currency"}
-            disabled={currencyLocked}
-            aria-describedby={currencyLocked ? "currency-help" : undefined}
-            defaultValue={initial.currency}
-            aria-invalid={invalid("currency")}
-            className={inputClass}
-          >
-            {options.currencies.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code} · {c.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field
-          id="distance_unit"
+          initial={initial.currency}
+          locked={currencyLocked}
+          currencies={options.currencies}
+        />
+        <SelectInput
+          name="distance_unit"
           label={t("distanceUnit")}
           help={t("distanceUnitHelp")}
-          error={error("distance_unit")}
-        >
-          <select
-            id="distance_unit"
-            name="distance_unit"
-            defaultValue={initial.distance_unit}
-            aria-invalid={invalid("distance_unit")}
-            aria-describedby="distance_unit-help"
-            className={inputClass}
-          >
-            <option value="km">{t("km")}</option>
-            <option value="mi">{t("mi")}</option>
-          </select>
-        </Field>
-        <Field
-          id="locale"
-          label={t("locale")}
-          help={t("localeHelp")}
-          error={error("locale")}
-        >
-          <input
-            id="locale"
+          defaultValue={initial.distance_unit}
+          options={[
+            { value: "km", label: t("km") },
+            { value: "mi", label: t("mi") },
+          ]}
+        />
+        <div>
+          <TextInput
             name="locale"
+            label={t("locale")}
+            help={t("localeHelp")}
             required
             list="locale-suggestions"
             defaultValue={initial.locale}
-            aria-invalid={invalid("locale")}
-            aria-describedby="locale-help"
-            autoComplete="off"
-            className={inputClass}
           />
           <datalist id="locale-suggestions">
             {localeSuggestions.map((tag) => (
               <option key={tag} value={tag} />
             ))}
           </datalist>
-        </Field>
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">
         {t.rich("timezoneMoved", {
@@ -171,21 +126,46 @@ export function SettingsForm({
           ),
         })}
       </p>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" className="h-11 px-6" disabled={pending}>
-          {tCommon(pending ? "saving" : "save")}
-        </Button>
-        {state.ok && !pending && (
-          <p role="status" className="text-sm text-muted-foreground">
-            {tCommon("saved")}
-          </p>
-        )}
-        {state.errors?.form && (
-          <p role="alert" className="text-sm text-destructive">
-            {error("form")}
-          </p>
-        )}
-      </div>
-    </form>
+    </ActionForm>
+  );
+}
+
+/**
+ * The currency. Once money has been saved in it, the select is disabled and
+ * the value rides along in a hidden field (a disabled select isn't sent).
+ */
+function CurrencyField({
+  label,
+  help,
+  initial,
+  locked,
+  currencies,
+}: {
+  label: string;
+  help?: string;
+  initial: string;
+  locked: boolean;
+  currencies: { code: string; name: string }[];
+}) {
+  const error = useFieldError("currency");
+  return (
+    <Field id="currency" label={label} help={help} error={error}>
+      {locked && <input type="hidden" name="currency" value={initial} />}
+      <select
+        id="currency"
+        name={locked ? undefined : "currency"}
+        disabled={locked}
+        defaultValue={initial}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy("currency", { help, error })}
+        className={inputClass}
+      >
+        {currencies.map((c) => (
+          <option key={c.code} value={c.code}>
+            {c.code} · {c.name}
+          </option>
+        ))}
+      </select>
+    </Field>
   );
 }
