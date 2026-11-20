@@ -3,12 +3,12 @@ title: Check a price
 summary: Price a sample rental of a product, with seasons, extras, a coupon and the returning-customer discount, before or after saving.
 keywords: [check price, quote, price calculator, how much, test price, sample rental, breakdown, total, VAT, ตรวจสอบราคา, คำนวณราคา, ราคาเท่าไร, ใบเสนอราคา]
 screens: [/[tenant]/products/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Check a price
 
-**Check a price** sits on every product's **Pricing** tab. It prices a sample rental with the prices on screen, saved or not, using the same pricing as bookings, so Check a price and Save always agree.
+**Check a price** sits on every product's **Pricing** tab. It prices a sample rental with the prices on screen, saved or not, using the same pricing as bookings, so Check a price and Save always agree. Here a coupon is judged as for a booking at the counter; to try one for your booking page or Moto Mangos, use the [New order price check](../orders/price-check.md), which opens the same **Check a price** with the saved prices.
 
 Who can use it: owners, managers and staff.
 

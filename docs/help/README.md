@@ -41,6 +41,7 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 - [Record road tax, insurance or an inspection](en/fleet/record-tax-and-insurance.md)
 - [Print QR stickers for your vehicles](en/fleet/print-qr-stickers.md)
 - [Delete a vehicle](en/fleet/delete-a-vehicle.md)
+- [See a vehicle's bookings](en/fleet/bookings-on-a-vehicle.md)
 
 ### Products and prices (`en/products`)
 
@@ -76,6 +77,14 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 - [Create a price list](en/price-lists/create-a-price-list.md)
 - [Change or delete a price list](en/price-lists/change-or-delete-a-price-list.md)
 
+### Booking rules (`en/booking-rules`)
+
+- [Set your booking rules](en/booking-rules/set-booking-rules.md): notice, cut-off, minimum days, time free, hold length, overbooking
+
+### New order (`en/orders`)
+
+- [Check what is free and what it costs (New order price check)](en/orders/price-check.md)
+
 ### Coupons (`en/coupons`)
 
 - [Create a coupon](en/coupons/create-a-coupon.md)
@@ -84,7 +93,7 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 
 ### Not covered yet
 
-Screens that are on `main` but have no article yet: the Moto Mangos tab on a product, rental gear stock (the Stock tab, Report a problem, Out of service), items for sale (Change quantity and stock history), a product's History tab, and the platform admin's catalog requests. Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, New order, Maintenance's due list) get articles when their phase builds them. Booking rules (notice, cut-off, minimum days) are in the database but have no screen yet.
+Screens that are on `main` but have no article yet: the Moto Mangos tab on a product, rental gear stock (the Stock tab, Report a problem, Out of service), items for sale (Change quantity and stock history), a product's History tab, and the platform admin's catalog requests. Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, Maintenance's due list) get articles when their phase builds them. New order is a price check until orders arrive in Phase 3.
 
 ## Article format
 

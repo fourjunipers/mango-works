@@ -3,12 +3,12 @@ title: Why a coupon wasn't applied
 summary: What each "Not applied" message means when you try a coupon code, and how to fix it.
 keywords: [coupon not working, code not applied, invalid coupon, coupon expired, coupon used up, discount not working, คูปองใช้ไม่ได้, โค้ดใช้ไม่ได้, คูปองหมดอายุ, ส่วนลดไม่ขึ้น]
 screens: [/[tenant]/products/[id], /[tenant]/settings/coupons]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Why a coupon wasn't applied
 
-Who can do this: owners, managers and staff can try a code in **Check a price**. Only owners and managers can change coupons.
+Who can do this: owners, managers and staff can try a code in **Check a price**, on a product's Pricing tab (as a booking at the counter) or on the **New order** price check (for the channel chosen there). Only owners and managers can change coupons.
 
 When you type a code in **Check a price** and press **Apply**, you see "Coupon {code} applied." or a message saying why not. Bookings with coupons arrive with orders in a later phase; the same rules apply there.
 
@@ -18,6 +18,7 @@ When you type a code in **Check a price** and press **Apply**, you see "Coupon {
 - **"Not applied: no coupon has this code."** Check the spelling. Codes are letters and numbers only; spaces are ignored.
 - **"Not applied: this coupon is switched off or archived."** Switch it on in Settings › Coupons, or bring it back.
 - **"Not applied: this coupon can’t be used by staff."** Tick **By staff, at the counter or on the phone** under **Where it can be used**.
+- **"Not applied: this coupon can’t be used on your booking page."** / **"Not applied: this coupon can’t be used on Moto Mangos."** Shown by the [New order price check](../orders/price-check.md) when you try a coupon for that channel. Tick that channel under **Where it can be used** if it should work there.
 - **"Not applied: this coupon can be used from {from}."** Its valid dates haven't started.
 - **"Not applied: this coupon could be used until {to}."** Its valid dates have passed.
 - **"Not applied: this coupon has been used as many times as it allows."** Raise **Total uses**, or leave it empty for no limit.
