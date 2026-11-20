@@ -245,6 +245,16 @@ describe("form rules", () => {
     expect(
       dbErrorKey({ code: "P0001", message: "unit_has_future_blocks" }),
     ).toBe("unit_has_future_blocks");
+    // Stage 10: the two functions' own refusals have their own words.
+    expect(dbErrorKey({ code: "22023", message: "invalid_renewal" })).toBe(
+      "invalid_renewal",
+    );
+    expect(dbErrorKey({ code: "22023", message: "invalid_hours" })).toBe(
+      "invalid_hours",
+    );
+    expect(dbErrorKey({ code: "P0001", message: "location_not_found" })).toBe(
+      "location_not_found",
+    );
     expect(dbErrorKey({ code: "42501", message: "row-level security" })).toBe(
       "notAllowed",
     );

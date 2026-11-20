@@ -86,7 +86,7 @@ test("an owner creates, edits, switches off and on and archives a coupon; an arc
     await page.getByLabel(/^By staff/).check();
     await page.getByRole("button", { name: "Create coupon" }).click();
     await expect(
-      page.getByText(/Thai letters and full-width characters/).last(),
+      page.getByText(/Thai letters can’t be used in a code/).last(),
     ).toBeVisible();
 
     // Typed in small letters with a space: shown and saved as stored.

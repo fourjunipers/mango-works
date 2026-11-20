@@ -633,7 +633,12 @@ test("a manager adds a product with a kind and a name, buffers in hours, a bike,
   await expect(
     page.getByText("Enter the hours as a number, like 2 or 0.5 (168 at most)."),
   ).toBeVisible();
+  // A comma is not a decimal point on any screen (lib/number-input.ts).
   await after.fill("1,5");
+  await page.getByRole("button", { name: "Save" }).first().click();
+  await expect(after).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("Saved", { exact: true })).toHaveCount(0);
+  await after.fill("1.5");
   await page.getByRole("button", { name: "Save" }).first().click();
   // (Exactly "Saved": the "Product saved" note is still on the page.)
   await expect(page.getByText("Saved", { exact: true }).first()).toBeVisible();

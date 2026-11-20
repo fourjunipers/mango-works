@@ -544,33 +544,37 @@ async function seedBsrRenewals(tenantId: string) {
     ["DEMO-004", "compulsory_insurance", 250, 645],
     ["DEMO-004", "road_tax", 250, 100],
   ];
+  // A renewal is always somebody's record: the database sets recorded_by
+  // from the signed-in caller and refuses a caller with no user, the service
+  // role included (20261119000100). So the demo records are written as the
+  // shop's demo owner, through record_renewal(), which saves a renewal and
+  // its cost together.
+  const owner = createClient(url!, key!, { auth, db: { schema: "platform" } });
+  const signedIn = await owner.auth.signInWithPassword({
+    email: "owner@bsr.demo.test",
+    password: password!,
+  });
+  if (signedIn.error) throw signedIn.error;
   let added = 0;
   for (const [plate, kind, days, cost] of records) {
     const unitId = id(plate);
     if (!unitId) continue;
-    const { data, error: renewalError } = await db
-      .from("unit_renewals")
-      .insert({
-        tenant_id: tenantId,
+    const { error: renewalError } = await owner.rpc("record_renewal", {
+      p_tenant_id: tenantId,
+      p_renewal: {
         unit_id: unitId,
         kind,
         provider: "Demo provider (not a real policy)",
         reference_no: `DEMO-${plate.slice(-3)}-${kind === "road_tax" ? "T" : "I"}`,
         starts_at: dayFromNow(days - 365),
         expires_at: dayFromNow(days),
-      })
-      .select("id")
-      .single();
-    if (renewalError) throw renewalError;
-    const { error: costError } = await db.from("unit_renewal_costs").insert({
-      tenant_id: tenantId,
-      renewal_id: data.id,
-      currency: "THB",
-      cost: cost * 100,
+        cost: String(cost * 100),
+      },
     });
-    if (costError) throw costError;
+    if (renewalError) throw renewalError;
     added++;
   }
+  await owner.auth.signOut();
   console.log(`  renewals  ${added} demo tax and insurance records`);
 }
 

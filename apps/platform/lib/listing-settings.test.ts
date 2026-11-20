@@ -95,6 +95,11 @@ describe("the Moto Mangos tab's listing settings", () => {
     expect(typedCount(" 3 ")).toBe(3);
     expect(typedCount("-1")).toBeNull();
     expect(typedCount("two")).toBeNull();
+    // The platform's one number rule, as Save reads it.
+    expect(typedCount("1,000")).toBe(1000);
+    expect(typedCount("1e3")).toBeNull();
+    expect(typedCount("3.0")).toBeNull();
+    expect(typedCount("10000")).toBeNull();
   });
 
   it("has the owner's words, in English and Thai", () => {

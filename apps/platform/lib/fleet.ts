@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseScaled, parseWholeNumber } from "./number-input";
 import { isTimeZone } from "./tenant-settings";
 
 /**
@@ -57,26 +58,37 @@ const optionalDate = z.preprocess(
   z.string().trim().refine(isIsoDate, "invalidDate").nullable(),
 );
 
+/**
+ * What a whole-number box sent, for a zod number to check: typed text is read
+ * by the platform's one number rule (lib/number-input.ts), so "1,000" is 1000
+ * and "2e3", "0x7E4", "+5" and "5.0" are refused. Blank text is null (each
+ * box says what blank means); text that is not a whole number stays a string,
+ * which no number schema takes. Anything that is not text is left as it is.
+ */
+export function typedWhole(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const whole = parseWholeNumber(value);
+  if (whole === null) return null;
+  if (whole === "invalid" || whole > BigInt(Number.MAX_SAFE_INTEGER))
+    return "invalid";
+  return Number(whole);
+}
+
+/** A whole number from `min` to `max`; `message` whatever is wrong with it. */
+export const wholeNumber = (min: number, max: number, message: string) =>
+  z.number(message).int(message).min(min, message).max(max, message);
+
 const optionalInt = (min: number, max: number, message = "invalidNumber") =>
   z.preprocess(
-    blankToNull,
-    z.coerce
-      .number(message)
-      .int(message)
-      .min(min, message)
-      .max(max, message)
-      .nullable(),
+    (value) => typedWhole(value) ?? null,
+    wholeNumber(min, max, message).nullable(),
   );
 
 const checkbox = z.preprocess((v) => v === "on" || v === "true", z.boolean());
 
 const uuid = z.uuid("required");
 
-const year = z.coerce
-  .number("invalidYear")
-  .int("invalidYear")
-  .min(1950, "invalidYear")
-  .max(2100, "invalidYear");
+const year = z.preprocess(typedWhole, wholeNumber(1950, 2100, "invalidYear"));
 
 /** International phone format: + and 7 to 15 digits. Spaces and dashes are dropped. */
 const optionalPhone = z.preprocess(
@@ -103,14 +115,15 @@ export const modelSchema = z
 export type ModelInput = z.infer<typeof modelSchema>;
 
 /**
- * Buffers are typed in hours, decimals allowed ("0.5", "1,5"), and stored in
- * minutes. Blank is null (the shop default); up to a week; to the minute.
+ * Buffers are typed in hours, decimals allowed with a dot ("0.5", "1.5"; the
+ * platform's one number rule, lib/number-input.ts), and stored in minutes.
+ * Blank is null (the shop default); up to a week; to the minute.
  */
 export function hoursToMinutes(text: string): number | null | "invalid" {
-  const typed = text.trim().replace(",", ".");
-  if (!typed) return null;
-  if (!/^\d{1,3}(\.\d{1,2})?$/.test(typed)) return "invalid";
-  const minutes = Math.round(Number(typed) * 60);
+  const hundredths = parseScaled(text, 2);
+  if (hundredths === null || hundredths === "invalid") return hundredths;
+  if (hundredths > BigInt(99_999)) return "invalid";
+  const minutes = Math.round((Number(hundredths) * 60) / 100);
   return minutes > 10080 ? "invalid" : minutes;
 }
 
@@ -295,13 +308,8 @@ export const catalogSubmitSchema = z
     make: z.string().trim().min(1, "required").max(40, "tooLong"),
     model: z.string().trim().min(1, "required").max(60, "tooLong"),
     cc: z.preprocess(
-      (value) => (value === "" || value == null ? undefined : value),
-      z.coerce
-        .number("ccRange")
-        .int("ccRange")
-        .min(1, "ccRange")
-        .max(20000, "ccRange")
-        .optional(),
+      (value) => typedWhole(value) ?? undefined,
+      wholeNumber(1, 20000, "ccRange").optional(),
     ),
     transmission: z.preprocess(
       (value) => (value === "" || value == null ? undefined : value),
@@ -310,13 +318,8 @@ export const catalogSubmitSchema = z
     // The year of the shop's own bike. The range of years the list entry
     // covers is the reviewer's to set at approval.
     year: z.preprocess(
-      (value) => (value === "" || value == null ? undefined : value),
-      z.coerce
-        .number("invalidYear")
-        .int("invalidYear")
-        .min(1950, "invalidYear")
-        .max(2100, "invalidYear")
-        .optional(),
+      (value) => typedWhole(value) ?? undefined,
+      wholeNumber(1950, 2100, "invalidYear").optional(),
     ),
     note: optionalText(500),
   })
@@ -420,6 +423,10 @@ export function dbErrorKey(
     "notes_too_long",
     "unit_not_free",
     "unit_not_found",
+    // Stage 10: record_renewal() and save_location_hours().
+    "invalid_renewal",
+    "invalid_hours",
+    "location_not_found",
     "not_in_repair",
     "not_lost",
     "not_out_of_service",

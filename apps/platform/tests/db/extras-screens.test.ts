@@ -17,7 +17,7 @@
  *   × its vehicle line's quantity, for every online channel, and writes
  *   nothing; a staff booking of the same is taken (plan Q16).
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { quote } from "@mango/core/quote";
 import { bookOnline, type OnlineDb } from "@/lib/book-online";
 import { extrasHistory, extrasNamed } from "@/lib/extras-history";
@@ -32,14 +32,20 @@ import {
 import { roles, type Role } from "@/lib/roles";
 import { reserveAsStaff, type StaffDb } from "@/lib/staff-booking";
 import {
+  closedGate,
   createTenant,
+  type Db,
   deleteTenant,
+  GATE_TIMEOUTS,
+  holding,
   serviceClient,
   sql,
   sqlBackground,
-  type Db,
   type TestTenant,
 } from "./helpers";
+
+// Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 const service = serviceClient();
@@ -289,23 +295,18 @@ describe("save_product_extras()'s lock timeout, through the API", () => {
     const bike = await vehicle(1);
     const helmet = await gear(3);
     const marker = `extras-lock-${tag}`;
-    // Long enough for two waits of 6 seconds, one after the other. Two
-    // saves sent at the same instant would queue on the row: the second's
-    // wait starts again behind the first's and can reach the API's 8
-    // seconds (57014), which the save path answers "try again" as well.
+    // Held at a gate through two waits of 6 seconds, one after the other.
+    // Two saves sent at the same instant would queue on the row: the
+    // second's wait starts again behind the first's and can reach the API's
+    // 8 seconds (57014), which the save path answers "try again" as well.
+    const gate = await closedGate();
     const holder = sqlBackground(`
       begin;
       select id from platform.products where id = '${bike}' for update;
-      select pg_sleep(15) /* ${marker} */;
+      ${gate.wait(marker)}
       commit;
     `);
-    for (let i = 0; i < 100; i++) {
-      const { out } = sql(
-        `select count(*) from pg_stat_activity where state = 'active' and query like '%${marker}%' and pid <> pg_backend_pid();`,
-      );
-      if (out === "1") break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    await holding(marker, holder);
     const list = [{ extraProductId: helmet, included: "1", most: "2" }];
     const timed = async <T>(call: () => PromiseLike<T>) => {
       const started = Date.now();
@@ -336,6 +337,7 @@ describe("save_product_extras()'s lock timeout, through the API", () => {
       expect(waited).toBeLessThan(8_000);
     }
     expect(await rowsOf(bike)).toEqual([]);
+    await gate.open();
     expect((await holder).failed).toBe("");
 
     expect(

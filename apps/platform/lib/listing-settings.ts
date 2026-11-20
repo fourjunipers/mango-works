@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { typedWhole, wholeNumber } from "./fleet";
+import { parseWholeInRange } from "./number-input";
 
 /**
  * The listing part of a product's Moto Mangos tab (docs/products-redesign.md
@@ -10,27 +12,20 @@ import { z } from "zod";
 /** The longest lead time, in hours (the database's check: 0 to 720). */
 export const maxLeadTimeHours = 720;
 
-const blankToNull = (value: unknown) =>
-  typeof value === "string" && value.trim() === "" ? null : value;
+/** The most a count box takes. */
+const maxCount = 9999;
 
+// Typed text is read by the platform's one number rule (lib/number-input.ts).
+/** Empty (or not sent) is 0. */
 const count = z.preprocess(
-  (value) => (blankToNull(value) === null || value === undefined ? 0 : value),
-  z.coerce
-    .number("invalidNumber")
-    .int("invalidNumber")
-    .min(0, "invalidNumber")
-    .max(9999, "invalidNumber"),
+  (value) => typedWhole(value) ?? 0,
+  wholeNumber(0, maxCount, "invalidNumber"),
 );
 
 /** Empty (or not sent) is "none of its own". */
 const leadTime = z.preprocess(
-  (value) => (value === undefined ? null : blankToNull(value)),
-  z.coerce
-    .number("leadTimeRange")
-    .int("leadTimeRange")
-    .min(0, "leadTimeRange")
-    .max(maxLeadTimeHours, "leadTimeRange")
-    .nullable(),
+  (value) => typedWhole(value) ?? null,
+  wholeNumber(0, maxLeadTimeHours, "leadTimeRange").nullable(),
 );
 
 export const listingSettingsSchema = z
@@ -86,7 +81,6 @@ export function countProblems(
  * anything that isn't a whole number is null (the form will say so on Save).
  */
 export function typedCount(value: string): number | null {
-  const typed = value.trim();
-  if (typed === "") return 0;
-  return /^\d{1,4}$/.test(typed) ? Number(typed) : null;
+  const typed = parseWholeInRange(value, 0, maxCount);
+  return typed === "invalid" ? null : (typed ?? 0);
 }
