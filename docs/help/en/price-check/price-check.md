@@ -1,14 +1,14 @@
 ---
 title: Check what is free and what it costs (Price check)
-summary: For any dates, see how many of each vehicle, gear and service are free, why one can't be booked, and its price from the counter, your booking page or Moto Mangos. Nothing is booked.
-keywords: [price check, new order, availability, what is free, how many free, is it available, quote, price for dates, coupon, booking page, Moto Mangos, walk-in, notice, เช็กราคา, ว่างไหม, รถว่าง, ราคา, ออเดอร์ใหม่, คูปอง]
+summary: Search for a vehicle, gear or service to see how many are free for your dates, why it can't be booked, and its price from the counter, your booking page or Moto Mangos. Nothing is booked.
+keywords: [price check, new order, availability, what is free, how many free, is it available, quote, price for dates, coupon, booking page, Moto Mangos, walk-in, notice, search, เช็กราคา, ว่างไหม, รถว่าง, ราคา, ออเดอร์ใหม่, คูปอง]
 screens: [/[tenant]/new-order]
 updated: 2026-11-20
 ---
 
 # Check what is free and what it costs (Price check)
 
-The **Price check** tab shows what is free and what it costs, for any dates. Pick a pickup and a return, and where the booking would come from. Every product shows how many are free and, when it can't be booked, why. Tap one to see its price, with your seasons, extras, a coupon and the returning-customer discount.
+The **Price check** tab answers "is it free, and what does it cost?" on one card. Set the dates, search for a product, and see how many are free and its price, with your seasons, extras, a coupon and the returning-customer discount.
 
 It only checks. Nothing is booked or held, and trying a coupon does not count a use. Making orders comes with the New order screen in Phase 3.
 
@@ -20,15 +20,18 @@ It only checks. Nothing is booked or held, and trying a coupon does not count a 
 ## Steps
 
 1. Open the **Price check** tab.
-2. If your shop has more than one location, choose the **Location**.
-3. Set the **Pickup** and the **Return**. They start as tomorrow at 10:00 to the day after, on the location's clock.
-4. Under **Booked from**, choose one:
+2. At the top of the card, set the **Pickup** and the **Return**. They start as tomorrow at 10:00 to the day after, on the location's clock.
+3. If your shop has more than one location, choose the **Location**.
+4. Under **Booked from**, choose one (it starts on **The counter**):
    - **The counter**: a booking staff make in the app. Your minimum notice does not apply.
    - **Your booking page**: a customer booking online. Your minimum notice applies.
    - **Moto Mangos**: a booking from Moto Mangos. Only vehicles listed on Moto Mangos can be booked there.
-5. Press **Check**.
-6. Each product shows "N of M free" (a service shows "A service: nothing to count"), and a reason in red if it can't be booked.
-7. To see a price, press **Price** next to the product. The price opens below the list as **Check a price**, headed with the product and the channel. It starts with the dates you chose; you can change them there, and add extras, a **Coupon code** (press **Apply**) or tick **Returning customer**. See [Check a price](../products/check-a-price.md) for the breakdown.
+5. In the search box, start typing a product's name, its kind (such as "Motorbike" or "Rental gear") or its category (such as "Scooter"). Pick the product from the list.
+6. Its answer opens under the box: "N of M free" (a service shows "A service: nothing to count"), and a reason in red if it can't be booked.
+7. Owners, managers and staff also see its price for those dates. Type a **Coupon code** and press **Apply**, or tick **Returning customer**. To price more than one, or add extras, open **Quantity and extras**. See [Check a price](../products/check-a-price.md) for the breakdown.
+8. Changed the dates, the location or **Booked from**? Press **Check** to see the same product again for the new ones.
+
+The last few products you looked at stay under the search box as **Recent** buttons, on this device. Tap one to check it again.
 
 A coupon is judged for the channel you chose. A coupon that is only for your booking page is refused under **The counter** and applied under **Your booking page**.
 
@@ -45,6 +48,7 @@ A coupon is judged for the channel you chose. A coupon that is only for your boo
 
 ## Common problems
 
+- **"Nothing matches …"** No product at this location has that name, kind or category. Check the spelling, or try a shorter word. A product with nothing at this location isn't listed.
 - **"The return must be after the pickup."** Set a later return.
 - **"Nothing to rent at this location yet."** The location has no vehicles, gear or services yet.
 - **"Add a location first."**
