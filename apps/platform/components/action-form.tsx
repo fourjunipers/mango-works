@@ -65,6 +65,7 @@ export function ActionForm({
   onOk,
   className,
   offers,
+  errorText,
   children,
 }: {
   action: FormAction;
@@ -92,6 +93,15 @@ export function ActionForm({
    * by its name: usually a button for the other way ("Retire instead").
    */
   offers?: Record<string, ReactNode>;
+  /**
+   * Words for an error key that is not one of "FormErrors", for a form whose
+   * action answers with keys of its own namespace (Settings' errors).
+   * Undefined falls back to "FormErrors".
+   */
+  errorText?: (
+    key: string,
+    values?: Record<string, string | number>,
+  ) => string | undefined;
   children?: ReactNode;
 }) {
   const t = useTranslations("FormErrors");
@@ -152,6 +162,8 @@ export function ActionForm({
   const error = (field: string) => {
     const key = state.errors?.[field];
     if (!key) return undefined;
+    const own = errorText?.(key, state.values);
+    if (own !== undefined) return own;
     // Keys come from the server, so they are checked at run time.
     const known = key as "saveFailed";
     return t.has(known) ? t(known, state.values) : t("saveFailed");

@@ -1,5 +1,5 @@
-import { StepsSkeleton } from "@/components/skeleton";
+import { PriceCheckSkeleton } from "@/components/skeleton";
 
 export default function Loading() {
-  return <StepsSkeleton />;
+  return <PriceCheckSkeleton />;
 }

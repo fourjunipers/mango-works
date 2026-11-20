@@ -2,7 +2,7 @@ import type { CsvTable } from "./csv";
 import { parseDistance, toKm, type DistanceUnit } from "./distance";
 import { isIsoDate, vehicleTypes } from "./fleet";
 import { parseMoney } from "./money";
-import { parseWholeInRange } from "./number-input";
+import { parseYear } from "./number-input";
 import { categoriesFromText, categoryRequired } from "./vehicle-kinds";
 
 /**
@@ -212,7 +212,7 @@ export function planImport(
 
     // Numbers in the file are read like numbers typed into a box: the
     // platform's one number rule (lib/number-input.ts).
-    const year = parseWholeInRange(get("year"), 1950, 2100);
+    const year = parseYear(get("year"));
     if (year === "invalid") fail("year", "invalidYear");
 
     // The product, by name: one the shop has, or a new one.

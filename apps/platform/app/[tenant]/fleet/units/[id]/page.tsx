@@ -34,8 +34,11 @@ import {
 } from "@/lib/renewals";
 import { canManageFleet, canWorkOnUnits } from "@/lib/roles";
 import { dateInZone, formatInstant } from "@/lib/shop-time";
+import { getUnitBookings } from "@/lib/unit-bookings-data";
+import { splitUnitBookings } from "@/lib/unit-bookings";
 import { cn } from "@/lib/utils";
 import { deleteUnit } from "../../actions";
+import { UnitBookingsPanel } from "./unit-bookings-panel";
 import {
   DeleteRenewalButton,
   DowntimeForm,
@@ -85,6 +88,7 @@ export default async function UnitPage({
     money,
     origin,
     upcomingBookings,
+    bookings,
   ] = await Promise.all([
     getTranslations("Fleet"),
     getTranslations("Fleet.unit"),
@@ -98,6 +102,7 @@ export default async function UnitPage({
     manage ? getUnitFinancials(tenant.id, id) : null,
     siteOrigin(),
     manage ? countUnitUpcomingBookings(tenant.id, id) : 0,
+    getUnitBookings(tenant.id, id, new Date()),
   ]);
   if (!unit) notFound();
   const model = fleet.find((m) => m.id === unit.product_id);
@@ -116,8 +121,14 @@ export default async function UnitPage({
   const now = new Date();
   const today = dateInZone(now, zone);
   const gone = hasLeftFleet(unit.status);
-  const current = blocks.filter((b) => !b.to || b.to > now);
-  const past = blocks.filter((b) => b.to && b.to <= now).slice(0, 5);
+  // Bookings and holds have a panel of their own (stage 11); this list is
+  // the unit's downtime and transfers.
+  const ownBlocks = blocks.filter(
+    (b) => b.kind !== "allocation" && b.kind !== "hold",
+  );
+  const current = ownBlocks.filter((b) => !b.to || b.to > now);
+  const past = ownBlocks.filter((b) => b.to && b.to <= now).slice(0, 5);
+  const booked = splitUnitBookings(bookings, now);
   const text = (value: string | null) => value ?? "";
   const amount = (value: number | null | undefined) =>
     value === null || value === undefined
@@ -285,6 +296,14 @@ export default async function UnitPage({
               )}
             </Panel>
           )}
+
+          <UnitBookingsPanel
+            current={booked.current}
+            past={booked.past}
+            zone={zone}
+            locale={locale}
+            now={now}
+          />
 
           <Panel
             title={t("downtime.title")}

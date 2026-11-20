@@ -865,7 +865,7 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
   await page.goto("/bsr/products/new");
   // (Motorbikes have an "Off-road" category too: this is the kind.)
   await page
-    .getByRole("group", { name: "What kind of product is it?" })
+    .getByRole("radiogroup", { name: "What kind of product is it?" })
     .getByText("Off-road", { exact: true })
     .click();
   await expect(categories(page).locator("label")).toHaveText([

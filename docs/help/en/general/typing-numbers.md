@@ -8,7 +8,7 @@ updated: 2026-11-20
 
 # Typing amounts, percentages and other numbers
 
-Every box that takes a number follows one rule, on every screen: prices and deposits, percentages and tax rates, multipliers, buffer hours, odometer readings, and whole numbers such as a year, a quantity or a number of days.
+Every box that takes a number follows one rule, on every screen: prices and deposits, percentages and tax rates, multipliers, buffer hours, odometer readings, whole numbers such as a quantity or a number of days, and years.
 
 The rule is the same whatever country or language the shop uses, so the same text can never mean two different amounts on two screens.
 
@@ -39,7 +39,8 @@ Some examples:
 - **Multipliers** on a price list: decimals are fine, such as 1.1666.
 - **Buffer hours** on a vehicle product: decimals are fine, up to a week. Half an hour is 0.5, not 0,5.
 - **Odometer readings**: one decimal place at most, such as 12,345.5.
-- **Whole numbers** (a year, a quantity, a number of days or uses, a minimum age): no decimal point at all. 5.0 is refused.
+- **Whole numbers** (a quantity, a number of days or uses, a minimum age): no decimal point at all. 5.0 is refused.
+- **Years**: four digits and nothing else, such as 2024. "2,024" and "02024" are refused.
 
 ## When a number is refused
 

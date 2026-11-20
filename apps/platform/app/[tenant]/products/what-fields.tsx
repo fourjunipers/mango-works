@@ -59,22 +59,22 @@ export function WhatFields({
 
   return (
     <div className="space-y-5">
-      <fieldset>
+      {/* The group of radios is what can be invalid (a radio's role does
+          not take aria-invalid): it is marked and names its error. The role
+          is on the fieldset itself, so its legend is announced once. */}
+      <fieldset
+        role="radiogroup"
+        aria-labelledby="vehicle_type-legend"
+        aria-invalid={kindError ? true : undefined}
+        aria-describedby={describedBy("vehicle_type", { error: kindError })}
+      >
         <legend
           id="vehicle_type-legend"
           className="mb-2 block text-sm font-medium"
         >
           {t("kindLegend")}
         </legend>
-        {/* The group of radios is what can be invalid (a radio's role does
-            not take aria-invalid): it is marked and names its error. */}
-        <div
-          role="radiogroup"
-          aria-labelledby="vehicle_type-legend"
-          aria-invalid={kindError ? true : undefined}
-          aria-describedby={describedBy("vehicle_type", { error: kindError })}
-          className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
-        >
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {kindTypes.map((type) => {
             const Icon = kindIcons[type];
             return (

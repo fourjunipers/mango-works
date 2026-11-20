@@ -30,7 +30,7 @@ A bike with no price by rental length is never offered. The tab warns "No price 
    - **Instant units**: future bookings that receive instant approval.
    - **Request units**: future bookings that require your approval.
    - **Walk-ins**: bookings that are ready for immediate pickup today (this overrides the lead time).
-2. Optional: **Lead time (hours)**: how many hours ahead a booking must be made, from 0 to 720. Leave it empty for none.
+2. Optional: **Lead time (hours)**: how many hours ahead a booking must be made, from 0 to 720. Leave it empty for none. Your shop's minimum notice also counts, and the longer of the two applies: when your notice is the longer, the tab says "Bookings need N hours: your shop's minimum notice." (see [Set your booking rules](../booking-rules/set-booking-rules.md)).
 3. A line under the counts shows what you are offering, for example "Offering 3 of 8 bikes for advance booking". The 8 is the product's active vehicles: vehicles in maintenance, sold or retired don't count.
 4. Press **Save**. Only what you changed is saved.
 

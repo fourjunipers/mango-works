@@ -45,6 +45,7 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 - [Record road tax, insurance or an inspection](en/fleet/record-tax-and-insurance.md)
 - [Print QR stickers for your vehicles](en/fleet/print-qr-stickers.md)
 - [Delete a vehicle](en/fleet/delete-a-vehicle.md)
+- [See a vehicle's bookings](en/fleet/bookings-on-a-vehicle.md)
 
 ### Products and prices (`en/products`)
 
@@ -89,6 +90,14 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 - [Create a price list](en/price-lists/create-a-price-list.md)
 - [Change or delete a price list](en/price-lists/change-or-delete-a-price-list.md)
 
+### Booking rules (`en/booking-rules`)
+
+- [Set your booking rules](en/booking-rules/set-booking-rules.md): notice, cut-off, minimum days, time free, hold length, overbooking
+
+### Price check (`en/price-check`)
+
+- [Check what is free and what it costs (Price check)](en/price-check/price-check.md)
+
 ### Coupons (`en/coupons`)
 
 - [Create a coupon](en/coupons/create-a-coupon.md)
@@ -101,7 +110,7 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 
 ### Not covered yet
 
-Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, New order, Maintenance's due list) get articles when their phase builds them. Booking rules (notice, cut-off, minimum days) are in the database but have no screen yet.
+Screens that are still placeholders (Dashboard items beyond tax and insurance, Orders, Maintenance's due list) get articles when their phase builds them. The New order screen arrives in Phase 3 (stage 9); until then its tab is the Price check.
 
 ## Article format
 

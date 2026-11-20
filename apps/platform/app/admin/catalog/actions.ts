@@ -2,14 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { parseWholeInRange } from "@/lib/number-input";
+import { parseYear } from "@/lib/number-input";
 import { createClient } from "@mango/db/platform-server";
 
 export type ReviewState = { failed?: boolean };
 
 /** A year box, read by the platform's one number rule; anything else is "not given". */
 const year = (value: FormDataEntryValue | null) => {
-  const typed = parseWholeInRange(String(value ?? ""), 0, 9999);
+  const typed = parseYear(String(value ?? ""), 0, 9999);
   return typeof typed === "number" ? typed : undefined;
 };
 

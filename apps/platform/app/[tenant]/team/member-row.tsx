@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
+import { FocusedAlert } from "@/components/focused-alert";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/components/form";
 import type { Role } from "@/lib/roles";
@@ -110,9 +111,9 @@ export function MemberRow({
           <p className="text-sm">{roleLabel}</p>
         )}
         {state.error && (
-          <p role="alert" className="text-sm text-destructive">
+          <FocusedAlert answer={state} className="text-sm text-destructive">
             {t(state.error)}
-          </p>
+          </FocusedAlert>
         )}
         {state.ok && !pending && (
           <p role="status" className="text-sm text-muted-foreground">

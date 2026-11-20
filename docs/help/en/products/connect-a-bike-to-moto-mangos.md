@@ -28,7 +28,7 @@ Who can do this: owners and managers.
 3. Fill in **Make**, **Model**, **Engine size (cc)**, **Transmission** and **Year of your bike**. All five are needed. The year is one year, like 2023. The make and model start filled in from the product's name where possible.
 4. Optional: add a **Note for the reviewer**.
 5. Press **Send for review**.
-6. The tab says the request is waiting for review. You can keep using the product meanwhile. When Moto Mangos approves it, the tab says when the model was added, and the product is listed automatically.
+6. The tab says the request is waiting for review. You can keep using the product meanwhile. When Moto Mangos approves it, the tab says when the model was added, and the product is listed automatically. (After the next platform update you switch the listing on yourself, as for any connected bike.)
 
 ## If Moto Mangos turns the request down
 

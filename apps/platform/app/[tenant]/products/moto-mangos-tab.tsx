@@ -10,6 +10,7 @@ import {
   getModel,
 } from "@/lib/fleet-data";
 import { splitMakeModel } from "@/lib/known-models";
+import { getShopNoticeHours } from "@/lib/booking-rules-data";
 import { getPricingInputs } from "@/lib/pricing-data";
 import { pricingRowOf } from "@/lib/pricing-inputs";
 import { catalogChoices } from "@/lib/model-options";
@@ -72,7 +73,10 @@ export async function MotoMangosTab({
   const news = reviewNews(model, new Date());
   // Open item 9 (a): a listed product with no price by rental length is
   // never offered on Moto Mangos (from the switch-over, 3M). Said here now.
-  const pricing = await getPricingInputs(tenantId, [model.id]);
+  const [pricing, shopNotice] = await Promise.all([
+    getPricingInputs(tenantId, [model.id]),
+    getShopNoticeHours(tenantId, model.id),
+  ]);
   const noLengthPrice =
     model.marketplace_listed &&
     // By id: the read also returns the vehicle's extras, in id order.
@@ -249,6 +253,7 @@ export async function MotoMangosTab({
           id={model.id}
           enabled={usable}
           active={active}
+          shopNoticeHours={shopNotice}
           values={{
             instant_units: String(model.instant_units),
             request_units: String(model.request_units),

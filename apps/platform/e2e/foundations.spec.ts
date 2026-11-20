@@ -34,7 +34,7 @@ test("an owner gets all four tabs and the admin pages", async ({
   await signIn(page, demo.bsrOwner);
   await expect(page).toHaveURL(/\/bsr\/dashboard$/);
   const nav = mainNav(page, isPhone(info.project.name));
-  for (const tab of ["Dashboard", "Orders", "New order", "Maintenance"]) {
+  for (const tab of ["Dashboard", "Orders", "Price check", "Maintenance"]) {
     await expect(nav.getByRole("link", { name: tab })).toBeVisible();
   }
 
@@ -47,8 +47,12 @@ test("an owner gets all four tabs and the admin pages", async ({
   await expect(page).toHaveURL(/filter=overdue/);
   await expect(page.getByText("Searching for “1กข-1234”")).toBeVisible();
 
-  await nav.getByRole("link", { name: "New order" }).click();
-  await expect(page.getByRole("heading", { name: "New order" })).toBeVisible();
+  // The Price check tab (route /new-order) until the real New order
+  // arrives in Phase 3 stage 9.
+  await nav.getByRole("link", { name: "Price check" }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Price check" }),
+  ).toBeVisible();
   await nav.getByRole("link", { name: "Maintenance" }).click();
   await expect(
     page.getByRole("heading", { name: "Maintenance" }),
@@ -71,12 +75,12 @@ test("a mechanic opens on Maintenance and sees only its tabs", async ({
   // The sidebar also lists Products and Fleet, which every role can read.
   await expect(nav.getByRole("link")).toHaveText(
     isPhone(info.project.name)
-      ? ["Dashboard", "Maintenance"]
-      : ["Dashboard", "Maintenance", "Products", "Fleet"],
+      ? ["Dashboard", "Price check", "Maintenance"]
+      : ["Dashboard", "Price check", "Maintenance", "Products", "Fleet"],
   );
 
   // A tab the role doesn't have sends it home; admin pages don't exist for it.
-  await page.goto("/bsr/new-order");
+  await page.goto("/bsr/orders");
   await expect(page).toHaveURL(/\/bsr\/maintenance$/);
   // The page streams behind its loading state, so the status is already 200
   // when the role check runs; the not-found page replaces it and no team
@@ -95,8 +99,8 @@ test("a driver gets Dashboard and Orders", async ({ page }, info) => {
     mainNav(page, isPhone(info.project.name)).getByRole("link"),
   ).toHaveText(
     isPhone(info.project.name)
-      ? ["Dashboard", "Orders"]
-      : ["Dashboard", "Orders", "Products", "Fleet"],
+      ? ["Dashboard", "Orders", "Price check"]
+      : ["Dashboard", "Orders", "Price check", "Products", "Fleet"],
   );
 });
 

@@ -25,7 +25,7 @@ The bike's name, its engine size, type and transmission, and "Requested by" the 
 3. Optional: type a **Review note**.
 4. Press **Approve**.
 
-The model joins the list for every shop. Every product waiting on it is marked approved and its listing is switched on. The shop's private note and name are removed from the entry.
+The model joins the list for every shop. Every product waiting on it is marked approved and its listing is switched on. (This changes with the next platform update: approving will connect the product only, and the shop switches its listing on itself.) The shop's private note and name are removed from the entry.
 
 ## Steps: reject
 
@@ -41,7 +41,7 @@ Use this when the request is a bike already on the list under another spelling.
 1. Under **It is the same bike as**, choose the list entry. The closest matches ("Did you mean") come first.
 2. Press **Merge**.
 
-Every product waiting on the request moves to the chosen entry, is marked approved and is listed. The request is closed, and its review note records which entry it was merged into.
+Every product waiting on the request moves to the chosen entry, is marked approved and is listed (until the next platform update, which leaves the listing for the shop to switch on). The request is closed, and its review note records which entry it was merged into.
 
 ## Common problems
 
