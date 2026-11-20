@@ -8,6 +8,7 @@
  */
 
 import { MAX_ADJUST_BP, MIN_ADJUST_BP } from "@mango/core/season";
+import { parseTypedNumber } from "./number-input";
 
 export type Direction = "increase" | "decrease";
 
@@ -40,17 +41,17 @@ export type SeasonRow = {
 const PERCENT_DECIMALS = 2;
 
 /**
- * A percentage as typed ("20", "12.5", "12,5") in basis points. Null: blank.
- * "invalid": not a number, or more than two decimal places.
+ * A percentage as typed ("20", "12.5", "20%") in basis points, by the
+ * platform's one number rule (lib/number-input.ts): a dot for decimals,
+ * never a comma. Null: blank. "invalid": not that rule, more than two
+ * decimal places, or more than six digits before the point.
  */
 export function parsePercentBp(input: string): number | null | "invalid" {
-  const text = input.trim().replace(/%$/, "").trim().replace(",", ".");
-  if (!text) return null;
-  const match = /^(\d{1,6})(?:\.(\d+))?$/.exec(text);
-  if (!match) return "invalid";
-  const fraction = match[2] ?? "";
-  if (fraction.length > PERCENT_DECIMALS) return "invalid";
-  return Number(match[1] + fraction.padEnd(PERCENT_DECIMALS, "0"));
+  const typed = parseTypedNumber(input.trim().replace(/%$/, ""));
+  if (typed === null || typed === "invalid") return typed;
+  if (typed.fraction.length > PERCENT_DECIMALS || typed.whole.length > 6)
+    return "invalid";
+  return Number(typed.whole + typed.fraction.padEnd(PERCENT_DECIMALS, "0"));
 }
 
 /** Basis points as the percentage typed in the form: 1250 → "12.5", 2000 → "20". */

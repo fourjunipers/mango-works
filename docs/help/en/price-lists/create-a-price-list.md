@@ -3,7 +3,7 @@ title: Create a price list
 summary: Make a shared list of prices for 1 to 30 days, as amounts or as multipliers of a base price, for several products to use.
 keywords: [price list, shared price list, rate card, price table, multiplier, base price, ตารางราคา, สร้างตารางราคา, ราคากลาง, ตัวคูณ]
 screens: [/[tenant]/settings/price-lists, /[tenant]/settings/price-lists/new]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Create a price list
@@ -31,11 +31,13 @@ Then put products on it: [Use a shared price list on a product](../products/use-
 While **Create price list** is greyed out, the form shows what is missing:
 
 - **"Daily and monthly are both needed."** Shown under the empty one once you have typed the other.
-- **"Enter an amount above 0, such as 300 or 300.50."** (a list of amounts) or **"Enter a multiplier above 0, such as 3 or 1.1666."** (a list of multipliers): a quick-entry box isn't a valid number.
+- **"Enter an amount above 0, such as 300 or 1,300.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces."** (a list of amounts) or **"Enter a multiplier above 0, such as 3 or 1.1666. Use a dot for decimals; a comma only between thousands (1,000)."** (a list of multipliers): a quick-entry box isn't a valid number. Use a dot for decimals; a comma only between thousands.
 - A red box titled **"A longer rental can't cost less"**, with a line for each problem day: "{day} days cost less than {before} days. Raise it, or lower the days before it. Equal prices are fine." Raise that day, or lower the days before it.
-- **"A day typed by hand isn't a valid price."** Fix the day you typed.
+- **"A day typed by hand isn't a valid price. Use a dot for decimals; a comma only between thousands (1,000). No spaces."** Fix the day you typed.
 
 When saving:
 
 - **"The shop already has a price list with this name."** Choose another name.
 - **"Couldn't save. Please try again."** Reload the page and try again.
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).

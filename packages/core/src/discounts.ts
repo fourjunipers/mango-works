@@ -216,14 +216,17 @@ export type DiscountDecision =
 // ---------------------------------------------------------------- the pieces
 
 /**
- * A code as it is stored and compared (§11). Two steps, and nothing else:
+ * A code as it is stored and compared (§11). Three steps, and nothing else:
  *
  *   1. every space and invisible character in REMOVED is taken out;
- *   2. the 26 letters a to z become A to Z.
+ *   2. the 26 letters a to z become A to Z;
+ *   3. the full-width letters and digits an input method types (WIDE_UPPER,
+ *      WIDE_LOWER, WIDE_DIGITS) become plain A to Z and 0 to 9.
  *
  * No other character is changed: no Unicode case mapping (a sharp s stays
- * as it is, it does not become SS) and no folding of full-width letters. So
- * the answer does not depend on a locale, and the database's
+ * as it is, it does not become SS) and no Unicode normalisation; the
+ * full-width forms are one fixed list. So the answer does not depend on a
+ * locale, and the database's
  * platform_private.normalize_coupon_code() gives the same one, character
  * for character. The two are held together by coupon-code.cases.ts: a unit
  * test runs the cases here and a database test runs them there.
@@ -235,8 +238,8 @@ export function normalizeCouponCode(code: string): string {
   let out = "";
   for (const character of code) {
     if (REMOVED.includes(character)) continue;
-    const letter = LOWER.indexOf(character);
-    out += letter < 0 ? character : UPPER[letter];
+    const at = FOLDED_FROM.indexOf(character);
+    out += at < 0 ? character : FOLDED_TO[at];
   }
   return out;
 }
@@ -248,6 +251,23 @@ export function isCouponCode(normalized: string): boolean {
 
 const LOWER = "abcdefghijklmnopqrstuvwxyz";
 const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const DIGITS = "0123456789";
+/**
+ * The full-width forms an input method types: capitals U+FF21 to U+FF3A,
+ * small letters U+FF41 to U+FF5A and digits U+FF10 to U+FF19. A fixed list
+ * (no Unicode normalisation, no locale), the same as the database's.
+ */
+const WIDE_UPPER =
+  "\uff21\uff22\uff23\uff24\uff25\uff26\uff27\uff28\uff29\uff2a\uff2b\uff2c\uff2d" +
+  "\uff2e\uff2f\uff30\uff31\uff32\uff33\uff34\uff35\uff36\uff37\uff38\uff39\uff3a";
+const WIDE_LOWER =
+  "\uff41\uff42\uff43\uff44\uff45\uff46\uff47\uff48\uff49\uff4a\uff4b\uff4c\uff4d" +
+  "\uff4e\uff4f\uff50\uff51\uff52\uff53\uff54\uff55\uff56\uff57\uff58\uff59\uff5a";
+const WIDE_DIGITS =
+  "\uff10\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19";
+/** Each character of FOLDED_FROM becomes the one at its place in FOLDED_TO. */
+const FOLDED_FROM = LOWER + WIDE_UPPER + WIDE_LOWER + WIDE_DIGITS;
+const FOLDED_TO = UPPER + UPPER + UPPER + DIGITS;
 /**
  * Tab, line feed, vertical tab, form feed, carriage return, space, no-break
  * space, U+1680, U+2000 to U+200A, line and paragraph separator, U+202F,

@@ -3,7 +3,7 @@ title: Set a seasonal price
 summary: Raise or lower prices by a percentage over a range of dates, such as high season or low season, for all products or chosen ones.
 keywords: [season, seasonal price, high season, low season, peak, holiday price, Songkran, Christmas, discount dates, price increase, ฤดูกาล, ราคาช่วงไฮซีซั่น, โลว์ซีซั่น, ราคาตามฤดูกาล, ขึ้นราคา, ลดราคา]
 screens: [/[tenant]/settings/seasons, /[tenant]/settings/seasons/new, /[tenant]/settings/seasons/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Set a seasonal price
@@ -35,9 +35,11 @@ Each product's Pricing tab lists the seasons that affect it, and **Check a price
 - **"Required."** Fill in the name, days and percentage.
 - **"Enter a real date."**
 - **"The last day is before the first. Tick "Every year" for a season over the new year."**
-- **"Enter a percentage such as 20 or 12.5."**
+- **"Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma."**
 - **"Enter a percentage above 0."**
 - **"A decrease must be below 100%."**
 - **"At most 1,000%."**
 - **"Choose at least one product, or All products."**
 - **"Check the season's details and try again."**
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).

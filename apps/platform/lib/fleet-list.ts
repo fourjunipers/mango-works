@@ -1,4 +1,5 @@
 import { hasLeftFleet } from "./fleet";
+import { parseWholeInRange } from "./number-input";
 
 /**
  * The Fleet view (owner, 13 Nov 2026): one line per product, A to Z by name,
@@ -44,7 +45,8 @@ export function parseFleetList(
   query: Record<string, string | string[] | undefined>,
 ): FleetListView {
   const scope = text(query.scope);
-  const year = Number(text(query.year));
+  // The year box of the filters, read by the platform's one number rule.
+  const year = parseWholeInRange(text(query.year), 1950, 2100);
   // "model" is the old name of "product" (links from before 13 Nov 2026).
   const product = text(query.product) || text(query.model);
   return {
@@ -59,10 +61,7 @@ export function parseFleetList(
     category: /^[a-z][a-z0-9_]{0,39}$/.test(text(query.category))
       ? text(query.category)
       : "",
-    year:
-      /^\d{4}$/.test(text(query.year)) && year >= 1950 && year <= 2100
-        ? year
-        : null,
+    year: typeof year === "number" ? year : null,
   };
 }
 

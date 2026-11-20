@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { ActionForm, useFieldError } from "@/components/action-form";
-import { Field, inputClass } from "@/components/form";
+import { describedBy, Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { formatMinor, multiplierText, parseMinorUnits } from "@/lib/money";
 import {
@@ -441,7 +441,11 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
 function ErrorFor({ name }: { name: string }) {
   const message = useFieldError(name);
   return message ? (
-    <p role="alert" className="mt-2 text-sm text-destructive">
+    <p
+      id={`${name}-error`}
+      role="alert"
+      className="mt-2 text-sm text-destructive"
+    >
       {message}
     </p>
   ) : null;
@@ -503,7 +507,7 @@ function MoneyInput({
         inputMode="decimal"
         autoComplete="off"
         aria-invalid={error ? true : undefined}
-        aria-describedby={help ? `${id}-help` : undefined}
+        aria-describedby={describedBy(id, { help, error })}
         className={inputClass}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -513,6 +517,11 @@ function MoneyInput({
 }
 
 // ------------------------------------------------------------ the list editor
+
+// The two notes above the grid of days, named by the days they explain. One
+// list editor to a page, as with its `box-…` and `day-…` ids.
+const fallsErrorId = "days-falls-error";
+const invalidDaysErrorId = "days-invalid-error";
 
 /**
  * Quick entry and the 30 days (§9.4): six boxes; the days between fill in;
@@ -564,24 +573,20 @@ export function ListEditor({
         {boxes.map((box) => {
           const error = result.boxErrors[box];
           const id = `box-${box}`;
+          // The line under the box, when there is one: the box is marked
+          // and names it only then.
+          const message =
+            error === "invalid"
+              ? t(
+                  kind === "amounts"
+                    ? "quick.invalid"
+                    : "quick.invalidMultiplier",
+                )
+              : error === "required" && draft.boxes.daily + draft.boxes.monthly
+                ? t("quick.required")
+                : undefined;
           return (
-            <Field
-              key={box}
-              id={id}
-              label={t(`quick.${box}`)}
-              error={
-                error === "invalid"
-                  ? t(
-                      kind === "amounts"
-                        ? "quick.invalid"
-                        : "quick.invalidMultiplier",
-                    )
-                  : error === "required" &&
-                      draft.boxes.daily + draft.boxes.monthly
-                    ? t("quick.required")
-                    : undefined
-              }
-            >
+            <Field key={box} id={id} label={t(`quick.${box}`)} error={message}>
               <input
                 id={id}
                 inputMode="decimal"
@@ -592,7 +597,8 @@ export function ListEditor({
                     ? t("quick.requiredMark")
                     : ""
                 }
-                aria-invalid={error === "invalid" ? true : undefined}
+                aria-invalid={message ? true : undefined}
+                aria-describedby={describedBy(id, { error: message })}
                 className={inputClass}
                 value={draft.boxes[box]}
                 onChange={(e) => setBox(box, e.target.value)}
@@ -618,6 +624,7 @@ export function ListEditor({
 
       {falls.length > 0 && (
         <div
+          id={fallsErrorId}
           role="alert"
           className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
         >
@@ -633,7 +640,11 @@ export function ListEditor({
         </div>
       )}
       {result.days.some((d) => d.invalid) && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          id={invalidDaysErrorId}
+          role="alert"
+          className="text-sm text-destructive"
+        >
           {t("grid.invalidDays")}
         </p>
       )}
@@ -696,6 +707,13 @@ export function ListEditor({
                   autoComplete="off"
                   readOnly={readOnly || anchored}
                   aria-invalid={falling || d.invalid ? true : undefined}
+                  // Each wrong day names the note above the grid that says
+                  // why: that note is on the page whenever a day is marked.
+                  aria-describedby={
+                    [falling && fallsErrorId, d.invalid && invalidDaysErrorId]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
                   title={d.value === null ? undefined : shown(d.value)}
                   className={cn(
                     inputClass,
@@ -783,6 +801,8 @@ function SharedChoice({
         <Field id="sharedId" label={t("tiered.list")} error={error}>
           <select
             id="sharedId"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy("sharedId", { error })}
             className={inputClass}
             value={draft.sharedId}
             onChange={(e) => set({ sharedId: e.target.value })}

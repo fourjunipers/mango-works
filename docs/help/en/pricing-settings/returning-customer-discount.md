@@ -3,7 +3,7 @@ title: Set up the returning-customer discount
 summary: Give customers who have rented before an automatic percentage off their rentals.
 keywords: [returning customer, repeat customer, loyalty discount, regular customer, automatic discount, ส่วนลดลูกค้าเก่า, ลูกค้าประจำ, ส่วนลดอัตโนมัติ]
 screens: [/[tenant]/settings/pricing, /[tenant]/products/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Set up the returning-customer discount
@@ -33,7 +33,9 @@ On any product's Pricing tab, tick **Returning customer** in **Check a price**. 
 ## Common problems
 
 - **"Enter the percentage to switch the discount on."**
-- **"Enter a percentage such as 20 or 12.5."**
+- **"Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma."**
 - **"Enter a percentage above 0."**
 - **"At most 100%."**
 - **"Enter a whole number from 1 to 1,000."** Check **Completed rentals needed**.
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).

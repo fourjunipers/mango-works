@@ -1,3 +1,6 @@
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@mango/db/database.types";
 
@@ -79,4 +82,58 @@ export function bangkokDay(days: number): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(
     Date.now() + days * 86_400_000,
   );
+}
+
+/**
+ * Removes a platform tenant a test created.
+ *
+ * A tenant with audit rows can't be hard-deleted (20261119000100: the audit
+ * log's key to its shop is "on delete restrict"), and every tenant has one
+ * from the moment it is created. So, as the platform's own test helper
+ * does, the tenant is removed as the local database's superuser, its audit
+ * rows first, in one transaction, with a short lock timeout so that it fails
+ * rather than waits. Throws if it could not: a test must not leave a tenant
+ * behind without saying so. Only tests do this; no app can delete a tenant.
+ */
+export async function deleteTenant(tenantId: string | undefined) {
+  if (!tenantId) return;
+  if (!/^[0-9a-f-]{36}$/i.test(tenantId)) {
+    throw new Error(`Not a tenant id: ${tenantId}`);
+  }
+  // This checkout's local database container, named after project_id in
+  // supabase/config.toml (another checkout may run its own beside it).
+  const config = readFileSync(
+    fileURLToPath(new URL("../../../../supabase/config.toml", import.meta.url)),
+    "utf8",
+  );
+  const project = /^project_id\s*=\s*"([^"]+)"/m.exec(config)?.[1];
+  if (!project) throw new Error("No project_id in supabase/config.toml");
+  const statements = [
+    "begin;",
+    "set local lock_timeout = '5s';",
+    `delete from platform.audit_events where tenant_id = '${tenantId}';`,
+    `delete from platform.tenants where id = '${tenantId}';`,
+    "commit;",
+  ].join("\n");
+  const failed = await new Promise<string>((resolve) => {
+    const child = spawn("docker", [
+      "exec",
+      "-i",
+      `supabase_db_${project}`,
+      "psql",
+      "-U",
+      "postgres",
+      "-At",
+      "-v",
+      "ON_ERROR_STOP=1",
+    ]);
+    let err = "";
+    child.stderr.on("data", (chunk) => (err += chunk));
+    child.on("error", (error) => resolve(String(error)));
+    child.on("close", (code) =>
+      resolve(code === 0 ? "" : err || `exit ${code}`),
+    );
+    child.stdin.end(statements);
+  });
+  if (failed) throw new Error(`deleteTenant ${tenantId}: ${failed}`);
 }

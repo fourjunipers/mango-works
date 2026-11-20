@@ -25,12 +25,51 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
   - **Live: Neon Launch, always on, Singapore, no scale-to-zero, 7-day restore window.** Staging: a Neon Free project that may scale to zero, with no scheduled hold sweep. Trial projects: a Neon Free organisation, from now.
   - Calls through the Neon Data API (fallback: PostgREST run by us in Singapore; if that fails too, no-go). Sign-in by Better Auth in the apps. Jobs on pg_cron. Migration tool decided after the spike.
   - **Phase 3 adds our own "who is calling" functions from stage 1** (sent to the Phase 3 plan).
-- **Root `CLAUDE.md`:** the "Not tied to Supabase" section now states the decision, keeps the four rules, adds two (who is calling is read in our own functions; database jobs only queue), and has a "do not start using" list. **`docs/platform/SPEC.md`:** tech stack rows, build order (… 3 → Neon move → 3M …), Hosting and data, change request 49, one open decision.
-- **Twelve stages**, each with its model and a rollback (document §7.5): 0 caller functions inside Phase 3; 1 spike; 2 baseline, roles and local stack; 3 sign-in helper on Supabase; 4 Better Auth; 5 data path; 6 files to R2; 7 jobs; 8 Neon projects, staging's move and the rehearsal; 9 cutover of live; 10 clean-up after 30 days; 11 go-live preparation (Netlify Pro, functions to Singapore). `main` stays able to run on Supabase until the cutover: each stage adds the Neon side behind a switch.
+- **Root `CLAUDE.md`:** the "Not tied to Supabase" section now states the decision, keeps the four rules, adds two (who is calling is read in our own functions; database jobs only queue), and has a "do not start using" list. **`docs/platform/SPEC.md`:** tech stack rows, build order (… 3 → Neon move → 3M …), Hosting and data, change request 51, one open decision.
+- **Twelve stages**, each with its model and a rollback (document §7.5): 0 caller functions inside Phase 3; 1 spike; 2 baseline, roles and local stack; 3 sign-in helper on Supabase; 4 Better Auth; 5 data path; 6 public listing images to R2; 7 jobs; 8 Neon projects, staging's move and the rehearsal; 9 cutover of live; 10 clean-up after 30 days; 11 go-live preparation (Netlify Pro, functions to Singapore). `main` stays able to run on Supabase until the cutover: each stage adds the Neon side behind a switch.
 - **Functions run in US East** (Netlify's default, `cmh`; choosing a region needs Netlify Pro), so today every call crosses to Singapore and back. **Netlify Pro is not taken now (Mark, 19 Nov 2026): it is a final step of the build, just before go-live, when the functions move to Singapore** (the plan's stage 11; SPEC's "go-live preparation"). The spike compares Neon and Supabase from US East, both measured the same way; absolute latencies will drop once functions are in Singapore.
 - **Mark's answers, 19 Nov 2026:** the line for "no meaningful performance loss" is 10% or 20 ms on median and 95th percentile, whichever is larger; the spike may read and write a throwaway shop on staging and must remove it afterwards; staff 2FA is built after the move, on Better Auth (noted against Phase 11 in SPEC); the `.from()`/`.rpc()`/`.schema()` rule stays in CLAUDE.md.
 - **Still open** (document §8): the migration tool, decided after the spike; later, whether staging stays on Neon Free and whether live needs the Scale plan.
 - **Not checked:** either vendor's incident history; the hosted project's dashboard (the send-email hook is not in the repo); two Neon behaviours that only a spike can show (a SQL-made role bypassing RLS; role settings after the Data API switches role).
+
+## Phase 1b: plan only (branch `platform/phase-1b-plan`, 19 Nov 2026)
+
+**No code, no migration, no test.** The plan is `docs/phase-1b-plan.md`, **draft 2**, written from `main` at `d458717`, PR 51's branch (`record_renewal()`) and the Phase 3 plan, draft 2. Draft 1 put fifteen questions to Mark; **he answered all fifteen on 19 Nov 2026** and they are in the plan's §6.
+
+- **Already built in 1a** (plan §1.2): renewal records and costs, reminder settings, the hourly reminder queue, dashboard renewal items, downtime blocks, `units.notes`, one current odometer value. **Not built, though the spec listed them:** `track_maintenance_costs`, `avg_daily_km`, keys.
+- **Decided, 19 Nov 2026:**
+  - What is due is worked out on read; an hourly job only for messages and follow-ups. Intervals in km and/or days or calendar months. Counting starts the day the schedule is saved, with an optional "last done" per vehicle and task.
+  - **Only a task marked "block when overdue" blocks a pickup**, with an override by owners and managers, and by staff behind a new staff permission (off). The tag users see is "Service due". Availability never depends on service state.
+  - **Expired renewals never block a pickup.** Reminders only, plus a warning at check-out.
+  - Standard cost per task only when no parts or labour cost is typed. Cost tracking off keeps saved costs, hidden. Job costs: owners, managers, mechanics; staff behind a second new staff permission (off); drivers never.
+  - Key numbers, IMEI and SIM: everyone except drivers. No `registration` renewal kind. Average km per day is an estimate on the vehicle page and drives nothing. Service messages (Phase 6) default to staff, mechanics and owners.
+  - "Remove for good": a unit status, `removed`; everything is kept, hidden; a product whose vehicles are all removed can be removed too.
+- **No files on the platform (decision 10). This reverses the 10 Nov 2026 review decision that deferred the Google Drive option until after Gate B.** The storage module, receipt photos and renewal documents leave Phase 1b. A new, separate stage, **"Shop file storage (Google Drive)", comes before Phase 4**: each shop connects its own Drive, the platform keeps only a file id per file, one module serves 1b receipts, renewal documents, Phase 4 passports and licences and Phase 5 inspection photos, and a shop with no connected Drive can't attach files. Outline in the plan's §7; **its design is still to be written (Fable)**, and Phase 4 can't start without it.
+- **`docs/platform/SPEC.md` corrected in this PR:** expired renewals as reminders; a lower odometer reading confirmed and audited (the Vehicle record line still said "manager override"); the `unit_renewals` kind list; file storage in the shop's Drive (Tech stack, Data model, Customers and KYC, Review decisions, Phase 4's build line, change requests 49 and 50).
+- **Lock order:** no new advisory-lock class; the new rows sit inside class 3.9 of the Phase 3 plan's §4.2. A function holding a unit's lock takes the unit's row without waiting. **For the Phase 5 plan:** check-out and check-in write the odometer inside `pick_up` and `return_rental`, so there the unit's row is taken `for no key update nowait` (plan §2.7, rule 3).
+- **Ten new tables, eight migrations, eleven stages**; seven Fable builds, four Opus with a Fable check or review. The plan re-creates five Phase 3 objects (`units_guard`, `move_unit()`, `staff_may()`, `save_staff_permissions()`, `pickup_blockers()`), each behind an MD5 guard.
+
+## Phase 3: plan draft, for a Fable critique (branch `platform/phase-3-plan-draft`, 19 Nov 2026)
+
+**No code and no migration. Not approved.** The draft is `docs/phase-3-plan.md`, written from `main` at `b9e0b33`, assuming PR 51 (Phase 2 stage 10) and Phase 2 stage 11 merge first.
+
+- **Shape:** orders, rentals, billed-period lines and charges on top of Phase 2's `reservations` (Q1); `booking_id` becomes the order's id; one vehicle per rental (Q2); a charge is one `quote()` call and what a payment pays.
+- **Eight migrations, twelve stages.** Stage 1 fixes stage 10's "two bikes swapping models" deadlock and states one global lock order for Phase 3 (plan §4).
+- **Found while planning:** the Phase 2 rule that online bookings reach `reserve()` only through `bookOnline()` in `apps/platform/lib` can't serve the marketplace app at 3M (an app may not import from another app). Plan Q15.
+- **16 open decisions** in §11, each with a recommendation. Nothing in the spec, INTEGRATION or the root `CLAUDE.md` is changed; §13 lists what each will need.
+
+**Draft 2 (19 Nov 2026), after Fable's critique ("needs a second draft") and Mark's 25 decisions.** Written against `main` plus PR 51's branch (migration 6). Every critique item (M1–M8, S1–S10, minor, scope) is applied; plan §14 lists each with the section it changed, §11.1 the decisions.
+
+- `reserve_core` takes the order and its rentals and inserts them inside the lock order; `platform.reserve()` is dropped and Phase 2's tests are ported to `create_order` (stage 2b). Line cap 200.
+- Every order function reads unlocked, takes its advisory locks from the order's reservations, locks the order row, reads again (`try_again` if anything moved), and settles a run-out hold first.
+- Intent status stored; reserved, picked up, returned and mixed derived. Shortage, at risk and completed rentals computed, not stored.
+- Payments ledger and append-only allocations with VAT per payment (`paymentVat`); balance independent of allocation; staff permissions as six shop settings checked in the database.
+- **Thirteen stages, nine migrations**; stage 1 makes `move_unit()` the only way a vehicle changes product and turns the counts trigger statement-level (the stage 10 deadlock and the multi-row crossing).
+- **"Remove for good" (deleting a vehicle that has bookings, 12 Nov proposal) moved from Phase 3 to Phase 1b.**
+- **Open points settled the same day** (decisions 23 replaced, 26 to 31): the Moto Mangos fee is 10% of everything booked through Moto Mangos (rental after discounts, paid extras, delivery; never the deposit) for the whole booked length, corrected in `docs/platform/SPEC.md`, `docs/INTEGRATION.md` and `docs/marketplace/SPEC.md`, with the `fees.ts` changes listed for Phase 8 (plan §7.3); invoice VAT once on each payment's total; emails off in Phase 3; overbooked vehicle rentals accepted; extras on long rentals; stage 7 on Opus with a Fable review. **Still open:** the fee's receipt (not a tax invoice), to confirm with Korn before Phase 8; whether the fee keeps its "never more than the base" ceiling.
+- **Fable's re-check of draft 2 ("fix these first", 19 Nov 2026): 16 plan-text fixes applied, design unchanged** (plan §14, "Re-check 1" to "16"). Decision 32: the Moto Mangos fee is never more than its base, now in SPEC, INTEGRATION and the marketplace SPEC; INTEGRATION §3.12 has `createBooking` return the fee base, with no fee passed in. **Still open:** the fee receipt, to confirm with Korn before Phase 8.
+- **Ledger changes from the payments design (PR 56 §10), decided 19 Nov 2026 as decisions 33 to 42** (plan §6.4, §11.1, §14): overpayment refused for staff entry only; refunds name their payment; reversals and chargebacks; a card hold is not money; deposits never in the balance, once per rental, with their own status, never converted between hold and charge; a negative `marketplace_fee` line on Moto Mangos orders; provider rows unique with a `source`; ledger cores and staff wrappers; room for card, PromptPay, `cancellation_fee` and `withholding`; VAT on deposits a shop setting pending Korn (K3). All in stage 3 / migration 4 bar two kind values (migration 2) and the deposit status read and screen (stages 7, 9). **Clash noted for PR 56:** its §3.6 offers to turn an expiring hold into a charged deposit, which decision 37 rules out.
+- **Open points of draft 2 as first written** (plan §11.2, since settled): the Moto Mangos fee base in decision 23 differs from SPEC, INTEGRATION, the marketplace SPEC and `fees.ts` on the 30-day cap, promotions, VAT, the per-currency minimum, and the spec's old "Connect platform fee" line; when the sending domain is verified; two VAT questions for Korn; overbooked vehicle rentals; time-priced extras on long rentals.
 
 ## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
 
@@ -1139,7 +1178,224 @@ The ninth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §5.3, §6, 
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s9` on ports 624xx, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack.
 
-**Next:** stage 10, review follow-ups (§3.8 and the items carried above).
+**Next:** stage 10, review follow-ups (§3.8 and the items carried above). **Done: see stage 10, below.**
+
+## Phase 2, stage 10: review follow-ups and migration 6 (branch `platform/phase-2-stage-10-review-followups`, 19 Nov 2026)
+
+The tenth build stage of Phase 2, of eleven (`docs/phase-2-plan.md` §3.8, and the items the reviews of PR 48 and PR 50 carried here). From `main` at `b9e0b33` (PR 50 merged; staging at 66 of 66). **One migration, `20261119000100_platform_review_followups`.** **Migration on staging since 20 Nov 2026, 67/67** (see "On staging" below); **not on live.** **Done.**
+
+**On staging since 20 Nov 2026; not on live.** Migration 20261119000100 pushed to staging, 67/67. The migration (`20261119000100_platform_review_followups`) was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 00:58 UTC, from `main` at `9622342` (PR 51 squash-merged), with `supabase db push --db-url` (never `--linked`); the connection string was checked to name the staging project, and not live's, before each use. Live was not touched.
+
+- **Read-only checks first** (single `select` statements; the pooler does not take a read-only session option, so nothing but reads was sent); all passed:
+  1. 66 migrations on record, newest `20261118000100`, `20261119000100` not among them. The dry run listed exactly this one.
+  2. The three bodies the migration's guard expects, by MD5 of the stored source (`md5(prosrc)`, as the guard computes it): `normalize_coupon_code` `0c22d994…`, `tenants_lock_currency` `4325072b…`, `currency_locked` `af9db486…`. None of the seven new functions existed.
+  3. Snapshot: 29 `platform` tables, every one with RLS on and at least one policy; table grants (none to `anon`); 110 functions in `platform` and `platform_private`, none executable by `public` or `anon`; row counts of every `platform` table.
+  4. **Stored coupon codes: staging has no coupons**, so 0 would change and 0 would collide; nothing in the catalog depends on `normalize_coupon_code()` (0 dependents).
+- **The push** applied the one migration in about four seconds (00:58:23 to 00:58:27 UTC). Output: `Applying migration 20261119000100_platform_review_followups.sql...`, `Finished supabase db push.`
+- **After, read-only:**
+  - 67 migrations on record, newest `20261119000100`.
+  - All ten MD5s match PR 51's final table. The three guarded ones have the new bodies: `normalize_coupon_code` `c974d1ad…`, `tenants_lock_currency` `4ec30464…`, `currency_locked` `fe3d2da0…`. The new ones: `record_renewal` `7b742423…`, `save_location_hours` `029af139…` (with `lock_timeout=6s`), `coupon_inputs_by_id` `27e5d4ec…`, `platform_admins_no_truncate` `46da61d6…`, `unit_renewals_set_recorded_by` `5f339c0d…`, `platform_admins_audit` `b944c451…`, `platform_admin_events_keep` `0397f187…`.
+  - `platform_admin_events` exists, empty, RLS on, one policy ("No signed-in user reads admin events", `select` for `authenticated`, `using (false)`); `select` for `service_role` only, no other grant. Its two triggers are there (`platform_admin_events_keep_rows`, before update or delete; `platform_admin_events_keep_all`, before truncate).
+  - `platform_admins`: `TRUNCATE` held by the owner (`postgres`) only (`service_role` lost it, its other privileges are as before; `authenticated` `select`). `platform_admins_audit` (after row) and `platform_admins_no_truncate` (before truncate) are there.
+  - `audit_events_tenant_id_fkey` is `ON DELETE RESTRICT`. `unit_renewals` has `unit_renewals_set_recorded_by` (before insert or update, per row) beside its audit and `updated_at` triggers.
+  - Execute: `record_renewal()` and `save_location_hours()` by `authenticated` only; `coupon_inputs_by_id()` by `authenticated` and `service_role`; the three trigger functions by nobody; `normalize_coupon_code()` and `currency_locked()` as before (`authenticated`, `service_role`), `tenants_lock_currency()` by nobody. `public` and `anon` have none.
+  - Against the snapshot, nothing else changed: the one new table (30, every one with RLS and a policy), the `platform_admins` grant above, the seven new functions and the three new bodies (117 functions, still none for `public` or `anon`).
+  - Generated types: regenerated against staging (`supabase gen types typescript --db-url`, schemas `public,graphql_public,platform`), no difference from `packages/db/src/database.types.ts` on `main`.
+- **Counts, the same before and after** (the migration writes no rows; `platform_admin_events` is new and empty): 3 tenants, 32 products, 205 units, 21 unit blocks, 0 reservations, 10 renewals, 8 renewal costs, 7 opening-hours rows, 0 coupons, 1 platform admin, 3,423 audit rows.
+- **The demo seed must now run from `main`** (at or after `9622342`). The seed from before PR 51 inserted renewals as the service role, which `unit_renewals_set_recorded_by` now refuses (`recorded_by_required`). The seed was not run for this push.
+- **Not checked here:** nothing in a browser against staging, and no function was called.
+
+**What was built**
+
+- **Migration 6** (`20261119000100_platform_review_followups`), the sixth and last of the plan's. It opens with the MD5 guard for the three functions it re-creates.
+  - **`unit_renewals.recorded_by` is always the signed-in caller** (a before-insert-or-update trigger, `unit_renewals_set_recorded_by`). Whatever the client sends is overwritten; a caller with no user (the service role, a console, a job) is refused with `recorded_by_required` (42501); afterwards the column can't be changed, except to empty when that user's account is deleted.
+  - **`platform.record_renewal(tenant, renewal)`**: a renewal and its cost in one transaction. It runs as its caller, so the tables' own policies decide (owners, managers, staff and mechanics record; a cost is for owners and managers); the function adds no rule of its own, only words for the refusals (`not_allowed`, `only_owner_or_manager`, `invalid_renewal`, `unit_not_found`). Members only: not the service role's.
+  - **`platform.save_location_hours(tenant, location, hours)`**: a location's week replaced as one set, under the location's row, with a 6-second lock timeout. Every row is checked before anything is written. A day that does not change is not rewritten, so saving the same week again writes no audit row. Owners and managers; not the service role's.
+  - **`platform.platform_admin_events`**: every insert, update and delete on `platform_admins` writes a row (the signed-in user if there is one, the database role, the operation, the old and new rows, the time). The service role reads it and nothing else; nobody has a grant to change it, and the table's own triggers refuse an update, a delete or a truncate even from a console.
+  - **A tenant with audit rows can't be hard-deleted**: `audit_events`' foreign key to its shop is `on delete restrict` (it was cascade). Every tenant has an audit row from the moment it is created, so no tenant can be hard-deleted any more.
+  - **`platform.coupon_inputs_by_id(tenant, coupon ids)`**: what `coupon_inputs()` answers, for a list of ids in one call, keyed by id. Runs as its caller (RLS decides), granted as `coupon_inputs()` is.
+  - **`normalize_coupon_code()` folds full-width A to Z, a to z and 0 to 9** (U+FF21 to FF3A, U+FF41 to FF5A, U+FF10 to FF19) to the plain ones, in the same single `translate()` with a fixed list. A DO block after it rebuilds any index that depends on the function and stops the migration if any stored code would change or two live codes of a shop would become one.
+  - **The currency lock counts any coupon redemption**, given back or not (`tenants_lock_currency()`, `currency_locked()`).
+- **The app uses them.** `addRenewal` (fleet) calls `record_renewal()`; the two inserts are gone. `saveHours` (locations) calls `save_location_hours()`; the delete-then-upsert is gone. Settings › Coupons reads every coupon's uses in one call (`getCouponUses()` → `readCouponsById()`), so an archived coupon whose code a newer coupon has taken shows its own uses; "Uses: not shown" and its message are gone. The seed records its demo renewals as BSR's demo owner, through `record_renewal()`.
+- **The TypeScript normaliser** (`normalizeCouponCode`, `@mango/core`) folds the same 62 characters from the same fixed list. The shared cases (`coupon-code.cases.ts`, now 34) and both 17-plane sweeps moved with it: 117 code points change (26 letters, 62 full-width, 29 removed), the same ones to the same bytes in both.
+- **One number rule on every screen** (`lib/number-input.ts`): a dot is the decimal point; a comma only between thousands, in groups of three after a first group that does not start with 0, with digits on both sides; everything else is refused with one message that says so. Every parser reads through it: `parseMinorUnits`, `parseMoney`, `parseMultiplier` (`lib/money.ts`), `parsePercentBp` (`lib/seasons.ts`), the coupon form's amount and whole numbers, and `hoursToMinutes` (`lib/fleet.ts`). `parseCouponPercent` is gone (it was `parsePercentBp`'s twin).
+- **The shared form** (`components/action-form.tsx`): after a refused save, focus goes to the first field with an error (a radio group's first choice; the message itself when the error has no field). Every error line has the id `<field>-error`, and its input names it in `aria-describedby` (with its help line) and is marked `aria-invalid`. The same wiring on the fields that draw themselves (quantity and label on stock, the tax profile's name and rate, the default tax profile, the pricing form's boxes and shared list, the deposit choices).
+- **Lock-timing tests on gates** (`tests/db/helpers.ts`: `closedGate()`, `seenWaitingForLock()`): see "Flaky tests", below.
+- **Docs:** `docs/platform/pg-cron-go-live-checklist.md` (new) has both scheduled jobs, the hold sweep's schedule, what it does and the checks after go-live; the runbook's verify step points to it. The Thai lines are on `docs/platform/thai-review-products.md` ("Phase 2, stage 10").
+
+**Decided here** (the owner approved items 1 to 7 before the build; 8 to 13 came up during it: say if any should change)
+
+1. **The currency lock counts any redemption: yes, and a use given back counts too.** `coupon_redemptions.amount` is what the coupon took off, in the currency of the day, with no currency column of its own. A fixed coupon or a minimum spend already locked the currency, but a percentage coupon with no minimum did not, so a shop whose only coupons were percentages could have changed currency and left every amount it had ever taken off standing in the old one. A use given back keeps its row and its amount, so it counts as well. **In practice the lock was already held by another row:** a coupon can only be used while "Accept coupons" is on, that switch lives in `pricing_settings`, and a `pricing_settings` row locks the currency by itself. Nothing in the app deletes that row, so today the new condition changes no outcome; it makes the lock rest on the amounts themselves and not on a settings row never being removed. The test removes the settings row by hand to show the use alone holds the lock.
+2. **`platform_admin_events` is a table of its own**, not `audit_events` with an empty tenant: `audit_events` rows belong to a shop and are read by that shop.
+3. **No tenant can be hard-deleted.** Tests remove theirs as the local superuser, audit rows first: the platform's in `apps/platform/tests/db/helpers.ts`, and the one marketplace test that makes a tenant (`admin-queue.test.ts`) in `apps/marketplace/tests/db/helpers.ts` (added after the review of PR 51: that test still deleted with the service role and did not look at the answer). Nowhere else.
+4. **The service role can't record a renewal.** The seed, `fleet.test.ts` and `tenant-isolation.test.ts` record as a signed-in member.
+5. **Seasons no longer read "12,5" as 12.5%, and price lists no longer read "1 400" or "1_400" as 1400.** See "Screens whose accepted input changed".
+6. **The shared form's test is a browser test** (no new test dependency).
+7. **The D5 red run used the narrow revert** (below): the full revert of `f90215d` conflicts in five files.
+8. **`platform_admin_events` has one RLS policy, `using (false)` for signed-in users.** The repo's rule is that every platform table has a policy (`tenant-isolation.test.ts`); this one says in words that nobody signed in reads the rows. They have no grant either.
+9. **`record_renewal()` and `save_location_hours()` are revoked from the service role by name.** A new function in `platform` is the service role's by default; `default-grants.test.ts` pins both as members' calls.
+10. **`save_location_hours()` deletes the days no longer named and upserts the rest**, not delete-all-then-insert: the result is the same set, atomically, and an unchanged day writes no audit row.
+11. **The one number rule also covers buffers typed in hours and the coupon form's whole numbers** (minimum days, total uses), not only amounts and percentages. "No box on the platform reads a comma its own way" was written here before it was true: the review of PR 51 found the odometer and about a dozen whole-number boxes still reading on their own. It is true since the fixes after that review (below), with the exceptions named there.
+12. **A grouped number can't start with 0** ("0,500" is refused): someone typing a comma for a decimal point must never be read as five hundred.
+13. **Every `pg_sleep`-held holder in `tests/db` is on a gate, not only the five files on the list:** `coupons.test.ts` (6) and four older files (`product-extras` 5, `product-pricing` 3, `recheck-followups` 2, `extras-screens` 1). One `pg_sleep` is left, on purpose: see "Found, not fixed".
+
+**Found, not fixed: two bikes swapping models at the same instant deadlock** (the owner's decision; it needs a migration of its own)
+
+- `recheck-followups.test.ts`, "two bikes swapping models at the same moment both finish: no deadlock", starts two sessions that each hold a key-share lock on the model they move to, pause 1.2 seconds, then move their bike. On a gate, both released at the same instant, **the test failed with a real `deadlock detected`** (one run of the full suite, 19 Nov 2026).
+- **Why.** Moving bike A from model X to model Y takes two row locks on `products`, in this order: `units_product_not_retired` (a before trigger, from `20261113000200_platform_products`) locks the **new** model Y `for share`; then `units_clamp_product_counts` (an after trigger) locks the **old** model X `for no key update`. Bike B moving from Y to X takes them the other way round: X shared, then Y. `for share` and `for no key update` conflict, so when the two moves interleave each waits for the other. The Phase 1 fix this test was written for (the counts trigger's lock made no stronger than `for no key update`) removed the deadlock against the foreign key's key-share lock; the retired-model check added in the Products stage brought a stronger lock back on the same rows.
+- **What a person would see.** Postgres ends one of the two moves with `40P01`; the other goes through. It needs two people moving two bikes between the same two models, in opposite directions, within the same few milliseconds: rare, and nothing is left half-written. The timed test passes because the two sessions never start at quite the same instant.
+- **What was done here.** Nothing in the database (this stage adds one migration with a fixed list, and a lock-order change in two triggers is its own decision). The test is as it was on `main`, with its 1.2-second starting line and a comment that says why. **To decide:** take the two model locks in key order in one place (for example, the before trigger locks both the old and the new model, lowest id first), in a later migration, and then move the test to a gate.
+
+**Screens whose accepted input changed** (stored values are untouched; every value a form shows from the database is written with a dot and no separators, and a test reads each one back through the same parsers)
+
+| Screen and box | Was | Now |
+| --- | --- | --- |
+| Settings › Seasons: percentage | "12,5" was 12.5% | Refused. "12.5" as before |
+| Settings › Pricing and tax: deposit percentage, returning-customer percentage; tax profile rate | A comma was a decimal point | Refused |
+| Product › Pricing tab and Settings › Price lists: every amount (daily to monthly, each day, hourly, flat fee, deposit, long-stay); Settings › Pricing and tax: rounding step, deposit amount; Check a price | Spaces, underscores and commas anywhere were dropped: "1 400", "1_400" and "1,40" (as 140) were taken | Only "1400" and "1,400" forms. A comma must sit between thousands |
+| Price lists: multipliers | Digits and a dot only | The same, and "1,000.5" is now taken (no multiplier is that large in practice) |
+| Fleet: purchase price, sale price, renewal cost; the fleet CSV import's purchase price | As price lists: separators dropped anywhere | Only correct thousands commas |
+| Product: buffer before and after, in hours | "0,5" was half an hour | Refused. "0.5" as before |
+| Settings › Coupons: minimum days, total uses | Spaces, underscores and commas anywhere were dropped | Only correct thousands commas ("1,000") |
+| Settings › Coupons: amount off, minimum spend, percentage | The rule already (review of PR 50) | The same, and "0,500" is now refused |
+| Settings › Coupons: code | Full-width letters and digits were refused | Read as the plain ones ("ＳＵＭＭＥＲ１０" is saved as SUMMER10) |
+| **After the review of PR 51:** | | |
+| Fleet: odometer (the vehicle form, the odometer form, and its "lower reading?" question) | **A bug:** commas and spaces were dropped anywhere, so "12,5" was saved as 125 and "1 400" as 1400 | "12,5" and "1 400" are refused. "1,400" and "1,400.5" are taken. The question reads the box exactly as the save does |
+| Fleet CSV import: odometer | The same dropping; any number of decimals, rounded | The rule, one decimal place at most ("12.34" is refused) |
+| Fleet: vehicle year, minimum age, engine size; year bands; a model sent to the catalog (cc, year); Moto Mangos listing counts and lead time; Settings: renewal digest day | Whatever JavaScript reads as a number: "2e3" was 2000, "0x7E4" was 2020, "+2020" and "2020.0" were taken; "1,000" was refused | Those four are refused. A thousands comma is read where the range allows it |
+| Fleet filter and CSV: year; admin catalog review: year from and to | Exactly four digits | The rule ("02020" is 2020) |
+| Extras: included and most; gear and sale quantities; returning-customer rentals; the listing's live count | Digits only | The rule: a thousands comma and leading zeros are read; the same limits |
+| Settings: renewal reminder days (a list) | Each item one to three digits | Each item by the rule. The list's own separators (comma, space, semicolon) are unchanged, so "12,5" is still the two days 12 and 5 |
+| Rental gear, Report a problem: "How many" | A browser number box, held to the free count by the browser | A text box read by the rule; more than are free is refused by the save |
+| Check a price: days, quantity, extras | "2e1" was 20 | Refused (no price is shown) |
+
+The message for a refused amount or percentage is the coupon form's, now under the shared keys `invalidMoney` and `invalidPercent`. The refusals on price lists, multipliers and buffer hours did not say the rule; since the review of PR 51 they do (`Pricing.quick.invalid`, `Pricing.quick.invalidMultiplier`, `Pricing.grid.invalidDays`, `FormErrors.invalidHours`).
+
+**Exceptions, on purpose:** Check a price keeps the browser's number boxes (they are never sent to the server; what is typed is still read by the rule). A box's `maxLength` can stop a comma form being typed at all: "2,020" does not fit a four-character year box. A hidden field, a search parameter and a number read from the database are not typed boxes and are read as before.
+
+**Flaky tests: every session held open by `pg_sleep` is on a gate**
+
+The cause was the same everywhere: a holder session kept its transaction open with `pg_sleep(n)`, and the test raced that clock with polls through `docker exec`. A gate has no clock: an advisory lock of its own class held by its own session; the holder waits at it after its writes, the test looks for as long as it needs, then opens it. **The table below is the first version's, on the author's machine. The review of PR 51 showed that version still depended on the machine** (each look was a blocking `docker exec`, and a failed test left its holder at the gate): see "After the review of PR 51" for what changed and the new counts.
+
+| File | Holders moved to a gate | Tests | 20 runs in a row |
+| --- | --- | --- | --- |
+| `tax-profile-in-use.test.ts` | 6 | 11 | 20 of 20 green |
+| `reservations.test.ts` | 11 | 68 | 20 of 20 green |
+| `availability.test.ts` | 15 | 78 | 20 of 20 green |
+| `booking-rules.test.ts` | 8, and the timed race | 45 | 20 of 20 green |
+| `product-listings.test.ts` | 2 | 39 | 20 of 20 green |
+| `coupons.test.ts` (not on the list) | 6 | 63 | 20 of 20 green, after one fix (below) |
+| `product-extras.test.ts` (not on the list) | 5 | 30 | 20 of 20 green |
+| `product-pricing.test.ts` (not on the list) | 3 | 47 | 20 of 20 green |
+| `recheck-followups.test.ts` (not on the list) | 2 of 3 | 12 | 20 of 20 green |
+| `extras-screens.test.ts` (not on the list) | 1 | 11 | 20 of 20 green |
+
+- **The command**, per run, from `apps/platform`, against the local stack, one run at a time: `npx vitest run --config vitest.db.config.mts tests/db/<file>`, twenty times in a row per file (200 runs for the table, 18 and 19 Nov 2026).
+- **`coupons.test.ts` was 17 of 20 on its first twenty.** All three failures were one test new in this stage (B5, "a coupon with no limit is not counted under the lock"), not a lock test: it compared every booking's state before and after, and the hold sweep, which runs every minute, expired an earlier test's hold in between. It now compares row counts. The twenty runs after that were all green.
+- **Only how a test waits changed, not what it says happened.** Where a test measured the wait with a stopwatch, it now observes the same thing directly:
+  - "it waited" (`> 700 ms`, in `tax-profile-in-use`, `product-listings`, `product-pricing`, `recheck-followups`): the call is seen waiting for a lock in `pg_stat_activity`, has not answered while the gate is closed, and answers once it is opened.
+  - "it did not wait" (`< 2500 ms` in three `availability` tests, `< 900 ms` in `product-pricing`, `< 1000 ms` and `< 2000 ms` in `recheck-followups`): the call has answered while the holder is still at its gate with its locks.
+  - "it gave up after its own 6 seconds, before the API's 8" (`coupons`, `booking-rules`): the answer is still `55P03` with "lock timeout", the holder is still holding when it comes, and the function's `lock_timeout=6s` is read from its definition. The stopwatch (5.5 to 8 seconds) is gone from these two; `product-extras` and `extras-screens` keep theirs, with the holder on a gate.
+  - A fixed 600 ms pause before reading locks (`product-pricing`) is a poll until all three writers are waiting.
+  - `booking-rules`' timed race against a hold's expiry runs again (three times at most) only when the sweep expired the hold first; `product-listings`' "a writer is never made to wait by the listing's row alone" is stronger than before (the writer answers while the row is held).
+
+**After the review of PR 51** (an independent review at `2474a6e`: "merge after fixes", nothing wrong in the migration's design; fixed on this branch on 19 Nov 2026, as new commits)
+
+- **A gate test that fails goes red; it no longer hangs the run.** A failed test left its holder at the gate with its row locks, the clean-up then waited behind them in a blocking call, and the timer meant to open the gate could never fire (the review watched a run sit for ten minutes). Now `tests/db/helpers.ts` keeps every gate it closes and registers an `afterEach` of its own that opens them all, waits for the sessions the test opened, and ends in the database any that is left. `deleteTenant()` runs in a session of its own with `lock_timeout = 5s`. **Proof:** with the product's row lock taken out of `save_product_pricing()`, "save_product_pricing waits for whoever holds the product's row" failed in 6 seconds ("Gave up after 5000 ms waiting for a session … to wait for a lock"); with it taken out of `save_product_extras()`, "the save waits for the scooter's row…" failed in 7 seconds. After each, `pg_stat_activity` had no session of the test's and nothing waiting. Both locks were put back (the functions' MD5s are as before).
+- **The gate tests no longer depend on the machine's speed.** Every look at the database while a call is in flight was a new, blocking `docker exec` (a second or more each on a busy machine, during which the call being watched could not even be sent). Looks now go through one psql session that stays open for the file (`watch()`): about 10 ms each, never blocking. `holding()`, `until()` and `stillHolding()` live in `helpers.ts` (the ten files' own copies are gone). A look for a waiting call is bounded at 5 seconds, inside the functions' 6-second lock timeout. Files with gate tests set a 60-second test and hook timeout (`GATE_TIMEOUTS`).
+  - **Ten runs in a row of each file**, one at a time, from `apps/platform`, `npx vitest run --config vitest.db.config.mts tests/db/<file>`, on a fresh reset. The machine was not idle (another project's local stack was running; a `docker exec` took 0.5 to 2.4 seconds):
+
+    | File | Tests | 10 runs | Seconds per run (average, longest) |
+    | --- | --- | --- | --- |
+    | `tax-profile-in-use.test.ts` | 11 | 10 of 10 | 13, 19 |
+    | `reservations.test.ts` | 68 | 10 of 10 | 85, 117 |
+    | `availability.test.ts` | 78 | 10 of 10 | 120, 159 |
+    | `booking-rules.test.ts` | 45 | 10 of 10 | 72, 99 |
+    | `product-listings.test.ts` | 39 | 10 of 10 | 20, 29 |
+    | `coupons.test.ts` | 63 | 10 of 10 | 102, 121 |
+    | `product-extras.test.ts` | 30 | 10 of 10 | 71, 86 |
+    | `product-pricing.test.ts` | 47 | 10 of 10 | 36, 44 |
+    | `recheck-followups.test.ts` | 12 | 10 of 10 | 13, 17 |
+    | `extras-screens.test.ts` | 11 | 10 of 10 | 27, 32 |
+
+  - **Under load:** `tax-profile-in-use.test.ts` five times in a row with one CPU-burning process per core (8 of 8; the processor at 100%, a `docker exec` taking 4.3 to 5.9 seconds): **5 of 5 green**, 79 to 151 seconds a run, no timeout. The review's runs of the first version under a lighter load were 1 of 5, every failure a 20-second timeout.
+  - **Seen once and not explained:** in one run of `coupons.test.ts` during this work (not one of the hundred above), "bookings, a cancel…, all at once, 8 rounds" failed in all three places at round 0, with every booking refused. The next run and the ten after it passed. That test sets a hold's expiry one second into the past by this machine's clock and reads it by the database's; the two were within 0.2 seconds when measured afterwards. Changed after CI's first run (below): the expiry is set from the database's clock.
+- **`platform.platform_admins` can't be truncated** (migration 6, edited in place: it has only ever been applied to local stacks). `TRUNCATE` fires no row trigger, so with the service role's grant it emptied the table and recorded nothing. A before-truncate statement trigger raises `platform_admins_are_not_truncated`, and `TRUNCATE` is revoked from `service_role`, `authenticated`, `anon` and `PUBLIC`; only the owner holds it, and the trigger stops the owner. Test: `review-followups.test.ts`, "platform_admins can't be truncated…".
+- **`record_renewal()` and `save_location_hours()` match digits as `[0-9]`.** `\d` takes any script's digits on this database, so a full-width cost or time passed the check and failed in the cast with a raw error. They are `invalid_renewal` and `invalid_hours` now (tested with full-width and Arabic-Indic digits). **No earlier migration uses `\d`:** all of them write `[0-9]` (the review said some did; they do not).
+- **The marketplace's `admin-queue.test.ts`** removes its tenant as the local superuser, audit rows first, and throws if it could not. The marketplace's database tests: **87 of 87** locally (`npm run test:db -w @mango/marketplace`, on the same local stack).
+- **The one number rule on every box** (decision 11, and the table's second half above). New: `parseDistance()` in `lib/distance.ts`, `parseWholeInRange()` in `lib/number-input.ts`, `typedWhole()` and `wholeNumber()` in `lib/fleet.ts` in place of `z.coerce.number`. `lib/number-input.test.ts` has 117 tests (73 before): twenty whole-number boxes and the odometer against the shared tables, and every stored value reading back.
+- **Errors tied to their fields** where the review found them missing: the pricing form's quick boxes and day inputs; the type and vehicle-kind radio lists (a `radiogroup` inside the fieldset, which stays a `group` so the existing lookups hold); the category list. The product type's error could not show at all (its hook ran outside the form): it does now. After a refused save a marked group gives the focus to its checked radio, else its first field; when the only error is the form's own, its message takes the focus. `e2e/form-errors.spec.ts` has three tests at both widths: the refused save, a checkbox list, a radio list.
+- **Words for three refusals** that showed "Couldn't save. Please try again.": `invalid_renewal`, `invalid_hours`, `location_not_found` (English and Thai, in `dbErrorKey()`).
+- **CI's first run on these fixes (`e3d7ae9`) failed two database tests, 688 of 690**, and stopped before the browser tests.
+  - `coupons.test.ts`, "finding 1: a confirm in flight across the hold's expiry…": **a mistake made in these fixes.** The new 5-second bound on a poll was applied to the wait for a hold that itself lasts 5 seconds, so on a fast machine the poll gave up before the hold was over ("Gave up after 5000 ms"). The wait for a hold's expiry now looks for the hold's length and ten seconds more (here and in `booking-rules.test.ts`' "a confirm in flight at the expiry instant", whose hold is 1 second). Both tests already set the expiry from the database's clock. The three places that still ran a hold out with `Date.now() - 1000`, the test machine's clock (`coupons.test.ts`: the "use is given back" tests and the eight-round test; `booking-rules.test.ts`: "its time runs out"), now use `clock_timestamp() - interval '1 second'`. What each test asserts is unchanged. One timed race in `booking-rules.test.ts` still sets expiries a few milliseconds ahead by the machine's clock, on purpose: it reruns when the sweep wins.
+  - `recheck-followups.test.ts`, the swap test: the real deadlock. Skipped, with the bug named in a comment; see "For Phase 3, stage 1".
+  - After both: `coupons.test.ts` 10 of 10 and `booking-rules.test.ts` 5 of 5, one run at a time; the full database suite on a fresh reset, **689 passed and 1 skipped** of 690.
+
+**The D5 loose end** (the D5 worktree's `supabase/config.toml` change is hidden with `git update-index --skip-worktree`, like every stage's since: check it first if local tests there act strangely)
+
+- In a scratch worktree at `main` (`b9e0b33`), a full `git revert --no-commit f90215d` conflicts in five files (`pricing-actions.ts`, `pricing-form.tsx`, `pricing-data.ts` and two test files): D6 rewrote the same code.
+- So only the "a saved list reads as stored" behaviour was reverted: in `lib/pricing-form.ts`' `computeList()`, the saved values of filled days were not read (`const stored = storedDays(draft)` became an empty map), which is what `f90215d` added there.
+- `e2e/products-stage-d6.spec.ts`, "the rounding step changed in Settings: a saved list reads as stored…", then **failed at both widths, for the right reason**: at "every day is the stored amount", day 3 was stored as 670.00 and shown as 660.00, filled in again with the new step. The scratch worktree was discarded; nothing of it was committed.
+
+**Tests**
+
+- **After the review of PR 51** (the lines below this one are the first version's): database **690 of 690** in 21 files on a fresh reset (one new test, the truncate; 610 seconds, 945 in the review's run of the first version); marketplace database 87 of 87; unit `@mango/core` 656, platform 599, marketplace 202; browser (184 at two widths, 7 of them skipped by their own conditions): two full local runs on a busy machine were not clean, 170 passed with 7 failed, then 176 passed with 1 failed; every failure was a timeout or a page that had not moved on within 5 seconds, each passed when run again (the last one 63 of 63 over three repeats of its two files), and none was in a test or screen this work changed. CI decides. `npm run db:types` twice: no diff. Typecheck and lint pass; the platform build passes.
+- **Database** (`npm run test:db -w @mango/platform`, on a fresh `supabase db reset`): **689 of 689** in 21 files. New: `review-followups.test.ts` (18: `recorded_by`, `record_renewal()`, `save_location_hours()`, `platform_admin_events`, the audit foreign key), more in `coupons.test.ts` (`coupon_inputs_by_id()`, full-width codes, the currency races, the recheck, the uncounted coupon, the migration's guard and check), and the "review follow-ups" grants in `default-grants.test.ts`.
+- **Unit** (`npm test`): `@mango/core` 656, platform 553, marketplace 202; all green (the first version of this line had the first and last counts swapped). New: `lib/number-input.test.ts` (73), the full-width cases in `coupon-code.cases.ts`.
+- **Browser** (`npm run test:e2e -w @mango/platform`, phone and desktop): 175 passed, 7 skipped by their own conditions (tests written for one width only, and the timings page, which runs only when asked). New: `e2e/form-errors.spec.ts` (focus and `aria-describedby` after a refused save). Changed: `fleet.spec.ts` typed "1,5" hours and expected a save; it now expects the refusal, then saves "1.5". `coupons.spec.ts` has the reworded messages.
+- **Types**: `npm run db:types` twice after the reset; the second run changes nothing. Typecheck, lint and the platform build pass.
+- **Migration 6's own check** on the local database: 0 indexes depend on `normalize_coupon_code()` (none rebuilt), 0 other dependents, 0 stored codes change, 0 duplicates. The functions that call it (`save_coupon()`, `coupon_inputs()`) read it at call time and store nothing worked out by it ahead of time.
+
+**For stage 11**
+
+- **A channel picker in Check a price, or on the New order screen** (carried from stage 9).
+- Settings › Booking rules is the first screen that will call `save_booking_rules()`; the opening-hours form on a location already saves through `save_location_hours()`.
+- `app/[tenant]/settings/settings-form.tsx` and the login form are forms of their own, not the shared one: they did not get the focus-on-error behaviour. Bring them onto `ActionForm`, or give them the same, when stage 11 touches Settings.
+- The coupon form's product picker and channel ticks show their error with an id and take the focus as a message; they are groups of checkboxes with no single field to mark.
+
+- **CI does not run the marketplace's database tests** (`.github/workflows/ci.yml` runs `npm run test:db -w @mango/platform` only). They pass locally (87); add them to CI, or say why not.
+- **A box's `maxLength` can stop a thousands comma being typed**: year (4), cc (5), lead time (3), sale quantity (6). The parsers read "2,020"; the boxes do not let it in. Widen them or leave it, as one decision.
+- **The CSV import's odometer takes one decimal place**, as the form does; "1234.56" was rounded before and is refused now.
+- **Forms of their own, not on the shared form** (no focus on error, no ids), beyond the two above: `products/moto-mangos-forms.tsx`, `team/member-row.tsx`, `fleet/import/import-form.tsx`, `admin/catalog/review-form.tsx`.
+- **The radio lists announce their legend twice** to a screen reader (the fieldset's group and the radiogroup inside it share it). Move the role to the fieldset when the four browser lookups by `group` are changed with it.
+
+**For a later migration** (each needs its own decision; none is in migration 6)
+
+- **The swap deadlock, confirmed by the review of PR 51** ("Found, not fixed", above; **now assigned to Phase 3 stage 1**, which fixes it another way, see "For Phase 3, stage 1"; what follows is the review's sketch, kept for the record): with a pause placed between the two triggers, two sessions moving bike A from X to Y and bike B from Y to X ended with `deadlock detected` in `units_clamp_product_counts`, every time. **The fix:** in the before trigger (`units_product_not_retired`), when an active bike changes model, lock both model rows there, lowest id first, each in the mode it needs (`for no key update` on the old model, `for share` on the new). Two opposite moves then take turns. One statement that moves many bikes can still interleave with another; say so in the migration. Then move the swap test to a gate.
+- **The service role can still delete a shop's `audit_events` and then the shop** (it holds `DELETE` and `TRUNCATE` on `audit_events`; the review did it in a transaction it undid). `on delete restrict` stops the accident, not the deliberate act. Goes with tenant offboarding (Phase 11, below): decide who may ever remove audit rows, and take the grants from everyone else.
+- **`coupon_inputs_by_id()` puts no limit on the list of ids.** One query for the whole list, with the uses counted per coupon; fine for a settings list of a shop's coupons. Cap the list (or page it) before anything sends it thousands.
+
+**For Phase 3, stage 1**
+
+- **The swap deadlock is fixed there, and its test comes back as a gate test that must pass.** `recheck-followups.test.ts`, "two bikes swapping models at the same moment both finish: no deadlock", is **skipped** (`it.skip`, the only skipped database test) since CI hit the real deadlock in `units_clamp_product_counts` on `e3d7ae9` (19 Nov 2026): the test only ever passed when its 1.2-second starting line kept the two moves apart. Phase 3 stage 1 changes how a unit changes model (through `move_unit()` only, one unit per transaction, the stock trigger once per statement) and rewrites the test on a gate, both moves released at the same instant, with no deadlock allowed.
+
+**For Phase 3** (carried, unchanged): "Uses per customer" back on the coupon form once both booking paths send a `customer_id`; a held booking whose coupon was archived since; a stacking coupon with a credit (`credit_exceeds_base`).
+
+**For Phase 8** (carried, unchanged): rate-limit code checks on the public booking page; `customerId` and `completedRentals` from the server only.
+
+**For Phase 10** (the Booqable import)
+
+- **Booqable import must record renewals as a named importing user, or via a dedicated import function, since `unit_renewals` refuses a null `auth.uid()`.**
+
+**For Phase 11** (the SaaS layer)
+
+- **Tenant offboarding: no hard delete exists once audit rows exist; design deliberate closure/retention (archive, data export, anonymise) before self-serve sign-up.**
+- `platform_admin_events` has no screen. A platform-admin audit viewer belongs with the audit log viewer already listed for Phase 11.
+
+**Known issues and follow-ups**
+
+- **Two bikes swapping models at the same instant can deadlock** ("Found, not fixed", above; confirmed by the review, with the fix under "For a later migration").
+- **The waits on real time that are left, each said where it is:** the "confirm in flight across the hold's expiry" tests in `coupons.test.ts` and `booking-rules.test.ts` (a hold runs out on the database's own clock, and a confirm that has begun holds the booking's rows, so the expiry can't be set by hand afterwards: a hold of 5 seconds and of 1 second, then a bounded poll); the tests that prove a function's own 6-second lock timeout (the wait is the subject; the gate is opened only after the answer); the 1.2-second pause before Postgres' deadlock counter is read (the server's own statistics interval: being late can only hide a deadlock, never invent one); a 20 ms pause in `product-listings.test.ts` that separates two timestamps; and the swap test's 1.2-second starting line.
+- A function with a 6-second lock timeout still needs its gate opened inside 6 seconds. That is the function's rule; the tests open the gate straight after the observation.
+- `cron.job_run_details` grows by a row a minute once the hold sweep runs on live: the checklist asks for a decision at go-live.
+- The Thai lines need Korn's check.
+- `docs/platform/SPEC.md`'s data model does not have `platform_admin_events` or the two new functions (plan §12).
+
+**Before this goes to staging** (the owner's word each time, plan Q17): staging must be at 66 of 66 with `main`'s bodies; **the guard checks the three functions and stops with nothing changed if one differs.** Count first: `select count(*) from platform.coupons where platform_private.normalize_coupon_code(code) is distinct from code` must be 0 (the migration checks it too, and stops if not). Afterwards: `audit_events_tenant_id_fkey` reads `ON DELETE RESTRICT`; `platform_admin_events` is empty, RLS on, one policy, select for the service role only; `record_renewal()` and `save_location_hours()` are executable by `authenticated` only; `currency_locked()` answers as before for every shop; counts of tenants, renewals, opening hours, coupons and audit rows are unchanged. **A script that inserts renewals with the service role (the demo seed before this branch) is refused from then on: run the seed from this branch.** **Done on 20 Nov 2026: see "On staging" above.**
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s10` on ports 6262x, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. The stacks of stage 8 and stage 9 were stopped (not removed); another project's stack was left alone.
+
+**Next:** stage 11, Check availability and price, Booking rules and the wrap-up.
 
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 
@@ -2188,7 +2444,7 @@ Fifth round (owner's click-through, 13 Nov 2026):
 
 Open, for the owner:
 
-- **Deleting a vehicle that has bookings (from Phase 3).** The owner wants vendors to be able to remove any vehicle for good while past sales history stays. A real delete can't do both: it erases the vehicle's own records and would leave past orders pointing at nothing. Proposed for Phase 3: "Remove for good" marks the vehicle as removed (never shown again, not restorable from the app, plate free to reuse) and keeps the row for past orders and reports. Needs a column and every vehicle query to leave removed ones out.
+- **Deleting a vehicle that has bookings (from Phase 3).** The owner wants vendors to be able to remove any vehicle for good while past sales history stays. A real delete can't do both: it erases the vehicle's own records and would leave past orders pointing at nothing. Proposed for Phase 3: "Remove for good" marks the vehicle as removed (never shown again, not restorable from the app, plate free to reuse) and keeps the row for past orders and reports. Needs a column and every vehicle query to leave removed ones out. **Moved to Phase 1b** (Phase 3 plan, draft 2, 19 Nov 2026).
 - **"Edit" button beside Save on the make & model page:** not built; the page is already an edit form. Waiting for the owner to say what could not be changed.
 
 Known limits and open points:
@@ -2631,6 +2887,7 @@ Mapping first: `docs/platform/MAPPING.md` (legacy marketplace tables → tenants
 
 ## Phase 1b: fleet care (to build)
 
+- Plan: `docs/phase-1b-plan.md` (draft 1, 19 Nov 2026).
 - Vehicle notes field (fitted accessories), see SPEC Vehicle record: column exists, screen only. Still to do: the staff app's bike card and the Fleet search.
 
 ## Next
