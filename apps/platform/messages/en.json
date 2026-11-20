@@ -975,7 +975,8 @@
       "offering": "Offering {count} of {total, plural, one {# bike} other {# bikes}} for advance booking",
       "leadTime": "Lead time (hours)",
       "leadTimeHelp": "How many hours ahead a booking must be made, from 0 to 720. Leave it empty for none.",
-      "noPrice": "No price by rental length yet: it won't be offered on Moto Mangos. Set one on the Pricing tab."
+      "noPrice": "No price by rental length yet: it won't be offered on Moto Mangos. Set one on the Pricing tab.",
+      "shopNotice": "Bookings need {hours, plural, one {# hour} other {# hours}}: your shop's minimum notice."
     },
     "editModel": "Edit product",
     "addUnitRow": "Add vehicle",

@@ -17,7 +17,11 @@ import {
 } from "@/components/action-form";
 import { transmissions } from "@/lib/fleet";
 import { Field, inputClass } from "@/components/form";
-import { countProblems, typedCount } from "@/lib/listing-settings";
+import {
+  countProblems,
+  shopNoticeLine,
+  typedCount,
+} from "@/lib/listing-settings";
 import type { ListChoice } from "@/lib/model-options";
 import { cn } from "@/lib/utils";
 import { linkModelToPreset, submitModelToCatalog } from "../fleet/actions";
@@ -386,6 +390,7 @@ export function ListingSettingsForm({
   enabled,
   active,
   values,
+  shopNoticeHours = null,
 }: {
   slug: string;
   id: string;
@@ -393,6 +398,8 @@ export function ListingSettingsForm({
   /** The product's active vehicles: what the counts may reach. */
   active: number;
   values: SettingValues;
+  /** The shop's minimum notice where this vehicle is (Booking rules). */
+  shopNoticeHours?: number | null;
 }) {
   const t = useTranslations("Fleet.motoMangos");
   const tModel = useTranslations("Fleet.model");
@@ -418,6 +425,7 @@ export function ListingSettingsForm({
           },
           active,
         );
+  const notice = shopNoticeLine(shopNoticeHours, typed.lead_time_hours);
   const input = (name: keyof SettingValues) => ({
     value: typed[name],
     onChange: (event: ChangeEvent<HTMLInputElement>) => {
@@ -476,6 +484,11 @@ export function ListingSettingsForm({
         className="max-w-28"
         {...input("lead_time_hours")}
       />
+      {notice !== null && (
+        <p data-shop-notice className="text-sm text-muted-foreground">
+          {t("shopNotice", { hours: notice })}
+        </p>
+      )}
     </fieldset>
   );
   if (!enabled) return fields;

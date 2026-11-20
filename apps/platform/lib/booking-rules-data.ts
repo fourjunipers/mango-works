@@ -58,3 +58,35 @@ export async function getBookingRules(
     vehicles: vehicles.data,
   };
 }
+
+/**
+ * The minimum notice for a vehicle's Moto Mangos bookings, for the Moto
+ * Mangos tab's line: the strictest of the notices of the locations where
+ * it has active vehicles (a booking can be for any of them). Null when
+ * none of them asks for notice.
+ */
+export async function getShopNoticeHours(
+  tenantId: string,
+  productId: string,
+): Promise<number | null> {
+  const supabase = await createClient();
+  const { data: units, error } = await supabase
+    .from("units")
+    .select("location_id")
+    .eq("tenant_id", tenantId)
+    .eq("product_id", productId)
+    .eq("status", "active");
+  if (error) throw error;
+  const ids = [...new Set(units.map((u) => u.location_id))];
+  if (ids.length === 0) return null;
+  const { data: locations, error: e2 } = await supabase
+    .from("locations")
+    .select("min_notice_hours")
+    .eq("tenant_id", tenantId)
+    .in("id", ids);
+  if (e2) throw e2;
+  const hours = locations
+    .map((l) => l.min_notice_hours)
+    .filter((h): h is number => h !== null);
+  return hours.length > 0 ? Math.max(...hours) : null;
+}

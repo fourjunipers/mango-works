@@ -10,6 +10,7 @@
 import { expect, test } from "@playwright/test";
 import { withBookingRules } from "./booking-rules";
 import { demo, signIn } from "./helpers";
+import { ownerClient } from "./shop-settings";
 
 test("an owner saves the booking rules, and finds them after a reload", async ({
   page,
@@ -87,3 +88,60 @@ for (const who of ["bsrStaff", "bsrMechanic", "bsrDriver"] as const) {
     await expect(page.getByLabel("Hold length (minutes)")).toHaveCount(0);
   });
 }
+
+test("the Moto Mangos tab says when the shop's minimum notice is the stricter one", async ({
+  page,
+}) => {
+  await withBookingRules(demo.bsrOwner, "bsr", async () => {
+    const { db, tenantId } = await ownerClient(demo.bsrOwner, "bsr");
+    const { data: location } = await db
+      .from("locations")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("is_default", true)
+      .single()
+      .throwOnError();
+    const { data: unit } = await db
+      .from("units")
+      .select("product_id, products!inner(type, lead:product_listings(lead_time_hours))")
+      .eq("tenant_id", tenantId)
+      .eq("location_id", location!.id)
+      .eq("status", "active")
+      .eq("products.type", "vehicle")
+      .limit(1)
+      .single()
+      .throwOnError();
+    const lead = (
+      unit!.products as unknown as {
+        lead: { lead_time_hours: number | null }[] | { lead_time_hours: number | null } | null;
+      }
+    ).lead;
+    const leadHours =
+      (Array.isArray(lead) ? lead[0]?.lead_time_hours : lead?.lead_time_hours) ??
+      0;
+    const notice = Math.min(720, leadHours + 48);
+    await db
+      .rpc("save_booking_rules", {
+        p_tenant_id: tenantId,
+        p_rules: { locations: [{ id: location!.id, min_notice_hours: notice }] },
+      })
+      .throwOnError();
+
+    await signIn(page, demo.bsrOwner);
+    await page.goto(`/bsr/products/${unit!.product_id}?tab=moto-mangos`);
+    await expect(page.locator("[data-shop-notice]")).toHaveText(
+      `Bookings need ${notice} hours: your shop's minimum notice.`,
+    );
+
+    // No notice: no line.
+    await db
+      .rpc("save_booking_rules", {
+        p_tenant_id: tenantId,
+        p_rules: { locations: [{ id: location!.id, min_notice_hours: null }] },
+      })
+      .throwOnError();
+    await page.reload();
+    await expect(page.getByLabel("Lead time (hours)")).toBeVisible();
+    await expect(page.locator("[data-shop-notice]")).toHaveCount(0);
+  });
+});
