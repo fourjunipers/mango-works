@@ -1241,7 +1241,7 @@ New and changed Thai lines on the branch `platform/phase-2-stage-11-wrap-up`: th
 | `NewOrder.priceFor` | {name}: price from {channel} | {name}: ราคาเมื่อจองจาก{channel} |
 | `NewOrder.count.free` | {free} of {stock} free | ว่าง {free} จาก {stock} |
 | `NewOrder.count.service` | A service: nothing to count | บริการ: ไม่ต้องนับจำนวน |
-| `NewOrder.refused.tooShort` | Too short: at least {min, plural, one {# day} other {# days}} on this channel. | สั้นเกินไป: ช่องทางนี้ต้องเช่าอย่างน้อย {min} วัน |
+| `NewOrder.refused.tooShort` | Too short: at least {min, plural, one {# day} other {# days}} on this channel. | สั้นเกินไป: ช่องทางนี้ต้องเช่าอย่างน้อย {min, plural, other {# วัน}} |
 | `NewOrder.refused.tooSoon` | Too soon: the earliest pickup on this channel is {when}. | เร็วเกินไป: ช่องทางนี้รับรถได้เร็วที่สุด {when} |
 | `NewOrder.refused.closedPickup` | Closed at the pickup time. | ร้านปิดในเวลารับรถ |
 | `NewOrder.refused.closedReturn` | Closed at the return time. | ร้านปิดในเวลาคืนรถ |
@@ -1285,7 +1285,7 @@ New and changed Thai lines on the branch `platform/phase-2-stage-11-wrap-up`: th
 | `FormErrors.bookingRulesInvalid` | These rules couldn't be saved as they were sent. Reload the page and try again. | บันทึกกฎเหล่านี้ไม่ได้ตามที่ส่งมา โหลดหน้าใหม่แล้วลองอีกครั้ง |
 | `FormErrors.bookingRulesVehicleGone` | One of these vehicles no longer exists. Reload the page. | รถคันหนึ่งในรายการนี้ไม่มีอยู่แล้ว โหลดหน้าใหม่ |
 | `FormErrors.bookingRulesTryAgain` | Someone is saving a booking right now, so nothing was saved. Please save again. | มีคนกำลังบันทึกการจองอยู่ จึงยังไม่ได้บันทึกอะไร กรุณาบันทึกอีกครั้ง |
-| `Fleet.motoMangos.shopNotice` | Bookings need {hours, plural, one {# hour} other {# hours}}: your shop's minimum notice. | การจองต้องแจ้งล่วงหน้า {hours} ชั่วโมง: ตามการแจ้งล่วงหน้าขั้นต่ำของร้าน |
+| `Fleet.motoMangos.shopNotice` | Bookings need {hours, plural, one {# hour} other {# hours}}: your shop's minimum notice. | การจองต้องแจ้งล่วงหน้า {hours, plural, other {# ชั่วโมง}}: ตามการแจ้งล่วงหน้าขั้นต่ำของร้าน |
 | `Fleet.bookings.title` | Bookings | การจอง |
 | `Fleet.bookings.intro` | The bookings this vehicle is set aside for. Times are {zone} time. Bookings are made and changed from orders, which come in Phase 3. | การจองที่กันรถคันนี้ไว้ เวลาเป็นเวลา {zone} การสร้างและแก้ไขการจองทำจากออเดอร์ ซึ่งจะมาในเฟส 3 |
 | `Fleet.bookings.none` | No bookings now or coming up. | ไม่มีการจองตอนนี้หรือที่จะมาถึง |
