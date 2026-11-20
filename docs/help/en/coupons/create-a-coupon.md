@@ -3,7 +3,7 @@ title: Create a coupon
 summary: Make a discount code with a percentage or fixed amount off, and optionally limit its products, dates, rental length, spend, uses and where it can be used.
 keywords: [coupon, discount code, promo code, voucher, promotion, percentage off, money off, flyer code, คูปอง, โค้ดส่วนลด, รหัสส่วนลด, โปรโมชั่น, ส่วนลด]
 screens: [/[tenant]/settings/coupons, /[tenant]/settings/coupons/new]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Create a coupon
@@ -18,7 +18,7 @@ Who can do this: owners and managers.
 
 1. Open **Shop settings** and choose **Coupons**.
 2. Press **New coupon**.
-3. Type the **Code**: what the customer types. Letters A to Z and numbers 0 to 9, up to 40. Spaces are taken out and small letters made capitals; the form shows "Saved as {code}".
+3. Type the **Code**: what the customer types. Letters A to Z and numbers 0 to 9, up to 40. Spaces are taken out, small letters are made capitals and full-width letters and numbers (such as Ａ or ０) are read as the plain ones; the form shows "Saved as {code}". Thai letters can't be used.
 4. Optional: **Name (for the shop)**, your own note such as "Songkran flyer". Customers don't see it.
 5. Under **Discount**, choose the **Kind**:
    - **Percentage**: type the **Percentage off**, such as 10 or 12.5. It is taken off each of the coupon's lines after seasonal prices.
@@ -36,22 +36,24 @@ Who can do this: owners and managers.
    - **Can be used on season discounts**. Off: the coupon takes nothing off a rental that a season has already made cheaper.
 10. Press **Create coupon**. You see "Coupon created." The coupon starts **On**.
 
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).
+
 Try it in **Check a price** on a product's Pricing tab: see [Check a price](../products/check-a-price.md).
 
 ## Common problems
 
 - **"Required."** The code or the discount is missing.
-- **"This code can’t be saved: use only the letters A to Z and the numbers 0 to 9. Thai letters and full-width characters (such as Ａ or ０) can’t be used."** Shown while you type. Retype the code using plain letters and numbers.
-- **"Use only the letters A to Z and the numbers 0 to 9, up to 40 of them (spaces are taken out). Thai letters and full-width characters (such as Ａ or ０) can’t be used in a code."**
+- **"This code can’t be saved: use only the letters A to Z and the numbers 0 to 9. Thai letters can’t be used."** Shown while you type. Remove any Thai letters, symbols or other characters from the code.
+- **"Use only the letters A to Z and the numbers 0 to 9, up to 40 of them. Spaces are taken out, and full-width letters and numbers (such as Ａ or ０) are read as A or 0. Thai letters can’t be used in a code."** The code has a character that isn't a letter or number, or is longer than 40.
 - **"Another coupon already uses the code {code}. Archive it first, or choose another code."** Or "The coupon “{name}” already uses the code {code}. …". Two live coupons can't share a code.
-- **"Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma."**
+- **"Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma."** Write 12.5, not 12,5.
 - **"Enter a percentage above 0."** / **"At most 100%."**
-- **"Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has."**
+- **"Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has."** This is shown for **Amount off** and **Minimum spend**. Write 1,234.50 or 1234.50, not 1 234,50.
 - **"Enter an amount above 0."** / **"That amount is too long: 18 digits at most."**
 - **"Choose at least one product, or All products."**
 - **"The last day is before the first."**
-- **"Enter a whole number of days from 1 to 1,000, or leave it empty."**
-- **"Enter a whole number from 1, or leave it empty for no limit."**
+- **"Enter a whole number of days from 1 to 1,000, or leave it empty."** **Minimum days** takes whole numbers only, with no decimal point.
+- **"Enter a whole number from 1, or leave it empty for no limit."** **Total uses** takes whole numbers only.
 - **"Choose at least one place this code can be used."**
 - **"One of the chosen products no longer exists. Reload the page and choose again."**
 - **"Check the coupon’s details and save again."**

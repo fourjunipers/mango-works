@@ -3,7 +3,7 @@ title: Create a vehicle product (what you rent out)
 summary: Create a product such as "Honda Click 160", choose its kind and categories, then add the vehicles you own of it.
 keywords: [new product, add model, make and model, bike model, kind, category, scooter, motorbike, car, boat, buffer, minimum age, licence class, book online, สินค้าใหม่, เพิ่มรุ่น, ประเภท, หมวด, มอเตอร์ไซค์, สกู๊ตเตอร์, รถยนต์]
 screens: [/[tenant]/products, /[tenant]/products/new, /[tenant]/products/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Create a vehicle product (what you rent out)
@@ -40,6 +40,8 @@ To change a product later, open it, change the **Details** tab and press **Save*
 - **"That name is already used in this shop."** Choose another name, for example add the years.
 - **"Required."** The name, or a category for a motorbike or car, is missing.
 - **"Choose one of the categories in the list."** Pick a category shown for the chosen kind.
-- **"Enter the hours as a number, like 2 or 0.5 (168 at most)."** Check the buffers.
-- **"Enter a whole number in range."** Check the minimum age.
+- **"Enter the hours as a number, like 2 or 0.5 (168 at most). Use a dot for decimals; a comma only separates thousands, so 0,5 is not read as a half."** Check the buffers: write half an hour as 0.5, not 0,5.
+- **"Enter a whole number in range."** Check the minimum age: a whole number, with no decimal point.
 - **"Couldn't save. Please try again."** Reload the page and try again.
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).

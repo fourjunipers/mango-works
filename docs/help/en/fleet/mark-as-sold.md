@@ -3,7 +3,7 @@ title: Mark a vehicle as sold
 summary: Record that you sold a vehicle, with the sale date, price and buyer, and take it out of the fleet.
 keywords: [sell, sold, sale, sale price, buyer, dispose, purchase price, bought from, ขายแล้ว, ขายรถ, ราคาขาย, ผู้ซื้อ, การซื้อและการขาย]
 screens: [/[tenant]/fleet/units/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Mark a vehicle as sold
@@ -27,6 +27,8 @@ If a vehicle has sale details but isn't marked Sold, the section says "This vehi
 ## Common problems
 
 - **"This vehicle still has a block that ends in the future. End or remove it first."** A vehicle with future downtime or bookings can't be sold. End or remove its future blocks first.
-- **"Enter an amount, such as 45000 or 45000.50."** Type the price as a number, with a dot for decimals.
+- **"Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has."** Type the price with a dot for decimals (12.50, not 12,50) and no spaces.
 - **"Enter a real date."** Check the date.
 - **"Couldn't save. Please try again."** Reload the page and try again.
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).
