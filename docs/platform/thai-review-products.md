@@ -1303,3 +1303,19 @@ New and changed Thai lines on the branch `platform/phase-2-stage-11-wrap-up`: th
 | `NewOrder.refused.capReached` | Moto Mangos has used all the units you list there for these dates. | Moto Mangos ใช้จำนวนรถที่คุณลงขายไว้ครบแล้วในวันที่เลือก |
 | `Fleet.bookings.ranOut` | Hold ran out | การกันรถหมดเวลาแล้ว |
 | `Nav.new-order` | Price check | เช็กราคา |
+
+## Price check: compact layout (20 Nov 2026)
+
+New and changed Thai lines on the branch `platform/price-check-compact`: the Price check tab is now one card with one search box (the owner, 20 Nov 2026: "a compact price checker"). Claude's translations; please check. Words chosen: ล่าสุด (recent, for the quick buttons of the last products looked at), จำนวนที่ว่าง (how many are free: neutral, since gear is not counted in คัน). Gone: `NewOrder.intro`, `NewOrder.channelHelp`, `NewOrder.results`, `NewOrder.seePrice` (the screen has no list of products and no Price buttons now).
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `NewOrder.nothingBooked` | Only a check: nothing is booked or held, and no coupon use is counted. | ใช้เช็กเท่านั้น: ไม่มีการจองหรือกันรถไว้ และไม่นับการใช้คูปอง |
+| `NewOrder.search` | Product | สินค้า |
+| `NewOrder.searchPlaceholder` | Find a product: name, kind or category | ค้นหาสินค้า: ชื่อ ประเภท หรือหมวดหมู่ |
+| `NewOrder.noMatch` | Nothing matches “{query}”. | ไม่พบสินค้าที่ตรงกับ “{query}” |
+| `NewOrder.recent` | Recent | ล่าสุด |
+| `NewOrder.pickHint` | Find a product to see how many are free and its price for these dates. | ค้นหาสินค้าเพื่อดูจำนวนที่ว่างและราคาในวันที่เลือก |
+| `NewOrder.pickHintCounts` | Find a product to see how many are free for these dates. | ค้นหาสินค้าเพื่อดูจำนวนที่ว่างในวันที่เลือก |
+| `Pricing.check.more` | Quantity and extras | จำนวนและของเสริม |
+| `Pricing.check.moreQuantity` | Quantity | จำนวน |

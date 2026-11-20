@@ -13,6 +13,18 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
 
+## Price check: compact layout (branch `platform/price-check-compact`, 20 Nov 2026)
+
+**No migration; what the screen calculates is unchanged.** The owner's feedback (20 Nov 2026): "much more consolidated", the top card repeated much of the bottom one, the long list of products was inconvenient; "simple to use, easy to understand. A compact price checker."
+
+- **One card** (`app/[tenant]/new-order/page.tsx`): pickup, return, location (when there are several) and **Booked from** as a small select (default "The counter") on top; one search box with a **Check** button; one product's answer under it; the "only a check" line at the foot. The list of every product and the separate "Check a price" card with its own date boxes are gone.
+- **The search** (`new-order/search.tsx`, a combobox): matches a product by name, kind or category (`matchOptions()` in `lib/new-order.ts`, pure and tested); picking one sends the GET form with `product`. Before the scripts start, or on Enter with nothing picked, the text goes as `q` and the page opens the one match or lists the matches as links. Products with nothing at the location are still left out (a service always shows). The last five products looked at are quick chips, kept in this browser's localStorage per shop (`recentAfter()`, `readRecent()`).
+- **The answer**: name, kind · category, "N of M free" (red only at 0) and the refusal in red, all unchanged rules and messages. For owners, managers and staff, `CheckPrice` in a new `compact` mode: priced for the card's dates (no date boxes, no days/dates switch), the breakdown, coupon box and returning-customer tick, with quantity and extras folded under "Quantity and extras". The Pricing tab's `CheckPrice` is unchanged. Mechanics and drivers: the count only; `getPricingInputs()` is never called for them, and the browser test checks the server's response holds none of the price part.
+- **Reads:** the same as before (`getPriceCheckReads()` for every product, then `answersFor()`); `getPriceCheckProducts()` also reads `vehicle_type` and `categories` for the search.
+- **Strings:** gone `NewOrder.intro`, `channelHelp`, `results`, `seePrice`; new `NewOrder.search`, `searchPlaceholder`, `noMatch`, `recent`, `pickHint`, `pickHintCounts`, `Pricing.check.more`, `moreQuantity`; `nothingBooked` shortened. Thai in `docs/platform/thai-review-products.md` (new section). Help: `docs/help/en/price-check/price-check.md` rewritten for the new steps.
+- **Tests:** `lib/new-order.test.ts` (search ranking, recent list); `e2e/new-order.spec.ts` rewritten, 12 tests at 375 px and 1280 px, all passing locally, including no sideways scroll at 375 px and the mechanic/driver server-response check. `products-stage-d5`/`d6` (the Pricing tab's Check a price) pass; two d5 tests timed out once on phone under load in a combined run and passed alone.
+- **Local set-up.** This worktree has its own stack, `Bike_Booking_pricecheck` on ports 6382x, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Other stacks were left running.
+
 ## Neon move: assessment, decisions and plan (branch `docs/neon-move-plan`, 19 Nov 2026)
 
 **Docs only: no code, migration or test changed; nothing run against staging or live.** Written from `main` at `d458717`.
