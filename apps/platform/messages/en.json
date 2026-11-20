@@ -209,7 +209,8 @@
       "seasons": "Seasons",
       "priceLists": "Price lists",
       "extras": "Extras",
-      "coupons": "Coupons"
+      "coupons": "Coupons",
+      "bookingRules": "Booking rules"
     },
     "pricing": {
       "title": "Pricing and tax",
@@ -452,6 +453,41 @@
         "withSeasonOn": "{who} let {code} be used on season discounts",
         "withSeasonOff": "{who} stopped {code} being used on season discounts"
       }
+    },
+    "bookingRules": {
+      "title": "Booking rules",
+      "intro": "How far ahead bookings must be made, how short a rental can be, the time kept free around a rental, and how long a booking is held while someone pays.",
+      "shop": {
+        "title": "The whole shop",
+        "intro": "These apply at every location.",
+        "overbooking": "Allow overbooking",
+        "overbookingHelp": "On: when every vehicle is taken, staff can still save a booking. It is saved as a shortage, waiting for a vehicle to be assigned, and you must find one before pickup. Bookings made online are never overbooked.",
+        "hold": "Hold length (minutes)",
+        "holdHelp": "How long a booking keeps its vehicle while the customer pays: 5 to 60 minutes.",
+        "bufferBefore": "Time free before (hours)",
+        "bufferAfter": "Time free after (hours)",
+        "bufferHelp": "For vehicles that have no time of their own. Blank is none; up to 168 hours."
+      },
+      "location": {
+        "title": "Your location",
+        "titleNamed": "Location: {name}",
+        "intro": "Blank is no rule. Bookings staff make in the app need no notice.",
+        "notice": "Minimum notice (hours)",
+        "noticeHelp": "How long before pickup an online booking must be made: 0 to 720 hours.",
+        "cutoff": "Cut-off before closing (minutes)",
+        "cutoffHelp": "For “Ride today” on Moto Mangos: no new same-day booking this long before you close. 0 to 1,440 minutes.",
+        "minDaysAdvance": "Minimum days, booked ahead",
+        "minDaysAdvanceHelp": "The shortest rental for a booking made before the day: 1 to 365 days.",
+        "minDaysWalkin": "Minimum days, walk-in",
+        "minDaysWalkinHelp": "The shortest rental for a customer at the counter, or “Ride today”: 1 to 365 days."
+      },
+      "vehicles": {
+        "title": "Vehicles",
+        "intro": "A vehicle's own minimum days, in place of its location's. Blank uses the location's rule.",
+        "none": "No vehicle products yet.",
+        "advance": "Booked ahead (days)",
+        "walkin": "Walk-in (days)"
+      }
     }
   },
   "Me": {
@@ -613,7 +649,14 @@
     "hold_expired": "This hold has run out; make the booking again.",
     "coupon_not_valid": "This coupon can’t be used right now; send it again.",
     "coupon_used_up": "This coupon has been used as many times as it allows, so nothing was booked. Send the booking again without the code.",
-    "couponAmountTooLong": "That amount is too long: 18 digits at most."
+    "couponAmountTooLong": "That amount is too long: 18 digits at most.",
+    "bookingRulesHold": "Enter a hold length from 5 to 60 minutes.",
+    "bookingRulesNotice": "Enter whole hours from 0 to 720, or leave it blank.",
+    "bookingRulesCutoff": "Enter whole minutes from 0 to 1,440, or leave it blank.",
+    "bookingRulesMinDays": "Enter whole days from 1 to 365, or leave it blank.",
+    "bookingRulesOwnerOrManager": "Only an owner or a manager can change the booking rules.",
+    "bookingRulesInvalid": "These rules couldn't be saved as they were sent. Reload the page and try again.",
+    "bookingRulesVehicleGone": "One of these vehicles no longer exists. Reload the page."
   },
   "Fleet": {
     "title": "Fleet",

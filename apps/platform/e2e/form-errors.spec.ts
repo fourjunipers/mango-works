@@ -216,7 +216,11 @@ test("Settings: a refused save puts the focus on the field and ties the error to
   await expect(locale).not.toHaveAttribute("aria-invalid", "true");
   // Not a language tag: refused by the server, nothing saved.
   await locale.fill("not a tag!");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page
+    .locator("form")
+    .filter({ has: locale })
+    .getByRole("button", { name: "Save", exact: true })
+    .click();
   const error = page.locator("#locale-error");
   await expect(error).toContainText("language tag");
   await expect(locale).toHaveAttribute("aria-invalid", "true");
