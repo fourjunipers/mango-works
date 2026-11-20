@@ -13,6 +13,45 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → 3M → 1b → 4 onward.
 
+## Phase 1b: plan only (branch `platform/phase-1b-plan`, 19 Nov 2026)
+
+**No code, no migration, no test.** The plan is `docs/phase-1b-plan.md`, **draft 2**, written from `main` at `d458717`, PR 51's branch (`record_renewal()`) and the Phase 3 plan, draft 2. Draft 1 put fifteen questions to Mark; **he answered all fifteen on 19 Nov 2026** and they are in the plan's §6.
+
+- **Already built in 1a** (plan §1.2): renewal records and costs, reminder settings, the hourly reminder queue, dashboard renewal items, downtime blocks, `units.notes`, one current odometer value. **Not built, though the spec listed them:** `track_maintenance_costs`, `avg_daily_km`, keys.
+- **Decided, 19 Nov 2026:**
+  - What is due is worked out on read; an hourly job only for messages and follow-ups. Intervals in km and/or days or calendar months. Counting starts the day the schedule is saved, with an optional "last done" per vehicle and task.
+  - **Only a task marked "block when overdue" blocks a pickup**, with an override by owners and managers, and by staff behind a new staff permission (off). The tag users see is "Service due". Availability never depends on service state.
+  - **Expired renewals never block a pickup.** Reminders only, plus a warning at check-out.
+  - Standard cost per task only when no parts or labour cost is typed. Cost tracking off keeps saved costs, hidden. Job costs: owners, managers, mechanics; staff behind a second new staff permission (off); drivers never.
+  - Key numbers, IMEI and SIM: everyone except drivers. No `registration` renewal kind. Average km per day is an estimate on the vehicle page and drives nothing. Service messages (Phase 6) default to staff, mechanics and owners.
+  - "Remove for good": a unit status, `removed`; everything is kept, hidden; a product whose vehicles are all removed can be removed too.
+- **No files on the platform (decision 10). This reverses the 10 Nov 2026 review decision that deferred the Google Drive option until after Gate B.** The storage module, receipt photos and renewal documents leave Phase 1b. A new, separate stage, **"Shop file storage (Google Drive)", comes before Phase 4**: each shop connects its own Drive, the platform keeps only a file id per file, one module serves 1b receipts, renewal documents, Phase 4 passports and licences and Phase 5 inspection photos, and a shop with no connected Drive can't attach files. Outline in the plan's §7; **its design is still to be written (Fable)**, and Phase 4 can't start without it.
+- **`docs/platform/SPEC.md` corrected in this PR:** expired renewals as reminders; a lower odometer reading confirmed and audited (the Vehicle record line still said "manager override"); the `unit_renewals` kind list; file storage in the shop's Drive (Tech stack, Data model, Customers and KYC, Review decisions, Phase 4's build line, change requests 49 and 50).
+- **Lock order:** no new advisory-lock class; the new rows sit inside class 3.9 of the Phase 3 plan's §4.2. A function holding a unit's lock takes the unit's row without waiting. **For the Phase 5 plan:** check-out and check-in write the odometer inside `pick_up` and `return_rental`, so there the unit's row is taken `for no key update nowait` (plan §2.7, rule 3).
+- **Ten new tables, eight migrations, eleven stages**; seven Fable builds, four Opus with a Fable check or review. The plan re-creates five Phase 3 objects (`units_guard`, `move_unit()`, `staff_may()`, `save_staff_permissions()`, `pickup_blockers()`), each behind an MD5 guard.
+
+## Phase 3: plan draft, for a Fable critique (branch `platform/phase-3-plan-draft`, 19 Nov 2026)
+
+**No code and no migration. Not approved.** The draft is `docs/phase-3-plan.md`, written from `main` at `b9e0b33`, assuming PR 51 (Phase 2 stage 10) and Phase 2 stage 11 merge first.
+
+- **Shape:** orders, rentals, billed-period lines and charges on top of Phase 2's `reservations` (Q1); `booking_id` becomes the order's id; one vehicle per rental (Q2); a charge is one `quote()` call and what a payment pays.
+- **Eight migrations, twelve stages.** Stage 1 fixes stage 10's "two bikes swapping models" deadlock and states one global lock order for Phase 3 (plan §4).
+- **Found while planning:** the Phase 2 rule that online bookings reach `reserve()` only through `bookOnline()` in `apps/platform/lib` can't serve the marketplace app at 3M (an app may not import from another app). Plan Q15.
+- **16 open decisions** in §11, each with a recommendation. Nothing in the spec, INTEGRATION or the root `CLAUDE.md` is changed; §13 lists what each will need.
+
+**Draft 2 (19 Nov 2026), after Fable's critique ("needs a second draft") and Mark's 25 decisions.** Written against `main` plus PR 51's branch (migration 6). Every critique item (M1–M8, S1–S10, minor, scope) is applied; plan §14 lists each with the section it changed, §11.1 the decisions.
+
+- `reserve_core` takes the order and its rentals and inserts them inside the lock order; `platform.reserve()` is dropped and Phase 2's tests are ported to `create_order` (stage 2b). Line cap 200.
+- Every order function reads unlocked, takes its advisory locks from the order's reservations, locks the order row, reads again (`try_again` if anything moved), and settles a run-out hold first.
+- Intent status stored; reserved, picked up, returned and mixed derived. Shortage, at risk and completed rentals computed, not stored.
+- Payments ledger and append-only allocations with VAT per payment (`paymentVat`); balance independent of allocation; staff permissions as six shop settings checked in the database.
+- **Thirteen stages, nine migrations**; stage 1 makes `move_unit()` the only way a vehicle changes product and turns the counts trigger statement-level (the stage 10 deadlock and the multi-row crossing).
+- **"Remove for good" (deleting a vehicle that has bookings, 12 Nov proposal) moved from Phase 3 to Phase 1b.**
+- **Open points settled the same day** (decisions 23 replaced, 26 to 31): the Moto Mangos fee is 10% of everything booked through Moto Mangos (rental after discounts, paid extras, delivery; never the deposit) for the whole booked length, corrected in `docs/platform/SPEC.md`, `docs/INTEGRATION.md` and `docs/marketplace/SPEC.md`, with the `fees.ts` changes listed for Phase 8 (plan §7.3); invoice VAT once on each payment's total; emails off in Phase 3; overbooked vehicle rentals accepted; extras on long rentals; stage 7 on Opus with a Fable review. **Still open:** the fee's receipt (not a tax invoice), to confirm with Korn before Phase 8; whether the fee keeps its "never more than the base" ceiling.
+- **Fable's re-check of draft 2 ("fix these first", 19 Nov 2026): 16 plan-text fixes applied, design unchanged** (plan §14, "Re-check 1" to "16"). Decision 32: the Moto Mangos fee is never more than its base, now in SPEC, INTEGRATION and the marketplace SPEC; INTEGRATION §3.12 has `createBooking` return the fee base, with no fee passed in. **Still open:** the fee receipt, to confirm with Korn before Phase 8.
+- **Ledger changes from the payments design (PR 56 §10), decided 19 Nov 2026 as decisions 33 to 42** (plan §6.4, §11.1, §14): overpayment refused for staff entry only; refunds name their payment; reversals and chargebacks; a card hold is not money; deposits never in the balance, once per rental, with their own status, never converted between hold and charge; a negative `marketplace_fee` line on Moto Mangos orders; provider rows unique with a `source`; ledger cores and staff wrappers; room for card, PromptPay, `cancellation_fee` and `withholding`; VAT on deposits a shop setting pending Korn (K3). All in stage 3 / migration 4 bar two kind values (migration 2) and the deposit status read and screen (stages 7, 9). **Clash noted for PR 56:** its §3.6 offers to turn an expiring hold into a charged deposit, which decision 37 rules out.
+- **Open points of draft 2 as first written** (plan §11.2, since settled): the Moto Mangos fee base in decision 23 differs from SPEC, INTEGRATION, the marketplace SPEC and `fees.ts` on the 30-day cap, promotions, VAT, the per-currency minimum, and the spec's old "Connect platform fee" line; when the sending domain is verified; two VAT questions for Korn; overbooked vehicle rentals; time-priced extras on long rentals.
+
 ## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
 
 **Docs only: no code, migration or test changed.** Written from `main` at `b9e0b33`.
@@ -1360,7 +1399,7 @@ The last build stage of Phase 2 (`docs/phase-2-plan.md` §7, §8 stage 11, §9).
    - **CI runs the marketplace's database tests** as their own job (`marketplace-db`, `permissions: contents: read`).
 8. **The accept suite**: `packages/core/src/phase-2-accept.test.ts` (64: 50 pricing; the never-falls property from 1 hour to 400 days, five plays, from every week of two years (Bangkok and New York in turn) and four named edges, and a season over part of the rental with the list price and each discount step asserted on its own (plan §9.1); New York; VND), `apps/platform/tests/db/phase-2-accept.test.ts` (4: the three races for the last unit, 8 rounds each, and downtime) and `apps/platform/tests/phase-2-accept-suites.test.ts` (10), which checks that the two name every clause and that the spec's line has no weekend and no pricing modes. The click-through list for staging is in the PR description.
 9. **SPEC**: the Phase 2 accept line drops "weekend" and "in both pricing modes" (Q14).
-10. **Help**: `en/price-check/price-check.md`, `en/booking-rules/set-booking-rules.md`, `en/fleet/bookings-on-a-vehicle.md`; tabs per role, the coupon refusals and Check a price updated; every bold quote checked against `en.json`. `docs/help/PENDING.md` has PR 59's two changes (the notice line; catalog approval). (PR 51's entries were applied by PR 60.)
+10. **Help**: `en/price-check/price-check.md`, `en/booking-rules/set-booking-rules.md`, `en/fleet/bookings-on-a-vehicle.md`; tabs per role, the coupon refusals and Check a price updated; every bold quote checked against `en.json`. PR 59's articles (merged into this branch) have the notice line and say catalog approval lists the model until the next platform migration; `docs/help/PENDING.md` lists what changes when that migration lands. (PR 51's entries were applied by PR 60.)
 11. **Thai**: 79 new or changed lines on `docs/platform/thai-review-products.md` ("Phase 2, stage 11") for Korn.
 
 **Catalog approval switches the Moto Mangos listing on.** The owner (20 Nov 2026): it must not; the shop switches it on itself. It is set in the database, so it is not fixed here (no migration in stage 11): see "Next platform migration".
@@ -2443,7 +2482,7 @@ Fifth round (owner's click-through, 13 Nov 2026):
 
 Open, for the owner:
 
-- **Deleting a vehicle that has bookings (from Phase 3).** The owner wants vendors to be able to remove any vehicle for good while past sales history stays. A real delete can't do both: it erases the vehicle's own records and would leave past orders pointing at nothing. Proposed for Phase 3: "Remove for good" marks the vehicle as removed (never shown again, not restorable from the app, plate free to reuse) and keeps the row for past orders and reports. Needs a column and every vehicle query to leave removed ones out.
+- **Deleting a vehicle that has bookings (from Phase 3).** The owner wants vendors to be able to remove any vehicle for good while past sales history stays. A real delete can't do both: it erases the vehicle's own records and would leave past orders pointing at nothing. Proposed for Phase 3: "Remove for good" marks the vehicle as removed (never shown again, not restorable from the app, plate free to reuse) and keeps the row for past orders and reports. Needs a column and every vehicle query to leave removed ones out. **Moved to Phase 1b** (Phase 3 plan, draft 2, 19 Nov 2026).
 - **"Edit" button beside Save on the make & model page:** not built; the page is already an edit form. Waiting for the owner to say what could not be changed.
 
 Known limits and open points:
@@ -2886,6 +2925,7 @@ Mapping first: `docs/platform/MAPPING.md` (legacy marketplace tables → tenants
 
 ## Phase 1b: fleet care (to build)
 
+- Plan: `docs/phase-1b-plan.md` (draft 1, 19 Nov 2026).
 - Vehicle notes field (fitted accessories), see SPEC Vehicle record: column exists, screen only. Still to do: the staff app's bike card and the Fleet search.
 
 ## Next
