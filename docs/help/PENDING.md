@@ -61,3 +61,9 @@ Update: `en/locations/set-opening-hours.md`. Check the messages on a refused sav
 ### 6. Error focus on refused saves
 
 After a refused save, focus moves to the first field with an error. Not needed in any article, but a "Common problems" intro could say "the first box with a problem is selected".
+
+## Quantity range message (branch `platform/quantity-range-message`)
+
+A gear or item-for-sale quantity above the most (1,000 for gear, 100,000 for items for sale) will show `FormErrors.quantity_out_of_range` ("Enter a quantity from 0 to 1,000 (up to 100,000 for an item for sale).") instead of `invalidQuantity` ("Enter a whole number."). Words, decimals and negatives still show "Enter a whole number."
+
+Articles to update once the help articles of PR 59 (`docs/help-more-screens`) and this change are both on `main`: `en/products/gear-stock-and-quantity.md` (drop "A number above 1,000 gives this message too." and add the range message), `en/products/item-for-sale-stock.md`, and `en/products/create-gear-or-service.md` (its "Enter a whole number." bullet).
