@@ -594,8 +594,8 @@ One PR each. Migrations local only until Mark says otherwise; staging as each me
 | 6 | **Rental changes and long rentals** | 7 | Fable build | Redesign's swap tests; swap refused on an overdue rental; breakdown swap into repair; extend vs a booking of the next days; **gate test: `extend_rental` against `move_unit()` of its unit** (`try_again` or clean, never a half move); early return vs a booking of the freed time; `edit_return_time` with and without money against the late charge; month periods telescope; `planBookedCharges` (decision 17) and the redemption sum; stacking coupon with a credit |
 | 7 | **Reads** | 8 | Opus build + Fable review (decision 31); the review covers role leakage in the security-definer reads and the at-risk rule | `bookings_at_risk` (repair, lost, overdue, clipped turnaround); the order's deposit status read (held, released, expired, charged, refunded, kept, with dates; never in the balance or amount owed: decision 37); `order_list` filters (status, payment status, shortage, at risk, overdue, channel, dates, search by number, customer, phone, plate) per role; `today_board` writes nothing; `order_history` for staff without audit access; cross-tenant test per read; response times |
 | 8 | **Jobs, outbox and email** | 9 | Fable build (job SQL); sender Opus + Fable check | Each job twice writes once; the close job touches only orders the sweep already expired, `skip locked`; overdue 1/3/15/30 in a DST shop shown on the Dashboard; **with sending off, nothing reaches the transport** and every message is queued; against the fake transport with the switch on: end-of-rental email in the customer's language, renewal reminders, retry and failure, old messages expired rather than sent |
-| 9 | **New order and the order page** | None | Opus + Fable check | Playwright 375 and 1280 px: **full new → reserved → picked up → returned → archived**; an overlap refused "This vehicle is booked from … (order #…)"; add to order; hold expiry; **a deposit released or expired never shows as owed, and a three-month rental's order page asks for the deposit once**; Thai at phone width |
-| 10 | **Today board, order list, Settings › Orders** | None | Opus + Fable check | Four tabs with counts, Late highlighted; search by plate and phone; the six staff permissions switch screens and are refused by the database when off |
+| 9 | **New order and the order page** (design input: §9.1) | None | Opus + Fable check | Invoice-style layout per §9.1, channel a read-only badge, per-line dates with "apply to all"; Playwright 375 and 1280 px: **full new → reserved → picked up → returned → archived**; an overlap refused "This vehicle is booked from … (order #…)"; add to order; hold expiry; **a deposit released or expired never shows as owed, and a three-month rental's order page asks for the deposit once**; Thai at phone width |
+| 10 | **Today board, order list, Settings › Orders** (time-step setting: §9.1) | None | Opus + Fable check | The date-and-time picker time step saved and used by every picker; four tabs with counts, Late highlighted; search by plate and phone; the six staff permissions switch screens and are refused by the database when off |
 | 11 | **Gantt and month calendar** | None | Opus + Fable check | Drag to reassign; drag-extend **re-prices** with a confirmation; drag onto a taken slot refused in words; phone read-only |
 | 12 | **Customer coupons and wrap-up** | None | Opus + Fable check | "Uses per customer" on the form; returning discount from real orders; Retire offered for a reserved service; demo seed in every status; accept suite named per spec line; help articles (Fable checks payments and refunds); doc edits (§13); staging on Mark's word |
 
@@ -612,9 +612,54 @@ Stage 3 must precede stage 4 (reverts check allocations). Stage 7 can start once
 | **Unit timeline** | `/[tenant]/calendar?view=timeline` | Desktop (phone read-only) | Edit: owner, manager, staff; read: everyone | Rows per unit, unassigned lane, overdue bars to now; drag to reassign or extend |
 | **Month calendar** | `/[tenant]/calendar?view=month` | Desktop (phone: day list) | Everyone | Pickups and returns per day |
 | **Customer** | `/[tenant]/customers/[id]` | Both | Owner, manager, staff | Contacts, notes, orders, completed rentals |
-| **Settings › Orders** | `/[tenant]/settings/orders` | Desktop | Owner, manager | Alert days, end-of-rental email, grace minutes, archive days, swap options, **the six staff permissions** |
+| **Settings › Orders** | `/[tenant]/settings/orders` | Desktop | Owner, manager | Alert days, end-of-rental email, grace minutes, archive days, swap options, **the six staff permissions**, **the date-and-time picker time step** (§9.1) |
 
 375 px for every staff screen; English and Thai together; Thai lines on a review list for Korn; no new dependency for the Gantt.
+
+New order, the order page and Settings › Orders follow §9.1.
+
+### 9.1 Order screen design input (20 Nov 2026)
+
+Input for stage 9 (New order and the order page) and stage 10 (Settings › Orders). Where this and the New order row above differ, this wins: the screen is one invoice-style order, not a step-by-step form.
+
+#### Mark's feedback on Phase 2 stage 11's price check
+
+- He expected an **invoice-style order screen like Booqable's**: the customer top left; products added by searching, line by line; payment details on the right or at the bottom.
+- **The channel picker confused him.** Staff orders are counter orders, so in a real order the channel is a **read-only badge**, not a choice.
+
+#### Booqable's order page as BSR uses it today: the layout to follow
+
+| Area | What it holds |
+| --- | --- |
+| **Header** | Order number, status badge, the main action for the status (**Pick up** / **Return**) and a **"…" menu** for the rest |
+| **Top left** | **Customer card**; custom information fields below it |
+| **Top right** | Pickup or delivery, billing address, dates |
+| **Lines** | A **"Search to add products"** bar; a line table: drag handle, product and the line's status, stock assignment chip, available count, quantity, charge (price-structure picker and edit), line total, remove; a **hover card** with the product's other orders; **"Add custom line"** |
+| **Totals, bottom right** | Subtotal, add discount, add coupon, total incl. VAT, VAT, total excl. VAT, security deposit |
+| **Right sidebar** | Email; documents (contract, quote, packing slip); invoices; payments (paid and due, **New payment**, the payment list with each method); tags; notes; activity log |
+
+#### Our differences (decided by Mark, 20 Nov 2026)
+
+1. **Dates on each vehicle line** (one rental per vehicle, decision 2). The first line's dates are the default for each new line, with **"apply to all"**.
+2. **Each vehicle line names its unit (plate)** once one is assigned.
+3. **Long rentals as real month-period lines** (decision 3, §6.3): no unpriced vehicle line with a "Rental Dates" line beside it, which is how BSR works around it in Booqable today.
+4. **The deposit has its own status** (held, then released or expired; charged, then refunded or kept), shown with its dates and **never in the amount owed** (decision 37). In the totals it is not added to the total.
+5. **The channel is a read-only badge.**
+6. **At phone width the same sections stack** (header, customer, dates and place, lines, totals, then the sidebar's sections), in that order.
+
+#### Mapping to this plan
+
+- **Header actions** are the order page's actions by status (§9 table): the main one shown, the rest in "…", each only when allowed.
+- **Sidebar, Phase 3:** payments (Take payment, Refund, Write off; credit and balance), notes, and the activity log from `order_history`. **Later phases** (§1.2): email (Phase 6, sending is off in Phase 3, decision 28), documents and invoices (Phase 6; the contract with Phase 5's agreement), delivery (Phase 8).
+- **Search to add** lists products with their price and free count for the line's dates; a vehicle makes one rental per quantity (decision 2), gear keeps a quantity.
+- **Hover card** needs a read of the product's other orders over the line's dates, which stage 7's list does not name yet (§11.2 item 4).
+- **Custom information fields and tags** are in no phase yet (§11.2 item 4).
+
+#### Time step for date-and-time pickers (new shop setting, decided 20 Nov 2026)
+
+- One shop setting sets the step of **every date-and-time picker**: the order screens, the booking page and Settings › Booking rules. Choices: **1, 5, 10, 15 or 30 minutes, or 1 hour**.
+- **Settings › Orders** gets it in the stage that builds those settings (stage 10); the **booking page** uses it in Phase 8.
+- Open: the setting's default, what stage 9's pickers use before stage 10 lands, and which migration adds the column (stage 10 has none; §11.2 item 4).
 
 ## 10. Tests with true concurrency
 
@@ -691,6 +736,8 @@ Not truly testable: race tests prove the timings they hit; real Resend sends (on
 1. **Moto Mangos fee receipt** (decision 26): a standard receipt from Mango Works, not a tax invoice. **Confirm with Korn before Phase 8.**
 2. **For Korn, from the payments design (PR 56)**, none of which blocks Phase 3 because the columns and kinds already allow either answer: K2, the VAT treatment of the `marketplace_fee` line (decision 38); K3, VAT on deposits (decision 42; default `none` until answered); K10, the withholding rate and documents (decision 41).
 3. **A clash to settle in the payments design, not here:** PR 56 §3.6 offers staff, when a rental is extended past its card hold, to "capture it now as a charged deposit". Decision 37 says the platform never converts a hold into a charge. Phase 3 follows decision 37; PR 56 should drop that option (release the hold and take a new deposit, or let it go) or Mark should say otherwise.
+
+4. **From the order screen design input (§9.1), for Mark:** the time step's default, the migration that adds it and what stage 9 uses before stage 10; whether the hover card's read joins stage 7; whether custom information fields and tags on an order belong to a phase, or are left out.
 
 Draft 2's other open points (the VAT on a payment, one invoice for several month charges, the sending domain, overbooked vehicles, extras on long rentals) are settled by decisions 27 to 30, and the fee's ceiling by decision 32, with no Korn check left on them.
 
