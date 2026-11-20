@@ -33,7 +33,7 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 ## Phase 2: plan only (branch `docs/phase-2-plan`, 16 Nov 2026)
 
-**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). Stages 1 to 5 are built (below).
+**No code and no migration.** The plan is `docs/phase-2-plan.md`, written from `main` at `731d4e8`. **Approved by the owner on 16 Nov 2026:** all 17 recommendations of §10 and everything in §11, with three additions (online channels reach `reserve()` only through one server entry point that calls `offer()` first, tested in stage 3; a coupon never reduces the deposit and the total can't go below zero, tested in stage 7; no weekday or weekend rules, and stage 11 updates the spec's Phase 2 accept line). **All eleven stages are built (below): Phase 2 is complete with stage 11.**
 
 - **Already built by stage D:** price lists, seasons, VAT, deposits and `quote()` steps 1 to 3 and 5 to 8.
 - **Still to build:** the booking function (`reserve()`) with product locks, then unit locks sorted by their hash key, and a best-fit pick; the availability read; overbooking and the shortage rule; holds; booking rules (notice, cut-off, minimum days); `product_extras` and the pricer's included-quantity step; coupons and the returning-customer discount; the quote snapshot.
@@ -1316,7 +1316,65 @@ The cause was the same everywhere: a holder session kept its transaction open wi
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s10` on ports 6262x, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. The stacks of stage 8 and stage 9 were stopped (not removed); another project's stack was left alone.
 
-**Next:** stage 11, Check availability and price, Booking rules and the wrap-up.
+**Next:** stage 11, Check availability and price, Booking rules and the wrap-up. **Done: see stage 11, below.**
+
+## Phase 2, stage 11: wrap-up (branch `platform/phase-2-stage-11-wrap-up`, 20 Nov 2026)
+
+The last build stage of Phase 2 (`docs/phase-2-plan.md` §7, §8 stage 11, §9). From `main` at `9622342` (PR 51 merged). **No migration.** Nothing on staging or live was touched. **With this stage, Phase 2 is complete** once it merges.
+
+**What was built**
+
+1. **New order is a price check** (`app/[tenant]/new-order/page.tsx`, `lib/new-order.ts`, `lib/new-order-data.ts`). Headed **Price check**, with a note that nothing is booked or held and no coupon use is counted. A plain GET form: location (when there are several), pickup, return, and **Booked from**: the counter (walk-in, mode staff), your booking page or Moto Mangos (both mode instant). Each vehicle, gear and service shows "N of M free" from `availability()` and, when it can't be booked, why, from `bookable()` in `@mango/core` with `booking_inputs()`: too short, too soon (notice, online only), closed at the pickup or the return, no opening hours (online), not listed on Moto Mangos, none free, and "none free; overbooking is on, staff could save a shortage" at the counter. Owners, managers and staff tap **Price** for `CheckPrice` with the saved price row, the chosen dates and **the chosen channel** (a coupon's channels are judged by it). Mechanics and drivers see the counts and no prices: **they now have the New order tab** (`lib/roles.ts`: mechanic Dashboard, New order, Maintenance; driver Dashboard, Orders, New order), on the owner's answer that they see counts without prices (20 Nov 2026). Tests: `lib/new-order.test.ts` (10), `lib/coupon-screens.test.ts` (+3, the channel), `e2e/new-order.spec.ts` (4 at each width), `e2e/foundations.spec.ts` (the tabs).
+   - `CheckPrice` takes `priced` (the Pricing tab's draft, or a saved row), an optional return and a channel; `lib/pricing-preview.ts`' `checkPrice()` takes a channel (walk-in when not given). The coupon note says "can't be used on your booking page" or "on Moto Mangos" where it said "by staff" for every channel.
+2. **Settings › Booking rules** (`settings/booking-rules/`, `lib/booking-rules.ts`, `-data.ts`, `-save.ts`), a seventh Settings section. The shop (Allow overbooking, Hold length, Time free before and after, in hours), each location (minimum notice, cut-off before closing, minimum days booked ahead and walk-in) and each vehicle's own minimum days (blank: the location's). One Save, one call of `save_booking_rules()`. Owners and managers; everyone else "Page not found" (`requireArea`, `tests/settings-access.test.ts`). Every refusal in words, and "try again" for `57014` and `55P03` (the function takes rows only and has no lock timeout; root `CLAUDE.md` has a lock-order bullet for it now). Tests: `lib/booking-rules.test.ts` (7), `e2e/booking-rules.spec.ts` (5 at each width); the roles are held by the existing `tests/db/booking-rules.test.ts`.
+3. **Bookings on the unit page** (`fleet/units/[id]/unit-bookings-panel.tsx`, `lib/unit-bookings.ts`, `-data.ts`): a read-only **Bookings** section for every member, read through `unit_blocks` and `reservations` under RLS: held (until when), booked, out, overdue, returned, and the last five that are over. The Downtime section now lists downtime and transfers only. Tests: `lib/unit-bookings.test.ts` (2), `e2e/unit-bookings.spec.ts` (owner and mechanic, each width). Out and returned come from test rows only until Phase 3.
+4. **The Moto Mangos notice line**: under Lead time, "Bookings need N hours: your shop's minimum notice." when the shop's notice (the strictest of the locations where the vehicle has active units) is longer than the lead time as typed (`lib/listing-settings.ts`' `shopNoticeLine()`, `lib/booking-rules-data.ts`' `getShopNoticeHours()`). Tests: `lib/listing-settings.test.ts` (+2), `e2e/booking-rules.spec.ts` (1 at each width).
+5. **Extras' `max_quantity` for online channels: not built.** Moved to Phase 3 by the owner (20 Nov 2026); see below.
+6. **The demo seed** (`scripts/seed.mts`' `seedBsrBookings()`). As BSR's signed-in owner: a helmet (gear, 10) and a hotel delivery (service) through `create_general_product()`; day prices through `save_product_pricing()`; a helmet included with the busiest scooter through `save_product_extras()`; "Accept coupons" on; two coupons through `save_coupon()` (WELCOME10, 10%, staff and booking page; MOTO200, 200 off, Moto Mangos only, 2 days at least); overbooking on with a 60-minute hold through `save_booking_rules()`. As BSR's staff, through `reserve()` (walk-in): two scooters and two helmets, every bike of the smallest model and one more (a shortage), and a hold. Bookings at 12:00 on the location's clock; ties between models broken by name, so a fresh database always picks the same two. **No direct insert as the service role** for any of it. Safe to run again; the hold is made again whenever none is live (re-run the seed just before trying holds). Clean on a fresh `supabase db reset` and on a second run.
+7. **Leftovers carried to stage 11**
+   - **Years take four digits only** (`parseYear()` in `lib/number-input.ts`): the unit form, year bands, the year sent to Moto Mangos, the fleet filter, the CSV import and the catalog review. "2,024" and "02024" are refused. The other boxes whose `maxLength` stops a thousands comma (engine size 5, lead time 3, sale quantity 6) are left as they are: the decision was for years.
+   - The gear create form's "Prices come in a later stage…" is now `Products.general.pricesAfterSave`: "Once it is saved, set its price on its Pricing tab. Selling items comes with orders."
+   - **Settings (shop details) is on `ActionForm`** (`errorText` lets a form give its own namespace's words). **The login form** marks both fields, ties them to the message and focuses the first after a wrong password (it signs in from the browser, so it can't use a server action). The four other forms of their own (`moto-mangos-forms.tsx`' listing switch, `team/member-row.tsx`, `fleet/import/import-form.tsx`, `admin/catalog/review-form.tsx`) have whole-form refusals only, and now take the focus to them (`components/focused-alert.tsx`). Tests: `e2e/form-errors.spec.ts` (+2 at each width).
+   - **The radio lists announce their legend once**: the role moved to the fieldset on the gear type and vehicle kind lists, with the four browser lookups.
+   - **CI runs the marketplace's database tests** as their own job (`marketplace-db`, `permissions: contents: read`).
+8. **The accept suite**: `packages/core/src/phase-2-accept.test.ts` (63: 50 pricing; the never-falls property from 1 hour to 400 days, five plays over four starts; New York; VND), `apps/platform/tests/db/phase-2-accept.test.ts` (4: the three races for the last unit, 8 rounds each, and downtime) and `apps/platform/tests/phase-2-accept-suites.test.ts` (10), which checks that the two name every clause and that the spec's line has no weekend and no pricing modes. The click-through list for staging is in the PR description.
+9. **SPEC**: the Phase 2 accept line drops "weekend" and "in both pricing modes" (Q14).
+10. **Help**: `en/orders/price-check.md`, `en/booking-rules/set-booking-rules.md`, `en/fleet/bookings-on-a-vehicle.md`; tabs per role, the coupon refusals and Check a price updated; every bold quote checked against `en.json`. `docs/help/PENDING.md` has PR 59's two changes (the notice line; catalog approval). PENDING's PR 51 entries (merged) are still to do: not in this stage.
+11. **Thai**: 79 new or changed lines on `docs/platform/thai-review-products.md` ("Phase 2, stage 11") for Korn.
+
+**Catalog approval switches the Moto Mangos listing on.** The owner (20 Nov 2026): it must not; the shop switches it on itself. It is set in the database, so it is not fixed here (no migration in stage 11): see "Next platform migration".
+
+**Tests**
+
+- **Unit** (`npm test`): `@mango/core` 719 (656 before; +63, the accept suite), platform 637 (599; new: `new-order`, `booking-rules`, `unit-bookings`, `phase-2-accept-suites`, the year and channel cases), marketplace 202. Typecheck and lint clean in every workspace; the platform build passes.
+- **Database**, on a fresh `supabase db reset`, the suite run on its own: platform **693 passed, 1 skipped** (the swap test, skipped since stage 10), 22 files (+1, `phase-2-accept.test.ts`); marketplace **87 of 87**.
+- **Seed**: clean on the fresh reset, and on a second run.
+- **Browser** (`npm run test:e2e`, production build, 375 px and 1280 px, two workers, on the freshly reset and seeded database): **203 passed, 7 skipped** (their own conditions), **0 failed**. New: `new-order.spec.ts`, `booking-rules.spec.ts`, `unit-bookings.spec.ts`; changed: `form-errors.spec.ts` (+2), `foundations.spec.ts` (the tabs), four radio-group lookups. Two earlier full runs failed only in the new tests, on test bugs since fixed (the rules helper put back retired or deleted vehicles; a count read from the row's text).
+- **Types**: `npm run db:types` twice; the second run changes nothing.
+
+**Next platform migration**
+
+- **`platform.review_catalog_request()` must not switch a listing on.** `supabase/migrations/20261114000200_platform_product_listings.sql`, lines 684 to 689 (merge) and 715 to 720 (approve): both `insert into platform.product_listings (…, enabled) select …, true … on conflict (product_id) do update set enabled = true`. Approval and merge should set `catalog_id` and `catalog_approved_at` only and leave the listing as it is. Test: approval leaves the listing off, and the shop can then switch it on with `save_listing()`, as any connected vehicle. The catalog-requests help article (PR 59) changes with it (`docs/help/PENDING.md`).
+
+**For Phase 3 (create_order core)**
+
+- **Enforce extras' `max_quantity` for online channels in the booking core** (the owner, 20 Nov 2026; it was planned for `bookOnline()`): an extra line above `max_quantity` × its vehicle line's quantity is refused on every online channel; staff are never bound.
+- New order continues from the price check into the order: customer, extras, payment.
+- Out, returned and overdue on a real pickup and return; the unit page's Bookings section then shows them from real rows.
+- Carried: the swap deadlock and its gate test (Phase 3 stage 1); "Uses per customer" once both booking paths send a customer; a held booking whose coupon was archived since; a stacking coupon with a credit.
+
+**Before seeding staging** (the owner's word; not run). Staging must have `main`'s 67 migrations. Read-only pre-checks: BSR exists with `owner@bsr.demo.test` and `staff@bsr.demo.test`; BSR has at least two vehicle models with active bikes at its default location; `select count(*) from platform.reservations r join platform.tenants t on t.id = r.tenant_id where t.slug = 'bsr' and r.state in ('held','reserved')` (0: the bookings will be made; more: only a hold); no coupon WELCOME10 or MOTO200 that should be left as it is. Then, from the repo root, with `apps/platform/.env.local` naming staging: `npm run seed:staging -w @mango/platform`. It switches "Accept coupons" and overbooking on and sets a 60-minute hold for BSR.
+
+**Known issues**
+
+- **A stuck test process from another session** (a single `product-extras.test.ts` run started 17 Nov 2026, 1.4 seconds of CPU since) is left running on this machine: not this worktree's, so not stopped.
+- On the dev server (`next dev`), a few phone-width tests that wait 5 seconds for a page to move on fail now and then; on the production build they pass.
+- PR 51's entries in `docs/help/PENDING.md` are still to apply to the articles.
+- The Thai lines need Korn's check.
+
+**Local set-up.** This worktree has its own stack, `Bike_Booking_phase2_s11` on ports 627xx, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` and `apps/marketplace/.env.local` name the same stack.
+
+**Next:** Phase 3.
 
 ## Products, stage D4: the pricing database (branch `platform/products-stage-d4-database`, 15 Nov 2026)
 
