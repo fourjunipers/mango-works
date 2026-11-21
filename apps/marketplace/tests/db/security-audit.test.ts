@@ -11,6 +11,7 @@ import {
   signedInClient,
   type Db,
 } from "./helpers";
+import { KEPT_MAPS_URLS, REFUSED_MAPS_URLS } from "../../lib/maps-url.cases";
 
 /**
  * The marketplace findings of the 19 Nov 2026 security audit
@@ -258,15 +259,18 @@ describe("a shop's map link and photos", () => {
   ) =>
     client.from("shops").update(values).eq("id", seed.bsrShop).select("id");
 
-  it.each([
-    "https://evil.example/maps",
-    "http://maps.app.goo.gl/abc",
-    "javascript:alert(1)",
-    "https://www.google.com.evil.example/maps",
-    "https://www.google.com@evil.example/maps",
-    "https://www.google.com/url?q=https://evil.example",
-  ])("the owner can't save the map link %s", async (maps_url) => {
-    const { error } = await update(bsrOwner, { maps_url });
+  // The same rows run against safeMapsUrl() in lib/validation/maps-url.test.ts.
+  it.each(REFUSED_MAPS_URLS)(
+    "the owner can't save the map link %s",
+    async (maps_url) => {
+      const { error } = await update(bsrOwner, { maps_url });
+      expect(error?.code).toBe(CHECK);
+    },
+  );
+
+  it("a map link longer than 500 characters is refused", async () => {
+    const long = "https://www.google.com/maps/place/" + "a".repeat(467);
+    const { error } = await update(bsrOwner, { maps_url: long });
     expect(error?.code).toBe(CHECK);
   });
 
@@ -304,12 +308,7 @@ describe("a shop's map link and photos", () => {
       .eq("id", seed.bsrShop)
       .single();
     try {
-      for (const maps_url of [
-        "https://maps.app.goo.gl/AbCdEf123",
-        "https://www.google.com/maps/place/BSR/@13.7,100.5,17z",
-        "https://maps.google.co.th/maps?q=BSR",
-        null,
-      ]) {
+      for (const maps_url of [...KEPT_MAPS_URLS, null]) {
         const { error } = await update(bsrOwner, { maps_url });
         expect(error, String(maps_url)).toBeNull();
       }

@@ -243,10 +243,18 @@ $$;
 -- A shop owner may write shops.maps_url and the two photos columns straight
 -- through the API, past the app's own checks. Customers click the link and
 -- their browsers load the photos, so:
---   * maps_url is an https address on Google Maps' own hosts
---     (maps.app.goo.gl, goo.gl/maps, g.co/kgs, maps.google.*, google.*/maps),
---     with no port, user part, space, control character or backslash. The
---     same rule as lib/maps-url.ts in the marketplace.
+--   * maps_url is an https address on a short list of Google Maps hosts,
+--     named one by one (no pattern for country domains): www.google.com,
+--     google.com, maps.google.com, www.google.co.th, google.co.th,
+--     maps.google.co.th, maps.app.goo.gl, goo.gl. The host is the whole text
+--     between "https://" and the first "/", so there is no user part, no
+--     port and no upper case. No space, control character or backslash
+--     anywhere. The path (up to "?" or "#") holds no "..", "%2e" or "%2E".
+--     On the google hosts the path is /maps or starts with /maps/ (never
+--     /url, Google's redirect); on goo.gl it starts with /maps/; on
+--     maps.app.goo.gl it is anything. The same rule as lib/maps-url.ts in
+--     the marketplace: one table of cases (lib/maps-url.cases.ts) is run
+--     against both.
 --   * a photo is a path, never an address: one of our own placeholders
 --     (/images/<file>), or a file in the row's own folder of the bucket,
 --     <shop id>/<file> for a shop and <shop id>/<model id>/<file> for a model.
@@ -265,25 +273,38 @@ as $$
 declare
   v_folder text;
   v_photo text;
+  v_parts text[];
+  v_host text;
+  v_path text;
 begin
   if tg_table_name = 'shops' then
     if new.maps_url is not null
       and (tg_op = 'INSERT' or new.maps_url is distinct from old.maps_url)
-      and (
-        length(new.maps_url) > 500
-        or new.maps_url ~ '[[:space:][:cntrl:]\\]'
-        or new.maps_url !~ (
-          '^https://('
-          || 'maps\.app\.goo\.gl/'
-          || '|goo\.gl/maps/'
-          || '|g\.co/kgs/'
-          || '|maps\.google\.(com|co\.[a-z]{2}|com\.[a-z]{2})/'
-          || '|(www\.)?google\.(com|co\.[a-z]{2}|com\.[a-z]{2})/maps(/|\?|$)'
-          || ')'
-        )
-      )
     then
-      raise exception 'maps_url must be an https Google Maps link' using errcode = '23514';
+      -- https://, the host (everything up to the first "/", "?" or "#"),
+      -- the path (up to "?" or "#"). No match: not https, or no path.
+      v_parts := regexp_match(new.maps_url, '^https://([^/?#]+)(/[^?#]*)');
+      v_host := v_parts[1];
+      v_path := v_parts[2];
+      if length(new.maps_url) > 500
+        or new.maps_url ~ '[[:space:][:cntrl:]\\]'
+        or v_parts is null
+        or v_path ~* '\.\.|%2e'
+        or not coalesce(
+          case
+            when v_host = 'maps.app.goo.gl' then true
+            when v_host = 'goo.gl' then left(v_path, 6) = '/maps/'
+            when v_host in (
+              'www.google.com', 'google.com', 'maps.google.com',
+              'www.google.co.th', 'google.co.th', 'maps.google.co.th'
+            ) then v_path = '/maps' or left(v_path, 6) = '/maps/'
+            else false
+          end,
+          false
+        )
+      then
+        raise exception 'maps_url must be an https Google Maps link' using errcode = '23514';
+      end if;
     end if;
     v_folder := new.id::text || '/';
   else
