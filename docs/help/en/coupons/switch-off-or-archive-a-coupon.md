@@ -3,12 +3,14 @@ title: Change, switch off or archive a coupon
 summary: Edit a coupon, pause it with Switch off, retire it with Archive (which frees its code), or bring it back.
 keywords: [edit coupon, switch off coupon, pause coupon, archive coupon, delete coupon, bring back coupon, reuse code, คูปอง, ปิดคูปอง, เก็บคูปอง, แก้ไขคูปอง]
 screens: [/[tenant]/settings/coupons, /[tenant]/settings/coupons/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Change, switch off or archive a coupon
 
-**Settings › Coupons** lists every coupon with its code, discount and status: **On**, **Off** or **Archived**.
+**Settings › Coupons** lists every coupon with its code, discount, status (**On**, **Off** or **Archived**) and how often it has been used.
+
+The uses read "Used {used} of {limit}" when the coupon has a **Total uses** limit, and "Used {used}" when it has none. Every coupon shows its uses, archived ones too. If a new coupon now has the code of an archived one, each keeps its own count: the archived coupon shows only the bookings that used it.
 
 | Status | What it means |
 | --- | --- |

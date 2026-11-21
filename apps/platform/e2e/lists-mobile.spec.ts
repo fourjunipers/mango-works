@@ -58,7 +58,7 @@ async function oneLineName(row: Locator) {
 
 const pickKind = (page: Page, kind: string) =>
   page
-    .getByRole("group", { name: "What kind of product is it?" })
+    .getByRole("radiogroup", { name: "What kind of product is it?" })
     .locator("label")
     .filter({ hasText: new RegExp(`^${kind}$`) })
     .click();

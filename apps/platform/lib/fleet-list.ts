@@ -1,5 +1,5 @@
 import { hasLeftFleet } from "./fleet";
-import { parseWholeInRange } from "./number-input";
+import { parseYear } from "./number-input";
 
 /**
  * The Fleet view (owner, 13 Nov 2026): one line per product, A to Z by name,
@@ -46,7 +46,7 @@ export function parseFleetList(
 ): FleetListView {
   const scope = text(query.scope);
   // The year box of the filters, read by the platform's one number rule.
-  const year = parseWholeInRange(text(query.year), 1950, 2100);
+  const year = parseYear(text(query.year));
   // "model" is the old name of "product" (links from before 13 Nov 2026).
   const product = text(query.product) || text(query.model);
   return {

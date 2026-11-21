@@ -13,6 +13,7 @@ const paths: Record<SettingsSection, string> = {
   priceLists: "/price-lists",
   coupons: "/coupons",
   extras: "/extras",
+  bookingRules: "/booking-rules",
 };
 
 /**

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { startTransition, useActionState } from "react";
+import { FocusedAlert } from "@/components/focused-alert";
 import { Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -74,12 +75,12 @@ export function ImportForm({
         </div>
       )}
       {state.fileError && !pending && (
-        <p role="alert" className="text-sm text-destructive">
+        <FocusedAlert answer={state} className="text-sm text-destructive">
           {message(state.fileError)}
-        </p>
+        </FocusedAlert>
       )}
       {state.problems && !pending && (
-        <div role="alert" className="space-y-3">
+        <FocusedAlert answer={state} as="div" className="space-y-3">
           <p className="font-medium text-destructive">
             {t("problems", { count: state.problems.length })}
           </p>
@@ -115,7 +116,7 @@ export function ImportForm({
               </tbody>
             </table>
           </div>
-        </div>
+        </FocusedAlert>
       )}
     </div>
   );

@@ -1342,3 +1342,54 @@ describe("Check a price in New York: a coupon's valid dates on the shop's clock,
     });
   });
 });
+
+describe("the Price check: a coupon judged on the channel picked (stage 11)", () => {
+  const ask = (
+    channels: CouponInputs["coupon"] extends infer C
+      ? C extends { channels: infer X }
+        ? X
+        : never
+      : never,
+    channel?: "walk_in" | "booking_page" | "marketplace",
+  ) =>
+    checkPrice({
+      inputs: inputs(),
+      row: vehicle,
+      sample: oneDay,
+      code: "SAVE",
+      coupon: coupon({ channels }),
+      channel,
+      now,
+    })!;
+
+  it("a booking-page-only coupon is refused at the counter and applied on the booking page", () => {
+    expect(ask(["booking_page"]).decision).toMatchObject({
+      outcome: "refused",
+      reason: "wrong_channel",
+    });
+    expect(ask(["booking_page"], "walk_in").decision).toMatchObject({
+      outcome: "refused",
+      reason: "wrong_channel",
+    });
+    const online = ask(["booking_page"], "booking_page");
+    expect(online.decision).toMatchObject({ outcome: "decided" });
+    expect(online.discounts.map((d) => d.kind)).toEqual(["coupon"]);
+    expect(online.quote.totals.total).toBe(n(24000));
+  });
+
+  it("a Moto Mangos-only coupon is applied on Moto Mangos alone", () => {
+    expect(ask(["marketplace"], "booking_page").decision).toMatchObject({
+      outcome: "refused",
+      reason: "wrong_channel",
+    });
+    expect(ask(["marketplace"], "marketplace").discounts).toHaveLength(1);
+  });
+
+  it("a staff coupon is applied at the counter and refused online", () => {
+    expect(ask(["staff"], "walk_in").discounts).toHaveLength(1);
+    expect(ask(["staff"], "marketplace").decision).toMatchObject({
+      outcome: "refused",
+      reason: "wrong_channel",
+    });
+  });
+});

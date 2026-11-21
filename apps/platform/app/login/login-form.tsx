@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/form";
 import type { OAuthProvider } from "@/lib/auth/providers";
@@ -31,6 +31,16 @@ export function LoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  // The same as the shared form (components/action-form.tsx), by hand,
+  // because signing in happens in the browser and not in a server action:
+  // a refusal marks the fields it is about with aria-invalid, ties them to
+  // its message with aria-describedby, and puts the focus on the first.
+  const refused = status === "wrongPassword" || status === "sendFailed";
+  const emailRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (refused) emailRef.current?.focus();
+  }, [refused, status]);
+  const errorFor = refused ? "signin-error" : undefined;
 
   async function signInWith(provider: OAuthProvider) {
     await createClient().auth.signInWithOAuth({
@@ -109,8 +119,11 @@ export function LoginForm({
         <form onSubmit={submit} className="space-y-4">
           <Field id="email" label={t("email")}>
             <input
+              ref={emailRef}
               id="email"
               type="email"
+              aria-invalid={refused ? true : undefined}
+              aria-describedby={errorFor}
               required
               autoComplete="email"
               value={email}
@@ -123,6 +136,10 @@ export function LoginForm({
               <input
                 id="password"
                 type="password"
+                aria-invalid={status === "wrongPassword" ? true : undefined}
+                aria-describedby={
+                  status === "wrongPassword" ? errorFor : undefined
+                }
                 required
                 autoComplete="current-password"
                 value={password}
@@ -131,8 +148,12 @@ export function LoginForm({
               />
             </Field>
           )}
-          {(status === "wrongPassword" || status === "sendFailed") && (
-            <p role="alert" className="text-sm text-destructive">
+          {refused && (
+            <p
+              id="signin-error"
+              role="alert"
+              className="text-sm text-destructive"
+            >
               {t(status)}
             </p>
           )}

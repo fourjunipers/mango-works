@@ -68,7 +68,7 @@ async function addGeneral(
 /** Picks a kind of vehicle on the Vehicle form (its radio sits under the chip). */
 const pickKind = (page: Page, kind: string) =>
   page
-    .getByRole("group", { name: "What kind of product is it?" })
+    .getByRole("radiogroup", { name: "What kind of product is it?" })
     .locator("label")
     .filter({ hasText: new RegExp(`^${kind}$`) })
     .click();
@@ -109,7 +109,7 @@ test("new product: Vehicle or General; one of each general type; the three list 
   // General: a type, a name and a description. No kind, licence class,
   // minimum age, buffers or deposit.
   await choice.getByRole("radio", { name: /^General/ }).check();
-  const types = page.getByRole("group", {
+  const types = page.getByRole("radiogroup", {
     name: "What type of product is it?",
   });
   await expect(types.getByRole("radio")).toHaveCount(3);

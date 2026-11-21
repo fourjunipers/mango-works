@@ -400,16 +400,19 @@ export function PricingForm({
       <CheckPrice
         slug={slug}
         productId={productId}
-        draft={draft}
-        ctx={ctx}
-        shared={shared}
-        taxProfiles={taxProfiles}
-        defaultTaxId={defaultTaxId}
+        priced={{
+          kind: "draft",
+          draft,
+          ctx,
+          shared,
+          taxProfiles,
+          defaultTaxId,
+          changed: !sameAsSavedDraft(draft, initial, ctx),
+        }}
         inputs={inputs}
         timeZone={timeZone}
         currency={currency}
         pickup={pickup}
-        changed={!sameAsSavedDraft(draft, initial, ctx)}
       />
     </div>
   );
