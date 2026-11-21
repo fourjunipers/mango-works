@@ -361,6 +361,45 @@ describe("a location and a product never change shop", () => {
     );
     expect(same.failed).toBe("");
   });
+
+  // The demo seed has no price list, and nor does a new test shop: this one
+  // is made here. Nothing else stands in the way of the move (no day row, no
+  // product priced from it, and both shops have the same currency), so it
+  // is the trigger that refuses it.
+  it("a price list's tenant_id is fixed too", async () => {
+    const made = sql(`
+      insert into platform.price_templates (tenant_id, name, currency, kind)
+      select id, 'Fixed list ${tag}', currency, 'amounts'
+      from platform.tenants where id = '${shop.id}'
+      returning id;
+    `);
+    expect(made.failed).toBe("");
+    const id = made.out.split("\n")[0];
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(
+      sql(`
+        select (select currency from platform.tenants where id = '${shop.id}')
+             = (select currency from platform.tenants where id = '${other.id}');
+      `).out,
+    ).toBe("t");
+
+    const moved = sql(`
+      update platform.price_templates set tenant_id = '${other.id}'
+      where id = '${id}';
+    `);
+    expect(moved.failed).toContain("tenant_is_fixed");
+    expect(
+      sql(`select tenant_id from platform.price_templates where id = '${id}';`)
+        .out,
+    ).toBe(shop.id);
+    // The same value is not a change, and its other columns still are.
+    const same = sql(`
+      update platform.price_templates
+      set tenant_id = tenant_id, name = 'Fixed list ${tag}, renamed'
+      where id = '${id}';
+    `);
+    expect(same.failed).toBe("");
+  });
 });
 
 describe("a lost unit of rental gear: who edits its problem line by writing the table", () => {
@@ -452,6 +491,59 @@ describe("deleting a user account never leaves a shop without an owner", () => {
       const last = await service.auth.admin.deleteUser(second.id);
       expect(last.error).not.toBeNull();
       lonely.members.owner = { ...second, membershipId: "" };
+    } finally {
+      await deleteTenant(lonely);
+    }
+  }, 60_000);
+
+  it("the only owner can't be made something else by writing the row, and the row still can't be deleted", async () => {
+    const lonely = await createTenant("audit-demote");
+    try {
+      const owner = lonely.members.owner;
+      const role = () =>
+        sql(
+          `select role from platform.memberships where id = '${owner.membershipId}';`,
+        ).out;
+      // The server's role, which no policy holds back...
+      const demoted = await service
+        .from("memberships")
+        .update({ role: "manager" })
+        .eq("id", owner.membershipId)
+        .select("id");
+      expect(demoted.error?.message).toContain(
+        "A shop needs at least one owner",
+      );
+      expect(role()).toBe("owner");
+      // ...and the table's owner.
+      const direct = sql(`
+        update platform.memberships set role = 'staff'
+        where id = '${owner.membershipId}';
+      `);
+      expect(direct.failed).toContain("A shop needs at least one owner");
+      expect(role()).toBe("owner");
+
+      const deleted = await service
+        .from("memberships")
+        .delete()
+        .eq("id", owner.membershipId);
+      expect(deleted.error?.message).toContain(
+        "A shop needs at least one owner",
+      );
+      expect(role()).toBe("owner");
+
+      // Not a demotion: the same role again, and another member's role.
+      const same = await service
+        .from("memberships")
+        .update({ role: "owner" })
+        .eq("id", owner.membershipId)
+        .select("id");
+      expect(same.error).toBeNull();
+      const manager = await service
+        .from("memberships")
+        .update({ role: "staff" })
+        .eq("id", lonely.members.manager.membershipId)
+        .select("id");
+      expect(manager.error).toBeNull();
     } finally {
       await deleteTenant(lonely);
     }
