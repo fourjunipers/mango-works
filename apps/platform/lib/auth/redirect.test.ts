@@ -52,6 +52,15 @@ describe("safeNextPath", () => {
     ["a mail address", "mailto:someone@evil.example"],
     ["a path with no leading slash", "evil.example/account"],
     ["a dot path", "./account"],
+    // Scheme-relative values that name the very host the check resolves
+    // against ("x"): the origin still matches, the browser still leaves.
+    ["a scheme-relative address naming the base host", "//x"],
+    ["the base host with a path", "//x/phish"],
+    ["the base host with its default port", "//x:80/a"],
+    ["the base host after a user part", "//evil.com@x/"],
+    ["the base host after a user and password", "//user:pw@x/a"],
+    ["a slash and a backslash, then the base host", "/\\x/a"],
+    ["two backslashes, then the base host", "\\\\x\\a"],
   ])("refuses %s", (_what, next) => {
     expect(safeNextPath(next)).toBe("/");
     expect(safeNextPath(next, "/home")).toBe("/home");
