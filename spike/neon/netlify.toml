@@ -1,0 +1,13 @@
+# Throwaway site mango-neon-spike. Draft deploys only: `netlify deploy --alias spike` (never --prod).
+[build]
+  publish = "site"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/.well-known/jwks.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=60"

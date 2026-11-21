@@ -1,0 +1,18 @@
+{
+  "name": "neon-spike",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Throwaway code for the Neon spike (docs/platform/neon-move-plan.md §7.1). Not a workspace; never imported by apps/ or packages/.",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@neon/neon-js": "0.10.2",
+    "@netlify/functions": "6.1.1",
+    "@supabase/supabase-js": "2.118.0",
+    "better-auth": "1.7.27",
+    "jose": "6.2.18",
+    "pg": "8.23.1"
+  }
+}
