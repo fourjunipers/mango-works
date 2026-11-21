@@ -13,6 +13,7 @@ import {
   orderProducts,
   parseProductsTab,
   parseQuantity,
+  quantityProblem,
   readQuantities,
   stockOf,
   stockWording,
@@ -249,6 +250,13 @@ describe("the General form", () => {
       expect(parseQuantity(bad, 1000), bad).toBe("invalid");
   });
 
+  it("a number above the most gets the range message, not the whole-number one", () => {
+    for (const over of ["1001", "5000", "1234567"])
+      expect(quantityProblem(over), over).toBe("quantity_out_of_range");
+    for (const bad of ["lots", "-1", "2.5", "1e3", "1,0", "1 000"])
+      expect(quantityProblem(bad), bad).toBe("invalidQuantity");
+  });
+
   it("reads one quantity per location; a service has none whatever is sent", () => {
     const fields = { "quantity:a": "20", "quantity:b": "", "quantity:c": "3" };
     expect(readQuantities("gear", fields, ["a", "b", "c"])).toEqual({
@@ -265,7 +273,7 @@ describe("the General form", () => {
     });
     // Gear is capped at 1,000 in one place; an item for sale goes higher.
     expect(readQuantities("gear", { "quantity:a": "5000" }, ["a"])).toEqual({
-      errors: { "quantity:a": "invalidQuantity" },
+      errors: { "quantity:a": "quantity_out_of_range" },
     });
     expect(
       readQuantities("sale_item", { "quantity:a": "5000" }, ["a"]),
