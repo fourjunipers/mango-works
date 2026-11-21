@@ -6,6 +6,11 @@
  * and the database cannot drift apart unnoticed.
  */
 
+/** A place link with an emoji in it, padded to `length` code points. */
+const PLACE_WITH_EMOJI = "https://www.google.com/maps/place/\u{1F3CD}";
+const paddedTo = (length: number) =>
+  PLACE_WITH_EMOJI + "a".repeat(length - Array.from(PLACE_WITH_EMOJI).length);
+
 export const KEPT_MAPS_URLS: readonly string[] = [
   // A normal place link, a search link (the demo seed's), a query link.
   "https://www.google.com/maps/place/BSR+Bike+Shop/@13.7139,100.5936,17z",
@@ -33,6 +38,9 @@ export const KEPT_MAPS_URLS: readonly string[] = [
   "https://google.com/?cid=7",
   "https://maps.google.com?cid=123",
   "https://maps.google.com/?cid=" + "9".repeat(25),
+  // Length is counted in characters (code points), as the database counts
+  // it: exactly 500 with an emoji, which is 501 UTF-16 units.
+  paddedTo(500),
 ];
 
 export const REFUSED_MAPS_URLS: readonly string[] = [
@@ -112,4 +120,16 @@ export const REFUSED_MAPS_URLS: readonly string[] = [
   "https://www.google.com/maps/place/BSR Bike",
   "https://www.google.com/maps\t/place",
   " https://www.google.com/maps",
+  // One character over the limit.
+  paddedTo(501),
+  // White space as JavaScript's \s reads it, beyond the ASCII kinds: a
+  // byte-order mark (start, middle, end), a non-breaking space, a line
+  // separator, an ideographic space; and a control character above ASCII.
+  "\uFEFFhttps://www.google.com/maps",
+  "https://www.google.com/maps/place/BSR\uFEFFBike",
+  "https://www.google.com/maps\uFEFF",
+  "https://www.google.com/maps/place/BSR\u00A0Bike",
+  "https://www.google.com/maps/place/BSR\u2028Bike",
+  "https://www.google.com/maps/place/BSR\u3000Bike",
+  "https://www.google.com/maps/place/BSR\u0085Bike",
 ];

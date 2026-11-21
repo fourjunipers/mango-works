@@ -250,8 +250,12 @@ $$;
 --     google.com, maps.google.com, www.google.co.th, google.co.th,
 --     maps.google.co.th, maps.app.goo.gl, goo.gl. The host is the whole text
 --     between "https://" and the first "/", so there is no user part, no
---     port and no upper case. No space, control character or backslash
---     anywhere. The path (up to "?" or "#") holds no "..", "%2e" or "%2E".
+--     port and no upper case. At most 500 characters. No white space,
+--     control character or backslash anywhere: the characters are listed by
+--     code point, the very ones the app's JavaScript refuses (\s and
+--     \p{Cc}), and not by [[:space:]] and [[:cntrl:]], which follow the
+--     database's locale and do not hold the byte-order mark U+FEFF.
+--     The path (up to "?" or "#") holds no "..", "%2e" or "%2E".
 --     On the google hosts the path is /maps or starts with /maps/ (never
 --     /url, Google's redirect); on goo.gl it starts with /maps/; on
 --     maps.app.goo.gl it is anything. Two more kinds of link that shops
@@ -294,8 +298,12 @@ begin
       v_parts := regexp_match(new.maps_url, '^https://([^/?#]+)(/[^?#]*)');
       v_host := v_parts[1];
       v_path := v_parts[2];
-      if length(new.maps_url) > 500
-        or new.maps_url ~ '[[:space:][:cntrl:]\\]'
+      if char_length(new.maps_url) > 500
+        -- Controls and the space (U+0001 to U+0020), DEL, the C1 controls and
+        -- the non-breaking space (U+007F to U+00A0), the other Unicode
+        -- spaces, the line and paragraph separators, the byte-order mark,
+        -- the backslash.
+        or new.maps_url ~ '[\u0001-\u0020\u007f-\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff\\]'
         or not (
           -- The whole of a g.co short share link.
           new.maps_url ~ '^https://g\.co/kgs/[A-Za-z0-9_-]+$'
