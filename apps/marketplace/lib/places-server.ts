@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  callerKey,
   createPlaces,
   createRateLimit,
   PLACES_ERROR_STATUS,
@@ -16,17 +17,13 @@ export const placeSearchEnabled = () => !!process.env.GOOGLE_PLACES_SERVER_KEY;
 
 const limited = createRateLimit(60);
 
-/** The caller's address as Netlify (or the local server) reports it. */
-export function callerKey(request: Request) {
-  return (
-    request.headers.get("x-nf-client-connection-ip") ??
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    "local"
-  );
-}
-
+/**
+ * One budget per caller for every route that spends Google Places money
+ * (place search, a place's location, a shop's Google reviews). In memory,
+ * so per server instance: see createRateLimit.
+ */
 export function overLimit(request: Request) {
-  return !limited(callerKey(request));
+  return !limited(callerKey(request.headers));
 }
 
 /** JSON error the search form reads: `{ error: "limit" | … }`. */

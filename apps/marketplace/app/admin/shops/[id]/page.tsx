@@ -17,6 +17,7 @@ import {
   type Inclusions,
 } from "@/lib/inclusions";
 import { formatBaht } from "@mango/core/money";
+import { safeMapsUrl } from "@/lib/maps-url";
 import { photoUrl, PHOTO_BUCKETS, SHOP_PLACEHOLDER } from "@/lib/photos";
 import { createAdminClient } from "@mango/db/admin";
 import { supabaseUrl } from "@mango/db/env";
@@ -68,6 +69,7 @@ export default async function AdminShopPage({
   ]);
   if (!shop) notFound();
   const base = supabaseUrl();
+  const mapsUrl = safeMapsUrl(shop.maps_url);
 
   return (
     <div className="space-y-8">
@@ -195,9 +197,9 @@ export default async function AdminShopPage({
           </ul>
           <p>
             Station: {shop.nearest_station || "—"} ·{" "}
-            {shop.maps_url ? (
+            {mapsUrl ? (
               <a
-                href={shop.maps_url}
+                href={mapsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline"

@@ -15,6 +15,7 @@ import {
   type InclusionOverrides,
   type Inclusions,
 } from "@/lib/inclusions";
+import { safeMapsUrl } from "@/lib/maps-url";
 import { MAX_MODEL_PHOTOS, MAX_SHOP_PHOTOS } from "@/lib/photos";
 import { ANCHOR_DAYS, TABLE_DAYS, type Anchors } from "@mango/core/pricing";
 
@@ -114,7 +115,12 @@ export const shopProfileSchema = z.object({
   ),
   maps_url: z.preprocess(
     blank,
-    z.url(err("url")).max(500, err("tooLong")).optional(),
+    z
+      .url(err("url"))
+      .max(500, err("tooLong"))
+      // Only Google Maps' own https addresses (lib/maps-url.ts).
+      .refine((url) => safeMapsUrl(url) !== null, err("url"))
+      .optional(),
   ),
   nearest_station: text(80),
   google_place_id: text(300),

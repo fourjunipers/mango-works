@@ -164,6 +164,27 @@ export function createPlaces({
  * only a brake on one noisy visitor: the hard cap is the daily quota set in
  * Google Cloud.
  */
+/**
+ * Who is calling, for the rate limit: the address Netlify's edge saw the
+ * connection come from (`x-nf-client-connection-ip`; Netlify sets it on
+ * every request and replaces whatever the caller sent under that name).
+ *
+ * `x-forwarded-for` is never read: the caller writes it, so a new value on
+ * each request would be a new budget each time. Where Netlify's header is
+ * missing (local development, another host) every caller shares one budget,
+ * which fails closed rather than open.
+ */
+export function callerKey(headers: Headers): string {
+  return headers.get("x-nf-client-connection-ip")?.trim() || "unknown";
+}
+
+/**
+ * A counter per caller, in this server instance's memory. On Netlify each
+ * function instance has its own, and instances come and go, so the real
+ * ceiling is `limit` times the number of instances running: this slows one
+ * caller down, it is not a hard cap. The hard cap on spend is the quota set
+ * on the key in Google Cloud.
+ */
 export function createRateLimit(limit: number, windowMs = 60_000) {
   const hits = new Map<string, { count: number; reset: number }>();
   return (key: string, at = Date.now()) => {

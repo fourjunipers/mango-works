@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  callerKey,
   createPlaces,
   createRateLimit,
   PLACE_CACHE_MS,
@@ -167,5 +168,35 @@ describe("rate limit", () => {
     expect(ok("a", 2)).toBe(false);
     expect(ok("b", 2)).toBe(true);
     expect(ok("a", 1001)).toBe(true);
+  });
+});
+
+describe("callerKey", () => {
+  const key = (headers: Record<string, string>) =>
+    callerKey(new Headers(headers));
+
+  it("is the address Netlify reports for the connection", () => {
+    expect(key({ "x-nf-client-connection-ip": "203.0.113.7" })).toBe(
+      "203.0.113.7",
+    );
+  });
+
+  it("never reads x-forwarded-for, which the caller writes", () => {
+    // A caller that sends a new address on every request must not get a
+    // new budget each time.
+    const first = key({ "x-forwarded-for": "198.51.100.1" });
+    const second = key({ "x-forwarded-for": "198.51.100.2, 10.0.0.1" });
+    expect(first).toBe(second);
+    expect(first).not.toContain("198.51.100");
+    expect(
+      key({
+        "x-nf-client-connection-ip": "203.0.113.7",
+        "x-forwarded-for": "198.51.100.3",
+      }),
+    ).toBe("203.0.113.7");
+  });
+
+  it("puts every caller with no reported address in one budget", () => {
+    expect(key({})).toBe(key({ "x-real-ip": "198.51.100.9" }));
   });
 });

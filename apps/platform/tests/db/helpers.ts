@@ -137,6 +137,11 @@ export async function createTenant(
  * removed as the local database's superuser, its audit rows first, in one
  * transaction, with a lock timeout of 5 seconds so that it fails rather
  * than waits. Only tests do this: the app has no way to delete a tenant.
+ *
+ * No audit row can be deleted either (20261120000200: the table's own
+ * triggers refuse it, its owner included), so the audit rows go with those
+ * triggers switched off for that one statement (session_replication_role,
+ * which only a superuser may set).
  */
 export async function deleteTenant(tenant: TestTenant | undefined) {
   if (!tenant) return;
@@ -151,7 +156,9 @@ export async function deleteTenant(tenant: TestTenant | undefined) {
     [
       "begin;",
       "set local lock_timeout = '5s';",
+      "set local session_replication_role = replica;",
       `delete from platform.audit_events where tenant_id = '${tenant.id}';`,
+      "set local session_replication_role = origin;",
       `delete from platform.tenants where id = '${tenant.id}';`,
       "commit;",
     ].join("\n"),
