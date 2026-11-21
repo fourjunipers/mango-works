@@ -28,6 +28,7 @@ import {
   parseTypedNumber,
   parseWholeInRange,
   parseWholeNumber,
+  parseYear,
 } from "./number-input";
 import { settingsDraft, settingsPayload } from "./pricing-settings";
 import { reminderSettingsSchema } from "./renewals";
@@ -435,7 +436,10 @@ describe("every parser on the platform reads a number by that rule", () => {
     }
   });
 
-  it.each(wholeBoxes)(
+  /** Year boxes take four digits only (stage 11): no "2,024", no "002024". */
+  const isYear = (name: string) => / year/.test(name);
+
+  it.each(wholeBoxes.filter(([name]) => !isYear(name)))(
     "%s takes a whole number, with thousands commas and spaces around it",
     (_, read, value) => {
       const grouped = new Intl.NumberFormat("en-US").format(value);
@@ -448,6 +452,17 @@ describe("every parser on the platform reads a number by that rule", () => {
       ]) {
         expect(read(typed), JSON.stringify(typed)).toBe(value);
       }
+    },
+  );
+
+  it.each(wholeBoxes.filter(([name]) => isYear(name)))(
+    "%s takes four digits with spaces around them, and no thousands comma",
+    (_, read, value) => {
+      for (const typed of [String(value), ` ${value} `, `\t${value}\n`])
+        expect(read(typed), JSON.stringify(typed)).toBe(value);
+      const grouped = new Intl.NumberFormat("en-US").format(value);
+      for (const typed of [grouped, `00${value}`, "2,024"])
+        expect(read(typed), JSON.stringify(typed)).toBe("invalid");
     },
   );
 
@@ -700,5 +715,23 @@ describe("every parser on the platform reads a number by that rule", () => {
         expect(read(String(value)), `${name} ${value}`).toBe(value);
       }
     }
+  });
+});
+
+describe("parseYear (stage 11: digits only)", () => {
+  it("takes four digits in range, trimmed", () => {
+    expect(parseYear("2024")).toBe(2024);
+    expect(parseYear(" 1950 ")).toBe(1950);
+    expect(parseYear("2100")).toBe(2100);
+    expect(parseYear("")).toBeNull();
+    expect(parseYear("   ")).toBeNull();
+  });
+  it("refuses a thousands comma and anything else", () => {
+    for (const bad of ["2,024", "2.024", "2024.0", "202", "02024", "+2024", "2e3", "２０２４", "1949", "2101", "20 24"])
+      expect(parseYear(bad), bad).toBe("invalid");
+  });
+  it("takes its own range", () => {
+    expect(parseYear("0999", 0, 9999)).toBe(999);
+    expect(parseYear("2024", 2025, 2030)).toBe("invalid");
   });
 });

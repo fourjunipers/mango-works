@@ -3,8 +3,10 @@
  * role, one user who works in both shops, a platform admin, and (Phase 1a)
  * BSR's location details plus 20 demo bikes read from scripts/demo/bsr-fleet.csv
  * through the same CSV reader and checks the import screen uses, BSR tax and
- * insurance records in every state, and a third shop with 150 bikes in 5
- * models for trying the fleet list at size.
+ * insurance records in every state, a third shop with 150 bikes in 5
+ * models for trying the fleet list at size, and (Phase 2 stage 11) BSR's
+ * demo bookings: prices, extras, two coupons, bookings, a shortage and a
+ * hold, made through the database's functions as signed-in members.
  *
  *   npm run seed -w @mango/platform            local Supabase
  *   npm run seed:staging -w @mango/platform    mango-works-staging
@@ -20,6 +22,11 @@ import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { parseCsv } from "../lib/csv.ts";
 import { planImport } from "../lib/fleet-import.ts";
+import {
+  addCalendarDays,
+  dateInZone,
+  fromLocalInput,
+} from "../lib/shop-time.ts";
 
 const staging = process.argv.includes("--staging");
 
@@ -30,6 +37,14 @@ const key = staging
   ? process.env.STAGING_SUPABASE_SECRET_KEY
   : process.env.SUPABASE_SERVICE_ROLE_KEY;
 const password = process.env.DEMO_PASSWORD;
+/**
+ * The publishable (anon) key: a demo member signs in with it and then acts
+ * as themself, as the app does. The secret key above is only for what only
+ * the service role may do (users, memberships, the fleet import).
+ */
+const publishableKey = staging
+  ? process.env.STAGING_ANON_KEY
+  : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 function fail(message: string): never {
   console.error(`seed: ${message}`);
@@ -41,6 +56,12 @@ if (!url || !key)
     staging
       ? "set STAGING_SUPABASE_URL and STAGING_SUPABASE_SECRET_KEY in apps/platform/.env.local"
       : "set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in apps/platform/.env.local",
+  );
+if (!publishableKey)
+  fail(
+    staging
+      ? "set STAGING_ANON_KEY in apps/platform/.env.local"
+      : "set NEXT_PUBLIC_SUPABASE_ANON_KEY in apps/platform/.env.local",
   );
 if (!password || password.length < 8)
   fail("set DEMO_PASSWORD (8+ characters) in apps/platform/.env.local");
@@ -549,7 +570,10 @@ async function seedBsrRenewals(tenantId: string) {
   // role included (20261119000100). So the demo records are written as the
   // shop's demo owner, through record_renewal(), which saves a renewal and
   // its cost together.
-  const owner = createClient(url!, key!, { auth, db: { schema: "platform" } });
+  const owner = createClient(url!, publishableKey!, {
+    auth,
+    db: { schema: "platform" },
+  });
   const signedIn = await owner.auth.signInWithPassword({
     email: "owner@bsr.demo.test",
     password: password!,
@@ -576,6 +600,318 @@ async function seedBsrRenewals(tenantId: string) {
   }
   await owner.auth.signOut();
   console.log(`  renewals  ${added} demo tax and insurance records`);
+}
+
+/**
+ * Phase 2 stage 11: BSR's demo bookings, so New order's price check and a
+ * unit's page show real figures. Everything goes through the database's
+ * own functions as a signed-in member of the shop, never a direct write as
+ * the service role (reserve() and save_coupon() refuse that, and they are
+ * what the screens use):
+ *
+ *   the owner   create_general_product (a helmet, a delivery), the prices
+ *               (save_product_pricing), the extras offered with a scooter
+ *               (save_product_extras), "Accept coupons" on
+ *               (save_pricing_settings), two coupons (save_coupon), and the
+ *               booking rules: overbooking on, a 60-minute hold
+ *               (save_booking_rules);
+ *   staff       bookings at the counter (reserve(), walk-in): a scooter and
+ *               two helmets, every bike of the smallest model and one more
+ *               (a shortage, since overbooking is on), and a hold.
+ *
+ * Safe to run again: the products, prices, extras and coupons are made only
+ * when missing; the bookings only when BSR has none; the hold whenever no
+ * hold is live, since a hold runs out within the hour (re-run the seed just
+ * before trying holds).
+ */
+async function seedBsrBookings(tenantId: string, locationId: string) {
+  const signedIn = async (email: string) => {
+    const client = createClient(url!, publishableKey!, {
+      auth,
+      db: { schema: "platform" },
+    });
+    const { error } = await client.auth.signInWithPassword({
+      email,
+      password: password!,
+    });
+    if (error) throw error;
+    return client;
+  };
+  const owner = await signedIn("owner@bsr.demo.test");
+  const staff = await signedIn("staff@bsr.demo.test");
+  const must = <T,>(
+    answer: { data: T; error: { message: string } | null },
+    what: string,
+  ): T => {
+    if (answer.error) fail(`${what}: ${answer.error.message}`);
+    return answer.data;
+  };
+
+  // The two scooters: the model with the most bikes, and the one with the fewest.
+  // Vehicles only: rental gear keeps its stock as unit rows too.
+  const vehicles = must(
+    await owner
+      .from("products")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .eq("type", "vehicle")
+      .is("retired_at", null),
+    "vehicles",
+  )!;
+  const nameOf = new Map(
+    vehicles.map((v) => [v.id as string, v.name as string]),
+  );
+  const vehicleIds = new Set(nameOf.keys());
+  const units = must(
+    await owner
+      .from("units")
+      .select("product_id")
+      .eq("tenant_id", tenantId)
+      .eq("location_id", locationId)
+      .eq("status", "active"),
+    "units",
+  )!;
+  const perModel = new Map<string, number>();
+  for (const u of units)
+    if (vehicleIds.has(u.product_id))
+      perModel.set(u.product_id, (perModel.get(u.product_id) ?? 0) + 1);
+  const models = [...perModel.entries()].sort(
+    // Ties by name, so a fresh database always picks the same two.
+    (a, b) =>
+      b[1] - a[1] ||
+      (nameOf.get(a[0]) ?? "").localeCompare(nameOf.get(b[0]) ?? ""),
+  );
+  if (models.length < 2)
+    fail("BSR needs two models with bikes; seed the fleet first");
+  const [busy, busyCount] = models[0];
+  const [small, smallCount] = models[models.length - 1];
+
+  // A helmet (rental gear, 10 of them) and a delivery (a service).
+  const general = async (
+    type: "gear" | "service",
+    name: string,
+    quantity: number,
+  ): Promise<string> => {
+    const found = must(
+      await owner
+        .from("products")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("name", name)
+        .is("retired_at", null)
+        .maybeSingle(),
+      `find ${name}`,
+    );
+    if (found) return found.id as string;
+    return must(
+      await owner.rpc("create_general_product", {
+        p_tenant_id: tenantId,
+        p_type: type,
+        p_name: name,
+        p_track_units: false,
+        p_quantities:
+          type === "gear" ? [{ location_id: locationId, quantity }] : [],
+      }),
+      `create ${name}`,
+    ) as string;
+  };
+  const helmet = await general("gear", "Demo helmet", 10);
+  const delivery = await general("service", "Demo hotel delivery", 0);
+
+  // Prices, where a product has none: by the day, in minor units of the
+  // shop's currency.
+  const priced = must(
+    await owner
+      .from("product_pricing")
+      .select("product_id, pricing_method")
+      .eq("tenant_id", tenantId)
+      .in("product_id", [busy, small, helmet, delivery]),
+    "prices",
+  )!;
+  const hasPrice = (id: string) =>
+    priced.some((p) => p.product_id === id && p.pricing_method !== null);
+  const day = (amount: string) => ({
+    pricing_method: "per_period",
+    price_amount: amount,
+    price_period: "day",
+  });
+  const prices: [string, Record<string, unknown>][] = [
+    [busy, day("35000")],
+    [small, day("25000")],
+    [helmet, day("5000")],
+    [delivery, { pricing_method: "fixed", price_amount: "20000" }],
+  ];
+  let newPrices = 0;
+  for (const [id, settings] of prices) {
+    if (hasPrice(id)) continue;
+    must(
+      await owner.rpc("save_product_pricing", {
+        p_product_id: id,
+        p_settings: settings,
+      }),
+      "save_product_pricing",
+    );
+    newPrices++;
+  }
+
+  // The extras offered with the busiest scooter: one helmet included, two
+  // at most per scooter; the delivery.
+  const extras = must(
+    await owner
+      .from("product_extras")
+      .select("extra_product_id")
+      .eq("tenant_id", tenantId)
+      .eq("product_id", busy),
+    "extras",
+  )!;
+  if (extras.length === 0)
+    must(
+      await owner.rpc("save_product_extras", {
+        p_tenant_id: tenantId,
+        p_product_id: busy,
+        p_extras: [
+          { extra_product_id: helmet, included_quantity: 1, max_quantity: 2 },
+          { extra_product_id: delivery, included_quantity: 0, max_quantity: 1 },
+        ],
+      }),
+      "save_product_extras",
+    );
+
+  // Coupons accepted, and two coupons: one for the counter and the booking
+  // page, one for Moto Mangos alone.
+  must(
+    await owner.rpc("save_pricing_settings", {
+      p_tenant_id: tenantId,
+      p_settings: { coupons_enabled: true },
+    }),
+    "save_pricing_settings",
+  );
+  const coupons = must(
+    await owner
+      .from("coupons")
+      .select("code")
+      .eq("tenant_id", tenantId)
+      .in("code", ["WELCOME10", "MOTO200"]),
+    "coupons",
+  )!;
+  const couponCodes = new Set(coupons.map((c) => c.code as string));
+  const newCoupons = [
+    {
+      code: "WELCOME10",
+      name: "Demo: 10% at the counter and on the booking page",
+      kind: "percent",
+      percent_bp: 1000,
+      channels: ["staff", "booking_page"],
+    },
+    {
+      code: "MOTO200",
+      name: "Demo: 200 off on Moto Mangos only",
+      kind: "fixed",
+      amount: "20000",
+      min_days: 2,
+      channels: ["marketplace"],
+    },
+  ].filter((c) => !couponCodes.has(c.code));
+  for (const coupon of newCoupons)
+    must(
+      await owner.rpc("save_coupon", {
+        p_tenant_id: tenantId,
+        p_coupon: coupon,
+      }),
+      "save_coupon",
+    );
+
+  // Overbooking on (so a shortage can be shown), and a 60-minute hold.
+  must(
+    await owner.rpc("save_booking_rules", {
+      p_tenant_id: tenantId,
+      p_rules: { shop: { allow_overbooking: true, hold_minutes: 60 } },
+    }),
+    "save_booking_rules",
+  );
+
+  // Bookings at the counter, made by staff, from a few days out, at 12:00
+  // on the location's own clock (inside its hours every day of the week).
+  const where = must(
+    await owner
+      .from("locations")
+      .select("timezone")
+      .eq("id", locationId)
+      .single(),
+    "location",
+  )!;
+  const zone = where.timezone as string;
+  const today = dateInZone(new Date(), zone);
+  const dayFrom = (n: number) => {
+    const d = addCalendarDays(today, n);
+    const pad = (v: number) => String(v).padStart(2, "0");
+    const at = fromLocalInput(
+      `${d.year}-${pad(d.month)}-${pad(d.day)}T12:00`,
+      zone,
+    );
+    if (!at) fail(`no 12:00 on day ${n} in ${zone}`);
+    return at.toISOString();
+  };
+  const reserve = async (
+    lines: { product_id: string; quantity: number; from: number; to: number }[],
+    hold = false,
+  ) => {
+    const answer = must(
+      await staff.rpc("reserve", {
+        p_tenant_id: tenantId,
+        p_request: {
+          channel: "walk_in",
+          mode: "staff",
+          ...(hold ? { hold: true } : {}),
+          lines: lines.map((l) => ({
+            product_id: l.product_id,
+            location_id: locationId,
+            quantity: l.quantity,
+            starts_at: dayFrom(l.from),
+            ends_at: dayFrom(l.to),
+          })),
+        },
+      }),
+      "reserve",
+    ) as { ok: boolean; reason?: string };
+    if (!answer.ok) fail(`reserve: ${answer.reason}`);
+  };
+  const existing = must(
+    await owner
+      .from("reservations")
+      .select("state, hold_expires_at")
+      .eq("tenant_id", tenantId)
+      .in("state", ["held", "reserved"]),
+    "reservations",
+  )!;
+  let booked = 0;
+  if (!existing.some((r) => r.state === "reserved")) {
+    // Two scooters and two helmets, in three days for three days.
+    await reserve([
+      { product_id: busy, quantity: Math.min(2, busyCount), from: 3, to: 6 },
+      { product_id: helmet, quantity: 2, from: 3, to: 6 },
+    ]);
+    // Every bike of the smallest model next week, then one more: a shortage.
+    await reserve([
+      { product_id: small, quantity: smallCount, from: 7, to: 9 },
+    ]);
+    await reserve([{ product_id: small, quantity: 1, from: 7, to: 9 }]);
+    booked = 3;
+  }
+  const holdLive = existing.some(
+    (r) =>
+      r.state === "held" &&
+      r.hold_expires_at !== null &&
+      new Date(r.hold_expires_at as string).getTime() > Date.now(),
+  );
+  if (!holdLive)
+    await reserve([{ product_id: busy, quantity: 1, from: 10, to: 12 }], true);
+
+  await owner.auth.signOut();
+  await staff.auth.signOut();
+  console.log(
+    `  bookings  ${booked ? `${booked} demo bookings (one short)` : "bookings already there"}, ${holdLive ? "a hold already live" : "a new 60-minute hold"}, ${newPrices} prices, ${newCoupons.length} coupons (WELCOME10, MOTO200)`,
+  );
 }
 
 /**
@@ -736,6 +1072,7 @@ async function main() {
   const approved = await seedCatalog();
   await seedBsrFleet(bsr, locationId, approved);
   await seedBsrRenewals(bsr);
+  await seedBsrBookings(bsr, locationId);
   await seedBigFleet(tenantIds.get("big-fleet")!, approved);
 
   console.log("Done. Every demo user's password is DEMO_PASSWORD.");

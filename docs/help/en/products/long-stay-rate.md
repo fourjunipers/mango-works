@@ -3,7 +3,7 @@ title: Set a long-stay daily rate (rentals over a month)
 summary: Choose what each day after a whole month costs, for rentals of 31 days or more.
 keywords: [long stay, long-term rental, monthly rental, more than 30 days, 45 days, 2 months, extra days, monthly rate, ราคาต่อวันสำหรับเช่าระยะยาว, เช่ารายเดือน, เช่าระยะยาว, เกิน 30 วัน]
 screens: [/[tenant]/products/[id]]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Set a long-stay daily rate (rentals over a month)
@@ -29,6 +29,8 @@ Who can do this: owners and managers.
 
 ## Common problems
 
-- **"Enter an amount, such as 45000 or 45000.50."** Type the rate as a number, with a dot for decimals.
+- **"Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has."** Type the rate with a dot for decimals (12.50, not 12,50) and no spaces.
 - **"A price can't be 0. To charge nothing, choose Free."** The rate can't be 0. Leave it blank to use the monthly price ÷ 30.
 - **"Couldn't save. Please try again."** Reload the page and try again.
+
+For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).

@@ -45,6 +45,8 @@ jobs:
   platform-db:
     name: "@mango/platform: RLS + Playwright"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       # Throwaway password for this run's demo users.
       DEMO_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}
@@ -86,3 +88,34 @@ jobs:
           name: platform-playwright
           path: apps/platform/test-results
           retention-days: 7
+
+  # The marketplace's own database tests (RLS, search, the admin queue),
+  # against a throwaway local Supabase with every migration applied, on a
+  # runner of their own so they never share a database with the platform's.
+  marketplace-db:
+    name: "@mango/marketplace: database tests"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.121.0
+      - run: npm ci
+      - name: Start Supabase (applies all migrations and supabase/seed.sql)
+        run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,storage-api,postgres-meta,supavisor
+      - name: Write apps/marketplace/.env.local for the local stack
+        run: |
+          eval "$(supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY)=')"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+          } > apps/marketplace/.env.local
+      - name: Marketplace database tests
+        run: npm run test:db -w @mango/marketplace

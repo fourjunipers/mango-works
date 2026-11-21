@@ -2,6 +2,7 @@
 
 import { useState, useSyncExternalStore, useTransition } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { ChevronDown } from "lucide-react";
 import { Field, inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { adjustmentParts } from "@mango/core/season";
@@ -9,8 +10,17 @@ import { codeGiven, couponFoundOf, type CouponInputs } from "@/lib/coupons";
 import { dayText, notAppliedKey, refusalWords } from "@/lib/coupon-words";
 import { formatMinor } from "@/lib/money";
 import { parseWholeNumber } from "@/lib/number-input";
-import type { PricingContext, PricingDraft } from "@/lib/pricing-form";
-import { extrasOf, type PricingInputs } from "@/lib/pricing-inputs";
+import type { BookingChannel } from "@mango/core/booking-rules";
+import type {
+  PricingContext,
+  PricingDraft,
+  ProductType,
+} from "@/lib/pricing-form";
+import {
+  extrasOf,
+  type PricingInputs,
+  type ProductPricingRow,
+} from "@/lib/pricing-inputs";
 import {
   checkPrice,
   draftRow,
@@ -32,48 +42,72 @@ import { lookUpCoupon } from "./check-price-actions";
  *
  * Read-only: the code is looked up (coupon_inputs()) and judged by
  * decideDiscounts() as a counter booking would be, but nothing is reserved
- * and no use is counted. Used on the Pricing tab now, and by the New order
- * screen later (plan §7).
+ * and no use is counted. Used on the Pricing tab (the price as it is being
+ * edited, on the walk-in channel) and on the Price check tab (the
+ * saved price, on the channel picked there; Phase 2 stage 11).
  */
 export function CheckPrice({
   slug,
   productId,
-  draft,
-  ctx,
-  shared,
-  taxProfiles,
-  defaultTaxId,
+  priced,
   inputs,
   timeZone,
   currency,
   pickup: firstPickup,
-  changed,
+  dropoff: firstDropoff,
+  channel = "walk_in",
+  title,
+  compact = false,
 }: {
   slug: string;
   productId: string;
-  draft: PricingDraft;
-  ctx: PricingContext;
-  shared: SharedList[];
-  taxProfiles: TaxProfile[];
-  defaultTaxId: string | null;
+  /**
+   * What is priced: the Pricing tab's draft, saved or not ("changed" says
+   * which), or the product's saved row as pricing_inputs() returned it.
+   */
+  priced:
+    | {
+        kind: "draft";
+        draft: PricingDraft;
+        ctx: PricingContext;
+        shared: SharedList[];
+        taxProfiles: TaxProfile[];
+        defaultTaxId: string | null;
+        changed: boolean;
+      }
+    | { kind: "saved"; type: ProductType; row: ProductPricingRow | null };
   inputs: PricingInputs;
   timeZone: string;
   currency: string;
   pickup: string;
-  changed: boolean;
+  /** A return to start from: the sample is then "by dates". */
+  dropoff?: string;
+  /** Where the booking would come from: a coupon's channels are judged by it. */
+  channel?: BookingChannel;
+  /** The heading, when it is not "Check a price". */
+  title?: string;
+  /**
+   * The Price check's layout: priced for the dates given, with no boxes of
+   * its own for them, and the heading for screen readers only.
+   */
+  compact?: boolean;
 }) {
   const t = useTranslations("Pricing");
   const locale = useLocale();
-  const [by, setBy] = useState<"days" | "dates">("days");
+  const [by, setBy] = useState<"days" | "dates">(
+    firstDropoff ? "dates" : "days",
+  );
   const [days, setDays] = useState("7");
   const [pickup, setPickup] = useState(firstPickup);
   const [dropoff, setDropoff] = useState(() => {
+    if (firstDropoff) return firstDropoff;
     const span = sampleSpan(
       { by: "days", pickup: firstPickup, days: 7 },
       timeZone,
     );
     return span ? localInput(span.end, timeZone) : firstPickup;
   });
+  const type = priced.kind === "draft" ? priced.ctx.type : priced.type;
   const [quantity, setQuantity] = useState("1");
   const [extraCounts, setExtraCounts] = useState<Record<string, string>>({});
   const [returning, setReturning] = useState(false);
@@ -97,7 +131,7 @@ export function CheckPrice({
     inputs.products.map((p) => [p.product_id, p.product_name]),
   );
   const extras =
-    ctx.type === "vehicle"
+    type === "vehicle"
       ? extrasOf(inputs, productId).filter((e) =>
           inputs.products.some(
             (p) =>
@@ -110,10 +144,15 @@ export function CheckPrice({
     by === "days" ? { by, pickup, days: count(days) } : { by, pickup, dropoff },
     timeZone,
   );
-  const row = draftRow(productId, draft, ctx, shared, {
-    profiles: taxProfiles,
-    defaultId: defaultTaxId,
-  });
+  const row =
+    priced.kind === "draft"
+      ? draftRow(productId, priced.draft, priced.ctx, priced.shared, {
+          profiles: priced.taxProfiles,
+          defaultId: priced.defaultTaxId,
+        })
+      : priced.row?.pricing_method
+        ? priced.row
+        : null;
   const checked: Checked | null = span
     ? checkPrice({
         inputs,
@@ -126,6 +165,7 @@ export function CheckPrice({
         code: applied?.code ?? null,
         coupon: applied?.read ?? null,
         returning,
+        channel,
         // A coupon's valid dates are judged at the moment Apply was pressed
         // (on the shop's clock, in decideDiscounts); with no code, "now"
         // decides nothing.
@@ -159,16 +199,284 @@ export function CheckPrice({
     });
   };
 
+  const quantityField = (
+    <Field id="check-quantity" label={t("check.quantity")}>
+      <input
+        id="check-quantity"
+        type="number"
+        min={1}
+        max={99}
+        inputMode="numeric"
+        className={inputClass}
+        value={quantity}
+        onChange={(e) => setQuantity(e.target.value)}
+      />
+    </Field>
+  );
+
+  const extrasFields = extras.length > 0 && (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium">{t("check.extras")}</legend>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {extras.map((e) => {
+          const id = `check-extra-${e.extra_product_id}`;
+          return (
+            <Field
+              key={e.extra_product_id}
+              id={id}
+              label={names.get(e.extra_product_id) ?? ""}
+              help={
+                e.included_quantity > 0
+                  ? t("check.extraIncluded", {
+                      count: e.included_quantity,
+                    })
+                  : undefined
+              }
+            >
+              <input
+                id={id}
+                aria-describedby={
+                  e.included_quantity > 0 ? `${id}-help` : undefined
+                }
+                type="number"
+                min={0}
+                max={99}
+                inputMode="numeric"
+                className={inputClass}
+                value={extraCounts[e.extra_product_id] ?? "0"}
+                onChange={(ev) =>
+                  setExtraCounts((c) => ({
+                    ...c,
+                    [e.extra_product_id]: ev.target.value,
+                  }))
+                }
+              />
+            </Field>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+
+  const couponAndReturning = (
+    <div className={cn("grid sm:grid-cols-2", compact ? "gap-3" : "gap-4")}>
+      <div className="space-y-1.5">
+        <label htmlFor="check-coupon" className="block text-sm font-medium">
+          {t("check.coupon")}
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="check-coupon"
+            className={cn(inputClass, "min-w-0 flex-1 uppercase")}
+            autoCapitalize="characters"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={60}
+            value={codeTyped}
+            onChange={(e) => setCodeTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                apply();
+              }
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 px-4"
+            onClick={apply}
+            disabled={looking}
+          >
+            {looking ? t("check.couponChecking") : t("check.couponApply")}
+          </Button>
+        </div>
+        {applied && (
+          <Button
+            type="button"
+            variant="link"
+            className="h-11 px-0"
+            onClick={() => {
+              setApplied(null);
+              setCodeTyped("");
+            }}
+          >
+            {t("check.couponRemove")}
+          </Button>
+        )}
+      </div>
+      <div className={cn("space-y-1", compact && "sm:pt-6")}>
+        <label className="flex min-h-11 items-center gap-3 text-sm font-medium">
+          <input
+            type="checkbox"
+            checked={returning}
+            onChange={(e) => setReturning(e.target.checked)}
+            className="size-5 accent-primary"
+          />
+          {t("check.returning")}
+        </label>
+        <p className="text-xs text-muted-foreground">
+          {returningOn
+            ? t("check.returningHelp", {
+                percent: percentLabel(settings!.returning_percent_bp!, locale),
+                count: settings!.returning_rentals_needed ?? 1,
+              })
+            : t("check.returningOff")}
+        </p>
+      </div>
+    </div>
+  );
+
+  const couponNote = (
+    <CouponNote
+      checked={checked}
+      applied={applied}
+      lookupFailed={lookupFailed}
+      money={money}
+      locale={locale}
+      channel={channel}
+    />
+  );
+
+  const breakdown = (
+    <div aria-live="polite">
+      {!result || !line ? (
+        <p className="rounded-md border bg-muted/40 p-3 text-sm">
+          {row ? t("check.cantPrice") : t("check.notPriced")}
+        </p>
+      ) : (
+        <dl
+          className="divide-y rounded-md border text-sm"
+          aria-label={t("check.breakdown")}
+        >
+          <Row
+            dense={compact}
+            label={t("check.listPrice")}
+            detail={basisText(line.unit.basis, t, money)}
+            value={money(line.listPrice)}
+          />
+          {line.seasons.map((s) => {
+            const parts = adjustmentParts(s.amount);
+            return (
+              <Row
+                dense={compact}
+                key={s.ruleId}
+                label={t("check.season", { name: seasonName(s.ruleId) })}
+                detail={t("check.seasonDays", { count: s.periodsInside })}
+                value={money(parts.size)}
+                sign={parts.direction === "decrease" ? "−" : "+"}
+              />
+            );
+          })}
+          {extraLines.map((l) => (
+            <Row
+              dense={compact}
+              key={l.id}
+              label={t("check.extraLine", {
+                name: names.get(l.productId) ?? "",
+                count: l.quantity,
+              })}
+              detail={
+                l.includedQuantity > 0
+                  ? t("check.extraLineIncluded", {
+                      count: l.includedQuantity,
+                    })
+                  : undefined
+              }
+              value={money(l.seasonPrice)}
+            />
+          ))}
+          {checked!.discounts.map((d) => (
+            <Row
+              dense={compact}
+              key={d.id}
+              label={
+                d.kind === "returning"
+                  ? t("check.discountReturning")
+                  : t("check.discountCoupon", { code: d.code })
+              }
+              value={money(d.amount)}
+              sign="−"
+            />
+          ))}
+          {result.taxGroups.map((g) => (
+            <Row
+              dense={compact}
+              key={g.rateBp}
+              label={t(
+                inputs.settings?.tax_inclusive === false
+                  ? "check.vatAdded"
+                  : "check.vatIncluded",
+                { rate: percentText(g.rateBp, locale) },
+              )}
+              value={money(g.vat)}
+            />
+          ))}
+          <Row
+            dense={compact}
+            label={t("check.total")}
+            value={money(result.totals.total)}
+            strong
+          />
+          <Row
+            dense={compact}
+            label={t("check.deposit")}
+            detail={t("check.depositHelp")}
+            value={money(result.deposit.amount)}
+          />
+        </dl>
+      )}
+    </div>
+  );
+
+  if (compact)
+    // The Price check (20 Nov 2026): the dates are the screen's own, so
+    // only the price, the coupon and the returning-customer tick show;
+    // quantity and extras fold away.
+    return (
+      <section aria-labelledby="check-price" data-price-check>
+        <h2 id="check-price" className="sr-only">
+          {title ?? t("check.title")}
+        </h2>
+        <fieldset
+          disabled={!started}
+          data-started={started ? "yes" : "no"}
+          className="min-w-0 space-y-3"
+        >
+          {breakdown}
+          {couponAndReturning}
+          {couponNote}
+          <details className="group rounded-md border">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+              {t(extras.length > 0 ? "check.more" : "check.moreQuantity")}
+              <ChevronDown
+                aria-hidden
+                className="size-4 shrink-0 transition-transform group-open:rotate-180"
+              />
+            </summary>
+            <div className="space-y-3 border-t p-3">
+              <div className="max-w-40">{quantityField}</div>
+              {extrasFields}
+            </div>
+          </details>
+        </fieldset>
+      </section>
+    );
+
   return (
     <section
       aria-labelledby="check-price"
       className="rounded-lg border bg-card p-4 sm:p-5"
     >
       <h2 id="check-price" className="text-lg font-semibold">
-        {t("check.title")}
+        {title ?? t("check.title")}
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        {t(changed ? "check.introUnsaved" : "check.intro")}
+        {t(
+          priced.kind === "draft" && priced.changed
+            ? "check.introUnsaved"
+            : "check.intro",
+        )}
       </p>
       <fieldset
         disabled={!started}
@@ -233,223 +541,13 @@ export function CheckPrice({
               />
             </Field>
           )}
-          <Field id="check-quantity" label={t("check.quantity")}>
-            <input
-              id="check-quantity"
-              type="number"
-              min={1}
-              max={99}
-              inputMode="numeric"
-              className={inputClass}
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-            />
-          </Field>
+          {quantityField}
         </div>
 
-        {extras.length > 0 && (
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">{t("check.extras")}</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {extras.map((e) => {
-                const id = `check-extra-${e.extra_product_id}`;
-                return (
-                  <Field
-                    key={e.extra_product_id}
-                    id={id}
-                    label={names.get(e.extra_product_id) ?? ""}
-                    help={
-                      e.included_quantity > 0
-                        ? t("check.extraIncluded", {
-                            count: e.included_quantity,
-                          })
-                        : undefined
-                    }
-                  >
-                    <input
-                      id={id}
-                      aria-describedby={
-                        e.included_quantity > 0 ? `${id}-help` : undefined
-                      }
-                      type="number"
-                      min={0}
-                      max={99}
-                      inputMode="numeric"
-                      className={inputClass}
-                      value={extraCounts[e.extra_product_id] ?? "0"}
-                      onChange={(ev) =>
-                        setExtraCounts((c) => ({
-                          ...c,
-                          [e.extra_product_id]: ev.target.value,
-                        }))
-                      }
-                    />
-                  </Field>
-                );
-              })}
-            </div>
-          </fieldset>
-        )}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <label htmlFor="check-coupon" className="block text-sm font-medium">
-              {t("check.coupon")}
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="check-coupon"
-                className={cn(inputClass, "min-w-0 flex-1 uppercase")}
-                autoCapitalize="characters"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={60}
-                value={codeTyped}
-                onChange={(e) => setCodeTyped(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    apply();
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 px-4"
-                onClick={apply}
-                disabled={looking}
-              >
-                {looking ? t("check.couponChecking") : t("check.couponApply")}
-              </Button>
-            </div>
-            {applied && (
-              <Button
-                type="button"
-                variant="link"
-                className="h-11 px-0"
-                onClick={() => {
-                  setApplied(null);
-                  setCodeTyped("");
-                }}
-              >
-                {t("check.couponRemove")}
-              </Button>
-            )}
-          </div>
-          <div className="space-y-1">
-            <label className="flex min-h-11 items-center gap-3 text-sm font-medium">
-              <input
-                type="checkbox"
-                checked={returning}
-                onChange={(e) => setReturning(e.target.checked)}
-                className="size-5 accent-primary"
-              />
-              {t("check.returning")}
-            </label>
-            <p className="text-xs text-muted-foreground">
-              {returningOn
-                ? t("check.returningHelp", {
-                    percent: percentLabel(
-                      settings!.returning_percent_bp!,
-                      locale,
-                    ),
-                    count: settings!.returning_rentals_needed ?? 1,
-                  })
-                : t("check.returningOff")}
-            </p>
-          </div>
-        </div>
-
-        <CouponNote
-          checked={checked}
-          applied={applied}
-          lookupFailed={lookupFailed}
-          money={money}
-          locale={locale}
-        />
-
-        <div aria-live="polite">
-          {!result || !line ? (
-            <p className="rounded-md border bg-muted/40 p-3 text-sm">
-              {row ? t("check.cantPrice") : t("check.notPriced")}
-            </p>
-          ) : (
-            <dl
-              className="divide-y rounded-md border text-sm"
-              aria-label={t("check.breakdown")}
-            >
-              <Row
-                label={t("check.listPrice")}
-                detail={basisText(line.unit.basis, t, money)}
-                value={money(line.listPrice)}
-              />
-              {line.seasons.map((s) => {
-                const parts = adjustmentParts(s.amount);
-                return (
-                  <Row
-                    key={s.ruleId}
-                    label={t("check.season", { name: seasonName(s.ruleId) })}
-                    detail={t("check.seasonDays", { count: s.periodsInside })}
-                    value={money(parts.size)}
-                    sign={parts.direction === "decrease" ? "−" : "+"}
-                  />
-                );
-              })}
-              {extraLines.map((l) => (
-                <Row
-                  key={l.id}
-                  label={t("check.extraLine", {
-                    name: names.get(l.productId) ?? "",
-                    count: l.quantity,
-                  })}
-                  detail={
-                    l.includedQuantity > 0
-                      ? t("check.extraLineIncluded", {
-                          count: l.includedQuantity,
-                        })
-                      : undefined
-                  }
-                  value={money(l.seasonPrice)}
-                />
-              ))}
-              {checked!.discounts.map((d) => (
-                <Row
-                  key={d.id}
-                  label={
-                    d.kind === "returning"
-                      ? t("check.discountReturning")
-                      : t("check.discountCoupon", { code: d.code })
-                  }
-                  value={money(d.amount)}
-                  sign="−"
-                />
-              ))}
-              {result.taxGroups.map((g) => (
-                <Row
-                  key={g.rateBp}
-                  label={t(
-                    inputs.settings?.tax_inclusive === false
-                      ? "check.vatAdded"
-                      : "check.vatIncluded",
-                    { rate: percentText(g.rateBp, locale) },
-                  )}
-                  value={money(g.vat)}
-                />
-              ))}
-              <Row
-                label={t("check.total")}
-                value={money(result.totals.total)}
-                strong
-              />
-              <Row
-                label={t("check.deposit")}
-                detail={t("check.depositHelp")}
-                value={money(result.deposit.amount)}
-              />
-            </dl>
-          )}
-        </div>
+        {extrasFields}
+        {couponAndReturning}
+        {couponNote}
+        {breakdown}
       </fieldset>
     </section>
   );
@@ -467,7 +565,9 @@ function CouponNote({
   lookupFailed,
   money,
   locale,
+  channel,
 }: {
+  channel: BookingChannel;
   checked: Checked | null;
   applied: { code: string; read: CouponInputs } | null;
   lookupFailed: boolean;
@@ -486,7 +586,15 @@ function CouponNote({
       const found = couponFoundOf(applied.read);
       const words = refusalWords(decision.reason, found?.settings ?? null);
       const v = words.values;
-      text = t(`refused.${words.key}` as "refused.unknown", {
+      // "Can't be used by staff" is the counter's; the Price check
+      // check can be on the booking page or Moto Mangos (stage 11).
+      const key =
+        words.key === "wrongChannel" && channel === "booking_page"
+          ? "wrongChannelBookingPage"
+          : words.key === "wrongChannel" && channel === "marketplace"
+            ? "wrongChannelMarketplace"
+            : words.key;
+      text = t(`refused.${key}` as "refused.unknown", {
         from: v.from ? dayText(v.from, locale) : "",
         to: v.to ? dayText(v.to, locale) : "",
         days: v.days ?? 0,
@@ -581,7 +689,9 @@ function Row({
   value,
   sign,
   strong,
+  dense,
 }: {
+  dense?: boolean;
   label: string;
   detail?: string;
   value: string;
@@ -589,7 +699,12 @@ function Row({
   strong?: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 p-3">
+    <div
+      className={cn(
+        "flex items-start justify-between gap-3",
+        dense ? "px-3 py-2" : "p-3",
+      )}
+    >
       <dt>
         <span className={cn(strong && "font-semibold")}>{label}</span>
         {detail && (
