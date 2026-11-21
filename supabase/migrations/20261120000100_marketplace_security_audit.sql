@@ -254,8 +254,14 @@ $$;
 --     anywhere. The path (up to "?" or "#") holds no "..", "%2e" or "%2E".
 --     On the google hosts the path is /maps or starts with /maps/ (never
 --     /url, Google's redirect); on goo.gl it starts with /maps/; on
---     maps.app.goo.gl it is anything. The same rule as lib/maps-url.ts in
---     the marketplace: one table of cases (lib/maps-url.cases.ts) is run
+--     maps.app.goo.gl it is anything. Two more kinds of link that shops
+--     paste from Google are kept, each in one narrow form matched against
+--     the whole text: a g.co short share link ("https://g.co/kgs/" and one
+--     name of letters, digits, "_" and "-", nothing after it), and a classic
+--     business-listing link (maps.google.com, www.google.com or google.com,
+--     no path or "/" alone, then "?cid=" and 1 to 25 digits, no other
+--     parameter, no fragment). The same rule as lib/maps-url.ts in the
+--     marketplace: one table of cases (lib/maps-url.cases.ts) is run
 --     against both.
 --   * a photo is a path, never an address: one of our own placeholders
 --     (/images/<file>), or a file in the row's own folder of the bucket,
@@ -290,19 +296,25 @@ begin
       v_path := v_parts[2];
       if length(new.maps_url) > 500
         or new.maps_url ~ '[[:space:][:cntrl:]\\]'
-        or v_parts is null
-        or v_path ~* '\.\.|%2e'
-        or not coalesce(
-          case
-            when v_host = 'maps.app.goo.gl' then true
-            when v_host = 'goo.gl' then left(v_path, 6) = '/maps/'
-            when v_host in (
-              'www.google.com', 'google.com', 'maps.google.com',
-              'www.google.co.th', 'google.co.th', 'maps.google.co.th'
-            ) then v_path = '/maps' or left(v_path, 6) = '/maps/'
-            else false
-          end,
-          false
+        or not (
+          -- The whole of a g.co short share link.
+          new.maps_url ~ '^https://g\.co/kgs/[A-Za-z0-9_-]+$'
+          -- The whole of a business-listing link: no path, cid alone.
+          or new.maps_url ~ '^https://(maps\.google\.com|www\.google\.com|google\.com)/?\?cid=[0-9]{1,25}$'
+          -- A Maps address: a listed host, and a path that fits it.
+          or coalesce(
+            v_path !~* '\.\.|%2e'
+            and case
+              when v_host = 'maps.app.goo.gl' then true
+              when v_host = 'goo.gl' then left(v_path, 6) = '/maps/'
+              when v_host in (
+                'www.google.com', 'google.com', 'maps.google.com',
+                'www.google.co.th', 'google.co.th', 'maps.google.co.th'
+              ) then v_path = '/maps' or left(v_path, 6) = '/maps/'
+              else false
+            end,
+            false
+          )
         )
       then
         raise exception 'maps_url must be an https Google Maps link' using errcode = '23514';

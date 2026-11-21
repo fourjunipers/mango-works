@@ -65,22 +65,26 @@ select
 \echo =====     the migration does not check existing rows, but a later save of that column fails with 23514)
 \echo =====     The map-link rule is check_shop_links() as the PR now has it: https, a host that is exactly one of
 \echo =====     the eight on the list, the path under /maps (goo.gl: /maps/; maps.app.goo.gl: any), and no two dots,
-\echo =====     no %2e and no backslash in the path. So a link on g.co/kgs, on maps.google.com outside /maps, or on
-\echo =====     a Google domain of another country is listed here.
+\echo =====     no %2e and no backslash in the path. Also kept, each matched whole: a g.co short share link
+\echo =====     (https://g.co/kgs/ and one name of letters, digits, _ and -) and a business-listing link
+\echo =====     (maps.google.com, www.google.com or google.com, no path, ?cid= and 1 to 25 digits, nothing else).
+\echo =====     So a link on g.co outside that form, on maps.google.com outside /maps with anything but cid alone,
+\echo =====     or on a Google domain of another country is listed here.
 select 'shops.maps_url' as what, s.id::text, left(s.maps_url, 80) as value
 from public.shops s
 left join lateral regexp_match(s.maps_url, '^https://([^/?#]+)(/[^?#]*)') as m on true
 where s.maps_url is not null and (
   length(s.maps_url) > 500 or s.maps_url ~ '[[:space:][:cntrl:]\\]'
-  or m is null
-  or m[2] ~* '\.\.|%2e'
-  or not coalesce(case
-       when m[1] = 'maps.app.goo.gl' then true
-       when m[1] = 'goo.gl' then left(m[2], 6) = '/maps/'
-       when m[1] in ('www.google.com', 'google.com', 'maps.google.com',
-                     'www.google.co.th', 'google.co.th', 'maps.google.co.th')
-         then m[2] = '/maps' or left(m[2], 6) = '/maps/'
-       else false end, false))
+  or not (
+    s.maps_url ~ '^https://g\.co/kgs/[A-Za-z0-9_-]+$'
+    or s.maps_url ~ '^https://(maps\.google\.com|www\.google\.com|google\.com)/?\?cid=[0-9]{1,25}$'
+    or coalesce(m[2] !~* '\.\.|%2e' and case
+         when m[1] = 'maps.app.goo.gl' then true
+         when m[1] = 'goo.gl' then left(m[2], 6) = '/maps/'
+         when m[1] in ('www.google.com', 'google.com', 'maps.google.com',
+                       'www.google.co.th', 'google.co.th', 'maps.google.co.th')
+           then m[2] = '/maps' or left(m[2], 6) = '/maps/'
+         else false end, false)))
 union all
 select 'shops.photos', s.id::text, left(p, 80)
 from public.shops s, unnest(s.photos) p
