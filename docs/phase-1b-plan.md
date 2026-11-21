@@ -15,7 +15,7 @@ Read for this: the root `CLAUDE.md`, `apps/platform/CLAUDE.md`, `docs/platform/S
 5. **Expired tax, insurance and inspection never block a pickup** (decision 5). They are reminders: the Dashboard, the bike card, the vehicle page, and a warning at check-out.
 6. **Every odometer change goes through one function and lands in the log** (§2.2). A lower reading is confirmed, flagged as a correction and audited.
 7. **An open job can hold a downtime block** (§2.3). The job points at the block, so the writes run in Phase 3's lock order with no exception.
-8. **No files are stored on the platform** (decision 10). Receipt and renewal-document photos are out of 1b. They arrive with a new, separate stage before Phase 4, **Shop file storage (Google Drive)**, outlined in §7 and still to be designed.
+8. **No files are stored on the platform** (decision 10). Receipt and renewal-document photos are out of 1b. They arrive with a new, separate stage before Phase 4, **Shop file storage (Google Drive)**, outlined in §7 and designed in `docs/platform/file-storage-design.md` (decided 20 and 21 Nov 2026).
 9. **"Remove for good" is a new unit status, `removed`**, reached through one function that follows the rule for sold, retired and lost (decision 15, §2.6). The row and all its records stay, hidden; the plate is free to reuse; a product whose vehicles are all removed can be removed too.
 10. **Profit per vehicle:** 1b builds every cost, the days owned and rented, and revenue as billed on Phase 3's period lines. The paid basis and card fees wait for Phase 7; the fleet-wide report for Phase 10 (§2.8).
 
@@ -456,7 +456,7 @@ Order: 1 before 2 (the read needs the odometer) and 3 (a job writes a reading); 
 
 ### 6.2 Open points
 
-1. **The design of "Shop file storage (Google Drive)"** (§7): its own Fable design, later, before Phase 4.
+1. ~~**The design of "Shop file storage (Google Drive)"** (§7): its own Fable design, later, before Phase 4.~~ Designed in `docs/platform/file-storage-design.md`; Mark decided its points on 20 and 21 Nov 2026.
 
 ### 6.3 Decided in this plan without asking (say if any should change)
 
@@ -479,7 +479,7 @@ Order: 1 before 2 (the read needs the odometer) and 3 (a job writes a reading); 
 
 ## 7. Shop file storage (Google Drive): outline of a separate stage
 
-**Not part of Phase 1b. Its own stage, before Phase 4, with its own Fable design to be written later.** This outline only fixes what Mark decided (decision 10) and what the design must answer.
+**Not part of Phase 1b. Its own stage, before Phase 4.** Its design is `docs/platform/file-storage-design.md` (decided 20 and 21 Nov 2026), which replaces the shape below wherever they differ. The seven questions are answered there: 1 in §2.2, 2 in §2.5, 3 in §3, 4 in §2.3, 5 in §9, 6 by decision 7, 7 in §7.5.
 
 **Decided**
 
