@@ -94,6 +94,19 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 - **Doc edits for other documents are not made here.** §13 lists every edit exactly (file, text to find, text to put in its place), checked against `main` at `48f0f43` and the payments branch at `7227f3d`. They wait for PR 56 to merge, then go in one consolidation pass.
 - **Where it sits:** after 1b and before Phase 4 (0 → 1a → 2 → 3 → Neon move → 3M → 1b → file storage → 4).
 
+## Payments design (branch `docs/payments-design`, 19 Nov 2026)
+
+**Docs only: no code, migration or test changed.** Written from `main` at `d458717` and `docs/phase-3-plan.md` draft 2 (`f996c4e`).
+
+- `docs/platform/payments-design.md`: the design Phase 7 will build, and the Moto Mangos fee. Provider interface, shop payments on each shop's own Stripe account (direct charges), the fee as a separate charge on Mango Works' own account, webhooks and reconciliation, tax document data, vendor billing, security, ten build stages, and what Phase 8 adds.
+- **Provider facts were checked against the providers' own pages on 19 Nov 2026** and are cited in the document; nothing was tested against an account. Points the pages leave unclear are listed as questions for Stripe (§11.3).
+- **For Phase 3's plan, ten changes while it is on paper** (§10): the overpayment refusal binds staff entry only; a refund names its payment; reversal and chargeback rows; a card hold is not money; a `marketplace_fee` line on Moto Mangos orders; unique provider rows with no staff member; ledger cores the system can call; room in the method and charge-kind lists; a ledger that carries both deposit VAT modes; and a deposit that is never part of the balance or shown as owed.
+- **Decided by Mark, 19 Nov 2026** (§11.1, fifteen decisions; draft 2): one Stripe account per business (BSR keeps its existing account and Mango Works uses one account for the platform, vendor billing and the fee, both pending Stripe); Visa and Mastercard only accepted for Phase 7; "72 hours" is 3 calendar days at the pickup's clock time; card first at checkout, PromptPay pays at booking; the fee as a negative line on the shop's order (pending Korn K2); deposits are the shop's choice of hold or charge, never overridden, nothing charged automatically, the card kept for later charges the agreement allows, asked once per rental and never shown as owed; VAT on deposits a shop setting with two modes; retries at due, +12, +24, +48 hours; disputes recorded and linked; vendor billing on our own invoices (the spec's "Stripe Billing" lines corrected); Omise not in Phase 7; Stripe's receipt emails off; unneeded money kept as credit; one fixed 72-hour cancellation rule for Moto Mangos bookings.
+- **A gate before Phase 7 is scheduled:** Stripe's written answer on whether it supports vehicle rental shops through Connect in Thailand ("transportation services" is a restricted category there). If it refuses, Thai providers are compared first (2C2P, Omise, GB Prime Pay and any other with platform or sub-merchant support).
+- **Open:** 13 questions for Korn (§11.2), 11 for Stripe (§11.3).
+- **For Phase 6:** the rental agreement template must carry the clause that allows a later charge to the saved card; tax invoice, credit note and deposit receipt layouts for both deposit VAT modes. The Revenue Department's order Por.73/2541 reads as taxing a rental security deposit when it is received; Korn's answer to K3 may lock the setting to one mode.
+- Doc edits the design will need are listed in its §12 and not made here (among them: `apps/marketplace/CLAUDE.md` still says the fee is a Connect application fee).
+
 ## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
 
 **Docs only: no code, migration or test changed.** Written from `main` at `b9e0b33`.
