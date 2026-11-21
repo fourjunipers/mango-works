@@ -23,8 +23,14 @@ const SCHEME_RELATIVE = /^\s*[/\\]{2}/;
  *
  * The value is read the way a browser reads it (the URL parser), not by its
  * first characters alone: it is kept only when it starts with one "/" (not
- * two), holds no control character or backslash, and resolves to the same
- * origin it was resolved against.
+ * two), holds no control character or backslash, resolves to the same
+ * origin it was resolved against, and its resolved path does not start with
+ * two slashes. The parser folds dot segments away, so "/.//host/" and
+ * "/x/..//host/" both resolve to the path "//host/", which a redirect reads
+ * as another host.
+ *
+ * What is returned is the resolved address (path, query, fragment), not the
+ * text that came in: the redirect goes to exactly what was checked.
  */
 export function safeNextPath(
   next: string | null | undefined,
@@ -38,9 +44,10 @@ export function safeNextPath(
   )
     return fallback;
   try {
-    if (new URL(next, BASE).origin !== BASE) return fallback;
+    const url = new URL(next, BASE);
+    if (url.origin !== BASE || url.pathname.startsWith("//")) return fallback;
+    return url.pathname + url.search + url.hash;
   } catch {
     return fallback;
   }
-  return next;
 }

@@ -13,8 +13,19 @@ describe("safeNextPath", () => {
       "/a/b//c",
       "/search?next=//evil.example",
       "/search?u=https://evil.example/",
+      "/bsr/products?tab=a#x",
+      "/search?q=//x",
+      "/%2Fx",
     ])
       expect(safeNextPath(path), path).toBe(path);
+  });
+
+  // What comes back is the address as the URL parser resolved it, which is
+  // what was checked: dot segments are folded away.
+  it("returns the resolved path, not the text it was given", () => {
+    expect(safeNextPath("/a/../b")).toBe("/b");
+    expect(safeNextPath("/a/./b?x=1#y")).toBe("/a/b?x=1#y");
+    expect(safeNextPath("/a/%2e%2e/b")).toBe("/b");
   });
 
   it("falls back for a missing value or one that is not a path", () => {
@@ -61,6 +72,14 @@ describe("safeNextPath", () => {
     ["the base host after a user and password", "//user:pw@x/a"],
     ["a slash and a backslash, then the base host", "/\\x/a"],
     ["two backslashes, then the base host", "\\\\x\\a"],
+    // Dot segments: the URL parser folds them away, and what is left starts
+    // with two slashes ("/.//host/" is "//host/"), so the framework would
+    // navigate to another host.
+    ["a dot segment before two slashes", "/.//evil.example/"],
+    ["a parent segment before two slashes", "/x/..//evil.example/a"],
+    ["an encoded parent segment before two slashes", "/%2e%2e//evil.example/"],
+    ["a dot segment before three slashes", "/.///evil.example/"],
+    ["a dot segment, then a backslash and a slash", "/./\\/evil.example/"],
   ])("refuses %s", (_what, next) => {
     expect(safeNextPath(next)).toBe("/");
     expect(safeNextPath(next, "/home")).toBe("/home");
