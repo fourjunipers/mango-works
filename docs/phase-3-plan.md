@@ -443,6 +443,7 @@ On a `new` or `draft` order: prices worked out first; then, in the §4.2 order, 
 | An extra left behind when `move_unit` moves its vehicle to another place | At risk on the order; transfers are Phase 11 |
 | A reserved service can't be deleted: offer Retire | Stage 12, screen only |
 | "Remove for good" | **Moved to Phase 1b** (scope) |
+| `write_template_days`: write only the day rows that changed, to cut audit volume | Follow-up from PR 57's review (21 Nov 2026), not in a stage yet. Today it deletes and re-inserts every day row, and since PR 57 audits `price_template_days`, each price list save writes about two audit rows per day row (about 60 for a 30-day list), unchanged days included |
 | The stage 10 deadlock; catalog review vs product delete | Stage 1 |
 | A booking cancelled in part keeps the coupon and amount | `cancel_rental` re-decides on what is left and stores a `difference` charge; the redemption amount is updated under the coupon row |
 
