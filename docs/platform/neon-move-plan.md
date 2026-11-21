@@ -291,6 +291,8 @@ Neon's "instant restore" on the Launch plan:
 
 Stages 3 to 7 can overlap once stage 2 is merged; 4 needs 3. Stage 8 needs all of 2 to 7.
 
+**Files after decision 49** (private files in each shop's Google Drive, designed in `docs/platform/file-storage-design.md`): only public photos move to R2, so §2's "private documents by presigned address" and §5's "50 GB of files with documents" no longer apply; at 50 shops the public photos stay inside R2's free 10 GB. Private files are outside the restore window as well as outside R2: the shop's Drive is their only copy.
+
 ### 7.6 Cutover
 
 Data copy is by dump and restore, not by replication. The database is small (minutes to copy), Neon's import assistant refuses Supabase, and replication out of Supabase needs its paid IPv4 add-on for little gain.
