@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
+import { FocusedAlert } from "@/components/focused-alert";
 import { inputClass } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { reviewRequest, type ReviewState } from "./actions";
@@ -131,9 +132,9 @@ export function ReviewForm({
         </Button>
       </div>
       {state.failed && (
-        <p role="alert" className="text-sm text-destructive">
+        <FocusedAlert answer={state} className="text-sm text-destructive">
           {t("failed")}
-        </p>
+        </FocusedAlert>
       )}
     </form>
   );

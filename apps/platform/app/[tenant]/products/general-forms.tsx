@@ -160,7 +160,7 @@ export function GeneralForm({
         <p className="text-sm text-muted-foreground">{t("serviceNote")}</p>
       )}
       {!values && (
-        <p className="text-sm text-muted-foreground">{t("pricesLater")}</p>
+        <p className="text-sm text-muted-foreground">{t("pricesAfterSave")}</p>
       )}
     </ActionForm>
   );
@@ -181,19 +181,19 @@ function TypeChoice({
   const tType = useTranslations("Products.type");
   const error = useFieldError("type");
   return (
-    <fieldset>
+    // The group of radios is what can be invalid (a radio's role does not
+    // take aria-invalid): it is marked and names its error. The role is on
+    // the fieldset itself, so its legend is announced once (stage 11).
+    <fieldset
+      role="radiogroup"
+      aria-labelledby="type-legend"
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describedBy("type", { error })}
+    >
       <legend id="type-legend" className="mb-2 block text-sm font-medium">
         {t("typeLegend")}
       </legend>
-      {/* The group of radios is what can be invalid (a radio's role does not
-          take aria-invalid): it is marked and names its error. */}
-      <div
-        role="radiogroup"
-        aria-labelledby="type-legend"
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy("type", { error })}
-        className="grid gap-2 sm:grid-cols-3"
-      >
+      <div className="grid gap-2 sm:grid-cols-3">
         {generalTypes.map((value) => (
           <label key={value} className={choiceClass(type === value)}>
             <input

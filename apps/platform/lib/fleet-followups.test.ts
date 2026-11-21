@@ -59,7 +59,7 @@ describe("bike form rules", () => {
     expect(
       unitSchema.parse({ ...unit, plate: "A1", model_year: "2024" }).model_year,
     ).toBe(2024);
-    for (const bad of ["24", "1900", "2024.5", "new"])
+    for (const bad of ["24", "1900", "2024.5", "new", "2,024", "02024"])
       expect(
         unitSchema
           .safeParse({ ...unit, plate: "A1", model_year: bad })

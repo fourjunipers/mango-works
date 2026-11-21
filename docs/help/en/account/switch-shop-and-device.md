@@ -3,7 +3,7 @@ title: Switch shop and set up this device
 summary: Find your way around on a computer or a phone, change which shop you are working in, set the language, appearance and tab bar for this device, and sign out.
 keywords: [switch shop, change shop, choose a shop, sidebar, where is settings, shop admin, language, Thai, English, dark mode, light mode, tab bar, install app, add to home screen, sign out, log out, เปลี่ยนร้าน, ภาษา, โหมดมืด, ออกจากระบบ, ติดตั้งแอป, ตั้งค่าร้าน]
 screens: [/[tenant]/me, /]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Switch shop and set up this device
@@ -13,7 +13,7 @@ updated: 2026-11-19
 **On a computer** (a wide screen), everything is in the sidebar on the left:
 
 - At the top: the shop's name, with **Switch shop** under it when you belong to more than one shop.
-- **Staff app**: the tabs your role uses (**Dashboard**, **Orders**, **New order**, **Maintenance**).
+- **Staff app**: the tabs your role uses (**Dashboard**, **Orders**, **Price check**, **Maintenance**).
 - **Shop admin**: **Products**, **Fleet** and, for owners and managers, **Locations**, **Team** and **Shop settings**.
 - At the bottom: **You and this device**, your email, and **Sign out**.
 
@@ -51,4 +51,4 @@ On a computer, press **Sign out** at the bottom of the sidebar. On a phone, open
 
 ## Which tabs you see
 
-Owners, managers and staff see all four staff-app tabs. Mechanics see **Dashboard** and **Maintenance**, and open straight to **Maintenance**. Drivers see **Dashboard** and **Orders**. Everyone sees **Products** and **Fleet**; only owners and managers see **Locations**, **Team** and **Shop settings**.
+Owners, managers and staff see all four staff-app tabs. Mechanics see **Dashboard**, **Price check** and **Maintenance**, and open straight to **Maintenance**. Drivers see **Dashboard**, **Orders** and **Price check**. For mechanics and drivers, **Price check** shows what is free, with no prices (see [Check what is free and what it costs](../price-check/price-check.md)). Everyone sees **Products** and **Fleet**; only owners and managers see **Locations**, **Team** and **Shop settings**.

@@ -182,9 +182,9 @@ describe("the Fleet view: one line per product", () => {
     expect(
       parseFleetList({ product: "x", year: "24", status: "gone" }),
     ).toEqual(defaultFleetList);
-    // The year box is read by the platform's one number rule.
-    expect(parseFleetList({ year: " 2,024 " }).year).toBe(2024);
-    for (const bad of ["2e3", "0x7E4", "+2024", "2024.0", "２０２４", "1949"])
+    // A year is four digits: no thousands comma (stage 11).
+    expect(parseFleetList({ year: " 2024 " }).year).toBe(2024);
+    for (const bad of ["2,024", "2e3", "0x7E4", "+2024", "2024.0", "２０２４", "1949"])
       expect(parseFleetList({ year: bad }).year, bad).toBeNull();
     expect(fleetFilterCount(defaultFleetList)).toBe(0);
     expect(fleetFilterCount({ ...defaultFleetList, q: "x", year: 2024 })).toBe(

@@ -84,3 +84,21 @@ export function typedCount(value: string): number | null {
   const typed = parseWholeInRange(value, 0, maxCount);
   return typed === "invalid" ? null : (typed ?? 0);
 }
+
+/**
+ * The Moto Mangos tab's notice line (Phase 2 stage 11; plan §7): an advance
+ * booking needs the stricter of the shop's minimum notice and the
+ * listing's lead time (@mango/core listing.ts, noticeHours()). The line
+ * shows when the shop's notice is the stricter one, with its hours; null
+ * when the lead time decides, or the shop has no notice. `leadTyped` is the
+ * box as typed; one that can't be read counts as none.
+ */
+export function shopNoticeLine(
+  shopNoticeHours: number | null,
+  leadTyped: string,
+): number | null {
+  if (shopNoticeHours === null || shopNoticeHours <= 0) return null;
+  const lead = parseWholeInRange(leadTyped, 0, 720);
+  const leadHours = typeof lead === "number" ? lead : 0;
+  return shopNoticeHours > leadHours ? shopNoticeHours : null;
+}

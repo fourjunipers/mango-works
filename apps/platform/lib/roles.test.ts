@@ -17,13 +17,17 @@ describe("tabs per role", () => {
     }
   });
 
-  it("gives mechanics Dashboard and Maintenance, opening on Maintenance", () => {
-    expect(tabsFor("mechanic")).toEqual(["dashboard", "maintenance"]);
+  it("gives mechanics Dashboard, Price check (counts only) and Maintenance, opening on Maintenance", () => {
+    expect(tabsFor("mechanic")).toEqual([
+      "dashboard",
+      "new-order",
+      "maintenance",
+    ]);
     expect(homeTab("mechanic")).toBe("maintenance");
   });
 
-  it("gives drivers Dashboard and Orders, opening on Dashboard", () => {
-    expect(tabsFor("driver")).toEqual(["dashboard", "orders"]);
+  it("gives drivers Dashboard, Orders and Price check (counts only), opening on Dashboard", () => {
+    expect(tabsFor("driver")).toEqual(["dashboard", "orders", "new-order"]);
     expect(homeTab("driver")).toBe("dashboard");
   });
 
@@ -34,7 +38,7 @@ describe("tabs per role", () => {
   });
 
   it("refuses tabs a role doesn't have and unknown tabs", () => {
-    expect(canSeeTab("mechanic", "new-order")).toBe(false);
+    expect(canSeeTab("mechanic", "orders")).toBe(false);
     expect(canSeeTab("driver", "maintenance")).toBe(false);
     expect(canSeeTab("owner", "reports")).toBe(false);
   });
