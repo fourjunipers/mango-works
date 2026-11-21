@@ -12,6 +12,8 @@
 --     inside the shop's own folder (or our placeholders).
 --  5. Two owners removing each other at once: one stays.
 --  6. Nobody signed in reads a booking's Stripe ids.
+--  7. Signed-in and signed-out users lose TRUNCATE, REFERENCES and TRIGGER
+--     on every public table.
 
 -- 1. The functions are as main left them -------------------------------------------------------
 
@@ -401,3 +403,19 @@ grant select (
   payment_method, payment_due_at, paid_at, request_expires_at, cancelled_by,
   cancel_reason, created_at, updated_at, currency
 ) on public.bookings to anon, authenticated;
+
+-- 7. TRUNCATE, REFERENCES and TRIGGER on the public tables -------------------------------------
+-- The tables from before 8 Nov 2026 got every privilege from the old
+-- defaults, and the revokes since then left three behind for anon and
+-- authenticated on each of them. None can be used over the API (it has no
+-- TRUNCATE, and the other two are for statements that create things, which
+-- those roles cannot run in this schema), and row level security does not
+-- apply to TRUNCATE at all, so they are taken away rather than left to
+-- depend on that. Nothing in either app, and no test, uses them.
+--
+-- Every table in public, whichever migration made it. SELECT, INSERT, UPDATE
+-- and DELETE are untouched (shop_members keeps DELETE: an owner removes a
+-- member, section 5). The service role and the tables' owner keep theirs.
+
+revoke truncate, references, trigger on all tables in schema public
+from anon, authenticated;

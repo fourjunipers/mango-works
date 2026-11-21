@@ -442,3 +442,46 @@ describe("a booking's Stripe ids", () => {
     );
   });
 });
+
+describe("TRUNCATE, REFERENCES and TRIGGER on the public tables", () => {
+  it("neither signed-out nor signed-in users hold any of the three on any table", async () => {
+    const { out, failed } = await psql(`
+      select count(*) from pg_class c
+      where c.relnamespace = 'public'::regnamespace
+        and c.relkind in ('r', 'p', 'v', 'm', 'f');
+      select r || ' ' || p || ' ' || c.relname
+      from pg_class c,
+           unnest(array['anon', 'authenticated']) r,
+           unnest(array['truncate', 'references', 'trigger']) p
+      where c.relnamespace = 'public'::regnamespace
+        and c.relkind in ('r', 'p', 'v', 'm', 'f')
+        and has_table_privilege(r, c.oid, p)
+      order by 1;
+    `);
+    expect(failed).toBe("");
+    // The first line is how many tables were looked at; nothing follows it.
+    const [tables, ...held] = out.split("\n");
+    expect(Number(tables)).toBeGreaterThan(20);
+    expect(held).toEqual([]);
+  });
+
+  it("no column grant of REFERENCES stands in for the table's", async () => {
+    const { out, failed } = await psql(`
+      select grantee || ' ' || table_name || '.' || column_name
+      from information_schema.column_privileges
+      where table_schema = 'public' and privilege_type = 'REFERENCES'
+        and grantee in ('anon', 'authenticated', 'PUBLIC')
+      order by 1;
+    `);
+    expect(failed).toBe("");
+    expect(out).toBe("");
+  });
+
+  it("an owner still removes a member: DELETE on shop_members is as it was", async () => {
+    const { out } = await psql(`
+      select has_table_privilege('authenticated', 'public.shop_members', 'delete'),
+             has_table_privilege('authenticated', 'public.shop_members', 'select');
+    `);
+    expect(out).toBe("t|t");
+  });
+});
