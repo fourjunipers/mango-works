@@ -50,6 +50,8 @@ export type PriceCheckAsked = {
   dropoff: string;
   channel: PriceCheckChannel;
   productId: string | null;
+  /** What was typed in the search box: used when no product was picked (no scripts, or Enter). */
+  search: string;
 };
 
 /** "2026-11-21T10:00" for a calendar day at 10:00. */
@@ -95,6 +97,7 @@ export function readPriceCheck(
     dropoff,
     channel,
     productId: /^[0-9a-f-]{36}$/i.test(product) ? product : null,
+    search: text("q").trim().slice(0, 100),
   };
 }
 
@@ -191,4 +194,80 @@ export function answersFor(
     }
     return answer;
   });
+}
+
+/** A product as the search box offers it: its name, and what it is in words ("Motorbike · Scooter"). */
+export type PriceCheckOption = { id: string; name: string; what: string };
+
+const byName = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
+const fold = (text: string) => text.normalize("NFKC").toLocaleLowerCase();
+
+/**
+ * The products matching what was typed, best first, at most `max`: every
+ * word typed must be in the name or in what it is (kind, category). A name
+ * that starts with the text comes first, then a name with a word that starts
+ * with it, then a name that holds it, then a match on the kind or category
+ * alone; A to Z within each. Nothing typed matches nothing.
+ */
+export function matchOptions<T extends PriceCheckOption>(
+  options: readonly T[],
+  typed: string,
+  max = 8,
+): T[] {
+  const query = fold(typed).trim().replace(/\s+/g, " ");
+  if (!query) return [];
+  const words = query.split(" ");
+  const rank = (option: T) => {
+    const name = fold(option.name);
+    if (name.startsWith(query)) return 0;
+    if (name.split(/\s+/).some((word) => word.startsWith(words[0]))) return 1;
+    if (name.includes(query)) return 2;
+    return 3;
+  };
+  return options
+    .filter((option) => {
+      const text = `${fold(option.name)} ${fold(option.what)}`;
+      return words.every((word) => text.includes(word));
+    })
+    .map((option) => ({ option, rank: rank(option) }))
+    .sort(
+      (a, b) =>
+        a.rank - b.rank ||
+        byName.compare(a.option.name, b.option.name) ||
+        a.option.id.localeCompare(b.option.id),
+    )
+    .slice(0, max)
+    .map(({ option }) => option);
+}
+
+/** How many recent searches are kept as quick chips. */
+export const RECENT_MAX = 5;
+
+/** The recent products after `id` was looked at: it goes first, once. */
+export function recentAfter(
+  recent: readonly string[],
+  id: string,
+  max = RECENT_MAX,
+): string[] {
+  return [id, ...recent.filter((r) => r !== id)].slice(0, max);
+}
+
+/** A stored list of recent products, kept only if it is one: ids, at most RECENT_MAX. */
+export function readRecent(stored: string | null): string[] {
+  if (!stored) return [];
+  try {
+    const value: unknown = JSON.parse(stored);
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter(
+        (v): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v),
+      )
+      .slice(0, RECENT_MAX);
+  } catch {
+    return [];
+  }
 }

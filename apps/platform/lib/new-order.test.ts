@@ -3,7 +3,10 @@ import type { AvailabilityRow, BookingInputs } from "./booking-inputs";
 import {
   answersFor,
   howFor,
+  matchOptions,
   readPriceCheck,
+  readRecent,
+  recentAfter,
   spanOf,
   type PriceCheckChannel,
 } from "./new-order";
@@ -149,6 +152,7 @@ describe("Price check: the search", () => {
       dropoff: "2027-07-03T10:00",
       channel: "walk_in",
       productId: null,
+      search: "",
     });
   });
 
@@ -161,6 +165,7 @@ describe("Price check: the search", () => {
           return: "2027-08-04T09:30",
           channel: "marketplace",
           product: BIKE,
+          q: "  honda ",
         },
         locations,
         now,
@@ -171,6 +176,7 @@ describe("Price check: the search", () => {
       dropoff: "2027-08-04T09:30",
       channel: "marketplace",
       productId: BIKE,
+      search: "honda",
     });
     expect(
       readPriceCheck(
@@ -332,5 +338,71 @@ describe("Price check: each product's answer", () => {
       reason: "none_free",
       overbooking: false,
     });
+  });
+});
+
+describe("the search box", () => {
+  const options = [
+    { id: "a", name: "Honda Click 125", what: "Motorbike · Scooter" },
+    { id: "b", name: "Yamaha NMAX", what: "Motorbike · Scooter" },
+    { id: "c", name: "Helmet", what: "Rental gear" },
+    { id: "d", name: "Big Honda", what: "Motorbike · Touring" },
+    { id: "e", name: "Airport delivery", what: "Service or extra" },
+    { id: "f", name: "Rain jacket", what: "Rental gear" },
+  ];
+  const ids = (typed: string, max?: number) =>
+    matchOptions(options, typed, max).map((o) => o.id);
+
+  it("nothing typed matches nothing", () => {
+    expect(ids("")).toEqual([]);
+    expect(ids("   ")).toEqual([]);
+  });
+
+  it("matches the name, the kind or the category, any case, every word", () => {
+    expect(ids("HONDA")).toEqual(["a", "d"]);
+    expect(ids("scooter")).toEqual(["a", "b"]);
+    expect(ids("gear")).toEqual(["c", "f"]);
+    expect(ids("honda touring")).toEqual(["d"]);
+    expect(ids("honda  click")).toEqual(["a"]);
+    expect(ids("vespa")).toEqual([]);
+  });
+
+  it("puts names that start with it first, then a word that starts with it, then the rest", () => {
+    // "Honda Click" starts with "honda"; "Big Honda" has a word that does.
+    expect(ids("hon")).toEqual(["a", "d"]);
+    // "ja": Rain jacket has a word starting with it; nothing starts with it.
+    expect(ids("ja")).toEqual(["f"]);
+    // "el": inside Helmet's name and Airport delivery's; A to Z then.
+    expect(ids("el")).toEqual(["e", "c"]);
+    // "m": inside Helmet and Yamaha NMAX; Motorbike alone for the Hondas.
+    expect(ids("m")).toEqual(["c", "b", "d", "a"]);
+  });
+
+  it("keeps at most the number asked", () => {
+    expect(ids("o", 2)).toHaveLength(2);
+  });
+});
+
+describe("recent searches", () => {
+  const A = "20000000-0000-4000-8000-00000000000a";
+  const B = "20000000-0000-4000-8000-00000000000b";
+
+  it("the one just looked at goes first, once, and the list is kept short", () => {
+    expect(recentAfter([], A)).toEqual([A]);
+    expect(recentAfter([A, B], B)).toEqual([B, A]);
+    expect(recentAfter(["1", "2", "3", "4", "5"], "6")).toEqual([
+      "6",
+      "1",
+      "2",
+      "3",
+      "4",
+    ]);
+  });
+
+  it("reads back only a list of ids", () => {
+    expect(readRecent(null)).toEqual([]);
+    expect(readRecent("not json")).toEqual([]);
+    expect(readRecent('{"a":1}')).toEqual([]);
+    expect(readRecent(JSON.stringify([A, 3, "x", B]))).toEqual([A, B]);
   });
 });
