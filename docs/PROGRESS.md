@@ -83,6 +83,14 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 - **Ledger changes from the payments design (PR 56 §10), decided 19 Nov 2026 as decisions 33 to 42** (plan §6.4, §11.1, §14): overpayment refused for staff entry only; refunds name their payment; reversals and chargebacks; a card hold is not money; deposits never in the balance, once per rental, with their own status, never converted between hold and charge; a negative `marketplace_fee` line on Moto Mangos orders; provider rows unique with a `source`; ledger cores and staff wrappers; room for card, PromptPay, `cancellation_fee` and `withholding`; VAT on deposits a shop setting pending Korn (K3). All in stage 3 / migration 4 bar two kind values (migration 2) and the deposit status read and screen (stages 7, 9). **Clash noted for PR 56:** its §3.6 offers to turn an expiring hold into a charged deposit, which decision 37 rules out.
 - **Open points of draft 2 as first written** (plan §11.2, since settled): the Moto Mangos fee base in decision 23 differs from SPEC, INTEGRATION, the marketplace SPEC and `fees.ts` on the 30-day cap, promotions, VAT, the per-currency minimum, and the spec's old "Connect platform fee" line; when the sending domain is verified; two VAT questions for Korn; overbooked vehicle rentals; time-priced extras on long rentals.
 
+## File storage design: cross-document edits applied (branch `docs/file-storage-consolidation`, 21 Nov 2026)
+
+**Docs only: no code, migration or test changed.** From `main` at `ce0b686` (PRs 56 and 61 merged).
+
+- All 27 edits listed in `docs/platform/file-storage-design.md` §13.1 to §13.5 applied exactly as written, one commit per document: `SPEC.md` (19, including decision 52 in the change log and three new data model rows: `storage_connections`, `files`, `file_access_log`), `phase-1b-plan.md` (3), `neon-move-plan.md` (1), `payments-design.md` (2) and root `CLAUDE.md` (1, the file storage rule). Every find-text occurred exactly once; none skipped.
+- The design doc's §13 now says the edits were applied, with the date and the commits.
+- PR 57's parts (`neon-move-plan.md` §8, `docs/phase-3-plan.md` §5.3) were left alone.
+
 ## Shop file storage design (branch `docs/file-storage-design`, 20 to 21 Nov 2026)
 
 **Docs only: no code, migration or test changed; no Google Cloud project created.** Draft 3 (21 Nov 2026), after an independent Fable critique of draft 2 and Mark's answers to it. Written from `main` at `48f0f43` (PRs 52, 54 and 55 merged) and `docs/payments-design` at `7227f3d` (PR 56, not merged).
