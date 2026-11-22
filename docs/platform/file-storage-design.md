@@ -549,6 +549,8 @@ Run at the **start of the file storage build** (stage 1), not now. Each point en
 
 **Not made in this PR.** PRs 52, 54 and 55 have merged into `main`; **PR 56 (payments design) has not** (still open on 21 Nov 2026, branch at `7227f3d`). These edits are applied in one consolidation pass once PR 56 merges, to the files on `main`. Each edit names the file, the exact text to find and the exact text to put in its place. The `SPEC.md`, `phase-1b-plan.md`, `neon-move-plan.md` and `CLAUDE.md` anchors were checked to occur exactly once on `main` at `48f0f43`; the `payments-design.md` anchors on `docs/payments-design` at `7227f3d`.
 
+**Applied on 21 Nov 2026** (branch `docs/file-storage-consolidation`, from `main` at `ce0b686`, PRs 56 and 61 merged): all 27 edits in §13.1 to §13.5, each find-text checked to occur exactly once first; none skipped. §13.1 edit 17 took decision number 52 (still the next free one). §13.4 was applied to `payments-design.md` as merged on `main`; its find-texts were unchanged from `7227f3d`. Commits: `1da1100` (SPEC.md), `35a0a81` (phase-1b-plan.md), `5c6cae5` (neon-move-plan.md), `f9b9c5a` (payments-design.md), `c5fc7d8` (CLAUDE.md).
+
 ### 13.1 `docs/platform/SPEC.md` (on `main`)
 
 1. **Tech stack, the File storage row.** Find `per file (decision 49, 19 Nov 2026).` and replace with `per file (decision 49, 19 Nov 2026; design: docs/platform/file-storage-design.md, decided 20 and 21 Nov 2026).` The rest of the row stays as it is on `main`.

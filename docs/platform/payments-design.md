@@ -668,10 +668,11 @@ platform_billing.*          owned by Mango Works; a shop's owner reads its own r
   plans, subscriptions      tenant, plan, period, status (trial | active | past_due | paused | canceled), next_invoice_at
   invoices                  tenant, number, period, lines, net, VAT, total, currency, due_at, status (open | paid | void)
   invoice_payments          append-only: invoice, method (card | promptpay | transfer), amount received,
-                            withholding amount and certificate file, slip file, received_at, recorded_by, provider_ref
+                            withholding amount, received_at, recorded_by, provider_ref (the slip and the withholding certificate are rows in files naming this payment as owner kind and id, in Mango Works' own Drive)
   credit_ledger             append-only: tenant, top_up | boost_spend | refund | adjustment, amount, balance after
   documents                 tax invoices and credit notes, numbered per §6.2 in Mango Works' own series
 ```
+Slips and withholding certificates are Mango Works' records, kept in Mango Works' own Google Drive through the storage module (`docs/platform/file-storage-design.md`, decision 9), never in a shop's Drive.
 
 ### 7.3 Flows
 
@@ -700,7 +701,7 @@ platform_billing.*          owned by Mango Works; a shop's owner reads its own r
 | Mango Works' Stripe secret keys test and live | The host's environment variables, per app and per environment. Never in the repo, never in a `NEXT_PUBLIC_` variable, never logged. Live keys only in the live environment |
 | Webhook signing secrets | The same, one per endpoint |
 | A shop's Stripe account | Only its account id is stored. There is no shop secret: the platform's key acts for the account |
-| A shop's keys for a provider with no platform model (§1.4) | Encrypted in the application before storage (AES-256-GCM, a fresh nonce per value, the key id beside it), with the master key in the environment and a documented rotation. In a table no signed-in role can read; decrypted only inside `@mango/payments`. Not Supabase Vault, so the move to Neon does not touch it |
+| A shop's keys for a provider with no platform model (§1.4) | Encrypted in the application before storage (AES-256-GCM, a fresh nonce per value, the key id beside it), with the master key in the environment and a documented rotation. In a table no signed-in role can read; decrypted only inside `@mango/payments`. Not Supabase Vault, so the move to Neon does not touch it. The same encryption helper keeps each shop's Google Drive refresh token (`docs/platform/file-storage-design.md` §2.5); whichever stage comes first builds it |
 | Publishable keys | Public by design |
 
 - Where the provider offers restricted keys, the platform uses one limited to what the adapter calls.

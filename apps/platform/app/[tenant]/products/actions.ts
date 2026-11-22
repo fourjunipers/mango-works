@@ -12,6 +12,7 @@ import {
   orderProducts,
   parseDay,
   parseQuantity,
+  quantityProblem,
   readQuantities,
 } from "@/lib/general-products";
 import {
@@ -159,13 +160,20 @@ export async function saveGeneralProduct(
 }
 
 /** What the stock forms send: which product, where, and how many. */
-function stockFields(formData: FormData, max: number) {
+function stockFields(
+  formData: FormData,
+  max: number,
+):
+  | { product: string; location: string; quantity: number }
+  | { error: string }
+  | null {
   const product = field(formData, "id");
   const location = field(formData, "location");
   const typed = field(formData, "quantity");
   const quantity = typed === "" ? "invalid" : parseQuantity(typed, max);
-  if (!uuid.test(product) || !uuid.test(location) || quantity === "invalid")
-    return null;
+  if (!uuid.test(product) || !uuid.test(location)) return null;
+  if (quantity === "invalid")
+    return { error: typed === "" ? "invalidQuantity" : quantityProblem(typed) };
   return { product, location, quantity };
 }
 
@@ -180,6 +188,7 @@ export async function setStockQuantity(
     return notAllowed;
   const sent = stockFields(formData, gear ? maxGearQuantity : maxSaleQuantity);
   if (!sent) return { errors: { quantity: "invalidQuantity" } };
+  if ("error" in sent) return { errors: { quantity: sent.error } };
   const { error } = await supabase.rpc("set_stock_quantity", {
     p_product_id: sent.product,
     p_location_id: sent.location,

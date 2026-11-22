@@ -155,6 +155,14 @@ Fixes for the findings of the security audit of `main` at `d458717`. Two migrati
 
 **Local set-up.** This worktree has its own stack, `Bike_Booking_secfix` on ports 6372x, started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and both apps' `.env.local` name the same stack. The marketplace's sign-in browser tests read the mailbox at `MAILPIT_URL` (default port 54324): on a stack with other ports, set `MAILPIT_URL=http://127.0.0.1:<inbucket port>/api/v1`. They also need `ADMIN_EMAILS=admin@bike-booking.test` in `apps/marketplace/.env.local` (sign-in removes the admin role from anyone not listed, and since this branch every admin request checks the list too).
 
+## File storage design: cross-document edits applied (branch `docs/file-storage-consolidation`, 21 Nov 2026)
+
+**Docs only: no code, migration or test changed.** From `main` at `ce0b686` (PRs 56 and 61 merged).
+
+- All 27 edits listed in `docs/platform/file-storage-design.md` §13.1 to §13.5 applied exactly as written, one commit per document: `SPEC.md` (19, including decision 52 in the change log and three new data model rows: `storage_connections`, `files`, `file_access_log`), `phase-1b-plan.md` (3), `neon-move-plan.md` (1), `payments-design.md` (2) and root `CLAUDE.md` (1, the file storage rule). Every find-text occurred exactly once; none skipped.
+- The design doc's §13 now says the edits were applied, with the date and the commits.
+- PR 57's parts (`neon-move-plan.md` §8, `docs/phase-3-plan.md` §5.3) were left alone.
+
 ## Shop file storage design (branch `docs/file-storage-design`, 20 to 21 Nov 2026)
 
 **Docs only: no code, migration or test changed; no Google Cloud project created.** Draft 3 (21 Nov 2026), after an independent Fable critique of draft 2 and Mark's answers to it. Written from `main` at `48f0f43` (PRs 52, 54 and 55 merged) and `docs/payments-design` at `7227f3d` (PR 56, not merged).
