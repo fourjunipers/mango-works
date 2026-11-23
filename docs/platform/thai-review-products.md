@@ -1319,3 +1319,12 @@ New and changed Thai lines on the branch `platform/price-check-compact`: the Pri
 | `NewOrder.pickHintCounts` | Find a product to see how many are free for these dates. | ค้นหาสินค้าเพื่อดูจำนวนที่ว่างในวันที่เลือก |
 | `Pricing.check.more` | Quantity and extras | จำนวนและของเสริม |
 | `Pricing.check.moreQuantity` | Quantity | จำนวน |
+
+## Phase 3, stage 1: unit lock rules (23 Nov 2026)
+
+One changed Thai line on the branch `platform/phase-3-stage-1-unit-locks`. Since migration `20261123000100`, approving a model connects the product to the Moto Mangos list and no longer lists it: the shop switches its listing on itself (the owner, 20 and 23 Nov 2026). The English is final. **The Thai is Claude's provisional line; please check.** Words chosen: เปิดการลงประกาศ (switch the listing on, after `Fleet.motoMangos.list`, "ลงประกาศสินค้านี้บน Moto Mangos"), ได้รับอนุมัติ (approved, as in `Fleet.motoMangos.listingLocked`).
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Fleet.motoMangos.waiting` (was) | Sent to Moto Mangos. It is waiting for review and goes live once approved; you can keep using the model meanwhile. | ส่งให้ Moto Mangos แล้ว กำลังรอตรวจ และจะขึ้นแสดงเมื่ออนุมัติ ระหว่างนี้ใช้งานรุ่นนี้ต่อได้ |
+| `Fleet.motoMangos.waiting` (now) | Sent to Moto Mangos. It is waiting for review. Once it is approved, you switch its listing on here yourself; you can keep using the model meanwhile. | ส่งให้ Moto Mangos แล้ว กำลังรอตรวจ เมื่อได้รับอนุมัติแล้ว คุณเปิดการลงประกาศเองได้ที่นี่ ระหว่างนี้ใช้งานรุ่นนี้ต่อได้ |

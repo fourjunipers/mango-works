@@ -70,12 +70,12 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 
 **Known issues and follow-ups**
 
-- **One screen line is now wrong:** the Moto Mangos tab's "waiting" line (`motoMangos.waiting` in `messages/en.json` and `th.json`) says the model "goes live once approved". It is connected once approved, and the shop switches the listing on. Not changed here: it needs its Thai line and Korn's check. **To decide.**
+- **The Moto Mangos tab's "waiting" line is corrected** (`Fleet.motoMangos.waiting`, the owner, 23 Nov 2026): it said the model "goes live once approved"; it now says that once it is approved the shop switches its listing on itself. English final; the Thai is provisional and on `docs/platform/thai-review-products.md` ("Phase 3, stage 1") with the old and new English, for Korn's check.
 - `platform.moving_unit` and `platform.unit_status_change` are lock-order rules, not permissions: a session that can run SQL of its own (a console) can set them. Nothing reachable through the API can.
 - `review_catalog_request()` can now answer `try_again` (a product linked to the entry between its two steps); the admin screen shows its usual "failed" line and the reviewer presses again.
 - One `pg_sleep` is left in `tests/db`: `security-audit.test.ts` (from PR 57), not this stage's.
 - The stuck `product-extras.test.ts` process from 17 Nov 2026 was not running on this machine today.
-- The Thai lines need Korn's check (none added here).
+- The Thai line above needs Korn's check.
 
 **Before this goes to staging** (the owner's word): staging must be at 69 of 69 with `main`'s bodies; the guard checks the five functions and stops with nothing changed if one differs. Afterwards: the triggers on `platform.units` are `units_counts_after_update` and `units_counts_after_delete` (statement level) and no `units_clamp_product_counts`; `app_uid()` and `app_role()` are executable by `authenticated` and `service_role` only; listings, units and products counts unchanged.
 

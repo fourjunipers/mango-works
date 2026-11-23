@@ -940,7 +940,7 @@
       "ready": "On the Moto Mangos list as {name}.",
       "list": "List this product on Moto Mangos",
       "later": "Listing takes effect when Moto Mangos starts reading from this system.",
-      "waiting": "Sent to Moto Mangos. It is waiting for review and goes live once approved; you can keep using the model meanwhile.",
+      "waiting": "Sent to Moto Mangos. It is waiting for review. Once it is approved, you switch its listing on here yourself; you can keep using the model meanwhile.",
       "submitTitle": "List it on Moto Mangos",
       "submit": "Send for review",
       "note": "Note for the reviewer",
