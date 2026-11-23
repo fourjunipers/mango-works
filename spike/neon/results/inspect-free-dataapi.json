@@ -1,0 +1,225 @@
+{
+  "which": "FREE",
+  "label": "dataapi",
+  "at": "2026-11-23T00:20:56.405Z",
+  "version": {
+    "v": "17.12 (4d8000a)",
+    "u": "neondb_owner",
+    "d": "neondb"
+  },
+  "roles": [
+    {
+      "rolname": "anonymous",
+      "rolsuper": false,
+      "rolinherit": true,
+      "rolcreaterole": false,
+      "rolcanlogin": false,
+      "rolbypassrls": false,
+      "rolconfig": [
+        "statement_timeout=3s"
+      ],
+      "member_of": null
+    },
+    {
+      "rolname": "authenticated",
+      "rolsuper": false,
+      "rolinherit": true,
+      "rolcreaterole": false,
+      "rolcanlogin": false,
+      "rolbypassrls": false,
+      "rolconfig": [
+        "statement_timeout=8s"
+      ],
+      "member_of": null
+    },
+    {
+      "rolname": "authenticator",
+      "rolsuper": false,
+      "rolinherit": false,
+      "rolcreaterole": false,
+      "rolcanlogin": true,
+      "rolbypassrls": false,
+      "rolconfig": [
+        "statement_timeout=8s"
+      ],
+      "member_of": "{anonymous,authenticated}"
+    },
+    {
+      "rolname": "cloud_admin",
+      "rolsuper": true,
+      "rolinherit": true,
+      "rolcreaterole": true,
+      "rolcanlogin": true,
+      "rolbypassrls": true,
+      "rolconfig": null,
+      "member_of": null
+    },
+    {
+      "rolname": "neon_service",
+      "rolsuper": false,
+      "rolinherit": true,
+      "rolcreaterole": true,
+      "rolcanlogin": true,
+      "rolbypassrls": true,
+      "rolconfig": null,
+      "member_of": "{anonymous,authenticated,authenticator,neon_superuser}"
+    },
+    {
+      "rolname": "neon_superuser",
+      "rolsuper": false,
+      "rolinherit": true,
+      "rolcreaterole": true,
+      "rolcanlogin": false,
+      "rolbypassrls": true,
+      "rolconfig": null,
+      "member_of": "{pg_create_subscription,pg_maintain,pg_monitor,pg_read_all_data,pg_signal_backend,pg_write_all_data}"
+    },
+    {
+      "rolname": "neondb_owner",
+      "rolsuper": false,
+      "rolinherit": true,
+      "rolcreaterole": true,
+      "rolcanlogin": true,
+      "rolbypassrls": true,
+      "rolconfig": null,
+      "member_of": "{anonymous,authenticated,neon_superuser}"
+    },
+    {
+      "rolname": "token_roles",
+      "rolsuper": false,
+      "rolinherit": true,
+      "rolcreaterole": false,
+      "rolcanlogin": false,
+      "rolbypassrls": false,
+      "rolconfig": null,
+      "member_of": null
+    }
+  ],
+  "schemas": [
+    "auth",
+    "pgrst",
+    "public"
+  ],
+  "extensions": [
+    {
+      "extname": "pg_session_jwt",
+      "extversion": "0.5.0",
+      "nspname": "public"
+    },
+    {
+      "extname": "plpgsql",
+      "extversion": "1.0",
+      "nspname": "pg_catalog"
+    }
+  ],
+  "available": [
+    {
+      "name": "btree_gist",
+      "default_version": "1.7"
+    },
+    {
+      "name": "pg_cron",
+      "default_version": "1.6"
+    },
+    {
+      "name": "pg_session_jwt",
+      "default_version": "0.5.0"
+    },
+    {
+      "name": "pgcrypto",
+      "default_version": "1.3"
+    },
+    {
+      "name": "pgtap",
+      "default_version": "1.3.3"
+    },
+    {
+      "name": "postgis",
+      "default_version": "3.5.7"
+    }
+  ],
+  "authFunctions": [
+    {
+      "proname": "init",
+      "returns": "void",
+      "owner": "cloud_admin"
+    },
+    {
+      "proname": "jwt",
+      "returns": "jsonb",
+      "owner": "cloud_admin"
+    },
+    {
+      "proname": "jwt_session_init",
+      "returns": "void",
+      "owner": "cloud_admin"
+    },
+    {
+      "proname": "organization",
+      "returns": "jsonb",
+      "owner": "cloud_admin"
+    },
+    {
+      "proname": "organization_id",
+      "returns": "uuid",
+      "owner": "cloud_admin"
+    },
+    {
+      "proname": "session",
+      "returns": "jsonb",
+      "owner": "cloud_admin"
+    },
+    {
+      "proname": "uid",
+      "returns": "uuid",
+      "owner": "cloud_admin"
+    },
+    {
+      "proname": "user_id",
+      "returns": "text",
+      "owner": "cloud_admin"
+    }
+  ],
+  "settings": [
+    {
+      "name": "cron.database_name",
+      "setting": "postgres",
+      "unit": null
+    },
+    {
+      "name": "deadlock_timeout",
+      "setting": "1000",
+      "unit": "ms"
+    },
+    {
+      "name": "idle_in_transaction_session_timeout",
+      "setting": "300000",
+      "unit": "ms"
+    },
+    {
+      "name": "lock_timeout",
+      "setting": "0",
+      "unit": "ms"
+    },
+    {
+      "name": "max_connections",
+      "setting": "901",
+      "unit": null
+    },
+    {
+      "name": "shared_preload_libraries",
+      "setting": "neon,pg_stat_statements,timescaledb,pg_cron,pg_partman_bgw,rag_bge_small_en_v15,rag_jina_reranker_v1_tiny_en,lakebase_vector,lakebase_text",
+      "unit": null
+    },
+    {
+      "name": "statement_timeout",
+      "setting": "0",
+      "unit": "ms"
+    }
+  ],
+  "size": "7416 kB",
+  "bypassFromSql": {
+    "allowed": true,
+    "rolbypassrls": true
+  }
+}

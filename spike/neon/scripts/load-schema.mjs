@@ -18,7 +18,13 @@ const files = readdirSync(dir)
 
 const db = await neon(which);
 const me = (await db.query("select current_user u")).rows[0].u;
-await db.query(readFileSync(new URL("../sql/bootstrap.sql", import.meta.url), "utf8"));
+try {
+  await db.query(readFileSync(new URL("../sql/bootstrap.sql", import.meta.url), "utf8"));
+} catch (e) {
+  console.log(`FAILED bootstrap: [${e.code}] ${safe(e.message)} (position ${e.position ?? "?"})`);
+  await db.end();
+  process.exit(1);
+}
 await db.query('set search_path = "$user", public, extensions');
 const done = new Set((await db.query("select name from spike.migrations")).rows.map((r) => r.name));
 
@@ -31,7 +37,17 @@ for (const f of files) {
   if (a !== text) changed.push(`${f}: for role postgres`);
   const b = a.replaceAll(/(pg_available_extensions[^;]*?name\s*=\s*)'pg_cron'/g, "$1'pg_cron__skipped_by_spike'");
   if (b !== a) changed.push(`${f}: pg_cron check`);
-  text = b;
+  // c. Schema `auth` is Neon's once the Data API is on: users and auth.role() live in spike_auth instead.
+  const c = b
+    .replaceAll(/(?<![A-Za-z0-9_])auth[.](users|identities)(?![A-Za-z0-9_])/g, "spike_auth.$1")
+    .replaceAll(/(?<![A-Za-z0-9_])auth[.](role|uid)[(][)]/g, "spike_auth.$1()");
+  if (c !== b) changed.push(`${f}: auth.users / auth.identities / auth.uid() / auth.role()`);
+  // d. Two migrations first check, by md5, that the functions they replace are the bodies main has. Rewrite c
+  //    changed those bodies by exactly the schema name, so the check undoes that before it compares. It still
+  //    proves every other character is main's.
+  const d = c.replaceAll("md5(p.prosrc)", "md5(replace(p.prosrc, 'spike_auth.', 'auth.'))");
+  if (d !== c) changed.push(`${f}: body check allows for rewrite c`);
+  text = d;
   try {
     await db.query("begin");
     await db.query(text);

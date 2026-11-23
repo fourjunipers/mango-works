@@ -13,40 +13,40 @@ end $$;
 -- 2. Schemas and extensions Supabase supplies.
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
-create schema if not exists auth;
 create schema if not exists storage;
 
--- 3. auth.users and auth.identities: only the columns the migrations touch.
-create table if not exists auth.users (
+-- 3. Users. Once the Data API is enabled, schema `auth` belongs to cloud_admin and we may not create
+--    anything in it (finding). So the spike keeps its stand-in for auth.users, auth.identities and
+--    auth.role() in its own schema, and the loader points the migrations at it in memory.
+--    auth.uid() and auth.jwt() are Neon's own (pg_session_jwt) and are used as they are.
+create schema if not exists spike_auth;
+create table if not exists spike_auth.users (
   id uuid primary key default gen_random_uuid(),
   email text unique,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
-create table if not exists auth.identities (
+create table if not exists spike_auth.identities (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users (id) on delete cascade,
+  user_id uuid not null references spike_auth.users (id) on delete cascade,
   provider text not null,
   provider_id text not null,
   created_at timestamptz not null default now()
 );
 
--- 4. auth.uid() / auth.role() / auth.jwt(): made only where missing (pg_session_jwt supplies some).
-do $$
-begin
-  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'auth' and p.proname = 'uid') then
-    execute $f$create function auth.uid() returns uuid language sql stable as
-      $b$select nullif(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', '')::uuid$b$$f$;
-  end if;
-  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'auth' and p.proname = 'role') then
-    execute $f$create function auth.role() returns text language sql stable as
-      $b$select nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'$b$$f$;
-  end if;
-  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'auth' and p.proname = 'jwt') then
-    execute $f$create function auth.jwt() returns jsonb language sql stable as
-      $b$select nullif(current_setting('request.jwt.claims', true), '')::jsonb$b$$f$;
-  end if;
-end $$;
+-- 4. "Who is calling" and "which role is calling". Findings behind this:
+--    - the Data API sets the transaction setting request.jwt.claims from the checked token, as PostgREST does;
+--    - Neon's auth.uid() / auth.jwt() are not usable by our roles: schema auth grants them nothing and we
+--      cannot grant it, and called from a security definer function they answer null through the Data API;
+--    - Neon has no auth.role() at all.
+--    So both are read from request.jwt.claims, exactly as Supabase's own auth.uid() and auth.role() do.
+create or replace function spike_auth.uid() returns uuid language sql stable set search_path = '' as
+  $b$select nullif(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', '')::uuid$b$;
+create or replace function spike_auth.role() returns text language sql stable set search_path = '' as
+  $b$select nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'$b$;
+grant execute on function spike_auth.uid() to anon, authenticated, service_role, anonymous;
+grant usage on schema spike_auth to anon, authenticated, service_role, anonymous;
+grant execute on function spike_auth.role() to anon, authenticated, service_role, anonymous;
 
 -- 5. storage: just enough for the photo-bucket migration to apply. Not used by the spike.
 create table if not exists storage.buckets (
@@ -64,7 +64,7 @@ create or replace function storage.foldername(name text) returns text[] language
 -- 6. Supabase's defaults that the early (marketplace) migrations rely on: the three roles may use
 --    schema public, and new objects in public are granted to them (RLS does the protecting).
 --    Migration 20261112000100 takes the table/sequence/function defaults away again, as on Supabase.
-grant usage on schema public, extensions, auth, storage to anon, authenticated, service_role;
+grant usage on schema public, extensions, storage to anon, authenticated, service_role;
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;

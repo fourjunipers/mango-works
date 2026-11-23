@@ -1,0 +1,34 @@
+applied 67 this run; 67 of 67 in all
+changed in memory:
+  20261024000200_profiles.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261024000300_shops.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261024000600_bookings.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261104000500_shop_setup.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261104000800_catalog_photo_uploads.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261104001300_price_after_30.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261108000100_drop_price_after_30.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261109000200_platform_memberships.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261110000100_platform_schema.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261110000200_platform_audit.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261110000300_platform_locations.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261110000500_platform_fleet.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261111000200_platform_fleet_followups.sql: pg_cron check
+  20261111000200_platform_fleet_followups.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261111000800_platform_audit_caller_check.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261111001000_platform_sold_units_blocks.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261111001200_platform_clamp_booking_counts.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261112000100_platform_no_default_grants.sql: for role postgres
+  20261112000200_platform_lock_strength.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261113000200_platform_products.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261113000300_platform_products_stage_b.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261114000100_platform_gear_stock_rework.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261114000200_platform_product_listings.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261116000100_platform_reservations.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261116000200_platform_availability.sql: pg_cron check
+  20261116000200_platform_availability.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261116000300_platform_booking_rules.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261117000200_platform_extras_opt_out.sql: body check allows for rewrite c
+  20261118000100_platform_coupons.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261118000100_platform_coupons.sql: body check allows for rewrite c
+  20261119000100_platform_review_followups.sql: auth.users / auth.identities / auth.uid() / auth.role()
+  20261119000100_platform_review_followups.sql: body check allows for rewrite c
