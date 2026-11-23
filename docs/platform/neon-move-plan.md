@@ -343,6 +343,8 @@ Decided on 19 Nov 2026: the seventeen rows under the Summary, Mark's answers to 
 | 2 | Staging once the move is done | (a) Stay on Neon Free; (b) a paid project if the cold start or the 100 hours get in the way | **(a)** until it annoys | After stage 8 |
 | 3 | Neon plan for live later | (a) Stay on Launch; (b) Scale, for the 99.95% promise at about twice the compute price | **(a)** until a shop asks for the promise in writing | When a shop asks |
 
+Also to replace in the move: `public.shop_numbers_readable()` calls `auth.role()` directly (added by PR 57, `20261120000100_marketplace_security_audit.sql`), a Supabase-only dependency.
+
 ## 9. Sources
 
 All read 19 Nov 2026. Most were read through a tool that summarises pages, so short quotes should be checked against the page before being relied on.

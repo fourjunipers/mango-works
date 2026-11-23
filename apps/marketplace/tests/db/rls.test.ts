@@ -81,7 +81,12 @@ describe("the public (signed out)", () => {
       "bookings",
       "booking_events",
     ] as const) {
-      const { data } = await anon.from(table).select("*");
+      // bookings: named columns, because its two Stripe id columns are
+      // closed to everyone but the server (20261120000100), so "*" is
+      // refused outright.
+      const { data } = await anon
+        .from(table)
+        .select(table === "bookings" ? "id, code, status" : "*");
       expect(data, table).toEqual([]);
     }
   });
@@ -283,10 +288,23 @@ describe("vendors", () => {
         .insert({ shop_id: seed.bsrShop, user_id: extra.id, role: "staff" });
       expect(staffError?.code).toBe(DENIED);
 
+      // Not even an owner adds a member by writing the table (security
+      // audit, 19 Nov 2026): people join through an invite.
       const { error: ownerError } = await bsrOwner
         .from("shop_members")
         .insert({ shop_id: seed.bsrShop, user_id: extra.id, role: "staff" });
-      expect(ownerError).toBeNull();
+      expect(ownerError?.code).toBe(DENIED);
+      const { error: joinError } = await serviceClient()
+        .from("shop_members")
+        .insert({ shop_id: seed.bsrShop, user_id: extra.id, role: "staff" });
+      expect(joinError).toBeNull();
+
+      const { data: staffRemoved } = await bsrStaff
+        .from("shop_members")
+        .delete()
+        .eq("user_id", extra.id)
+        .select();
+      expect(staffRemoved).toEqual([]);
 
       const { data: removed } = await bsrOwner
         .from("shop_members")
