@@ -161,9 +161,13 @@ describe("the shop is told when Moto Mangos adds its model", () => {
       Date.now() - 60_000,
     );
     expect(after.catalog_rejected_at).toBeNull();
-    // Sending it was asking for it to be listed: approved means listed.
+    // Approved means connected, not listed (since 20261123000100): the
+    // shop switches its listing on itself, and off again.
+    expect(await listed(model)).toBe(false);
+    await setListing(shop.members.owner.db, model, {
+      marketplace_listed: true,
+    }).throwOnError();
     expect(await listed(model)).toBe(true);
-    // The shop can still switch it off.
     await setListing(shop.members.owner.db, model, {
       marketplace_listed: false,
     }).throwOnError();
@@ -177,6 +181,11 @@ describe("the shop is told when Moto Mangos adds its model", () => {
     const after = await row(model);
     expect(after.catalog_id).toBe(presetId);
     expect(after.catalog_approved_at).not.toBeNull();
+    // Connected, not listed: the shop's to switch on.
+    expect(await listed(model)).toBe(false);
+    await setListing(shop.members.owner.db, model, {
+      marketplace_listed: true,
+    }).throwOnError();
     expect(await listed(model)).toBe(true);
   });
 

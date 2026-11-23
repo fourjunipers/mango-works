@@ -680,7 +680,8 @@ describe("every re-created function runs", () => {
       .select("catalog_approved_at")
       .eq("id", approved)
       .single();
-    expect((await listingOf(approved)).marketplace_listed).toBe(true);
+    // Connected, and left for the shop to list (since 20261123000100).
+    expect((await listingOf(approved)).marketplace_listed).toBe(false);
     expect(data?.catalog_approved_at).not.toBeNull();
 
     // Deleting a product that waits for review withdraws its request.

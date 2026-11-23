@@ -96,6 +96,8 @@ grant execute on function platform_private.app_role() to authenticated, service_
 --
 -- lock_units() and holds_unit_lock() read the class and the key from the
 -- two functions here, so the lock taken and the lock looked for can't drift.
+-- Granted as lock_units() is (to authenticated, not to the service role):
+-- they are only ever reached from functions that run as their owner.
 
 create function platform_private.unit_lock_class()
 returns integer
@@ -106,7 +108,7 @@ as $$
   select x'1a01'::int
 $$;
 revoke all on function platform_private.unit_lock_class() from public, anon;
-grant execute on function platform_private.unit_lock_class() to authenticated, service_role;
+grant execute on function platform_private.unit_lock_class() to authenticated;
 
 create function platform_private.unit_lock_key(p_unit_id uuid)
 returns integer
@@ -117,7 +119,7 @@ as $$
   select hashtext(p_unit_id::text)
 $$;
 revoke all on function platform_private.unit_lock_key(uuid) from public, anon;
-grant execute on function platform_private.unit_lock_key(uuid) to authenticated, service_role;
+grant execute on function platform_private.unit_lock_key(uuid) to authenticated;
 
 -- True when this transaction already holds the unit's lock. Two units whose
 -- keys collide share one lock, so the answer is about the lock, as it
@@ -145,7 +147,7 @@ as $$
   )
 $$;
 revoke all on function platform_private.holds_unit_lock(uuid) from public, anon;
-grant execute on function platform_private.holds_unit_lock(uuid) to authenticated, service_role;
+grant execute on function platform_private.holds_unit_lock(uuid) to authenticated;
 
 -- As main's, with the class and the key from the two functions above.
 create or replace function platform_private.lock_units(p_unit_ids uuid[])
