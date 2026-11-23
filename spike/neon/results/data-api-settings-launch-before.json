@@ -4,13 +4,18 @@
   "settings": {
     "db_aggregates_enabled": true,
     "db_anon_role": "anonymous",
+    "db_extra_search_path": "public, extensions",
+    "db_max_rows": 1000,
     "db_schemas": [
-      "public"
+      "public",
+      "platform"
     ],
-    "jwt_role_claim_key": ".role"
+    "jwt_role_claim_key": ".role",
+    "openapi_mode": "disabled"
   },
   "available_schemas": [
     "auth",
+    "cron",
     "extensions",
     "platform",
     "platform_private",
@@ -19,5 +24,5 @@
     "spike_auth",
     "storage"
   ],
-  "observed_at": "2026-11-23T01:13:45Z"
+  "observed_at": "2026-11-23T01:44:22Z"
 }

@@ -15,6 +15,7 @@
   },
   "available_schemas": [
     "auth",
+    "cron",
     "extensions",
     "platform",
     "platform_private",
@@ -23,5 +24,5 @@
     "spike_auth",
     "storage"
   ],
-  "observed_at": "2026-11-23T01:13:55Z"
+  "observed_at": "2026-11-23T01:44:31Z"
 }
