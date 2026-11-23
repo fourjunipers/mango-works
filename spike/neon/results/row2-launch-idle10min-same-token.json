@@ -1,0 +1,90 @@
+{
+  "target": "launch",
+  "label": "idle10min-same-token",
+  "mode": "same-token",
+  "idleSeconds": 600,
+  "startedAt": "2026-11-23T06:56:36.444Z",
+  "cycles": [
+    {
+      "cycle": 1,
+      "at": "2026-11-23T07:06:41.211Z",
+      "first": {
+        "ms": 1073,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        1043,
+        255,
+        262,
+        258,
+        261
+      ],
+      "warmMedian": 261,
+      "extraMs": 812,
+      "allOk": true
+    },
+    {
+      "cycle": 2,
+      "at": "2026-11-23T07:16:44.132Z",
+      "first": {
+        "ms": 1123,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        748,
+        267,
+        251,
+        267,
+        249
+      ],
+      "warmMedian": 267,
+      "extraMs": 856,
+      "allOk": true
+    },
+    {
+      "cycle": 3,
+      "at": "2026-11-23T07:26:46.726Z",
+      "first": {
+        "ms": 815,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        759,
+        254,
+        253,
+        255,
+        252
+      ],
+      "warmMedian": 254,
+      "extraMs": 561,
+      "allOk": true
+    },
+    {
+      "cycle": 4,
+      "at": "2026-11-23T07:36:49.277Z",
+      "first": {
+        "ms": 794,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        753,
+        246,
+        253,
+        247,
+        250
+      ],
+      "warmMedian": 250,
+      "extraMs": 544,
+      "allOk": true
+    }
+  ],
+  "finishedAt": "2026-11-23T07:36:49.279Z"
+}
