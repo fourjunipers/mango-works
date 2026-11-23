@@ -29,7 +29,7 @@ if (step === "watch") {
     const ep = e.body?.endpoint;
     const s = { at: new Date().toISOString(), http: e.status, state: ep?.current_state ?? null, pending: ep?.pending_state ?? null, last_active: ep?.last_active ?? null };
     out.samples.push(s);
-    writeFileSync(file("watch"), JSON.stringify(out, null, 2));
+    writeFileSync(file(process.argv[4] ?? "watch"), JSON.stringify(out, null, 2));
     if (i % 10 === 0 || s.state !== out.samples.at(-2)?.state) console.log(`${s.at} ${s.state} last_active ${s.last_active}`);
     if (i < minutes) await new Promise((r) => setTimeout(r, 60_000));
   }
@@ -37,7 +37,7 @@ if (step === "watch") {
   for (const s of out.samples) counts[s.state] = (counts[s.state] ?? 0) + 1;
   out.finishedAt = new Date().toISOString();
   out.stateCounts = counts;
-  writeFileSync(file("watch"), JSON.stringify(out, null, 2));
+  writeFileSync(file(process.argv[4] ?? "watch"), JSON.stringify(out, null, 2));
   console.log("states seen:", JSON.stringify(counts));
 }
 
