@@ -1,0 +1,50 @@
+{
+  "target": "launch",
+  "label": "idle1h-same-token",
+  "mode": "same-token",
+  "idleSeconds": 3660,
+  "startedAt": "2026-11-23T02:51:04.305Z",
+  "cycles": [
+    {
+      "cycle": 1,
+      "at": "2026-11-23T03:52:09.726Z",
+      "first": {
+        "ms": 1986,
+        "ok": false,
+        "status": 401,
+        "code": "PGRST303"
+      },
+      "rest": [
+        1320,
+        257,
+        255,
+        255,
+        250
+      ],
+      "warmMedian": 255,
+      "extraMs": 1731,
+      "allOk": false
+    },
+    {
+      "cycle": 2,
+      "at": "2026-11-23T04:53:12.937Z",
+      "first": {
+        "ms": 854,
+        "ok": false,
+        "status": 401,
+        "code": "PGRST303"
+      },
+      "rest": [
+        1333,
+        258,
+        251,
+        255,
+        249
+      ],
+      "warmMedian": 255,
+      "extraMs": 599,
+      "allOk": false
+    }
+  ],
+  "finishedAt": "2026-11-23T04:53:12.938Z"
+}

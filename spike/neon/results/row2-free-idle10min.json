@@ -123,6 +123,246 @@
       "warmMedian": 256,
       "extraMs": 1820,
       "allOk": true
+    },
+    {
+      "cycle": 7,
+      "at": "2026-11-23T02:55:49.600Z",
+      "first": {
+        "ms": 2263,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        1019,
+        267,
+        246,
+        256,
+        246
+      ],
+      "warmMedian": 256,
+      "extraMs": 2007,
+      "allOk": true
+    },
+    {
+      "cycle": 8,
+      "at": "2026-11-23T03:06:23.501Z",
+      "first": {
+        "ms": 2056,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        755,
+        255,
+        246,
+        252,
+        333
+      ],
+      "warmMedian": 255,
+      "extraMs": 1801,
+      "allOk": true
+    },
+    {
+      "cycle": 9,
+      "at": "2026-11-23T03:16:57.315Z",
+      "first": {
+        "ms": 1944,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        799,
+        265,
+        265,
+        263,
+        262
+      ],
+      "warmMedian": 265,
+      "extraMs": 1679,
+      "allOk": true
+    },
+    {
+      "cycle": 10,
+      "at": "2026-11-23T03:27:31.941Z",
+      "first": {
+        "ms": 2766,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        796,
+        249,
+        295,
+        252,
+        261
+      ],
+      "warmMedian": 261,
+      "extraMs": 2505,
+      "allOk": true
+    },
+    {
+      "cycle": 11,
+      "at": "2026-11-23T03:38:06.432Z",
+      "first": {
+        "ms": 2115,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        1248,
+        279,
+        328,
+        254,
+        257
+      ],
+      "warmMedian": 279,
+      "extraMs": 1836,
+      "allOk": true
+    },
+    {
+      "cycle": 12,
+      "at": "2026-11-23T03:48:39.774Z",
+      "first": {
+        "ms": 1497,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        779,
+        259,
+        268,
+        260,
+        264
+      ],
+      "warmMedian": 264,
+      "extraMs": 1233,
+      "allOk": true
+    },
+    {
+      "cycle": 13,
+      "at": "2026-11-23T03:59:13.103Z",
+      "first": {
+        "ms": 1514,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        782,
+        257,
+        253,
+        254,
+        256
+      ],
+      "warmMedian": 256,
+      "extraMs": 1258,
+      "allOk": true
+    },
+    {
+      "cycle": 14,
+      "at": "2026-11-23T04:09:46.948Z",
+      "first": {
+        "ms": 1989,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        783,
+        264,
+        287,
+        259,
+        256
+      ],
+      "warmMedian": 264,
+      "extraMs": 1725,
+      "allOk": true
+    },
+    {
+      "cycle": 15,
+      "at": "2026-11-23T04:20:20.402Z",
+      "first": {
+        "ms": 1644,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        773,
+        257,
+        260,
+        253,
+        256
+      ],
+      "warmMedian": 257,
+      "extraMs": 1387,
+      "allOk": true
+    },
+    {
+      "cycle": 16,
+      "at": "2026-11-23T04:31:06.265Z",
+      "first": {
+        "ms": 6120,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        7679,
+        1283,
+        259,
+        253,
+        256
+      ],
+      "warmMedian": 259,
+      "extraMs": 5861,
+      "allOk": true
+    },
+    {
+      "cycle": 17,
+      "at": "2026-11-23T04:41:42.522Z",
+      "first": {
+        "ms": 2236,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        2785,
+        308,
+        299,
+        306,
+        310
+      ],
+      "warmMedian": 308,
+      "extraMs": 1928,
+      "allOk": true
+    },
+    {
+      "cycle": 18,
+      "at": "2026-11-23T04:52:16.631Z",
+      "first": {
+        "ms": 1813,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        1282,
+        251,
+        254,
+        249,
+        253
+      ],
+      "warmMedian": 253,
+      "extraMs": 1560,
+      "allOk": true
     }
   ]
 }

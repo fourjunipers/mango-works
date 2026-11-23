@@ -95,8 +95,8 @@ async function neonTarget(which) {
         await db.end();
       }
     },
-    async userToken(user) {
-      return sign(jwk, { sub: user.id, role: "authenticated", email: user.email }, 3600);
+    async userToken(user, ttl = 3600) {
+      return sign(jwk, { sub: user.id, role: "authenticated", email: user.email }, ttl);
     },
     userClient(token) {
       return neonClient(url, () => token);

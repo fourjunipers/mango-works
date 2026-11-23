@@ -21,7 +21,8 @@ const file = new URL(`../results/row2-${name}-${label}.json`, import.meta.url);
 // even with no idle spell at all.)
 let sameToken = null;
 if (mode === "same-token") {
-  sameToken = await t.userToken(shop.users[0]);
+  // The token must outlive every idle spell in the run (the first rerun's one-hour token ran out after 61 minutes: 401 PGRST303).
+  sameToken = await t.userToken(shop.users[0], cycles * idle + 1800);
   await readProducts(t.userClient(sameToken), shop);
 }
 for (let i = 1; i <= cycles; i++) {
