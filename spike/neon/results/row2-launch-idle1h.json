@@ -1,0 +1,29 @@
+{
+  "target": "launch",
+  "label": "idle1h",
+  "idleSeconds": 3660,
+  "startedAt": "2026-11-23T01:46:02.648Z",
+  "cycles": [
+    {
+      "cycle": 1,
+      "at": "2026-11-23T02:47:06.246Z",
+      "first": {
+        "ms": 1676,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        763,
+        254,
+        254,
+        265,
+        370
+      ],
+      "warmMedian": 265,
+      "extraMs": 1411,
+      "allOk": true
+    }
+  ],
+  "finishedAt": "2026-11-23T02:47:06.254Z"
+}

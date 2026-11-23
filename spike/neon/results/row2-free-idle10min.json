@@ -23,6 +23,106 @@
       "warmMedian": 260,
       "extraMs": 2019,
       "allOk": true
+    },
+    {
+      "cycle": 2,
+      "at": "2026-11-23T02:02:55.543Z",
+      "first": {
+        "ms": 2419,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        1440,
+        272,
+        308,
+        255,
+        281
+      ],
+      "warmMedian": 281,
+      "extraMs": 2138,
+      "allOk": true
+    },
+    {
+      "cycle": 3,
+      "at": "2026-11-23T02:13:29.621Z",
+      "first": {
+        "ms": 2321,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        745,
+        250,
+        246,
+        250,
+        247
+      ],
+      "warmMedian": 250,
+      "extraMs": 2071,
+      "allOk": true
+    },
+    {
+      "cycle": 4,
+      "at": "2026-11-23T02:24:04.827Z",
+      "first": {
+        "ms": 2743,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        1353,
+        274,
+        275,
+        273,
+        277
+      ],
+      "warmMedian": 275,
+      "extraMs": 2468,
+      "allOk": true
+    },
+    {
+      "cycle": 5,
+      "at": "2026-11-23T02:34:41.159Z",
+      "first": {
+        "ms": 3662,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        1289,
+        541,
+        290,
+        277,
+        268
+      ],
+      "warmMedian": 290,
+      "extraMs": 3372,
+      "allOk": true
+    },
+    {
+      "cycle": 6,
+      "at": "2026-11-23T02:45:15.289Z",
+      "first": {
+        "ms": 2076,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        1025,
+        257,
+        253,
+        256,
+        253
+      ],
+      "warmMedian": 256,
+      "extraMs": 1820,
+      "allOk": true
     }
   ]
 }

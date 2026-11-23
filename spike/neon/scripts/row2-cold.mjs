@@ -7,18 +7,27 @@ import { writeFileSync } from "node:fs";
 import { target, loadState } from "../lib/targets.mjs";
 import { readProducts } from "../lib/calls.mjs";
 
-const [name, cyclesArg, idleArg, label = "run"] = process.argv.slice(2);
+const [name, cyclesArg, idleArg, label = "run", mode = "fresh-token"] = process.argv.slice(2);
 const cycles = Number(cyclesArg);
 const idle = Number(idleArg);
 const shop = loadState(name);
 const t = await target(name);
-const out = { target: name, label, idleSeconds: idle, startedAt: new Date().toISOString(), cycles: [] };
+const out = { target: name, label, mode, idleSeconds: idle, startedAt: new Date().toISOString(), cycles: [] };
 const file = new URL(`../results/row2-${name}-${label}.json`, import.meta.url);
 
+// mode "same-token": one token for the whole run, used once before the first idle spell, so a cycle's first
+// call pays for a new connection and whatever the idle spell cost, but not for a token the API has never seen.
+// (A first control run showed a fresh client with a freshly signed token is slow on its first two calls
+// even with no idle spell at all.)
+let sameToken = null;
+if (mode === "same-token") {
+  sameToken = await t.userToken(shop.users[0]);
+  await readProducts(t.userClient(sameToken), shop);
+}
 for (let i = 1; i <= cycles; i++) {
   await new Promise((r) => setTimeout(r, idle * 1000));
   // A fresh client each cycle: no kept-alive connection from the cycle before.
-  const db = t.userClient(await t.userToken(shop.users[0]));
+  const db = t.userClient(sameToken ?? (await t.userToken(shop.users[0])));
   const one = async () => {
     const t0 = performance.now();
     const r = await readProducts(db, shop);
