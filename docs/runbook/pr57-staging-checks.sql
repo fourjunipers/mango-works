@@ -6,6 +6,9 @@
 -- Written by the independent review of PR 57; brought into the branch with
 -- the review's fixes (section 3b follows the allow-list map-link rule,
 -- section 6 lists the leftover TRUNCATE, REFERENCES and TRIGGER grants).
+-- Section 3b was then brought in line with the trigger as merged (length in
+-- code points; white space and control characters by code point, U+FEFF
+-- among them) and the whole file run again the same way.
 -- Tried on a fresh local database (reset to 20261119000100 plus the seed,
 -- then the two migrations): the two outputs differed only as listed at the
 -- bottom.
@@ -70,11 +73,17 @@ select
 \echo =====     (maps.google.com, www.google.com or google.com, no path, ?cid= and 1 to 25 digits, nothing else).
 \echo =====     So a link on g.co outside that form, on maps.google.com outside /maps with anything but cid alone,
 \echo =====     or on a Google domain of another country is listed here.
+\echo =====     Copied from the trigger in 20261120000100, not paraphrased: at most 500 characters counted in code
+\echo =====     points (char_length), and no white space, control character or backslash anywhere, the characters
+\echo =====     listed by code point as the trigger lists them (U+0001 to U+0020, U+007F to U+00A0, U+1680,
+\echo =====     U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F, U+3000, the byte-order mark U+FEFF), not by
+\echo =====     [[:space:]] and [[:cntrl:]], which follow the locale of the database and do not hold U+FEFF.
 select 'shops.maps_url' as what, s.id::text, left(s.maps_url, 80) as value
 from public.shops s
 left join lateral regexp_match(s.maps_url, '^https://([^/?#]+)(/[^?#]*)') as m on true
 where s.maps_url is not null and (
-  length(s.maps_url) > 500 or s.maps_url ~ '[[:space:][:cntrl:]\\]'
+  char_length(s.maps_url) > 500
+  or s.maps_url ~ '[\u0001- \u007f-   -     　﻿\\]'
   or not (
     s.maps_url ~ '^https://g\.co/kgs/[A-Za-z0-9_-]+$'
     or s.maps_url ~ '^https://(maps\.google\.com|www\.google\.com|google\.com)/?\?cid=[0-9]{1,25}$'
@@ -278,8 +287,8 @@ rollback;
 --     4b fingerprints unchanged.
 --  5. public.shop_members loses "Owners add team members" and nothing else. Policy count for public drops by 1,
 --     platform's fingerprint is unchanged. rls_off unchanged.
---  6. shop_members: anon and authenticated lose INSERT, and REFERENCES, TRIGGER, TRUNCATE (they keep DELETE,
---     SELECT, UPDATE).
+--  6. shop_members: anon and authenticated lose INSERT, and REFERENCES, TRIGGER, TRUNCATE (they keep DELETE
+--     and SELECT; neither holds UPDATE on the table, before or after).
 --     bookings: anon and authenticated lose table-level SELECT, and REFERENCES, TRIGGER, TRUNCATE;
 --     readable_columns 30 -> 28, reads_a_stripe_id true -> false.
 --     audit_events: service_role keeps INSERT,SELECT only (authenticated keeps SELECT, as before).
@@ -292,3 +301,5 @@ rollback;
 --     The last fingerprint (every other grant) is unchanged, for both schemas.
 --  7. Twelve new triggers (2 public, 10 platform); none removed or redefined.
 --  8-10. No difference.
+--  Sections 3b and 3c are not on this list: each reads the same before and after (they look at stored rows,
+--  which the migrations do not change).
