@@ -1,0 +1,217 @@
+{
+  "a": "staging",
+  "b": "free",
+  "shapes": {
+    "same": [
+      "table read with embedded relation (.from().select(embed))",
+      "rpc: uuid[] argument, jsonb result (pricing_inputs)",
+      "rpc: returns table with enum and timestamptz (tenant_members)",
+      "rpc: returns boolean (currency_locked)",
+      "rpc: returns void (reset_product_order)",
+      "rpc: jsonb argument and result (availability)",
+      "rpc: uuid + uuid + uuid[] arguments (booking_inputs)",
+      "rpc: reserve, a held booking (jsonb in, jsonb out with timestamptz)",
+      "rpc: confirm_hold (two uuid arguments)",
+      "rpc: default arguments left out (cancel_reservation by booking)",
+      "table read: timestamptz, tstzrange and enum columns (reservations)",
+      "table read: .single()",
+      "table read: .maybeSingle() with no row",
+      "table read: .in() filter, order, range",
+      "service role reads past RLS (memberships)",
+      "error P0001 raised by a function (reserve: product_not_found)",
+      "error 22023 raised by a function (reserve: invalid_request)",
+      "refusal as data, not an error (reserve by a non-member's tenant: not_allowed)",
+      "error 42501: a function the role may not execute (create_tenant as staff)",
+      "RLS hides another shop's rows (empty list, no error)",
+      "error 23505 unique violation (service insert of a plate that exists)",
+      "error 22P02 bad uuid text in a filter",
+      "error PGRST205: a table that does not exist",
+      "error PGRST204/42703: a column that does not exist"
+    ],
+    "different": [
+      {
+        "label": "rpc: returns table(...) of uuids and ints (product_stock)",
+        "diffs": [
+          "result shape [{\"available\":\"number\",\"in_repair\":\"number\",\"in_stock\":\"number\",\"location_id\":\"uuid-string\",\"lost\":\"number\",\"product_id\":\"uuid-string\"}] vs []"
+        ]
+      },
+      {
+        "label": "table read: count exact, head only",
+        "diffs": [
+          "count 41 vs 36"
+        ]
+      },
+      {
+        "label": ".schema('public') from a platform client (bike_catalog)",
+        "diffs": [
+          "result shape [{\"id\":\"uuid-string\",\"slug\":\"string\"}] vs []"
+        ]
+      },
+      {
+        "label": "error 42501: a table the role may not write (insert into reservations as owner)",
+        "diffs": [
+          "hint \"Grant the required privileges to the current role with: GRANT INSERT ON platform.reservations TO authenticated;\" vs \"null\""
+        ]
+      },
+      {
+        "label": "error 23502 not-null violation (service insert of a product with no name)",
+        "diffs": [
+          "details \"Failing row contains (<uuid>, <uuid>, null, null, null, {}, f, null, null, null, null, 2026-11-23 01:37:54.374928+00, 2026-11-23 01:37:54.374928+00, null, null, motorbike, null, null, null, null, {}, null, null, vehicle, unit, null, null, null).\" vs \"Failing row contains (<uuid>, <uuid>, null, null, null, {}, f, null, null, null, null, 2026-11-23 01:26:39.161957+00, 2026-11-23 01:26:39.161957+00, null, null, motorbike, null, null, null, null, {}, null, null, vehicle, unit, null, null, null).\""
+        ]
+      },
+      {
+        "label": "error PGRST116: .single() with no row",
+        "diffs": [
+          "HTTP status 406 vs 200",
+          "code PGRST116 vs none",
+          "message \"Cannot coerce the result to a single JSON object\" vs \"undefined\"",
+          "details \"The result contains 0 rows\" vs \"undefined\"",
+          "result shape null vs \"null\""
+        ]
+      },
+      {
+        "label": "error PGRST202: a function that does not exist",
+        "diffs": [
+          "message \"Could not find the function platform.no_such_function_spike(p) in the schema cache\" vs \"Could not find the function platform.no_such_function_spike without parameters in the schema cache\"",
+          "details \"Searched for the function platform.no_such_function_spike with parameter p or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.\" vs \"Searched for the function platform.no_such_function_spike without parameters, but no matches were found in the schema cache.\"",
+          "hint \"null\" vs \"If a new function was created in the database with this name and parameters, try reloading the schema cache.\""
+        ]
+      },
+      {
+        "label": "error PGRST106: a schema that is not exposed",
+        "diffs": [
+          "message \"Invalid schema: platform_private\" vs \"Invalid schema: unknown\"",
+          "hint \"Only the following schemas are exposed: public, graphql_public, platform\" vs \"Only the following schemas are exposed: public, platform\""
+        ]
+      }
+    ]
+  },
+  "locks": [
+    {
+      "test": "57014",
+      "staging": {
+        "code": "57014",
+        "httpStatus": 500,
+        "waitedMs": 8325,
+        "message": "canceling statement due to statement timeout"
+      },
+      "free": {
+        "code": "57014",
+        "httpStatus": 500,
+        "waitedMs": 8281,
+        "message": "canceling statement due to statement timeout"
+      },
+      "sameCode": true,
+      "sameStatus": true,
+      "sameMessage": true,
+      "differenceMs": -44
+    },
+    {
+      "test": "55P03 staff",
+      "staging": {
+        "code": "55P03",
+        "httpStatus": 500,
+        "waitedMs": 6891,
+        "message": "canceling statement due to lock timeout"
+      },
+      "free": {
+        "code": "55P03",
+        "httpStatus": 500,
+        "waitedMs": 6269,
+        "message": "canceling statement due to lock timeout"
+      },
+      "sameCode": true,
+      "sameStatus": true,
+      "sameMessage": true,
+      "differenceMs": -622
+    },
+    {
+      "test": "55P03 online",
+      "staging": {
+        "code": "55P03",
+        "httpStatus": 500,
+        "waitedMs": 7136,
+        "message": "canceling statement due to lock timeout"
+      },
+      "free": {
+        "code": "55P03",
+        "httpStatus": 500,
+        "waitedMs": 6889,
+        "message": "canceling statement due to lock timeout"
+      },
+      "sameCode": true,
+      "sameStatus": true,
+      "sameMessage": true,
+      "differenceMs": -247
+    },
+    {
+      "test": "40P01",
+      "staging": {
+        "code": "40P01",
+        "httpStatus": 500,
+        "waitedMs": 1319,
+        "message": "deadlock detected"
+      },
+      "free": {
+        "code": "40P01",
+        "httpStatus": 500,
+        "waitedMs": 1257,
+        "message": "deadlock detected"
+      },
+      "sameCode": true,
+      "sameStatus": true,
+      "sameMessage": true,
+      "differenceMs": -62
+    }
+  ],
+  "nothingWritten": {
+    "staging": [
+      true,
+      true,
+      true
+    ],
+    "free": [
+      true,
+      true,
+      true
+    ]
+  },
+  "callerAnswers": {
+    "staging": {
+      "staff55P03": {
+        "ok": false,
+        "reason": "try_again"
+      },
+      "online55P03": {
+        "ok": false,
+        "reason": "try_again",
+        "line": null
+      },
+      "on57014": {
+        "ok": false,
+        "reason": "try_again"
+      },
+      "on40P01": {
+        "thrown": "40P01"
+      }
+    },
+    "free": {
+      "staff55P03": {
+        "ok": false,
+        "reason": "try_again"
+      },
+      "online55P03": {
+        "ok": false,
+        "reason": "try_again",
+        "line": null
+      },
+      "on57014": {
+        "ok": false,
+        "reason": "try_again"
+      },
+      "on40P01": {
+        "thrown": "40P01"
+      }
+    }
+  }
+}

@@ -1,0 +1,382 @@
+{
+  "target": "launch",
+  "vendor": "neon",
+  "at": "2026-11-23T01:38:09.128Z",
+  "results": {
+    "table read with embedded relation (.from().select(embed))": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": [
+        {
+          "bookable_online": "boolean",
+          "catalog_approved_at": "null",
+          "catalog_id": "null",
+          "catalog_rejected_at": "null",
+          "categories": [],
+          "cc": "null",
+          "id": "uuid-string",
+          "make": "null",
+          "model": "null",
+          "name": "string",
+          "photos": [],
+          "product_listings": [],
+          "retired_at": "null",
+          "sort_position": "null",
+          "transmission": "null",
+          "type": "string",
+          "vehicle_type": "string"
+        }
+      ]
+    },
+    "rpc: uuid[] argument, jsonb result (pricing_inputs)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": {
+        "extras": [],
+        "products": [
+          {
+            "base_amount": "null",
+            "currency": "string",
+            "deposit": "null",
+            "long_stay_day": "null",
+            "price_amount": "digits-string",
+            "price_period": "string",
+            "pricing_method": "string",
+            "product_id": "uuid-string",
+            "product_name": "string",
+            "product_type": "string",
+            "replacement_price": "null",
+            "tax_profile_id": "null",
+            "tax_profile_name": "null",
+            "tax_rate_bp": "null",
+            "taxable": "boolean",
+            "template": "null"
+          }
+        ],
+        "seasons": [],
+        "settings": "null"
+      }
+    },
+    "rpc: returns table(...) of uuids and ints (product_stock)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": []
+    },
+    "rpc: returns table with enum and timestamptz (tenant_members)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": [
+        {
+          "created_at": "timestamp-string",
+          "email": "string",
+          "membership_id": "uuid-string",
+          "name": "null",
+          "role": "string",
+          "user_id": "uuid-string"
+        }
+      ]
+    },
+    "rpc: returns boolean (currency_locked)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": "boolean"
+    },
+    "rpc: returns void (reset_product_order)": {
+      "httpStatus": 204,
+      "error": null,
+      "shape": "null"
+    },
+    "rpc: jsonb argument and result (availability)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": [
+        {
+          "available": "number",
+          "free": "number",
+          "location_id": "uuid-string",
+          "marketplace": "null",
+          "product_id": "uuid-string",
+          "shortage_demand": "number",
+          "stock": "number",
+          "type": "string",
+          "unlimited": "boolean"
+        }
+      ]
+    },
+    "rpc: uuid + uuid + uuid[] arguments (booking_inputs)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": {
+        "location": {
+          "booking_cutoff_minutes": "null",
+          "closures": [],
+          "hours": [],
+          "id": "uuid-string",
+          "min_days_advance": "null",
+          "min_days_walkin": "null",
+          "min_notice_hours": "null",
+          "timezone": "string"
+        },
+        "products": [
+          {
+            "buffer_after_minutes": "null",
+            "buffer_before_minutes": "null",
+            "listing": "null",
+            "min_days_advance": "null",
+            "min_days_walkin": "null",
+            "product_id": "uuid-string",
+            "type": "string"
+          }
+        ],
+        "shop": {
+          "allow_overbooking": "boolean",
+          "buffer_after_minutes": "null",
+          "buffer_before_minutes": "null",
+          "currency": "string",
+          "hold_minutes": "number"
+        }
+      }
+    },
+    "rpc: reserve, a held booking (jsonb in, jsonb out with timestamptz)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": {
+        "booking_id": "uuid-string",
+        "hold_expires_at": "timestamp-string",
+        "lines": [
+          {
+            "reservation_id": "uuid-string",
+            "shortage": "number",
+            "unit_ids": [
+              "uuid-string"
+            ]
+          }
+        ],
+        "ok": "boolean"
+      }
+    },
+    "rpc: confirm_hold (two uuid arguments)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": {
+        "booking_id": "uuid-string",
+        "ok": "boolean",
+        "reservation_ids": [
+          "uuid-string"
+        ]
+      }
+    },
+    "rpc: default arguments left out (cancel_reservation by booking)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": {
+        "booking_id": "uuid-string",
+        "ok": "boolean",
+        "reservation_ids": [
+          "uuid-string"
+        ]
+      }
+    },
+    "table read: timestamptz, tstzrange and enum columns (reservations)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": [
+        {
+          "block_period": "string",
+          "channel": "string",
+          "created_at": "timestamp-string",
+          "ends_at": "timestamp-string",
+          "hold_expires_at": "null",
+          "id": "uuid-string",
+          "mode": "string",
+          "quantity": "number",
+          "shortage": "number",
+          "starts_at": "timestamp-string",
+          "state": "string"
+        }
+      ]
+    },
+    "table read: .single()": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": {
+        "allow_overbooking": "boolean",
+        "created_at": "timestamp-string",
+        "currency": "string",
+        "hold_minutes": "number",
+        "id": "uuid-string",
+        "locale": "string",
+        "name": "string",
+        "renewal_reminder_days": [
+          "number"
+        ]
+      }
+    },
+    "table read: .maybeSingle() with no row": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": "null"
+    },
+    "table read: count exact, head only": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": "null",
+      "count": 36
+    },
+    "table read: .in() filter, order, range": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": [
+        {
+          "id": "uuid-string",
+          "plate": "string",
+          "status": "string"
+        }
+      ]
+    },
+    ".schema('public') from a platform client (bike_catalog)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": []
+    },
+    "service role reads past RLS (memberships)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": [
+        {
+          "id": "uuid-string",
+          "role": "string"
+        }
+      ]
+    },
+    "error P0001 raised by a function (reserve: product_not_found)": {
+      "httpStatus": 400,
+      "error": {
+        "code": "P0001",
+        "message": "product_not_found",
+        "details": null,
+        "hint": null
+      },
+      "shape": null
+    },
+    "error 22023 raised by a function (reserve: invalid_request)": {
+      "httpStatus": 400,
+      "error": {
+        "code": "22023",
+        "message": "invalid_request",
+        "details": null,
+        "hint": null
+      },
+      "shape": null
+    },
+    "refusal as data, not an error (reserve by a non-member's tenant: not_allowed)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": {
+        "line": "null",
+        "ok": "boolean",
+        "reason": "string"
+      }
+    },
+    "error 42501: a function the role may not execute (create_tenant as staff)": {
+      "httpStatus": 403,
+      "error": {
+        "code": "42501",
+        "message": "permission denied for function create_tenant",
+        "details": null,
+        "hint": null
+      },
+      "shape": null
+    },
+    "error 42501: a table the role may not write (insert into reservations as owner)": {
+      "httpStatus": 403,
+      "error": {
+        "code": "42501",
+        "message": "permission denied for table reservations",
+        "details": null,
+        "hint": null
+      },
+      "shape": null
+    },
+    "RLS hides another shop's rows (empty list, no error)": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": []
+    },
+    "error 23505 unique violation (service insert of a plate that exists)": {
+      "httpStatus": 409,
+      "error": {
+        "code": "23505",
+        "message": "duplicate key value violates unique constraint \"units_plate_idx\"",
+        "details": "Key (tenant_id, lower(btrim(plate)))=(<uuid>, spk-<tag>-1-1) already exists.",
+        "hint": null
+      },
+      "shape": null
+    },
+    "error 23502 not-null violation (service insert of a product with no name)": {
+      "httpStatus": 400,
+      "error": {
+        "code": "23502",
+        "message": "null value in column \"name\" of relation \"products\" violates not-null constraint",
+        "details": "Failing row contains (<uuid>, <uuid>, null, null, null, {}, f, null, null, null, null, 2026-11-23 01:38:07.165512+00, 2026-11-23 01:38:07.165512+00, null, null, motorbike, null, null, null, null, {}, null, null, vehicle, unit, null, null, null).",
+        "hint": null
+      },
+      "shape": null
+    },
+    "error 22P02 bad uuid text in a filter": {
+      "httpStatus": 400,
+      "error": {
+        "code": "22P02",
+        "message": "invalid input syntax for type uuid: \"not-a-uuid\"",
+        "details": null,
+        "hint": null
+      },
+      "shape": null
+    },
+    "error PGRST116: .single() with no row": {
+      "httpStatus": 200,
+      "error": null,
+      "shape": "null"
+    },
+    "error PGRST202: a function that does not exist": {
+      "httpStatus": 404,
+      "error": {
+        "code": "PGRST202",
+        "message": "Could not find the function platform.no_such_function_spike without parameters in the schema cache",
+        "details": "Searched for the function platform.no_such_function_spike without parameters, but no matches were found in the schema cache.",
+        "hint": "If a new function was created in the database with this name and parameters, try reloading the schema cache."
+      },
+      "shape": null
+    },
+    "error PGRST205: a table that does not exist": {
+      "httpStatus": 404,
+      "error": {
+        "code": "PGRST205",
+        "message": "Could not find the table 'platform.no_such_table_spike' in the schema cache",
+        "details": null,
+        "hint": null
+      },
+      "shape": null
+    },
+    "error PGRST204/42703: a column that does not exist": {
+      "httpStatus": 400,
+      "error": {
+        "code": "42703",
+        "message": "column products.no_such_column_spike does not exist",
+        "details": null,
+        "hint": null
+      },
+      "shape": null
+    },
+    "error PGRST106: a schema that is not exposed": {
+      "httpStatus": 406,
+      "error": {
+        "code": "PGRST106",
+        "message": "Invalid schema: unknown",
+        "details": null,
+        "hint": "Only the following schemas are exposed: public, platform"
+      },
+      "shape": null
+    }
+  }
+}
