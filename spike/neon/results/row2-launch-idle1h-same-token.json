@@ -24,6 +24,27 @@
       "warmMedian": 257,
       "extraMs": 821,
       "allOk": true
+    },
+    {
+      "cycle": 2,
+      "at": "2026-11-23T06:56:08.819Z",
+      "first": {
+        "ms": 1079,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        771,
+        261,
+        257,
+        257,
+        258
+      ],
+      "warmMedian": 258,
+      "extraMs": 821,
+      "allOk": true
     }
-  ]
+  ],
+  "finishedAt": "2026-11-23T06:56:08.821Z"
 }
