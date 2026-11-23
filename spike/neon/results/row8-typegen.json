@@ -1,0 +1,17 @@
+{
+  "target": "launch",
+  "cliVersion": "2.121.0",
+  "exitCode": 0,
+  "seconds": 8,
+  "lines": {
+    "generatedFromNeon": 1723,
+    "repoFile": 1739
+  },
+  "identicalText": false,
+  "diffAgainstRepoFile": {
+    "linesOnlyInRepo": 24,
+    "linesOnlyInNeon": 8,
+    "what": "The repo file has a graphql_public block (the repo asks for that schema; the spike did not, and Neon has none). The Neon file has the spike's two test functions (spike_sleep, spike_whoami). Every table, view, function, enum and composite type of public and platform is otherwise identical, text for text."
+  },
+  "note": "Run with the repo's Supabase CLI 2.121.0: supabase gen types typescript --db-url <Neon direct address> --schema public,platform. The address needs channel_binding removed or the CLI is refused (42704)."
+}

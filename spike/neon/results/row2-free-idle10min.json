@@ -1,0 +1,28 @@
+{
+  "target": "free",
+  "label": "idle10min",
+  "idleSeconds": 630,
+  "startedAt": "2026-11-23T01:41:46.462Z",
+  "cycles": [
+    {
+      "cycle": 1,
+      "at": "2026-11-23T01:52:20.556Z",
+      "first": {
+        "ms": 2279,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        770,
+        267,
+        254,
+        260,
+        252
+      ],
+      "warmMedian": 260,
+      "extraMs": 2019,
+      "allOk": true
+    }
+  ]
+}
