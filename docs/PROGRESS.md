@@ -13,6 +13,76 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
 
+## Phase 3, stage 1: unit lock rules (branch `platform/phase-3-stage-1-unit-locks`, 23 Nov 2026)
+
+The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §4, §8 stage 1). From `main` at `15dadd2` (PRs 57, 68 and 69 merged; 69 migrations). **One migration, `20261123000100_platform_unit_lock_rules.sql`, local only.** Nothing on staging or live was touched; staging gets it on the owner's word after the review.
+
+**What the migration does** (re-created functions are read from the database behind an MD5 guard: `move_unit()`, `units_guard()`, `units_clamp_product_counts()`, `review_catalog_request()`, `lock_units()`)
+
+1. **A unit's product changes only through `move_unit()`, one unit per transaction.** `move_unit()` sets the transaction-local setting `platform.moving_unit` to the unit's id just before it updates the unit and to `done` straight after. `units_guard` refuses any other product change (`use_move_unit`), for the service role and the database's owner too, and a direct one after a `move_unit()` in the same transaction; a second `move_unit()` in one transaction is refused (`one_move_per_transaction`). It already took both product rows in id order, `for no key update`. The app already moved every product change through `move_unit()` (`fleet/actions.ts`), so no screen changed. A place change alone is still a plain update.
+2. **The counts trigger runs once per statement.** `units_clamp_product_counts` (a row trigger) is replaced by `units_counts_after_update` and `units_counts_after_delete` (statement level, transition tables), each locking the distinct affected product ids once, sorted, `for no key update`, then clamping each product and its listing through `platform_private.clamp_product_counts()`. `units_busy_on_delete` stays per row. The audit row `clamp_booking_counts` is as it was for one unit; for several units of one product in one statement it now also carries `because_units` (all of them; `because_unit` is the first).
+3. **One unit per transaction to sold, retired or lost** (`one_unit_status_change`, checked before the second unit's lock), **unless the transaction already holds every such unit's lock, taken sorted through `lock_units()`** (the owner's decision, 23 Nov 2026; see "Differed from the plan").
+4. **Lost at any time** (decision 19): `units_guard` no longer refuses `lost` with `unit_has_future_blocks`. A rental that is out stays open, future bookings keep their blocks, downtime from now on is cleared as before. Sold and retired are refused as before.
+5. **`review_catalog_request()`** takes its products' rows in id order and then the catalog entry (it took the entry first, the opposite of a product's delete); a product linked in between is answered `try_again` with nothing written. **Approve and merge no longer switch a Moto Mangos listing on**: they set `catalog_id` and `catalog_approved_at` only and never write `product_listings`; a listing that exists keeps its values; the shop switches it on with `save_listing()`. Reject still switches a listing off.
+6. **`platform_private.app_uid()` and `app_role()`** (decision 43): `language sql stable`, empty search path, executable by `authenticated` and `service_role` only. **They read `request.jwt.claims` directly** (the owner's decision, 23 Nov 2026), so they work on Supabase now and on Neon later; null with no request. Every function this migration re-creates or creates calls them and never `auth.uid()` or `auth.role()`.
+7. **The unit lock's key in one place:** `unit_lock_class()`, `unit_lock_key(uuid)` and `holds_unit_lock(uuid)`; `lock_units()` is re-created to use the first two. Granted as `lock_units()` is.
+
+**Found about `auth.uid()` and `auth.role()`.** On this Supabase they still read the older settings `request.jwt.claim.sub` and `request.jwt.claim.role` first, then `request.jwt.claims`. Nothing sets the older ones: PostgREST here is v16.4, which sets `request.jwt.claims` only, and no test, script or migration sets them. So the fallback is **not** copied into `app_uid()` and `app_role()`; a test holds the two pairs equal for anon, a signed-in owner and staff, the service role and no request, and a second one pins the one place they differ (the older settings set by hand).
+
+**Differed from the plan**
+
+- **Gear units** (stopped and asked; the owner's answer and conditions, 23 Nov 2026). Draft 2 said the app changes units to sold, retired or lost one at a time. Not for gear: `report_gear_problem()` marks several lost or writes several off in one call, and `set_stock_quantity()` retires several. Both take the product-and-location lock and then all their units' locks, sorted, through `lock_units()` before they update. The rule is now "one unit per transaction, **unless the transaction already holds every such unit's lock**": the guard looks in `pg_locks` (`holds_unit_lock()`), before it asks for the unit's lock, and the marker never lets a held unit and an unheld one mix. The two gear functions are unchanged and are the only users of that path. **Condition checked:** every unit lock (class `1a01`) in the database is transaction-level (`pg_advisory_xact_lock` or `pg_try_advisory_xact_lock`: `lock_units()`, `units_guard`, `unit_blocks_guard`, `units_busy_on_delete`); the only session-level advisory lock anywhere is the tests' gate, in its own class. `pg_locks` can't tell the two kinds apart, so this must stay true (root `CLAUDE.md` says so).
+- **`app_uid()` and `app_role()` read the claims**, not `auth.uid()` and `auth.role()` (the owner's decision in the stage's brief). Plan §3.11, §3.8 and decision 43 are corrected.
+- **The listing fix** joins migration 1 (the owner's brief). Plan §3.8.
+- **The lock-strength test's reviewed list has two entries, not one:** `swap_rental_unit` (arrives in stage 6; the entry is kept and marked "arrives") and `save_product_extras`, which the test found on `main`: the vehicle's row `for no key update`, then the extras' rows `for key share`. Different rows, the stronger first, none raised; as root `CLAUDE.md` already describes.
+- **`one_move_per_transaction` is raised, not returned**, so a transaction that tries a second move is undone whole (the first move with it). Through the API every call is its own transaction, so no caller meets it.
+- **availability.test.ts ~3583** could not be "rewritten to build the state through `move_unit()`": that state (a unit on B whose hold still names A) is exactly what `move_unit()` never leaves. The test now moves the unit with its hold through `move_unit()`, lets the hold run out, and checks that a booking of B releases it.
+- **`product-listings.test.ts:521`** (now ~516) updates `product_listings.product_id`, not a unit: checked, unchanged, still `listing_product_fixed`.
+
+**Tests** (`apps/platform/tests/db`; every accept test of plan §8 stage 1 passes)
+
+- **`unit-lock-rules.test.ts`** (new, 20 tests). The races hold real sessions at one gate and release them at the same instant, **30 rounds, three shops at once** (Bangkok THB, New York USD, Saigon VND), with Postgres's deadlock count read before and after:
+
+| Race | Rounds × shops | Deadlocks |
+| --- | --- | --- |
+| Two opposite `move_unit()` calls at one place | 30 × 3 | 0 |
+| Two opposite `move_unit()` calls at two places | 30 × 3 | 0 |
+| Two-unit change to maintenance against a real two-product `reserve()` | 30 × 3 | 0 |
+| Two-product unit delete against a real two-product `reserve()` | 30 × 3 | 0 |
+| `report_gear_problem()` against `set_stock_quantity()`, same units | 30 × 3 | 0 |
+| Catalog review against the product's delete | 30 × 3 | 0 |
+
+- **Crossing tests** (in the same file) put the two sessions exactly where the old code deadlocked, in each of the three shops: the two-unit status change and the two-product delete against a booking that holds X and asks for Y; a product's delete against a review. **Red on `main`'s triggers** (run against the database before this migration, 23 Nov 2026): all three failed with a real `deadlock detected`, the first two inside `units_clamp_product_counts() line 23`, the third inside `review_catalog_request() line 26`. **Green after:** one waits, both finish, the count does not move.
+- Also there: a direct product change refused (owner, service role, database owner, with and without bookings), after a `move_unit()` in the same transaction too; a second `move_unit()` refused; the triggers' shape; one statement over two products clamps each listing once; a plain two-unit update to sold, retired or lost refused with nothing changed; the same with only one of the two locks held, whichever (three orders each); with both held it is taken; both gear functions still change several units in one call; lost while out and with a booking ahead (blocks kept, future downtime cleared, sold and retired still refused); approve and merge leave the listing off or unchanged and the shop then switches it on.
+- **`recheck-followups.test.ts`:** the swap test is no longer skipped. It is a gate test of two opposite `move_unit()` calls, 6 rounds, both `ok`, deadlock count unchanged; the `pg_sleep` starting line and its comment are gone. **No database test is skipped any more.**
+- **`caller-functions.test.ts`** (new, 7 tests): the pinned list of direct `auth.uid()` and `auth.role()` uses in `platform` and `platform_private`, **24 lines (19 functions, 4 column defaults, 1 policy), 27 uses**; it fails on a new use and on a stale line. `app_uid()` and `app_role()` are not on it (they call no `auth.*`). Converted by this stage: `units_guard`, `move_unit()`, the counts trigger. Plus the equality, stability, search path and grants of the two functions.
+- **`lock-strength.test.ts`** (new, 3 tests): the static check of plan §4.1, with its reviewed list.
+- **Ported:** `availability.test.ts` (four tests), `review-fixes.test.ts` (the clamp on a move, through `move_unit()`), `reservations.test.ts` (two tests: lost is no longer refused while booked), `product-listings.test.ts`, `products.test.ts`, `fleet-rework.test.ts` (approval no longer lists), `default-grants.test.ts` (`app_uid()` and `app_role()` on the service role's list).
+- **Browser tests edited, not run here** (CI runs them): `e2e/fleet.spec.ts` and `e2e/products-stage-c.spec.ts` expected the switch on after an approval or a merge; they now expect it off and switch it on.
+
+**Results** (23 Nov 2026, this worktree's stack, on a fresh `supabase db reset` with all 70 migrations)
+
+- `npm run typecheck`, `npm run lint`: clean in every workspace.
+- `npm test`: marketplace 370, platform 713, `@mango/core` 720. One core test (`discounts.test.ts`, "a percentage coupon") ran past its 5-second timeout in the full run on a busy machine; the file alone: 134 of 134.
+- Platform database suite, run once on its own: **749 of 749 passed, 0 skipped, 26 files**.
+
+**Help:** `en/platform-admin/review-catalog-requests.md` and `en/products/connect-a-bike-to-moto-mangos.md` say approval and merge connect the product and the shop lists it; the entry in `docs/help/PENDING.md` is removed.
+
+**Known issues and follow-ups**
+
+- **One screen line is now wrong:** the Moto Mangos tab's "waiting" line (`motoMangos.waiting` in `messages/en.json` and `th.json`) says the model "goes live once approved". It is connected once approved, and the shop switches the listing on. Not changed here: it needs its Thai line and Korn's check. **To decide.**
+- `platform.moving_unit` and `platform.unit_status_change` are lock-order rules, not permissions: a session that can run SQL of its own (a console) can set them. Nothing reachable through the API can.
+- `review_catalog_request()` can now answer `try_again` (a product linked to the entry between its two steps); the admin screen shows its usual "failed" line and the reviewer presses again.
+- One `pg_sleep` is left in `tests/db`: `security-audit.test.ts` (from PR 57), not this stage's.
+- The stuck `product-extras.test.ts` process from 17 Nov 2026 was not running on this machine today.
+- The Thai lines need Korn's check (none added here).
+
+**Before this goes to staging** (the owner's word): staging must be at 69 of 69 with `main`'s bodies; the guard checks the five functions and stops with nothing changed if one differs. Afterwards: the triggers on `platform.units` are `units_counts_after_update` and `units_counts_after_delete` (statement level) and no `units_clamp_product_counts`; `app_uid()` and `app_role()` are executable by `authenticated` and `service_role` only; listings, units and products counts unchanged.
+
+**Local set-up.** This worktree (`.claude/worktrees/phase-3-stage-1`) has its own stack, `Bike_Booking_phase3_s1`, on ports 634xx (API 63421, database 63422, shadow 63420, Studio 63423, mail 63424, analytics 63427, pooler 63429, inspector 63483), started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Another project's stack (on the default ports) was left alone; no older Mango Works stack was running.
+
+**Next:** stage 2a, orders: tables, RLS, customers, settings (migration 2).
+
 ## Price check: compact layout (branch `platform/price-check-compact`, 20 Nov 2026)
 
 **No migration; what the screen calculates is unchanged.** The owner's feedback (20 Nov 2026): "much more consolidated", the top card repeated much of the bottom one, the long list of products was inconvenient; "simple to use, easy to understand. A compact price checker."
@@ -1544,7 +1614,7 @@ The last build stage of Phase 2 (`docs/phase-2-plan.md` §7, §8 stage 11, §9).
 10. **Help**: `en/price-check/price-check.md`, `en/booking-rules/set-booking-rules.md`, `en/fleet/bookings-on-a-vehicle.md`; tabs per role, the coupon refusals and Check a price updated; every bold quote checked against `en.json`. PR 59's articles (merged into this branch) have the notice line and say catalog approval lists the model until the next platform migration; `docs/help/PENDING.md` lists what changes when that migration lands. (PR 51's entries were applied by PR 60.)
 11. **Thai**: 79 new or changed lines on `docs/platform/thai-review-products.md` ("Phase 2, stage 11") for Korn.
 
-**Catalog approval switches the Moto Mangos listing on.** The owner (20 Nov 2026): it must not; the shop switches it on itself. It is set in the database, so it is not fixed here (no migration in stage 11): see "Next platform migration".
+**Catalog approval switches the Moto Mangos listing on.** The owner (20 Nov 2026): it must not; the shop switches it on itself. It is set in the database, so it is not fixed here (no migration in stage 11). **Fixed in Phase 3 stage 1** (`20261123000100`).
 
 **Tests**
 
@@ -1556,14 +1626,14 @@ The last build stage of Phase 2 (`docs/phase-2-plan.md` §7, §8 stage 11, §9).
 
 **Next platform migration**
 
-- **`platform.review_catalog_request()` must not switch a listing on.** `supabase/migrations/20261114000200_platform_product_listings.sql`, lines 684 to 689 (merge) and 715 to 720 (approve): both `insert into platform.product_listings (…, enabled) select …, true … on conflict (product_id) do update set enabled = true`. Approval and merge should set `catalog_id` and `catalog_approved_at` only and leave the listing as it is. Test: approval leaves the listing off, and the shop can then switch it on with `save_listing()`, as any connected vehicle. The catalog-requests help article (PR 59) changes with it (`docs/help/PENDING.md`).
+- Nothing waiting. (`review_catalog_request()` switching a listing on was fixed in Phase 3 stage 1, `20261123000100`.)
 
 **For Phase 3 (create_order core)**
 
 - **Enforce extras' `max_quantity` for online channels in the booking core** (the owner, 20 Nov 2026). It is enforced in `bookOnline()` since stage 6 (`over_most_per_vehicle`); Phase 3 moves the same rule into the booking core (`create_order`), so every online path gets it from one place: an extra line above `max_quantity` × its vehicle line's quantity is refused on every online channel; staff are never bound.
 - The real New order screen (Phase 3 stage 9) takes the `/new-order` route and the tab back; the Price check either moves to a route of its own or becomes New order's first step: a decision for that stage.
 - Out, returned and overdue on a real pickup and return; the unit page's Bookings section then shows them from real rows.
-- Carried: the swap deadlock and its gate test (Phase 3 stage 1); "Uses per customer" once both booking paths send a customer; a held booking whose coupon was archived since; a stacking coupon with a credit.
+- Carried: "Uses per customer" once both booking paths send a customer; a held booking whose coupon was archived since; a stacking coupon with a credit.
 
 **Staging seeded** on the owner's word, 20 Nov 2026, from `c8c52f3` (before the review follow-ups; the seed's behaviour is the same since, it now signs in with the publishable key). Pre-checks: 67 of 67 migrations; BSR with its owner and staff; 12 vehicle models with bikes; no reservations, no WELCOME10 or MOTO200, no demo helmet or delivery. Made: the bookings of two Honda PCX 160 and two helmets (23 to 26 Nov), one Yamaha Fino and one more short (27 to 29 Nov), a hold on a PCX 160 (30 Nov to 2 Dec; it ran out at 20:54 Bangkok on 20 Nov), the helmet and the delivery with their prices, the PCX's two extras, both coupons; "Accept coupons" and overbooking on, a 60-minute hold. Every count outside BSR unchanged; still 67 migrations. **For the next time:** add the `STAGING_*` variables to `apps/platform/.env.local` beside the local ones (the seed reads them with `--staging` only, so nothing local is replaced). Read-only pre-checks: `npx supabase migration list --db-url "$STAGING_DB_URL"` (67 applied), then `psql "$STAGING_DB_URL"` in a read-only session (`PGOPTIONS="-c default_transaction_read_only=on"`) for BSR, its two members, its vehicle models with bikes, its reservations by state and the two coupon codes (the selects are in PR 63's description). The seed makes the bookings only when BSR has **no `reserved` row** (a live hold alone means they will be made), a hold whenever none is live, a coupon only when its code is not taken (live, off or archived), the helmet and the delivery only when no live product has that name, prices only where there are none, extras only when the busiest scooter has none. Then `npm run seed:staging -w @mango/platform` from the repo root.
 
