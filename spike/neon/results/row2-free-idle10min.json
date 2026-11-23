@@ -363,6 +363,47 @@
       "warmMedian": 253,
       "extraMs": 1560,
       "allOk": true
+    },
+    {
+      "cycle": 19,
+      "at": "2026-11-23T05:02:50.720Z",
+      "first": {
+        "ms": 2276,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        773,
+        260,
+        255,
+        264,
+        256
+      ],
+      "warmMedian": 260,
+      "extraMs": 2016,
+      "allOk": true
+    },
+    {
+      "cycle": 20,
+      "at": "2026-11-23T05:13:25.013Z",
+      "first": {
+        "ms": 2034,
+        "ok": true,
+        "status": 200,
+        "code": null
+      },
+      "rest": [
+        1260,
+        250,
+        247,
+        247,
+        249
+      ],
+      "warmMedian": 249,
+      "extraMs": 1785,
+      "allOk": true
     }
-  ]
+  ],
+  "finishedAt": "2026-11-23T05:13:25.016Z"
 }
