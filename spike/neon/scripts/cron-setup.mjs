@@ -2,13 +2,14 @@
 // Usage: node scripts/cron-setup.mjs read      -> read the compute's settings (no change)
 //        node scripts/cron-setup.mjs set       -> set cron.database_name = neondb (keeps other pg_settings), restart
 //        node scripts/cron-setup.mjs schedule  -> create extension pg_cron, schedule the minute hold sweep
-// Launch project only. Three API calls in all: read, set, restart.
+// Second argument: launch (default) or free. Three API calls in all per project: read, set, restart.
 import { writeFileSync } from "node:fs";
 import { neonApi, branchAndEndpoint } from "../lib/neon-api.mjs";
 import { neon } from "../lib/pg.mjs";
 
 const step = process.argv[2];
-const W = "LAUNCH";
+const W = (process.argv[3] ?? "launch").toUpperCase(); // "free" only for the cron-awake test (row 8), approved 23 Nov
+const w = W.toLowerCase();
 const show = (e) => ({
   id_prefix: e.id.slice(0, 3),
   type: e.type,
@@ -23,7 +24,7 @@ const show = (e) => ({
 if (step === "read" || step === "set") {
   const { endpointId, endpoint } = await branchAndEndpoint(W);
   console.log("compute now:", JSON.stringify(show(endpoint), null, 1));
-  writeFileSync(new URL("../results/launch-compute-before.json", import.meta.url), JSON.stringify(show(endpoint), null, 2));
+  writeFileSync(new URL(`../results/${w}-compute-before.json`, import.meta.url), JSON.stringify(show(endpoint), null, 2));
   if (step === "set") {
     const pg_settings = { ...(endpoint.settings?.pg_settings ?? {}), "cron.database_name": "neondb" };
     const patch = await neonApi(W, "PATCH", `/endpoints/${endpointId}`, { endpoint: { settings: { ...(endpoint.settings ?? {}), pg_settings } } });
@@ -42,7 +43,7 @@ if (step === "read" || step === "set") {
       const e = await neonApi(W, "GET", `/endpoints/${endpointId}`);
       if (e.body.endpoint.current_state === "active" && !e.body.endpoint.pending_state) {
         console.log("compute active again:", JSON.stringify(show(e.body.endpoint), null, 1));
-        writeFileSync(new URL("../results/launch-compute-after.json", import.meta.url), JSON.stringify(show(e.body.endpoint), null, 2));
+        writeFileSync(new URL(`../results/${w}-compute-after.json`, import.meta.url), JSON.stringify(show(e.body.endpoint), null, 2));
         break;
       }
     }

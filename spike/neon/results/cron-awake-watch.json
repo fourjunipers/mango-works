@@ -1,0 +1,13 @@
+{
+  "startedAt": "2026-11-23T11:19:36.942Z",
+  "minutes": 105,
+  "samples": [
+    {
+      "at": "2026-11-23T11:19:37.229Z",
+      "http": 200,
+      "state": "active",
+      "pending": null,
+      "last_active": "2026-11-23T11:19:25Z"
+    }
+  ]
+}
