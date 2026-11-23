@@ -3,7 +3,7 @@ title: Connect a motorbike to Moto Mangos
 summary: Pick your bike's make and model from the Moto Mangos list, or send its details for review if it isn't there, so it can be listed.
 keywords: [Moto Mangos, marketplace, list a bike, make and model, catalog, send for review, request, approved, rejected, connect, ขึ้นรายการ, มอเตอร์ไซค์, ส่งตรวจสอบ]
 screens: [/[tenant]/products/[id]]
-updated: 2026-11-20
+updated: 2026-11-23
 ---
 
 # Connect a motorbike to Moto Mangos
@@ -28,7 +28,7 @@ Who can do this: owners and managers.
 3. Fill in **Make**, **Model**, **Engine size (cc)**, **Transmission** and **Year of your bike**. All five are needed. The year is one year, like 2023. The make and model start filled in from the product's name where possible.
 4. Optional: add a **Note for the reviewer**.
 5. Press **Send for review**.
-6. The tab says the request is waiting for review. You can keep using the product meanwhile. When Moto Mangos approves it, the tab says when the model was added, and the product is listed automatically. (After the next platform update you switch the listing on yourself, as for any connected bike.)
+6. The tab says the request is waiting for review. You can keep using the product meanwhile. When Moto Mangos approves it, the tab says when the model was added. The product is then connected, but not listed yet: switch the listing on from the **Moto Mangos** tab, as for any connected bike ([Switch a bike on or off Moto Mangos](moto-mangos-listing.md)).
 
 ## If Moto Mangos turns the request down
 

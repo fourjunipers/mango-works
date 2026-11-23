@@ -363,8 +363,9 @@ test("Moto Mangos tab: sent for review, rejected, sent again, approved", async (
   await expect(mangos.getByText(/Sent to Moto Mangos\./)).toBeVisible();
   await expect(mangos.getByText("E2E: wrong engine size")).toHaveCount(0);
 
-  // Approved (as an entry already on the list): listed, and the switch can
-  // be used.
+  // Approved (as an entry already on the list): connected, and the switch
+  // can be used. It is off: the shop switches its listing on itself (since
+  // 20261123000100; approval used to switch it on).
   await reviewer.reload();
   const again = reviewer.locator("li", { hasText: `${make} Rider 150` });
   await again
@@ -381,7 +382,7 @@ test("Moto Mangos tab: sent for review, rejected, sent again, approved", async (
     mangos.getByText("On the Moto Mangos list as Honda Forza 350."),
   ).toBeVisible();
   await expect(toggle(page)).toBeEnabled();
-  await expect(toggle(page)).toHaveAttribute("aria-checked", "true");
+  await expect(toggle(page)).toHaveAttribute("aria-checked", "false");
   await noSidewaysScroll(page);
 
   await deleteProduct(page, url);
