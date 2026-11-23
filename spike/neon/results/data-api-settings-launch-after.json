@@ -1,0 +1,27 @@
+{
+  "url": "https://<endpoint>/neondb/rest/v1",
+  "status": "active",
+  "settings": {
+    "db_aggregates_enabled": true,
+    "db_anon_role": "anonymous",
+    "db_extra_search_path": "public, extensions",
+    "db_max_rows": 1000,
+    "db_schemas": [
+      "public",
+      "platform"
+    ],
+    "jwt_role_claim_key": ".role",
+    "openapi_mode": "disabled"
+  },
+  "available_schemas": [
+    "auth",
+    "extensions",
+    "platform",
+    "platform_private",
+    "public",
+    "spike",
+    "spike_auth",
+    "storage"
+  ],
+  "observed_at": "2026-11-23T01:13:55Z"
+}

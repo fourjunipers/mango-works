@@ -1,0 +1,12 @@
+{
+  "id_prefix": "ep-",
+  "type": "read_write",
+  "state": "active",
+  "min_cu": 0.25,
+  "max_cu": 0.25,
+  "suspend_timeout_seconds": -1,
+  "settings": {
+    "pg_settings": {}
+  },
+  "region": "aws-ap-southeast-1"
+}
