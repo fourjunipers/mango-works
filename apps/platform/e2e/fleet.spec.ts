@@ -1160,7 +1160,20 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
 
   // The shop's model now sits on that preset and can be listed. The shop is
   // told on the model, the Fleet list and the dashboard.
-  // Sending it was asking for it to be listed, so it is listed now.
+  // The approval connects it and leaves the listing off (since
+  // 20261123000100): the shop switches it on itself, and the switch saves
+  // by itself.
+  await page.goto(modelUrl);
+  const approvedToggle = mangos.getByRole("switch", {
+    name: "List this product on Moto Mangos",
+  });
+  await expect(approvedToggle).toBeEnabled();
+  await expect(approvedToggle).toHaveAttribute("aria-checked", "false");
+  await approvedToggle.click();
+  await expect(approvedToggle).toHaveAttribute("aria-checked", "true");
+  await expect(
+    mangos.getByText("On. The switch saves as soon as you press it."),
+  ).toBeVisible();
   // The mango on the Products list: in colour, no dot.
   await page.goto(`/bsr/products?q=${make}`);
   const listed = chips.getByRole("img", { name: "On Moto Mangos" });
@@ -1183,8 +1196,7 @@ test("my own product: a kind and a name, no duplicate names, then matched or sen
   await expect(
     mangos.getByText("On the Moto Mangos list as Honda Forza 350."),
   ).toBeVisible();
-  // Already switched on by the approval; the shop can switch it off, and
-  // the switch saves by itself.
+  // Switched on by the shop above; it can switch it off again.
   const toggle = mangos.getByRole("switch", {
     name: "List this product on Moto Mangos",
   });
