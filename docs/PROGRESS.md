@@ -95,6 +95,22 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 **Local set-up.** This worktree (`.claude/worktrees/phase-3-stage-1`) has its own stack, `Bike_Booking_phase3_s1`, on ports 634xx (API 63421, database 63422, shadow 63420, Studio 63423, mail 63424, analytics 63427, pooler 63429, inspector 63483), started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Another project's stack (on the default ports) was left alone; no older Mango Works stack was running.
 
 **Next:** stage 2a, orders: tables, RLS, customers, settings (migration 2).
+## Faster "totals never fall" tests (branch `core/discounts-test-speed`, 24 Nov 2026)
+
+`packages/core/src/discounts.test.ts`: the six "totals never fall" tests timed out at 5 s on a busy machine (each priced 2,418 quotes, and `decideDiscounts` plus `quote` per quote was the cost). They now price every day to 70, every tenth day after, and days 365, 366 and 400, with the lines built once per start date instead of once per play: same properties, same start dates; the file went from 42 s (4 timeouts) to 13 s, each of those tests from 4 to 9 s down to 1 to 2 s. No timeout raised; `packages/core` source untouched. Separately seen, not fixed: `wrappers.test.ts` "over 8939 instants" took 5.3 s and timed out once in a full run on the same busy machine.
+
+## Neon spike (branch `spike/neon`, 23 to 24 Nov 2026)
+
+Stage 1 of `docs/platform/neon-move-plan.md` (§7.1) is done. **Decision: Go (Mark, 23 Nov 2026).**
+
+- **Write-up:** `docs/platform/neon-spike.md`. All eight rows have a number or a yes or no. Seven pass; row 2's reading on the always-on compute after a whole night was not clean, so stage 11 watches the first request of the morning.
+- **To fold into `neon-move-plan.md` (a separate PR):** the write-up's 18 points under "What the plan got wrong, or did not foresee". The ones that change the stages: Neon's `auth` schema is closed to us, so stage 2's baseline needs our own "who is calling" functions and users table from the start; the Data API's schema cache must be refreshed after every migration run; `.single()` returns no error for zero or many rows (35 call sites in the apps); a request with no token is refused, so the signed-out path needs a signed `role: anon` token; staging on Neon Free cannot run the minute sweep.
+- **Spike code:** not on `main`. It is kept at the tag `archive/neon-spike-2026-11` (`spike/neon/`).
+- **Clean-up:** the Launch project and the organisation "Mango Works spike" are deleted (23 Nov 2026 US time). The rest is in hand: the Free project, the API keys, the Netlify site, the LINE channel, the Google Cloud project and the local files. Staging is as it was (91 tables, 4,487 rows before and after); live was never touched.
+
+## Neon plan updated after the spike (branch `docs/neon-plan-update`, 23 Nov 2026)
+
+Docs only. `docs/platform/neon-move-plan.md` §7.1 marked done (Go, Mark, 23 Nov 2026) and the spike's 18 points folded into the stages (§7.0 says where each went). New stage 4a: a one-row wrapper in `packages/db` for the 35 `.single()` calls, a separate PR before the move. Root CLAUDE.md's "Not tied to Supabase" gained the rules that follow (no `.single()`/`.maybeSingle()` outside `packages/db` once the wrapper lands; nothing relies on the `auth` schema; no role-level settings; no branching on error text). Open before stage 2: the migration tool, our own users table, the anon token (plan §8).
 
 ## Price check: compact layout (branch `platform/price-check-compact`, 20 Nov 2026)
 
