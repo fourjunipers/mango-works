@@ -13,6 +13,15 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
 
+## Neon spike (branch `spike/neon`, 23 to 24 Nov 2026)
+
+Stage 1 of `docs/platform/neon-move-plan.md` (§7.1) is done. **Decision: Go (Mark, 23 Nov 2026).**
+
+- **Write-up:** `docs/platform/neon-spike.md`. All eight rows have a number or a yes or no. Seven pass; row 2's reading on the always-on compute after a whole night was not clean, so stage 11 watches the first request of the morning.
+- **To fold into `neon-move-plan.md` (a separate PR):** the write-up's 18 points under "What the plan got wrong, or did not foresee". The ones that change the stages: Neon's `auth` schema is closed to us, so stage 2's baseline needs our own "who is calling" functions and users table from the start; the Data API's schema cache must be refreshed after every migration run; `.single()` returns no error for zero or many rows (35 call sites in the apps); a request with no token is refused, so the signed-out path needs a signed `role: anon` token; staging on Neon Free cannot run the minute sweep.
+- **Spike code:** not on `main`. It is kept at the tag `archive/neon-spike-2026-11` (`spike/neon/`).
+- **Clean-up:** the Launch project and the organisation "Mango Works spike" are deleted (23 Nov 2026 US time). The rest is in hand: the Free project, the API keys, the Netlify site, the LINE channel, the Google Cloud project and the local files. Staging is as it was (91 tables, 4,487 rows before and after); live was never touched.
+
 ## Price check: compact layout (branch `platform/price-check-compact`, 20 Nov 2026)
 
 **No migration; what the screen calculates is unchanged.** The owner's feedback (20 Nov 2026): "much more consolidated", the top card repeated much of the bottom one, the long list of products was inconvenient; "simple to use, easy to understand. A compact price checker."

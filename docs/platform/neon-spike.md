@@ -1,8 +1,10 @@
 # Neon spike: results
 
+**Decision: Go (Mark, 23 Nov 2026).**
+
 **Status: finished (24 Nov 2026).** All eight rows have an answer. One part of row 2 (the always-on compute after a whole night) could not be measured cleanly and says so. The recommendation is at the end.
 
-This is stage 1 of `docs/platform/neon-move-plan.md` (§7.1). It answers the plan's eight rows with a number or a yes or no, lists what the plan got wrong, and ends with a go or no-go recommendation for Mark. The spike's code is under `spike/neon/` and its raw results under `spike/neon/results/`. Nothing in `apps/` or `packages/` changed, no migration file was edited, and live was never touched.
+This is stage 1 of `docs/platform/neon-move-plan.md` (§7.1). It answers the plan's eight rows with a number or a yes or no, lists what the plan got wrong, and ends with a go or no-go recommendation for Mark. The spike's code and raw results are not on `main`: they are kept at the git tag `archive/neon-spike-2026-11`, under `spike/neon/` (results in `spike/neon/results/`). Every `spike/neon/…` path below is a path at that tag. Nothing in `apps/` or `packages/` changed, no migration file was edited, and live was never touched.
 
 ## What was set up
 
@@ -139,13 +141,15 @@ So the 6-seconds-under-8 rule in CLAUDE.md holds on Neon today. It holds because
 13. **`.single()` differs** (row 5). Not foreseen.
 14. **Three migrations check function bodies by md5** before replacing them (`20261117000200`, `20261118000100` and `20261119000100`). Any baseline that renames `auth.uid()` inside those bodies must be built from the final schema, not by replaying those migrations.
 15. **Better Auth does not check LINE's ID token signature in the redirect flow** (1.7.27 decodes the token it receives from LINE's token endpoint). That is why LINE's HS256 does not break it. The spike adds its own HS256 check with the channel secret; the real build should keep one.
-16. **Netlify:** a new site in the team starts with team-login protection on every deploy, which blocks Neon from reading the key file and the providers from reaching the callbacks. It was switched off for the spike site only. Draft deploys cost no credits (190.9 before, 190.8 after the first). Function calls do cost credits; the balance after the whole spike is Mark's to read (it was 190.9 before).
+16. **Netlify:** a new site in the team starts with team-login protection on every deploy, which blocks Neon from reading the key file and the providers from reaching the callbacks. It was switched off for the spike site only. Draft deploys cost no credits (190.9 before, 190.8 after the first). Function calls do cost credits: the balance was 188 after the whole spike against 190.9 before, so the spike used at most 2.9 credits. That is an upper bound, because other sites in the team use credits too.
 17. **A Free compute's cold start is not "a few hundred milliseconds" (§7.1 row 2).** Measured through the Data API it adds about 1.4 s to the first call, and the second call is often slow too; one cycle in 26 took 6 to 8 s.
 18. **The always-on line for row 2 cannot be met as written.** "The first call is no slower than the rest" fails for any new connection, idle or not: a new client's first two calls take 0.75 to 1.1 s against 0.25 s warm, on Neon and (row 1's slow 9%) on Supabase. The useful line is "no slower than a new connection to a database in use", and that one was met.
 
 The spike loaded the migrations with four changes made in memory as each file was sent (no file was edited): `for role postgres` to the current role; the pg_cron check made false; `auth.users`, `auth.identities`, `auth.uid()` and `auth.role()` pointed at the stand-ins; and the md5 checks made to allow for that.
 
 ## Recommendation
+
+**Decision: Go (Mark, 23 Nov 2026).** The paragraph below is the recommendation it was made on.
 
 **Go.** Nothing measured stops the move, and seven of the eight rows pass outright. Neon is faster than Supabase from today's function region on every call. The lock rules behave the same through the Data API (`55P03` after 6 s, `try_again`, nothing written; `57014` and `40P01` unchanged). A `service_role` that bypasses RLS can be made in plain SQL, and the 8-second timeout is in place. LINE and Google both sign in through Better Auth, with RLS seeing the right user and a forged role refused. pg_cron ran the minute sweep 1,440 times in 24 hours without a miss. Row 2 is the soft one: the always-on compute showed no cold start after 10 minutes, an hour or 4 h 45 min, but the whole-night reading was spoiled by the measuring computer and was not repeated, so stage 11 should watch the first request of the morning. The surprises are in the access model's plumbing (points 1 to 7 below the results) and in `.single()`; each has a known, small answer that fits decisions the plan already made. They make stage 2 larger than planned (our own "who is calling" functions and users table in the baseline, a schema-cache refresh after every migration run) and none is a reason to stop. Two things the plan should now say outright: staging on Neon Free cannot run the minute sweep (it keeps the compute awake, about 182 CU-hours against 100), and its first request after a quiet spell takes about 2 seconds, occasionally 6 to 8.
 
@@ -163,11 +167,11 @@ Every table in `platform`, `public`, `auth` and `storage` was counted; no table'
 
 ## Clean-up list
 
-Nothing here has been deleted: Mark does the deleting. Every row is read, so all of it can go now. On the Launch project the two cron jobs are still scheduled and stop with the project; on the Free project the job is unscheduled.
+Mark does the deleting. **Item 1 is done:** the Launch project and the organisation "Mango Works spike" were deleted on 23 Nov 2026 (US time; 24 Nov in Bangkok), and its two cron jobs went with it. The rest is in hand. On the Free project the cron job is unscheduled.
 
 | # | What Mark deletes | Where | When |
 | --- | --- | --- | --- |
-| 1 | **Project `mango-spike-launch`, then the organisation "Mango Works spike"** (the only paid thing; about $0.64 a day) | Neon Console | **By 26 Nov 2026.** Row 7 is read, so now |
+| 1 | **Project `mango-spike-launch`, then the organisation "Mango Works spike"** (the only paid thing; about $0.64 a day) | Neon Console | **Deleted, 23 Nov 2026** (US time; 24 Nov in Bangkok) |
 | 2 | Project `mango-spike-free` (never `faregoblin`) | Neon Console, organisation "Four Junipers (Start ups)" | Now |
 | 3 | The two project-scoped API keys | Neon Console, each organisation's Settings, API keys | With the projects |
 | 4 | Site `mango-neon-spike` (its environment variables go with it) | Netlify, team FourJumipers | Now |
