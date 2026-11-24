@@ -25,6 +25,21 @@ export const supabasePatterns = [
   },
 ];
 
+/**
+ * `.single()` and `.maybeSingle()` are refused outside packages/db (root
+ * CLAUDE.md, the Neon rules): on Neon's Data API they give no error when zero
+ * or several rows match. Use `exactlyOne()` / `atMostOne()` from
+ * `@mango/db/rows`, which count the rows themselves. A `no-restricted-properties`
+ * rule, so it doesn't clash with the apps' own `no-restricted-syntax`.
+ */
+export const singleRowRule = [
+  "error",
+  ...["single", "maybeSingle"].map((property) => ({
+    property,
+    message: `Use ${property === "single" ? "exactlyOne()" : "atMostOne()"} from @mango/db/rows, never .${property}() (root CLAUDE.md, the Neon rules).`,
+  })),
+];
+
 /** packages/core is pure TypeScript: no React, Next.js or Supabase. */
 export const pureCorePatterns = [
   {
