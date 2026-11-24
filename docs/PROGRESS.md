@@ -50,7 +50,10 @@ The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 ro
 
 **Results** (24 Nov 2026, this worktree's stack)
 
-RESULTS_PLACEHOLDER
+- `npm run typecheck`, `npm run lint`: clean in every workspace.
+- `npm test`: marketplace 370, platform 714, `@mango/core` 720, all passing.
+- Platform database suite, run once on its own on a fresh `supabase db reset` (all 71 migrations): **791 of 791 passed, 0 skipped, 27 files; the database's deadlock counter 0 afterwards.** It was 752 in 26 files after stage 1: 30 new in `orders.test.ts`, 5 in `default-grants.test.ts`, 2 in `caller-functions.test.ts`, 1 each in `unit-lock-rules.test.ts` and `tenant-isolation.test.ts`. Another chat's short database rerun, on its own stack, overlapped the first two minutes of this run (about 09:36 to 09:38); nothing failed, so nothing was rerun.
+- **The clearing, on a database with the demo seed plus two downtime blocks and two redemptions added by hand:** before, 5 reservations, 6 allocation and hold blocks, 2 coupon redemptions; after, 0, 0 and 0, with the 2 downtime blocks, 2 coupons and 180 units as they were and 7 new audit events (5 reservations, 2 redemptions). The seed rerun after it made its 3 bookings and a hold again (5 reservations, none with a rental).
 
 **Known issues and follow-ups**
 
