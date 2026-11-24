@@ -1021,3 +1021,170 @@ describe("review follow-ups: the stage 10 table and functions", () => {
     ]);
   });
 });
+
+/**
+ * Phase 3, stage 2a (20261124000100): customers, orders, rentals,
+ * order_charges, order_lines and order_counters; save_customer(),
+ * save_staff_permissions() and staff_may(); the shop's order settings.
+ * Nobody signed in writes any of the six tables.
+ */
+describe("orders, stage 2a: the six tables, their functions and the shop's order settings", () => {
+  const readable = [
+    "customers",
+    "orders",
+    "rentals",
+    "order_charges",
+    "order_lines",
+  ];
+
+  it("members read five of them (the policy decides who) and write none; the order counter is granted to nobody signed in; signed-out visitors get nothing; the service role is granted on purpose, without truncate", () => {
+    const migrations = migrationsText();
+    for (const table of [...readable, "order_counters"]) {
+      const rows = lines(`
+        select r || ' ' || coalesce(string_agg(p, ',' order by p)
+          filter (where has_table_privilege(r, 'platform.${table}', p)), 'none')
+        from unnest(array['anon', 'authenticated', 'service_role']) r,
+             unnest(array['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger']) p
+        group by r order by r;
+      `);
+      expect(rows, table).toEqual([
+        "anon none",
+        table === "order_counters"
+          ? "authenticated none"
+          : "authenticated select",
+        "service_role delete,insert,references,select,trigger,update",
+      ]);
+      expect(migrations, table).toMatch(
+        new RegExp(
+          `grant select, insert, update, delete on platform\\.${table} to service_role`,
+        ),
+      );
+    }
+    for (const table of readable)
+      expect(hasExplicitGrant(migrations, `platform.${table}`), table).toBe(
+        true,
+      );
+    expect(hasExplicitGrant(migrations, "platform.order_counters")).toBe(false);
+  });
+
+  it("row level security is on, with one policy each, through the helpers and not auth.uid(): orders, rentals and customers by booking_roles('orders'), charges and lines by pricing_roles('read'), the counter for nobody", () => {
+    const rows = lines(`
+      select c.relname || ' ' || c.relrowsecurity::text
+      from pg_class c
+      where c.relnamespace = 'platform'::regnamespace
+        and c.relname in ('customers', 'orders', 'rentals', 'order_charges',
+          'order_lines', 'order_counters')
+      order by 1;
+      select polrelid::regclass || ' | ' || polname || ' ' || polcmd::text || ' '
+        || polroles::regrole[]::text
+        || ' ' || case
+          when pg_get_expr(polqual, polrelid) like '%my_tenant_ids(platform_private.booking_roles(''orders''%' then 'orders'
+          when pg_get_expr(polqual, polrelid) like '%my_tenant_ids(platform_private.pricing_roles(''read''%' then 'prices'
+          else pg_get_expr(polqual, polrelid) end
+        || ' ' || (pg_get_expr(polqual, polrelid) like '%auth.%')::text
+      from pg_policy
+      where polrelid in ('platform.customers'::regclass, 'platform.orders'::regclass,
+        'platform.rentals'::regclass, 'platform.order_charges'::regclass,
+        'platform.order_lines'::regclass, 'platform.order_counters'::regclass)
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      "customers true",
+      "order_charges true",
+      "order_counters true",
+      "order_lines true",
+      "orders true",
+      "rentals true",
+      "platform.customers | Owners, managers and staff read customers r {authenticated} orders false",
+      "platform.order_charges | Owners, managers and staff read order charges r {authenticated} prices false",
+      "platform.order_counters | No signed-in user reads order counters r {authenticated} false false",
+      "platform.order_lines | Owners, managers and staff read order lines r {authenticated} prices false",
+      "platform.orders | Owners, managers and staff read orders r {authenticated} orders false",
+      "platform.rentals | Owners, managers and staff read rentals r {authenticated} orders false",
+    ]);
+  });
+
+  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned; the two saves are members' calls, not the server's, and have the 6-second lock timeout; move_unit() is as stage 1 left it", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || has_function_privilege('service_role', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+        || ' | ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname in ('platform', 'platform_private')
+        and p.proname in (
+          'save_customer', 'save_staff_permissions', 'staff_may', 'customers_audit',
+          'tenants_add_order_counter', 'booking_roles', 'move_unit')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
+      // Re-created to copy rental_id on a split; grants and timeout as before.
+      'platform.move_unit false true true false | true search_path="",lock_timeout=6s',
+      // Owners, managers and staff (checked inside). Not the server's.
+      'platform.save_customer false true false false | true search_path="",lock_timeout=6s',
+      // Owners and managers (checked inside). Not the server's.
+      'platform.save_staff_permissions false true false false | true search_path="",lock_timeout=6s',
+      // Re-created with the order actions; grants as before.
+      'platform_private.booking_roles false true true false | false search_path=""',
+      // Trigger functions: nobody calls them.
+      'platform_private.customers_audit false false false false | true search_path=""',
+      // Asked by the order functions as the member. Not the server's.
+      'platform_private.staff_may false true false false | true search_path=""',
+      'platform_private.tenants_add_order_counter false false false false | true search_path=""',
+    ]);
+  });
+
+  it("each table keeps its updated_at and is audited; a customer by its own trigger, which keeps contacts out; the counter by neither", () => {
+    const rows = lines(`
+      select c.relname || ' ' || t.tgname || ' ' || t.tgfoid::regproc::text
+      from pg_trigger t join pg_class c on c.oid = t.tgrelid
+      where c.relnamespace = 'platform'::regnamespace
+        and c.relname in ('customers', 'orders', 'rentals', 'order_charges',
+          'order_lines', 'order_counters')
+        and not t.tgisinternal
+      order by 1;
+      select t.tgname || ' ' || t.tgfoid::regproc::text
+      from pg_trigger t
+      where t.tgrelid = 'platform.tenants'::regclass and t.tgname like '%order%';
+    `);
+    expect(rows).toEqual([
+      "customers customers_audit platform_private.customers_audit",
+      "customers customers_set_updated_at platform_private.set_updated_at",
+      "order_charges order_charges_audit platform_private.audit_row",
+      "order_charges order_charges_set_updated_at platform_private.set_updated_at",
+      "order_lines order_lines_audit platform_private.audit_row",
+      "order_lines order_lines_set_updated_at platform_private.set_updated_at",
+      "orders orders_audit platform_private.audit_row",
+      "orders orders_set_updated_at platform_private.set_updated_at",
+      "rentals rentals_audit platform_private.audit_row",
+      "rentals rentals_set_updated_at platform_private.set_updated_at",
+      "tenants_add_order_counter platform_private.tenants_add_order_counter",
+    ]);
+  });
+
+  it("the six staff permissions and the time step are read as the shop's row is, and written by no signed-in person directly", () => {
+    const rows = lines(`
+      select a.attname || ' '
+        || has_column_privilege('anon', a.attrelid, a.attnum, 'select') || ' '
+        || has_column_privilege('authenticated', a.attrelid, a.attnum, 'select') || ' '
+        || has_column_privilege('authenticated', a.attrelid, a.attnum, 'update')
+      from pg_attribute a
+      where a.attrelid = 'platform.tenants'::regclass
+        and (a.attname like 'staff_can_%' or a.attname = 'time_step_minutes')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // column, anon reads, a signed-in person reads, a signed-in person writes
+      "staff_can_change_price false true false",
+      "staff_can_edit_return_time false true false",
+      "staff_can_refund false true false",
+      "staff_can_revert false true false",
+      "staff_can_waive_late_charge false true false",
+      "staff_can_write_off_credit false true false",
+      "time_step_minutes false true false",
+    ]);
+  });
+});

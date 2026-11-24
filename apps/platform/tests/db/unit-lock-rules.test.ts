@@ -562,6 +562,74 @@ describe("a unit's product changes only through move_unit()", () => {
       });
     }
   });
+
+  it("the first move_unit() answered try_again (another session holds the unit's row): a second one in the same transaction is refused all the same", async () => {
+    for (const [where, tenant] of everyShop()) {
+      const a = await vehicle(tenant, 2);
+      const b = await vehicle(tenant, 0);
+      const [one, two] = a.units;
+      const move = (unit: string) =>
+        moveSql(tenant, unit, b.id, tenant.locationId);
+
+      // Another session holds the unit's row for update, as someone saving
+      // the unit's form does, and stays there until the gate opens.
+      const gate = await closedGate();
+      const marker = `row-held-${tag}-${++counter}`;
+      const holder = sqlBackground(
+        [
+          "begin;",
+          `select 1 from platform.units where id = '${one}' for update;`,
+          gate.wait(marker),
+          "commit;",
+        ].join("\n"),
+      );
+      await holding(marker, holder);
+
+      // By itself: try_again, at once. move_unit() asks for the row without
+      // waiting, and has its advisory locks by then.
+      const alone = await sqlBackground(
+        ["begin;", actingAs(null), move(one!), "commit;"].join("\n"),
+      );
+      expect(alone.failed, where).toBe("");
+      expect(JSON.parse(answers(alone.out).pop()!), where).toEqual({
+        ok: false,
+        reason: "try_again",
+      });
+
+      // Followed by a second call in the same transaction, of the same unit
+      // or of another: refused, because the first one's locks are still held.
+      for (const second of [move(one!), move(two!)]) {
+        const run = await sqlBackground(
+          ["begin;", actingAs(null), move(one!), second, "commit;"].join("\n"),
+        );
+        expect(run.failed, where).toContain("one_move_per_transaction");
+      }
+      // And so is a direct product change after it.
+      const direct = await sqlBackground(
+        [
+          "begin;",
+          actingAs(null),
+          move(one!),
+          `update platform.units set product_id = '${b.id}' where id = '${two}';`,
+          "commit;",
+        ].join("\n"),
+      );
+      expect(direct.failed, where).toContain("use_move_unit");
+
+      await gate.open();
+      expect((await holder).failed, where).toBe("");
+      for (const row of await unitRows([one!, two!]))
+        expect(row.product_id, where).toBe(a.id);
+
+      // With the row free again, the same call moves the unit.
+      const next = await sqlBackground(
+        ["begin;", actingAs(null), move(one!), "commit;"].join("\n"),
+      );
+      expect(next.failed, where).toBe("");
+      expect(JSON.parse(answers(next.out).pop()!).ok, where).toBe(true);
+      expect((await unitRow(one!)).product_id, where).toBe(b.id);
+    }
+  });
 });
 
 describe("a statement that changes or deletes units takes its product rows once, in id order", () => {
