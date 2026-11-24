@@ -4,6 +4,7 @@ import { createClient } from "@mango/db/platform-server";
 import type { RenewalKind } from "./fleet";
 import { catalogName } from "./fleet-import";
 import { exactAuditRows, type AuditRow } from "./history";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 export { catalogName };
 
@@ -222,15 +223,16 @@ export async function getPurchaseDates(tenantId: string) {
 
 export async function getModel(tenantId: string, id: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("products")
-    .select(
-      "id, name, type, catalog_id, make, model, vehicle_type, cc, transmission, description, bookable_online, buffer_before_minutes, buffer_after_minutes, min_age, licence_class, categories, catalog_rejected_at, catalog_reject_reason, catalog_approved_at, retired_at, product_listings(enabled, instant_units, request_units, ready_now, lead_time_hours)",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("id", id)
-    .eq("type", "vehicle")
-    .maybeSingle();
+  const { data, error } = await atMostOne(
+    supabase
+      .from("products")
+      .select(
+        "id, name, type, catalog_id, make, model, vehicle_type, cc, transmission, description, bookable_online, buffer_before_minutes, buffer_after_minutes, min_age, licence_class, categories, catalog_rejected_at, catalog_reject_reason, catalog_approved_at, retired_at, product_listings(enabled, instant_units, request_units, ready_now, lead_time_hours)",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
+      .eq("type", "vehicle"),
+  );
   if (error) throw error;
   if (!data) return null;
   const { product_listings: listing, ...model } = data;
@@ -244,12 +246,13 @@ export async function getModel(tenantId: string, id: string) {
 
 export async function getUnit(tenantId: string, id: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("units")
-    .select(unitColumns)
-    .eq("tenant_id", tenantId)
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await atMostOne(
+    supabase
+      .from("units")
+      .select(unitColumns)
+      .eq("tenant_id", tenantId)
+      .eq("id", id),
+  );
   if (error) throw error;
   return data;
 }
@@ -280,14 +283,15 @@ export function parsePeriod(period: unknown): { from: Date; to: Date | null } {
 /** Purchase and sale details. Null for roles that may not see them (RLS). */
 export async function getUnitFinancials(tenantId: string, unitId: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("unit_financials")
-    .select(
-      "currency, purchase_date, purchase_price, purchased_from, sold_at, sale_price, sold_to",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("unit_id", unitId)
-    .maybeSingle();
+  const { data, error } = await atMostOne(
+    supabase
+      .from("unit_financials")
+      .select(
+        "currency, purchase_date, purchase_price, purchased_from, sold_at, sale_price, sold_to",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("unit_id", unitId),
+  );
   if (error) throw error;
   return data;
 }
@@ -349,11 +353,12 @@ export async function getFleetRenewals(tenantId: string) {
 /** The shop's reminder setting. */
 export async function getReminderSettings(tenantId: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("tenants")
-    .select("renewal_reminder_days, renewal_digest_day")
-    .eq("id", tenantId)
-    .single();
+  const { data, error } = await exactlyOne(
+    supabase
+      .from("tenants")
+      .select("renewal_reminder_days, renewal_digest_day")
+      .eq("id", tenantId),
+  );
   if (error) throw error;
   return data;
 }
@@ -361,12 +366,13 @@ export async function getReminderSettings(tenantId: string) {
 /** One catalog entry by id: an approved preset, or the shop's own submission (RLS). */
 export async function getCatalogEntry(id: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .schema("public")
-    .from("bike_catalog")
-    .select(catalogColumns)
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await atMostOne(
+    supabase
+      .schema("public")
+      .from("bike_catalog")
+      .select(catalogColumns)
+      .eq("id", id),
+  );
   if (error) throw error;
   return data;
 }
@@ -464,12 +470,13 @@ export const getGeneralProducts = cache(async (tenantId: string) => {
 /** One product of any type, with what every type has. */
 export async function getProduct(tenantId: string, id: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, name, type, tracking, description, retired_at")
-    .eq("tenant_id", tenantId)
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await atMostOne(
+    supabase
+      .from("products")
+      .select("id, name, type, tracking, description, retired_at")
+      .eq("tenant_id", tenantId)
+      .eq("id", id),
+  );
   if (error) throw error;
   return data;
 }

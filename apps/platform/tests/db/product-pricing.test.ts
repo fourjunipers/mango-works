@@ -36,6 +36,7 @@ import {
   until,
   watch,
 } from "./helpers";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -74,17 +75,18 @@ async function addProduct(
   type: ProductType = "vehicle",
   tenant: TestTenant = shop,
 ): Promise<string> {
-  const { data, error } = await service
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: `Priced ${tag} ${++counter}`,
-      type,
-      tracking: tracking[type],
-      ...(type === "vehicle" ? { vehicle_type: "motorbike" } : {}),
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        name: `Priced ${tag} ${++counter}`,
+        type,
+        tracking: tracking[type],
+        ...(type === "vehicle" ? { vehicle_type: "motorbike" } : {}),
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
@@ -139,20 +141,19 @@ async function sharedList(
 
 const pricingRow = async (productId: string) =>
   (
-    await service
-      .from("product_pricing")
-      .select("*")
-      .eq("product_id", productId)
-      .maybeSingle()
+    await atMostOne(
+      service.from("product_pricing").select("*").eq("product_id", productId),
+    )
   ).data;
 
 const ownList = async (productId: string) =>
   (
-    await service
-      .from("price_templates")
-      .select("id, kind, hourly, product_id")
-      .eq("product_id", productId)
-      .maybeSingle()
+    await atMostOne(
+      service
+        .from("price_templates")
+        .select("id, kind, hourly, product_id")
+        .eq("product_id", productId),
+    )
   ).data;
 
 const dayValues = async (templateId: string) =>
@@ -843,11 +844,12 @@ describe("price lists", () => {
       name: `Renamed ${tag}`,
       hourly: 8_000,
     }).throwOnError();
-    const { data } = await service
-      .from("price_templates")
-      .select("name, hourly, kind, currency, product_id")
-      .eq("id", id)
-      .single();
+    const { data } = await exactlyOne(
+      service
+        .from("price_templates")
+        .select("name, hourly, kind, currency, product_id")
+        .eq("id", id),
+    );
     expect(data).toEqual({
       name: `Renamed ${tag}`,
       hourly: 8_000,
@@ -943,11 +945,12 @@ describe("tax profiles and the shop's settings", () => {
       default_tax_profile_id: null,
     }).throwOnError();
     await saveProfile("owner", { id, archived: true }).throwOnError();
-    const row = await service
-      .from("tax_profiles")
-      .select("*")
-      .eq("id", id as string)
-      .single();
+    const row = await exactlyOne(
+      service
+        .from("tax_profiles")
+        .select("*")
+        .eq("id", id as string),
+    );
     expect(row.data).toMatchObject({ name: `VAT 7% ${tag}`, rate_bp: 700 });
     expect(row.data!.archived_at).not.toBeNull();
     // An archived profile can't become the default.
@@ -1016,11 +1019,12 @@ describe("tax profiles and the shop's settings", () => {
   it("keeps only the numbers of the deposit choice in force", async () => {
     const read = async () =>
       (
-        await service
-          .from("pricing_settings")
-          .select("deposit_mode, deposit_percent_bp, deposit_amount")
-          .eq("tenant_id", shop.id)
-          .single()
+        await exactlyOne(
+          service
+            .from("pricing_settings")
+            .select("deposit_mode, deposit_percent_bp, deposit_amount")
+            .eq("tenant_id", shop.id),
+        )
       ).data;
     await saveSettings("owner", {
       deposit_mode: "percent_of_order",
@@ -1087,11 +1091,12 @@ describe("tax profiles and the shop's settings", () => {
       coupons_enabled: true,
       tax_inclusive: false,
     }).throwOnError();
-    const row = await service
-      .from("pricing_settings")
-      .select("coupons_enabled, tax_inclusive")
-      .eq("tenant_id", shop.id)
-      .single();
+    const row = await exactlyOne(
+      service
+        .from("pricing_settings")
+        .select("coupons_enabled, tax_inclusive")
+        .eq("tenant_id", shop.id),
+    );
     expect(row.data).toEqual({ coupons_enabled: true, tax_inclusive: false });
     const audit = await service
       .from("audit_events")
@@ -1137,11 +1142,12 @@ describe("seasons", () => {
     });
     expect(error).toBeNull();
     expect(await links(id as string)).toEqual([first, second].sort());
-    const row = await service
-      .from("price_rules")
-      .select("*")
-      .eq("id", id as string)
-      .single();
+    const row = await exactlyOne(
+      service
+        .from("price_rules")
+        .select("*")
+        .eq("id", id as string),
+    );
     expect(row.data).toMatchObject({
       starts_on: "2027-04-01",
       ends_on: "2027-09-30",

@@ -25,6 +25,7 @@ import {
   listingOf,
   setListing,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 let shop: TestTenant;
 let other: TestTenant;
@@ -60,17 +61,18 @@ async function general(
 }
 
 async function vehicle(tenant: TestTenant = shop, extra: object = {}) {
-  const { data, error } = await db("owner", tenant)
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: name("Bike"),
-      vehicle_type: "motorbike",
-      categories: ["city_scooter"],
-      ...extra,
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    db("owner", tenant)
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        name: name("Bike"),
+        vehicle_type: "motorbike",
+        categories: ["city_scooter"],
+        ...extra,
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
@@ -441,16 +443,17 @@ describe("quantity", () => {
 describe("vehicles", () => {
   it("a vehicle's status rules for staff and mechanics are as they were", async () => {
     const bike = await vehicle();
-    const { data: unit } = await db("owner")
-      .from("units")
-      .insert({
-        tenant_id: shop.id,
-        product_id: bike,
-        location_id: shop.locationId,
-        plate: name("PL"),
-      })
-      .select("id")
-      .single();
+    const { data: unit } = await exactlyOne(
+      db("owner")
+        .from("units")
+        .insert({
+          tenant_id: shop.id,
+          product_id: bike,
+          location_id: shop.locationId,
+          plate: name("PL"),
+        })
+        .select("id"),
+    );
     for (const role of ["staff", "mechanic"] as const) {
       const toWorkshop = await db(role)
         .from("units")
@@ -535,16 +538,17 @@ describe("items for sale: the stock ledger", () => {
         .insert({ ...row, kind: "received", quantity: 5 });
       expect(error, role).not.toBeNull();
     }
-    const forged = await db("manager")
-      .from("stock_movements")
-      .insert({
-        ...row,
-        kind: "received",
-        quantity: 5,
-        created_by: shop.members.owner.id,
-      })
-      .select("created_by")
-      .single();
+    const forged = await exactlyOne(
+      db("manager")
+        .from("stock_movements")
+        .insert({
+          ...row,
+          kind: "received",
+          quantity: 5,
+          created_by: shop.members.owner.id,
+        })
+        .select("created_by"),
+    );
     expect(forged.data?.created_by).toBe(shop.members.manager.id);
     expect((await stock(sticker)).in_stock).toBe(15);
   });
@@ -843,16 +847,17 @@ describe("Moto Mangos: change model and disconnect", () => {
   /** A listed product on preset A with one vehicle and a booking on it. */
   async function listed() {
     const id = await vehicle(shop, { catalog_id: presetA });
-    const { data: unit } = await db("owner")
-      .from("units")
-      .insert({
-        tenant_id: shop.id,
-        product_id: id,
-        location_id: shop.locationId,
-        plate: name("PL"),
-      })
-      .select("id")
-      .single();
+    const { data: unit } = await exactlyOne(
+      db("owner")
+        .from("units")
+        .insert({
+          tenant_id: shop.id,
+          product_id: id,
+          location_id: shop.locationId,
+          plate: name("PL"),
+        })
+        .select("id"),
+    );
     const on = await setListing(db("owner"), id, {
       marketplace_listed: true,
       instant_units: 1,
@@ -861,14 +866,15 @@ describe("Moto Mangos: change model and disconnect", () => {
     expect(on.error).toBeNull();
     // A booking made through Moto Mangos holds the vehicle (hand-made here:
     // orders arrive in Phase 3).
-    const { data: block } = await service
-      .from("unit_blocks")
-      .insert({
-        ...(await allocationFor(shop.id, unit!.id, hours(24), hours(72))),
-        note: "Moto Mangos booking",
-      })
-      .select("*")
-      .single();
+    const { data: block } = await exactlyOne(
+      service
+        .from("unit_blocks")
+        .insert({
+          ...(await allocationFor(shop.id, unit!.id, hours(24), hours(72))),
+          note: "Moto Mangos booking",
+        })
+        .select("*"),
+    );
     return { id, unitId: unit!.id, block: block! };
   }
   const product = async (id: string) => ({
@@ -877,16 +883,18 @@ describe("Moto Mangos: change model and disconnect", () => {
   });
   const productRow = async (id: string) =>
     (
-      await service
-        .from("products")
-        .select(
-          "catalog_id, make, model, cc, transmission, catalog_approved_at",
-        )
-        .eq("id", id)
-        .single()
+      await exactlyOne(
+        service
+          .from("products")
+          .select(
+            "catalog_id, make, model, cc, transmission, catalog_approved_at",
+          )
+          .eq("id", id),
+      )
     ).data!;
   const blockNow = async (id: string) =>
-    (await service.from("unit_blocks").select("*").eq("id", id).single()).data;
+    (await exactlyOne(service.from("unit_blocks").select("*").eq("id", id)))
+      .data;
   const events = async (id: string, action: string) =>
     (
       await service
@@ -937,12 +945,13 @@ describe("Moto Mangos: change model and disconnect", () => {
     });
     expect(error).toBeNull();
     expect(data).toEqual({ upcoming_bookings: 1 });
-    const { data: entry } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .select("make, model")
-      .eq("id", presetB)
-      .single();
+    const { data: entry } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .select("make, model")
+        .eq("id", presetB),
+    );
     expect(await product(id)).toMatchObject({
       catalog_id: presetB,
       make: entry!.make,
@@ -970,20 +979,21 @@ describe("Moto Mangos: change model and disconnect", () => {
         p_catalog_id: catalog_id,
       });
     expect((await call(id, presetA)).error?.message).toContain("same_model");
-    const { data: waiting } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .insert({
-        make: "Testmake",
-        model: name("Waiting"),
-        type: "city_scooter",
-        transmission: "automatic",
-        cc: 125,
-        status: "requested",
-        requested_by_tenant_id: shop.id,
-      })
-      .select("id")
-      .single();
+    const { data: waiting } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .insert({
+          make: "Testmake",
+          model: name("Waiting"),
+          type: "city_scooter",
+          transmission: "automatic",
+          cc: 125,
+          status: "requested",
+          requested_by_tenant_id: shop.id,
+        })
+        .select("id"),
+    );
     expect((await call(id, waiting!.id)).error?.message).toContain(
       "catalog_entry_not_usable",
     );
@@ -1024,11 +1034,9 @@ describe("Moto Mangos: change model and disconnect", () => {
     });
     // The booked vehicle is still booked, for the same dates, and still in the fleet.
     expect(await blockNow(block.id)).toEqual(block);
-    const { data: unit } = await service
-      .from("units")
-      .select("status")
-      .eq("id", unitId)
-      .single();
+    const { data: unit } = await exactlyOne(
+      service.from("units").select("status").eq("id", unitId),
+    );
     expect(unit!.status).toBe("active");
     const audit = await events(id, "listing_disconnect");
     expect(audit).toHaveLength(1);

@@ -12,6 +12,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, afterEach } from "vitest";
 import type { Database } from "@mango/db/database.types";
 import type { Role } from "@/lib/roles";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 /** Clients point at the `platform` schema, like the app (`.schema("public")` for the catalog). */
 export type Db = SupabaseClient<Database, "platform">;
@@ -100,23 +101,25 @@ export async function createTenant(
   });
   if (error) throw error;
   const tenant = { id: tenantId };
-  const { data: location, error: locationError } = await service
-    .from("locations")
-    .select("id")
-    .eq("tenant_id", tenant.id)
-    .eq("is_default", true)
-    .single();
+  const { data: location, error: locationError } = await exactlyOne(
+    service
+      .from("locations")
+      .select("id")
+      .eq("tenant_id", tenant.id)
+      .eq("is_default", true),
+  );
   if (locationError) throw locationError;
 
   const roles: Role[] = ["owner", "manager", "staff", "mechanic", "driver"];
   const members = {} as TestTenant["members"];
   for (const role of roles) {
     const user = await createUser(`${label}-${role}`);
-    const { data: membership, error: memberError } = await service
-      .from("memberships")
-      .insert({ tenant_id: tenant.id, user_id: user.id, role })
-      .select("id")
-      .single();
+    const { data: membership, error: memberError } = await exactlyOne(
+      service
+        .from("memberships")
+        .insert({ tenant_id: tenant.id, user_id: user.id, role })
+        .select("id"),
+    );
     if (memberError) throw memberError;
     members[role] = { ...user, membershipId: membership.id };
   }
@@ -177,19 +180,20 @@ export async function deleteUser(user: TestUser | undefined) {
 
 /** An approved catalog entry to hang test models on; removed with removeCatalogEntry. */
 export async function createCatalogEntry(label: string): Promise<string> {
-  const { data, error } = await serviceClient()
-    .schema("public")
-    .from("bike_catalog")
-    .insert({
-      make: "Testmake",
-      model: `${label} ${randomUUID().slice(0, 8)}`,
-      type: "city_scooter",
-      transmission: "automatic",
-      cc: 125,
-      status: "approved",
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    serviceClient()
+      .schema("public")
+      .from("bike_catalog")
+      .insert({
+        make: "Testmake",
+        model: `${label} ${randomUUID().slice(0, 8)}`,
+        type: "city_scooter",
+        transmission: "automatic",
+        cc: 125,
+        status: "approved",
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
@@ -223,30 +227,32 @@ export async function allocationFor(
   to: Date,
 ) {
   const service = serviceClient();
-  const unit = await service
-    .from("units")
-    .select("product_id, product_type, location_id")
-    .eq("id", unitId)
-    .single();
+  const unit = await exactlyOne(
+    service
+      .from("units")
+      .select("product_id, product_type, location_id")
+      .eq("id", unitId),
+  );
   if (unit.error) throw unit.error;
-  const reservation = await service
-    .from("reservations")
-    .insert({
-      tenant_id: tenantId,
-      booking_id: randomUUID(),
-      product_id: unit.data.product_id,
-      product_type: unit.data.product_type,
-      location_id: unit.data.location_id,
-      starts_at: from.toISOString(),
-      ends_at: to.toISOString(),
-      block_period: period(from, to),
-      quantity: 1,
-      channel: "walk_in",
-      mode: "staff",
-      state: "reserved",
-    })
-    .select("id")
-    .single();
+  const reservation = await exactlyOne(
+    service
+      .from("reservations")
+      .insert({
+        tenant_id: tenantId,
+        booking_id: randomUUID(),
+        product_id: unit.data.product_id,
+        product_type: unit.data.product_type,
+        location_id: unit.data.location_id,
+        starts_at: from.toISOString(),
+        ends_at: to.toISOString(),
+        block_period: period(from, to),
+        quantity: 1,
+        channel: "walk_in",
+        mode: "staff",
+        state: "reserved",
+      })
+      .select("id"),
+  );
   if (reservation.error) throw reservation.error;
   return {
     tenant_id: tenantId,
@@ -702,11 +708,12 @@ export type ListingValues = {
  * service role. A product that was never listed has no row: off and zero.
  */
 export async function listingOf(productId: string): Promise<ListingValues> {
-  const { data, error } = await serviceClient()
-    .from("product_listings")
-    .select("enabled, instant_units, request_units, ready_now")
-    .eq("product_id", productId)
-    .maybeSingle();
+  const { data, error } = await atMostOne(
+    serviceClient()
+      .from("product_listings")
+      .select("enabled, instant_units, request_units, ready_now")
+      .eq("product_id", productId),
+  );
   if (error) throw error;
   return {
     marketplace_listed: data?.enabled ?? false,

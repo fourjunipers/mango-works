@@ -32,12 +32,12 @@ vi.mock("@mango/db/server", () => ({
     auth: { getClaims: async () => ({ data: { claims: state.claims } }) },
     from: () => ({
       select: () => ({
-        eq: () => ({
-          single: async () => ({
-            data: state.claims
-              ? { id: state.claims.sub, role: state.role }
-              : null,
-          }),
+        // Rows, as the query answers before exactlyOne() counts them.
+        eq: async () => ({
+          data: state.claims
+            ? [{ id: state.claims.sub, role: state.role }]
+            : [],
+          error: null,
         }),
       }),
     }),

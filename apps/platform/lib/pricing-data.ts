@@ -5,6 +5,7 @@ import type { ListKind, ProductType, SavedList } from "./pricing-form";
 import type { PricingInputs } from "./pricing-inputs";
 import type { SharedList, TaxProfile } from "./pricing-preview";
 import type { DaySource } from "@mango/core/price-list";
+import { atMostOne } from "@mango/db/rows";
 
 /**
  * Reads for the Pricing tab, the price lists screen and the Products list's
@@ -96,15 +97,16 @@ export async function getSharedLists(tenantId: string): Promise<ListSummary[]> {
 /** One shared list with how each day got its value, for its editor. */
 export async function getSharedList(tenantId: string, id: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("price_templates")
-    .select(
-      "id, name, kind, hourly::text, price_template_days(day, value::text, source)",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("id", id)
-    .is("product_id", null)
-    .maybeSingle();
+  const { data, error } = await atMostOne(
+    supabase
+      .from("price_templates")
+      .select(
+        "id, name, kind, hourly::text, price_template_days(day, value::text, source)",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
+      .is("product_id", null),
+  );
   if (error) throw error;
   if (!data) return null;
   return {
@@ -150,18 +152,22 @@ export async function getProductPricingExtras(
 }> {
   const supabase = await createClient();
   const [pricing, own] = await Promise.all([
-    supabase
-      .from("product_pricing")
-      .select("product_type, taxable, tax_profile_id")
-      .eq("tenant_id", tenantId)
-      .eq("product_id", productId)
-      .maybeSingle(),
-    supabase
-      .from("price_templates")
-      .select("id, hourly::text, price_template_days(day, value::text, source)")
-      .eq("tenant_id", tenantId)
-      .eq("product_id", productId)
-      .maybeSingle(),
+    atMostOne(
+      supabase
+        .from("product_pricing")
+        .select("product_type, taxable, tax_profile_id")
+        .eq("tenant_id", tenantId)
+        .eq("product_id", productId),
+    ),
+    atMostOne(
+      supabase
+        .from("price_templates")
+        .select(
+          "id, hourly::text, price_template_days(day, value::text, source)",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("product_id", productId),
+    ),
   ]);
   if (pricing.error) throw pricing.error;
   if (own.error) throw own.error;

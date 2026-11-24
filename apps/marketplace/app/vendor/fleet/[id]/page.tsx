@@ -13,6 +13,7 @@ import type { Anchors, ManualDays } from "@mango/core/pricing";
 import { createClient } from "@mango/db/server";
 import { getVendorLocale } from "@/i18n/vendor";
 import { DeleteModelForm, ModelForm } from "./model-form";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 export default async function ModelPage({
   params,
@@ -36,40 +37,44 @@ export default async function ModelPage({
     { data: extras },
     { data: shopRules },
   ] = await Promise.all([
-    supabase
-      .from("bike_models")
-      .select(
-        "id, shop_id, qty, instant_qty, request_qty, photos, deposit_amount, buffer_before_h, buffer_after_h, min_days_walkin, min_days_booking, notice_h, visible, catalog:bike_catalog (make, model, year_from, year_to, cc, type, transmission, status, abs, underseat_storage, usb_charger, key_type)",
-      )
-      .eq("id", id)
-      .eq("shop_id", shop.id)
-      .maybeSingle(),
+    atMostOne(
+      supabase
+        .from("bike_models")
+        .select(
+          "id, shop_id, qty, instant_qty, request_qty, photos, deposit_amount, buffer_before_h, buffer_after_h, min_days_walkin, min_days_booking, notice_h, visible, catalog:bike_catalog (make, model, year_from, year_to, cc, type, transmission, status, abs, underseat_storage, usb_charger, key_type)",
+        )
+        .eq("id", id)
+        .eq("shop_id", shop.id),
+    ),
     supabase
       .from("price_days")
       .select("day, total, is_anchor, is_manual")
       .eq("bike_model_id", id),
-    supabase
-      .from("bike_model_policies")
-      .select(INCLUSION_FIELDS.join(", "))
-      .eq("bike_model_id", id)
-      .maybeSingle<InclusionOverrides>(),
-    supabase
-      .from("shop_policies")
-      .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
-      .eq("shop_id", shop.id)
-      .single<Inclusions & { deposit_amount: number | null }>(),
+    atMostOne<InclusionOverrides>(
+      supabase
+        .from("bike_model_policies")
+        .select(INCLUSION_FIELDS.join(", "))
+        .eq("bike_model_id", id),
+    ),
+    exactlyOne<Inclusions & { deposit_amount: number | null }>(
+      supabase
+        .from("shop_policies")
+        .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
+        .eq("shop_id", shop.id),
+    ),
     supabase
       .from("shop_extras")
       .select("id, name, active, all_models, shop_extra_models (bike_model_id)")
       .eq("shop_id", shop.id)
       .order("sort"),
-    supabase
-      .from("shops")
-      .select(
-        "buffer_before_h, buffer_after_h, min_days_walkin, min_days_booking, notice_h",
-      )
-      .eq("id", shop.id)
-      .single(),
+    exactlyOne(
+      supabase
+        .from("shops")
+        .select(
+          "buffer_before_h, buffer_after_h, min_days_walkin, min_days_booking, notice_h",
+        )
+        .eq("id", shop.id),
+    ),
   ]);
   if (!model || !model.catalog || !shopDefaults || !shopRules) notFound();
 

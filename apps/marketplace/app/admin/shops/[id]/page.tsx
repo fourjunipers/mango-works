@@ -22,6 +22,7 @@ import { photoUrl, PHOTO_BUCKETS, SHOP_PLACEHOLDER } from "@/lib/photos";
 import { createAdminClient } from "@mango/db/admin";
 import { supabaseUrl } from "@mango/db/env";
 import { formatBangkok } from "@mango/core/time";
+import { atMostOne } from "@mango/db/rows";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -41,18 +42,19 @@ export default async function AdminShopPage({
     { data: extras },
     { data: readiness },
   ] = await Promise.all([
-    db.from("shops").select("*").eq("id", id).maybeSingle(),
-    db.from("shop_contacts").select("*").eq("shop_id", id).maybeSingle(),
+    atMostOne(db.from("shops").select("*").eq("id", id)),
+    atMostOne(db.from("shop_contacts").select("*").eq("shop_id", id)),
     db
       .from("shop_hours")
       .select("weekday, open, close")
       .eq("shop_id", id)
       .order("weekday"),
-    db
-      .from("shop_policies")
-      .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
-      .eq("shop_id", id)
-      .maybeSingle<Inclusions & { deposit_amount: number | null }>(),
+    atMostOne<Inclusions & { deposit_amount: number | null }>(
+      db
+        .from("shop_policies")
+        .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
+        .eq("shop_id", id),
+    ),
     db
       .from("bike_models")
       .select(

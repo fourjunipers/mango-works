@@ -28,6 +28,7 @@ import {
   type TestTenant,
   type TestUser,
 } from "./helpers";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -41,37 +42,39 @@ const tag = Math.random().toString(36).slice(2, 8);
 
 let counter = 0;
 async function addModel(extra: object = {}): Promise<string> {
-  const { data, error } = await service
-    .from("products")
-    .insert({
-      tenant_id: shop.id,
-      catalog_id: null,
-      name: `Recheck ${tag} ${++counter}`,
-      make: "Recheckmake",
-      model: `RC ${tag} ${counter}`,
-      vehicle_type: "motorbike",
-      cc: 125,
-      transmission: "automatic" as const,
-      ...extra,
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: shop.id,
+        catalog_id: null,
+        name: `Recheck ${tag} ${++counter}`,
+        make: "Recheckmake",
+        model: `RC ${tag} ${counter}`,
+        vehicle_type: "motorbike",
+        cc: 125,
+        transmission: "automatic" as const,
+        ...extra,
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
 
 async function addUnit(modelId: string): Promise<string> {
-  const { data, error } = await service
-    .from("units")
-    .insert({
-      tenant_id: shop.id,
-      product_id: modelId,
-      location_id: shop.locationId,
-      plate: `RC-${tag}-${++counter}`,
-      status: "active",
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("units")
+      .insert({
+        tenant_id: shop.id,
+        product_id: modelId,
+        location_id: shop.locationId,
+        plate: `RC-${tag}-${++counter}`,
+        status: "active",
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
@@ -100,11 +103,12 @@ const reject = (catalogId: string, notes?: string) =>
 
 const outcome = async (modelId: string, db = service) =>
   (
-    await db
-      .from("products")
-      .select("catalog_id, catalog_rejected_at, catalog_reject_reason")
-      .eq("id", modelId)
-      .maybeSingle()
+    await atMostOne(
+      db
+        .from("products")
+        .select("catalog_id, catalog_rejected_at, catalog_reject_reason")
+        .eq("id", modelId),
+    )
   ).data;
 
 /**
@@ -397,22 +401,23 @@ describe("4. a rejected request tells the shop why", () => {
     expect((await outcome(model))!.catalog_rejected_at).not.toBeNull();
 
     // Nor set one on a new model.
-    const { data: created, error } = await manager
-      .from("products")
-      .insert({
-        tenant_id: shop.id,
-        catalog_id: null,
-        name: `Forged ${tag}`,
-        make: "Forgedmake",
-        model: `F ${tag}`,
-        vehicle_type: "motorbike",
-        cc: 125,
-        transmission: "automatic",
-        catalog_reject_reason: "Forged",
-        catalog_rejected_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
+    const { data: created, error } = await exactlyOne(
+      manager
+        .from("products")
+        .insert({
+          tenant_id: shop.id,
+          catalog_id: null,
+          name: `Forged ${tag}`,
+          make: "Forgedmake",
+          model: `F ${tag}`,
+          vehicle_type: "motorbike",
+          cc: 125,
+          transmission: "automatic",
+          catalog_reject_reason: "Forged",
+          catalog_rejected_at: new Date().toISOString(),
+        })
+        .select("id"),
+    );
     expect(error).toBeNull();
     expect(await outcome(created!.id)).toMatchObject({
       catalog_rejected_at: null,

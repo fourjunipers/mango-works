@@ -27,6 +27,7 @@ import {
   readSettings,
   withShopSettings,
 } from "./shop-settings";
+import { exactlyOne } from "@mango/db/rows";
 
 const stamp = () =>
   `${Date.now().toString(36)}${Math.floor(Math.random() * 1e3)}`;
@@ -362,11 +363,12 @@ test("the rounding step changed in Settings: a saved list reads as stored, and a
       await ownPrices(page, address);
       /** The list's 30 days as the database holds them (read as the owner). */
       const storedDays = async () => {
-        const { data, error } = await db
-          .from("price_templates")
-          .select("price_template_days(day, value::text, source)")
-          .eq("product_id", productId)
-          .single();
+        const { data, error } = await exactlyOne(
+          db
+            .from("price_templates")
+            .select("price_template_days(day, value::text, source)")
+            .eq("product_id", productId),
+        );
         if (error) throw error;
         return [
           ...(data.price_template_days as {
@@ -549,11 +551,12 @@ test("a shared price list reads as stored in its editor after the rounding step 
     try {
       /** The list's 30 days as the database holds them (read as the owner). */
       const storedDays = async () => {
-        const { data, error } = await db
-          .from("price_templates")
-          .select("name, price_template_days(day, value::text, source)")
-          .eq("id", listId)
-          .single();
+        const { data, error } = await exactlyOne(
+          db
+            .from("price_templates")
+            .select("name, price_template_days(day, value::text, source)")
+            .eq("id", listId),
+        );
         if (error) throw error;
         return {
           name: data.name as string,
@@ -637,11 +640,9 @@ test("the first save warns that it fixes the shop's currency, on Settings, a pro
     test.skip(true, reason);
   }
   // The shop's own currency, whatever it is (big-fleet is not in baht).
-  const { data: shop, error: shopError } = await db
-    .from("tenants")
-    .select("currency")
-    .eq("id", tenantId)
-    .single();
+  const { data: shop, error: shopError } = await exactlyOne(
+    db.from("tenants").select("currency").eq("id", tenantId),
+  );
   if (shopError) throw shopError;
   const currency = shop.currency as string;
   const note = page.getByRole("note").filter({
@@ -669,12 +670,9 @@ test("the first save warns that it fixes the shop's currency, on Settings, a pro
   await expect(note).toBeVisible();
 
   // A product's first price.
-  const { data: product, error } = await db
-    .from("products")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .limit(1)
-    .single();
+  const { data: product, error } = await exactlyOne(
+    db.from("products").select("id").eq("tenant_id", tenantId).limit(1),
+  );
   if (error) throw error;
   await page.goto(`/big-fleet/products/${product.id}?tab=pricing`);
   await expect(note).toBeVisible();

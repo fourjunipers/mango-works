@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { catalogRequestQueue } from "@/lib/admin-queue";
 import { deleteTenant, seed, serviceClient } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 const service = serviceClient();
 const tag = Math.random().toString(36).slice(2, 8);
@@ -79,11 +80,9 @@ describe("marketplace admin: catalog requests", () => {
     const { data } = await catalogRequestQueue(service);
     expect(data!.map((r) => r.id)).not.toContain(fromPlatformShop);
     // It is still a waiting request; it just isn't this queue's.
-    const { data: row } = await service
-      .from("bike_catalog")
-      .select("status")
-      .eq("id", fromPlatformShop)
-      .single();
+    const { data: row } = await exactlyOne(
+      service.from("bike_catalog").select("status").eq("id", fromPlatformShop),
+    );
     expect(row!.status).toBe("requested");
   });
 

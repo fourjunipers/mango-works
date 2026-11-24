@@ -4,6 +4,7 @@ import { requireShopOwner } from "@/lib/auth/session";
 import { createClient } from "@mango/db/server";
 import { getVendorLocale } from "@/i18n/vendor";
 import { StoreInformationForm } from "./forms";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 export default async function SettingsPage() {
   const shop = await requireShopOwner();
@@ -19,11 +20,14 @@ export default async function SettingsPage() {
     { data: closures },
     { data: contacts },
   ] = await Promise.all([
-    supabase
-      .from("shops")
-      .select("name, about, photos, maps_url, nearest_station, google_place_id")
-      .eq("id", shop.id)
-      .single(),
+    exactlyOne(
+      supabase
+        .from("shops")
+        .select(
+          "name, about, photos, maps_url, nearest_station, google_place_id",
+        )
+        .eq("id", shop.id),
+    ),
     supabase.rpc("shop_coordinates", { p_shop_id: shop.id }),
     supabase
       .from("shop_hours")
@@ -34,11 +38,12 @@ export default async function SettingsPage() {
       .select("id, start_date, end_date, note, repeats_yearly")
       .eq("shop_id", shop.id)
       .order("start_date"),
-    supabase
-      .from("shop_contacts")
-      .select("whatsapp, phone, line_id, email")
-      .eq("shop_id", shop.id)
-      .maybeSingle(),
+    atMostOne(
+      supabase
+        .from("shop_contacts")
+        .select("whatsapp, phone, line_id, email")
+        .eq("shop_id", shop.id),
+    ),
   ]);
   if (!s) return null;
   const pin = coords?.[0] ?? null;

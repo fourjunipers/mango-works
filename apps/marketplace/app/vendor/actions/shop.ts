@@ -27,6 +27,7 @@ import {
   shopProfileSchema,
   toShopPolicies,
 } from "@/lib/validation/vendor";
+import { exactlyOne } from "@mango/db/rows";
 
 // Every action re-checks the caller: Server Actions are reachable by direct
 // POST, not only from our pages. RLS is the second line of defence.
@@ -91,11 +92,9 @@ export async function saveProfile(
     return invalid({ photos: "invalid" });
 
   const supabase = await createClient();
-  const { data: current } = await supabase
-    .from("shops")
-    .select("photos")
-    .eq("id", shop.id)
-    .single();
+  const { data: current } = await exactlyOne(
+    supabase.from("shops").select("photos").eq("id", shop.id),
+  );
   const location =
     v.lat !== undefined && v.lng !== undefined
       ? `SRID=4326;POINT(${v.lng} ${v.lat})`

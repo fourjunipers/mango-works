@@ -33,6 +33,7 @@ import {
   type TestUser,
   watch,
 } from "./helpers";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -53,40 +54,42 @@ async function addProduct(
   catalogId: string | null = presetA,
   tenant: TestTenant = shop,
 ): Promise<string> {
-  const { data, error } = await service
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: `Listing ${tag} ${++counter}`,
-      vehicle_type: "motorbike",
-      catalog_id: catalogId,
-      ...(catalogId
-        ? {}
-        : {
-            make: "Listmake",
-            model: `LM ${tag} ${counter}`,
-            cc: 125,
-            transmission: "automatic" as const,
-          }),
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        name: `Listing ${tag} ${++counter}`,
+        vehicle_type: "motorbike",
+        catalog_id: catalogId,
+        ...(catalogId
+          ? {}
+          : {
+              make: "Listmake",
+              model: `LM ${tag} ${counter}`,
+              cc: 125,
+              transmission: "automatic" as const,
+            }),
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
 
 async function addUnit(productId: string, status = "active"): Promise<string> {
-  const { data, error } = await service
-    .from("units")
-    .insert({
-      tenant_id: shop.id,
-      product_id: productId,
-      location_id: shop.locationId,
-      plate: `LS-${tag}-${++counter}`,
-      status,
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("units")
+      .insert({
+        tenant_id: shop.id,
+        product_id: productId,
+        location_id: shop.locationId,
+        plate: `LS-${tag}-${++counter}`,
+        status,
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
@@ -101,11 +104,9 @@ async function addListable(units = 2) {
 
 const row = async (productId: string) =>
   (
-    await service
-      .from("product_listings")
-      .select("*")
-      .eq("product_id", productId)
-      .maybeSingle()
+    await atMostOne(
+      service.from("product_listings").select("*").eq("product_id", productId),
+    )
   ).data;
 
 const events = async (productId: string, actions: string[]) =>
@@ -257,16 +258,17 @@ describe("the columns are gone from products; the vehicle-fields rule is still t
   });
 
   it("only a vehicle can have a listing, even for the service role", async () => {
-    const { data: helmet } = await service
-      .from("products")
-      .insert({
-        tenant_id: shop.id,
-        type: "gear",
-        tracking: "bulk",
-        name: `Listed helmet ${tag}`,
-      })
-      .select("id")
-      .single();
+    const { data: helmet } = await exactlyOne(
+      service
+        .from("products")
+        .insert({
+          tenant_id: shop.id,
+          type: "gear",
+          tracking: "bulk",
+          name: `Listed helmet ${tag}`,
+        })
+        .select("id"),
+    );
     const plain = await forceListing(shop.id, helmet!.id, {});
     expect(plain.error?.code).toBe("23503");
     const forged = await service.from("product_listings").insert({
@@ -912,11 +914,12 @@ describe("a review and a retired product", () => {
     expect((await retire(id)).error).toBeNull();
     expect((await review(entry, true)).error).toBeNull();
     expect((await listingOf(id)).marketplace_listed).toBe(false);
-    const { data } = await service
-      .from("products")
-      .select("catalog_id, catalog_approved_at, retired_at")
-      .eq("id", id)
-      .single();
+    const { data } = await exactlyOne(
+      service
+        .from("products")
+        .select("catalog_id, catalog_approved_at, retired_at")
+        .eq("id", id),
+    );
     expect(data!.catalog_id).toBe(entry);
     expect(data!.catalog_approved_at).not.toBeNull();
     expect(data!.retired_at).not.toBeNull();
@@ -1087,11 +1090,12 @@ describe("races", () => {
       expect((await listingOf(id)).marketplace_listed, `round ${round}`).toBe(
         false,
       );
-      const { data } = await service
-        .from("products")
-        .select("retired_at, catalog_approved_at")
-        .eq("id", id)
-        .single();
+      const { data } = await exactlyOne(
+        service
+          .from("products")
+          .select("retired_at, catalog_approved_at")
+          .eq("id", id),
+      );
       expect(data!.retired_at, `round ${round}`).not.toBeNull();
       expect(data!.catalog_approved_at, `round ${round}`).not.toBeNull();
     }
@@ -1110,11 +1114,9 @@ describe("races", () => {
       // Switched on first (then disconnected), or second (not listable).
       if (results[0].error)
         expect(results[0].error.message, `round ${round}`).toBe("not_listable");
-      const { data } = await service
-        .from("products")
-        .select("catalog_id")
-        .eq("id", id)
-        .single();
+      const { data } = await exactlyOne(
+        service.from("products").select("catalog_id").eq("id", id),
+      );
       expect(data!.catalog_id, `round ${round}`).toBeNull();
       expect(await listingOf(id), `round ${round}`).toEqual({
         marketplace_listed: false,

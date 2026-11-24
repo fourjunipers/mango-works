@@ -7,6 +7,7 @@ import {
   signedInClient,
   type Db,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Owner decisions 2026-11-05: quantity split, repair entries, one listing per
 // catalog model, minimum days and notice.
@@ -34,11 +35,12 @@ afterEach(async () => {
 
 describe("quantity split", () => {
   it("seeds BSR's models as Request", async () => {
-    const { data } = await anon
-      .from("bike_models")
-      .select("qty, instant_qty, request_qty")
-      .eq("id", seed.bsrPcx)
-      .single();
+    const { data } = await exactlyOne(
+      anon
+        .from("bike_models")
+        .select("qty, instant_qty, request_qty")
+        .eq("id", seed.bsrPcx),
+    );
     expect(data).toEqual({ qty: 1, instant_qty: 0, request_qty: 1 });
   });
 
@@ -51,11 +53,9 @@ describe("quantity split", () => {
   });
 
   it("lets a shop list each catalog model once", async () => {
-    const { data: pcx } = await service
-      .from("bike_models")
-      .select("catalog_id")
-      .eq("id", seed.bsrPcx)
-      .single();
+    const { data: pcx } = await exactlyOne(
+      service.from("bike_models").select("catalog_id").eq("id", seed.bsrPcx),
+    );
     const { error } = await bsrOwner.from("bike_models").insert({
       shop_id: seed.bsrShop,
       catalog_id: pcx!.catalog_id,
@@ -125,11 +125,12 @@ describe("repair entries", () => {
 
 describe("minimum days and notice", () => {
   it("have shop defaults that owners can change", async () => {
-    const { data: before } = await service
-      .from("shops")
-      .select("min_days_walkin, min_days_booking, notice_h")
-      .eq("id", seed.bsrShop)
-      .single();
+    const { data: before } = await exactlyOne(
+      service
+        .from("shops")
+        .select("min_days_walkin, min_days_booking, notice_h")
+        .eq("id", seed.bsrShop),
+    );
     expect(before).toEqual({
       min_days_walkin: 1,
       min_days_booking: 1,

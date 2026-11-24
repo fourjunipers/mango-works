@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getUser } from "@/lib/session";
 import { createClient } from "@mango/db/platform-server";
+import { atMostOne } from "@mango/db/rows";
 
 /**
  * Where a bike's QR sticker points. Signed-out people sign in first and come
@@ -16,11 +17,12 @@ export default async function StickerPage({ params }: PageProps<"/q/[token]">) {
   if (!user) redirect(`/login?next=${encodeURIComponent(`/q/${token}`)}`);
 
   const supabase = await createClient();
-  const { data: unit } = await supabase
-    .from("units")
-    .select("id, tenant:tenants!inner(slug)")
-    .eq("qr_token", token)
-    .maybeSingle();
+  const { data: unit } = await atMostOne(
+    supabase
+      .from("units")
+      .select("id, tenant:tenants!inner(slug)")
+      .eq("qr_token", token),
+  );
   if (!unit) notFound();
   redirect(`/${unit.tenant.slug}/fleet/units/${unit.id}`);
 }

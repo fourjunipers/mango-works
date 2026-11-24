@@ -18,6 +18,7 @@ import {
   type Db,
   type TestTenant,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 let shop: TestTenant;
 let other: TestTenant;
@@ -581,16 +582,17 @@ describe("each unit's own record", () => {
         ?.message,
     ).toContain("units_problem_notes_check");
 
-    const { data: bike } = await db("owner")
-      .from("products")
-      .insert({
-        tenant_id: shop.id,
-        name: name("Bike"),
-        vehicle_type: "motorbike",
-        categories: ["city_scooter"],
-      })
-      .select("id")
-      .single();
+    const { data: bike } = await exactlyOne(
+      db("owner")
+        .from("products")
+        .insert({
+          tenant_id: shop.id,
+          name: name("Bike"),
+          vehicle_type: "motorbike",
+          categories: ["city_scooter"],
+        })
+        .select("id"),
+    );
     const onVehicle = await db("owner")
       .from("units")
       .insert({

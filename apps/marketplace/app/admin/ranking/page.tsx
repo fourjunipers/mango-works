@@ -2,6 +2,7 @@ import { saveRankingWeights } from "@/app/admin/actions";
 import { ActionForm, TextField } from "@/components/form-kit";
 import { requireAdmin } from "@/lib/auth/session";
 import { createAdminClient } from "@mango/db/admin";
+import { exactlyOne } from "@mango/db/rows";
 
 const FACTORS = [
   ["boost", "Admin boost", "Featured 1.0 · Preferred 0.6 · Normal 0.3"],
@@ -14,10 +15,11 @@ const FACTORS = [
 /** SPEC "Ranking score": weights for the Recommended sort. */
 export default async function AdminRankingPage() {
   await requireAdmin();
-  const { data: w } = await createAdminClient()
-    .from("ranking_settings")
-    .select("boost, rating, response, cancellation, distance")
-    .single();
+  const { data: w } = await exactlyOne(
+    createAdminClient()
+      .from("ranking_settings")
+      .select("boost, rating, response, cancellation, distance"),
+  );
   if (!w) return null;
   const total = FACTORS.reduce((sum, [k]) => sum + Number(w[k]), 0);
 

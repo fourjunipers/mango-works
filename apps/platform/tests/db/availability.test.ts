@@ -41,6 +41,7 @@ import {
   type TestUser,
   until,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -241,17 +242,18 @@ async function vehicle(
   options: { tenant?: TestTenant; before?: number; after?: number } = {},
 ) {
   const tenant = options.tenant ?? shop;
-  const product = await service
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: name("Scooter"),
-      vehicle_type: "motorbike",
-      buffer_before_minutes: options.before ?? null,
-      buffer_after_minutes: options.after ?? null,
-    })
-    .select("id")
-    .single();
+  const product = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        name: name("Scooter"),
+        vehicle_type: "motorbike",
+        buffer_before_minutes: options.before ?? null,
+        buffer_after_minutes: options.after ?? null,
+      })
+      .select("id"),
+  );
   if (product.error) throw product.error;
   const units = count ? await addUnits(product.data.id, count, tenant) : [];
   return { id: product.data.id, units };
@@ -520,11 +522,12 @@ afterAll(async () => {
 
 describe("the shop's two settings", () => {
   it("overbooking is off and a hold lasts 15 minutes unless the shop says otherwise; 5 to 60", async () => {
-    const { data } = await service
-      .from("tenants")
-      .select("allow_overbooking, hold_minutes")
-      .eq("id", saigon.id)
-      .single();
+    const { data } = await exactlyOne(
+      service
+        .from("tenants")
+        .select("allow_overbooking, hold_minutes")
+        .eq("id", saigon.id),
+    );
     expect(data).toEqual({ allow_overbooking: false, hold_minutes: 15 });
     for (const minutes of [4, 61]) {
       const { error } = await service
@@ -541,11 +544,12 @@ describe("the shop's two settings", () => {
 
   it("every member reads them; no signed-in person can change them yet, the owner included", async () => {
     for (const role of roles) {
-      const read = await db(role)
-        .from("tenants")
-        .select("allow_overbooking, hold_minutes")
-        .eq("id", shop.id)
-        .single();
+      const read = await exactlyOne(
+        db(role)
+          .from("tenants")
+          .select("allow_overbooking, hold_minutes")
+          .eq("id", shop.id),
+      );
       expect(read.data, role).toEqual({
         allow_overbooking: false,
         hold_minutes: 15,
@@ -561,11 +565,12 @@ describe("the shop's two settings", () => {
         expect(error?.code, `${role} ${JSON.stringify(change)}`).toBe("42501");
       }
     }
-    const { data } = await service
-      .from("tenants")
-      .select("allow_overbooking, hold_minutes")
-      .eq("id", shop.id)
-      .single();
+    const { data } = await exactlyOne(
+      service
+        .from("tenants")
+        .select("allow_overbooking, hold_minutes")
+        .eq("id", shop.id),
+    );
     expect(data).toEqual({ allow_overbooking: false, hold_minutes: 15 });
   });
 });
@@ -1803,15 +1808,16 @@ describe("availability(): the read", () => {
     const wash = await general("service");
     const oil = await general("sale_item", 7);
     const bike = await vehicle(2);
-    const second = await service
-      .from("locations")
-      .insert({
-        tenant_id: shop.id,
-        name: name("Branch"),
-        timezone: "Asia/Bangkok",
-      })
-      .select("id")
-      .single();
+    const second = await exactlyOne(
+      service
+        .from("locations")
+        .insert({
+          tenant_id: shop.id,
+          name: name("Branch"),
+          timezone: "Asia/Bangkok",
+        })
+        .select("id"),
+    );
     expect(second.error).toBeNull();
     await addUnits(bike.id, 3, shop, second.data!.id);
     booked(
@@ -2282,16 +2288,17 @@ describe("audit: a booking's blocks are in the booking's own events", () => {
     ]);
 
     // Downtime: written, changed, removed, each with its row.
-    const down = await db("mechanic")
-      .from("unit_blocks")
-      .insert({
-        tenant_id: shop.id,
-        unit_id: a,
-        kind: "downtime",
-        period: period(at(5), at(6)),
-      })
-      .select("id")
-      .single();
+    const down = await exactlyOne(
+      db("mechanic")
+        .from("unit_blocks")
+        .insert({
+          tenant_id: shop.id,
+          unit_id: a,
+          kind: "downtime",
+          period: period(at(5), at(6)),
+        })
+        .select("id"),
+    );
     expect(down.error).toBeNull();
     await db("mechanic")
       .from("unit_blocks")
@@ -2958,15 +2965,16 @@ const actingAs = (userId: string | null) =>
 
 /** A second place in a shop. */
 async function branchOf(tenant: TestTenant) {
-  const { data, error } = await service
-    .from("locations")
-    .insert({
-      tenant_id: tenant.id,
-      name: name("Branch"),
-      timezone: "Asia/Bangkok",
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("locations")
+      .insert({
+        tenant_id: tenant.id,
+        name: name("Branch"),
+        timezone: "Asia/Bangkok",
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id as string;
 }
@@ -3072,15 +3080,16 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
 
   it("to another place: the booking's place follows, and each place counts what is there", async () => {
     const bike = await vehicle(2);
-    const branch = await service
-      .from("locations")
-      .insert({
-        tenant_id: shop.id,
-        name: name("Branch"),
-        timezone: "Asia/Bangkok",
-      })
-      .select("id")
-      .single();
+    const branch = await exactlyOne(
+      service
+        .from("locations")
+        .insert({
+          tenant_id: shop.id,
+          name: name("Branch"),
+          timezone: "Asia/Bangkok",
+        })
+        .select("id"),
+    );
     expect(branch.error).toBeNull();
     const there = branch.data!.id;
     const one = booked(
@@ -3282,15 +3291,16 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
   it("a direct change of a booked unit's product or place is refused, for the owner and for the service role; an unbooked unit moves as before", async () => {
     const a = await vehicle(2);
     const b = await vehicle(0);
-    const branch = await service
-      .from("locations")
-      .insert({
-        tenant_id: shop.id,
-        name: name("Branch"),
-        timezone: "Asia/Bangkok",
-      })
-      .select("id")
-      .single();
+    const branch = await exactlyOne(
+      service
+        .from("locations")
+        .insert({
+          tenant_id: shop.id,
+          name: name("Branch"),
+          timezone: "Asia/Bangkok",
+        })
+        .select("id"),
+    );
     const [bookedUnit, freeUnit] = a.units;
     const hold = booked(
       await staffBook(
@@ -3396,11 +3406,9 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
         { product_id: a.id, starts_at: at(1), ends_at: at(2) },
       ]),
     );
-    const loaded = await service
-      .from("units")
-      .select("updated_at")
-      .eq("id", unit)
-      .single();
+    const loaded = await exactlyOne(
+      service.from("units").select("updated_at").eq("id", unit),
+    );
     // Warned about none; there is one.
     expect(
       (await move(db("owner"), shop, unit, { product: b.id }, { bookings: 0 }))
@@ -3436,11 +3444,9 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     expect(await held(a.id)).toBe("reserved,reserved | allocation,allocation");
     expect(await reservationsOf(b.id)).toEqual([]);
 
-    const now = await service
-      .from("units")
-      .select("updated_at")
-      .eq("id", unit)
-      .single();
+    const now = await exactlyOne(
+      service.from("units").select("updated_at").eq("id", unit),
+    );
     const done = await move(
       db("owner"),
       shop,
@@ -3449,11 +3455,9 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
       { bookings: 2, updatedAt: now.data!.updated_at },
     );
     expect(done.data).toMatchObject({ ok: true, bookings: 2 });
-    const after = await service
-      .from("units")
-      .select("updated_at, product_id")
-      .eq("id", unit)
-      .single();
+    const after = await exactlyOne(
+      service.from("units").select("updated_at, product_id").eq("id", unit),
+    );
     // The answer carries the unit's new age, for the save that follows.
     expect(new Date(after.data!.updated_at).getTime()).toBe(
       new Date(
@@ -3824,11 +3828,9 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     expect(retired.error).toBeNull();
     expect(retired.data).toEqual([{ status: "retired" }]);
     expect(await deadlocksReported()).toBe(before);
-    const { data: after } = await service
-      .from("units")
-      .select("product_id, status")
-      .eq("id", unit)
-      .single();
+    const { data: after } = await exactlyOne(
+      service.from("units").select("product_id, status").eq("id", unit),
+    );
     expect(after).toEqual({ product_id: a.id, status: "retired" });
   }, 60_000);
 
@@ -3988,11 +3990,9 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
         },
       ]),
     );
-    const { data: taken } = await service
-      .from("units")
-      .select("plate")
-      .eq("id", other)
-      .single();
+    const { data: taken } = await exactlyOne(
+      service.from("units").select("plate").eq("id", other),
+    );
     const details = (plate: string) => ({
       p_tenant_id: shop.id,
       p_unit_id: unit,
@@ -4015,24 +4015,23 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     expect(clash.error?.message).toMatch(/units_plate_idx/);
     expect(await held(a.id)).toBe("reserved | allocation");
     expect(await reservationsOf(b.id)).toEqual([]);
-    const { data: untouched } = await service
-      .from("units")
-      .select("product_id, colour, notes")
-      .eq("id", unit)
-      .single();
+    const { data: untouched } = await exactlyOne(
+      service.from("units").select("product_id, colour, notes").eq("id", unit),
+    );
     expect(untouched).toEqual({ product_id: a.id, colour: null, notes: null });
 
     const plate = `AV-${tag}-MOVED`;
     const done = await db("owner").rpc("move_unit", details(plate));
     expect(done.error).toBeNull();
     expect(done.data).toMatchObject({ ok: true, bookings: 1 });
-    const { data: saved } = await service
-      .from("units")
-      .select(
-        "product_id, plate, plate_pending, frame_number, engine_number, colour, model_year, notes, current_odometer_km",
-      )
-      .eq("id", unit)
-      .single();
+    const { data: saved } = await exactlyOne(
+      service
+        .from("units")
+        .select(
+          "product_id, plate, plate_pending, frame_number, engine_number, colour, model_year, notes, current_odometer_km",
+        )
+        .eq("id", unit),
+    );
     expect(saved).toEqual({
       product_id: b.id,
       plate,

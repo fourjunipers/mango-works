@@ -41,6 +41,7 @@ import {
   until,
   watch,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -225,17 +226,18 @@ async function vehicle(
   } = {},
 ) {
   const tenant = options.tenant ?? shop;
-  const product = await service
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: name("Scooter"),
-      vehicle_type: "motorbike",
-      buffer_before_minutes: options.before ?? null,
-      buffer_after_minutes: options.after ?? null,
-    })
-    .select("id")
-    .single();
+  const product = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        name: name("Scooter"),
+        vehicle_type: "motorbike",
+        buffer_before_minutes: options.before ?? null,
+        buffer_after_minutes: options.after ?? null,
+      })
+      .select("id"),
+  );
   if (product.error) throw product.error;
   const units = count
     ? await addUnits(product.data.id, count, tenant, options.locationId)
@@ -309,11 +311,12 @@ async function general(
 }
 
 async function branch(tenant: TestTenant, timezone: string) {
-  const { data, error } = await service
-    .from("locations")
-    .insert({ tenant_id: tenant.id, name: name("Branch"), timezone })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("locations")
+      .insert({ tenant_id: tenant.id, name: name("Branch"), timezone })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id as string;
 }
@@ -442,26 +445,28 @@ afterAll(async () => {
 
 describe("the rule columns", () => {
   it("nothing is set on a new shop: no rule, no default buffer, overbooking off, a 15-minute hold", async () => {
-    const location = await service
-      .from("locations")
-      .select(
-        "min_notice_hours, booking_cutoff_minutes, min_days_advance, min_days_walkin",
-      )
-      .eq("id", saigon.locationId)
-      .single();
+    const location = await exactlyOne(
+      service
+        .from("locations")
+        .select(
+          "min_notice_hours, booking_cutoff_minutes, min_days_advance, min_days_walkin",
+        )
+        .eq("id", saigon.locationId),
+    );
     expect(location.data).toEqual({
       min_notice_hours: null,
       booking_cutoff_minutes: null,
       min_days_advance: null,
       min_days_walkin: null,
     });
-    const tenant = await service
-      .from("tenants")
-      .select(
-        "buffer_before_minutes, buffer_after_minutes, allow_overbooking, hold_minutes",
-      )
-      .eq("id", saigon.id)
-      .single();
+    const tenant = await exactlyOne(
+      service
+        .from("tenants")
+        .select(
+          "buffer_before_minutes, buffer_after_minutes, allow_overbooking, hold_minutes",
+        )
+        .eq("id", saigon.id),
+    );
     expect(tenant.data).toEqual({
       buffer_before_minutes: null,
       buffer_after_minutes: null,
@@ -469,11 +474,12 @@ describe("the rule columns", () => {
       hold_minutes: 15,
     });
     const bike = await vehicle(0, { tenant: saigon });
-    const product = await service
-      .from("products")
-      .select("min_days_advance, min_days_walkin")
-      .eq("id", bike.id)
-      .single();
+    const product = await exactlyOne(
+      service
+        .from("products")
+        .select("min_days_advance, min_days_walkin")
+        .eq("id", bike.id),
+    );
     expect(product.data).toEqual({
       min_days_advance: null,
       min_days_walkin: null,
@@ -583,13 +589,14 @@ describe("save_booking_rules()", () => {
         buffer_before_minutes: 60,
         buffer_after_minutes: null,
       });
-      const row = await service
-        .from("tenants")
-        .select(
-          "allow_overbooking, hold_minutes, buffer_before_minutes, buffer_after_minutes",
-        )
-        .eq("id", tenant.id)
-        .single();
+      const row = await exactlyOne(
+        service
+          .from("tenants")
+          .select(
+            "allow_overbooking, hold_minutes, buffer_before_minutes, buffer_after_minutes",
+          )
+          .eq("id", tenant.id),
+      );
       expect(row.data).toEqual(next.shop);
 
       // Overbooking is on for real: staff can now save a booking short.
@@ -775,11 +782,9 @@ describe("save_booking_rules()", () => {
         locations: [{ id: shop.locationId, booking_cutoff_minutes: minutes }],
         products: [{ id: bike.id, min_days_advance: minutes }],
       });
-      const row = await service
-        .from("tenants")
-        .select("hold_minutes")
-        .eq("id", shop.id)
-        .single();
+      const row = await exactlyOne(
+        service.from("tenants").select("hold_minutes").eq("id", shop.id),
+      );
       if (role === "owner" || role === "manager") {
         expect(error, `${role}: ${error?.message}`).toBeNull();
         expect(data!.shop.hold_minutes).toBe(minutes);
@@ -800,11 +805,12 @@ describe("save_booking_rules()", () => {
   it("another shop's five roles, a stranger, a signed-out visitor and the server: none can save this shop's rules", async () => {
     const before = written(shop);
     const row = () =>
-      service
-        .from("tenants")
-        .select("hold_minutes, allow_overbooking")
-        .eq("id", shop.id)
-        .single();
+      exactlyOne(
+        service
+          .from("tenants")
+          .select("hold_minutes, allow_overbooking")
+          .eq("id", shop.id),
+      );
     const start = (await row()).data;
     const rules = { shop: { hold_minutes: 59, allow_overbooking: true } };
     for (const role of roles) {
@@ -847,17 +853,16 @@ describe("save_booking_rules()", () => {
     const d = await product(madeUp);
     expect(c.error).toEqual(d.error);
     expect(c.error?.message).toBe("product_not_found");
-    const untouched = await service
-      .from("locations")
-      .select("min_notice_hours")
-      .eq("id", saigon.locationId)
-      .single();
+    const untouched = await exactlyOne(
+      service
+        .from("locations")
+        .select("min_notice_hours")
+        .eq("id", saigon.locationId),
+    );
     expect(untouched.data!.min_notice_hours).toBeNull();
-    const untouchedProduct = await service
-      .from("products")
-      .select("min_days_advance")
-      .eq("id", theirs.id)
-      .single();
+    const untouchedProduct = await exactlyOne(
+      service.from("products").select("min_days_advance").eq("id", theirs.id),
+    );
     expect(untouchedProduct.data!.min_days_advance).toBeNull();
   });
 
