@@ -182,8 +182,12 @@ $function$;
 --     (one_unit_status_change), because this trigger takes each such unit's
 --     lock in the statement's row order, and two statements could cross.
 --     Checked before the second unit's lock is asked for. The exception:
---     every such unit's lock is held already, taken sorted through
---     lock_units() before the update (the owner, 23 Nov 2026). That is how
+--     this transaction already holds every such unit's lock, as
+--     lock_units() takes them before an update (the owner, 23 Nov 2026).
+--     The guard checks that the locks are held; it cannot see that they
+--     were taken sorted, which is the caller's part. Only functions that
+--     take all their units' locks through lock_units() are meant to use
+--     this path, and it is not reachable through PostgREST. That is how
 --     report_gear_problem() and set_stock_quantity() change several gear
 --     units in one call, and they are the only users of that path. The
 --     marker platform.unit_status_change is the one unit whose lock this
@@ -332,9 +336,16 @@ $function$;
 -- 5. move_unit() ----------------------------------------------------------------------------------
 -- Main's body (20261116000200) with three changes:
 --
---  a. It refuses to start when this transaction has moved a unit already
---     (one_move_per_transaction): one unit per transaction, so that two
---     moves can only meet at locks each takes once, in order.
+--  a. It refuses to start when this transaction has called move_unit()
+--     already (one_move_per_transaction): one call per transaction, so that
+--     two moves can only meet at locks each takes once, in order. The marker
+--     platform.moving_unit is set to 'started' straight after that check,
+--     before anything that can answer early (stale, try_again,
+--     bookings_changed, nothing to do), because each of those answers leaves
+--     the call's locks held: a second call would take a second batch.
+--     Whatever the first call answered, a second one is refused. (A caller
+--     who may not move units at all is answered not_allowed before the
+--     check, with no lock taken and no marker set.)
 --  b. It sets platform.moving_unit to the unit's id just before it updates
 --     the unit and to 'done' straight after: the unit's guard lets a
 --     product change through only in between.
@@ -379,10 +390,12 @@ begin
   then
     return jsonb_build_object('ok', false, 'reason', 'not_allowed');
   end if;
-  -- One move per transaction: the marker is the unit being moved, or 'done'.
+  -- One call per transaction, whatever the first one answered: the marker
+  -- is 'started', then the unit being moved, then 'done'.
   if nullif(current_setting('platform.moving_unit', true), '') is not null then
     raise exception 'one_move_per_transaction' using errcode = 'P0001';
   end if;
+  perform set_config('platform.moving_unit', 'started', true);
   if p_unit_id is null or p_product_id is null or p_location_id is null then
     raise exception 'invalid_request' using errcode = '22023';
   end if;
@@ -622,6 +635,9 @@ begin
     'updated_at', v_updated_at);
 exception
   when deadlock_detected then
+    -- Everything this call did is undone, the marker with it: set it again,
+    -- so that this answer too closes the transaction to a second call.
+    perform set_config('platform.moving_unit', 'done', true);
     return jsonb_build_object('ok', false, 'reason', 'try_again');
 end;
 $function$;
@@ -826,8 +842,10 @@ referencing old table as o
 for each statement execute function platform_private.units_counts_after_delete();
 
 -- 7. review_catalog_request() ---------------------------------------------------------------------
--- Main's body (20261114000200) with two changes:
+-- Main's body (20261114000200) with three changes:
 --
+--  c. `lock_timeout = '6s'`, as every function that waits for these rows
+--     has (plan 4.4): a wait that runs out raises 55P03 with nothing written.
 --  a. Lock order. It took the catalog entry and then its products; deleting
 --     a product takes the product's row and then, in
 --     products_withdraw_request, the entry. Now: the products in id order,
@@ -853,6 +871,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
+set lock_timeout = '6s'
 as $function$
 declare
   v_request record;
