@@ -161,8 +161,9 @@ customers
 ```
 
 - **Completed rentals are derived** (S2): `platform_private.completed_rentals(customer)` counts the customer's non-canceled orders with at least one returned vehicle rental. Nothing stores it; returns and reverts lock no customer row.
-- Phone and email are never copied into audit snapshots (recorded as `changed`).
+- Phone and email are never copied into audit snapshots (recorded as `changed`). **As built (stage 2a): the LINE id too**, since it is a contact like the other two; the customer's own audit trigger (`customers_audit`) does it, so a direct write by the server is covered as well. The name, nationality, language and notes are recorded as any column is.
 - Owner, manager, staff read and write (through `save_customer`); mechanics and drivers none.
+- **As built (stage 2a):** `created_by`, `created_at` and `updated_at` are there too. `phone` is stored as E.164 when `save_customer` is handed an international number (`+…` or `00…`), else as typed: reading a national number needs the country, which is the form's to supply (no phone library in the database).
 
 ### 3.2 Orders, rentals, charges, lines
 
@@ -210,6 +211,14 @@ order_counters    tenant_id, next_number
 - **One charge is one `quote()` call**; stored once, never edited except `status = void`. Corrections are new charges (`difference`).
 - **The charge save check** (Phase 2 §5.4): shape, lines add up to totals, plus the cross-field checks `readSnapshot()` leaves to Phase 3; addition and comparison only.
 - **Long rentals** (decisions 3, 4, 17): a rental over 30 days gets one `period` charge per month period, priced at booking and frozen, each with `due_at` = its period's start; the first is `booking` (§6.3).
+- **As built (stage 2a, migration `20261124000100_platform_orders`), where it differs from the lists above and why:**
+  - **The "who" columns are plain ids, with no foreign key to `auth.users`** (`created_by`, `picked_up_by`, `returned_by`, `override_by`): root `CLAUDE.md` forbids a new key to the `auth` schema ahead of the Neon move. They get a key once the platform has its own users table.
+  - **`order_lines.currency` has the same foreign key to the shop's currency** as `orders` and `order_charges` (no cascade): one more holder of the currency, never fewer.
+  - **A line's charge and rental, and an extra's parent rental, must belong to the line's (or the extra's) own order**: the keys are `(tenant_id, order_id, id)`.
+  - **`orders.mode`** takes the reservations' list (`staff`, `instant`, `request`, `now`). **`request_status`, `cancelled_by` and `cancel_reason` are free text for now**: the plan and the spec name no values, so each list is fixed by the stage that first writes the column (`cancel_order` in migration 3; requests at 3M).
+  - **`orders.number` may be empty** until migration 3 adds the deferred check (§4.2): the number is written last.
+  - **`order_counters`** gets its row from a trigger when a shop is made (and for every shop there is, in the migration); it has no `updated_at` and no audit, since it changes with every order and the order's own event carries the number. Nobody signed in has any grant on it.
+  - **`order_lines.tax_profile_id` is a plain id** (a snapshot, with the profile's name beside it), so a tax profile can still be deleted when nothing prices from it.
 
 ### 3.3 The core and the order functions
 
@@ -280,7 +289,7 @@ Names follow the repo rule; timestamps when written. Re-created functions are re
 | # | Name | Stage | What |
 | --- | --- | --- | --- |
 | 1 | `platform_unit_lock_rules` (`20261123000100`, built) | 1 | `platform_private.app_uid()` and `app_role()`, **reading the request's claims** (§3.11, decision 43); `units_guard`: a product change only inside `move_unit()` (the transaction-local marker of §4.1), one sold/retired/lost change per transaction **unless every such unit's lock is already held** (§4.1), lost at any time; `move_unit()` re-created to set and clear the marker and refuse a second call; `units_clamp_product_counts` replaced by **two statement-level triggers** (update, delete) that lock every affected product row in id order once (§4.1); `review_catalog_request` locks products before its catalog entry, **and no longer switches a Moto Mangos listing on: approve and merge set `catalog_id` and `catalog_approved_at` only** (Mark, 20 Nov 2026; added to this migration 23 Nov 2026); the unit lock's key in one place (`unit_lock_class()`, `unit_lock_key()`, `holds_unit_lock()`; `lock_units()` re-created to use them) |
-| 2 | `platform_orders` | 2a | Clears Phase 2 reservations, their allocation and hold blocks, and coupon redemptions (S7, decision 24); `customers`, `orders`, `rentals`, `order_charges`, `order_lines`, `order_counters`; `reservations.rental_id` (nullable); **`move_unit()` re-created to copy `rental_id` on a split** (M2); staff permission columns and `staff_may()`; RLS; `save_customer`, `save_staff_permissions`. The kind lists already allow `cancellation_fee` on charges and `marketplace_fee` on lines (decisions 38, 41) |
+| 2 | `platform_orders` (`20261124000100`, built) | 2a | Clears Phase 2 reservations, their allocation and hold blocks, and coupon redemptions (S7, decision 24); `customers`, `orders`, `rentals`, `order_charges`, `order_lines`, `order_counters`; `reservations.rental_id` (nullable); **`move_unit()` re-created to copy `rental_id` on a split** (M2); staff permission columns and `staff_may()`; RLS; `save_customer`, `save_staff_permissions`. The kind lists already allow `cancellation_fee` on charges and `marketplace_fee` on lines (decisions 38, 41). **As built:** also `tenants.time_step_minutes` (§9.1), `booking_roles()` re-created with the actions `orders` and `order_settings` (§3.9), and the `citext` extension for `customers.email`. **Not in it:** a function that changes the time step (the column is there, default 15; no stage before 10 names its writer, and stage 10 has no migration: see `docs/PROGRESS.md`), and §3.6's other shop settings (grace minutes, archive days, alert days), which this row never listed |
 | 3 | `platform_order_core` | 2b | **Checks again for reservations with no `rental_id`, and clears them (with their blocks and redemptions) as migration 2 did, before** `reservations.rental_id` is set not null (S7; on live the count must be 0 or the migration stops); `reserve_core`; `create_order`, `hold_order`, `reserve_order`, `confirm_order`, `cancel_order`, `assign_order_units`; `confirm_hold` (live reservations only), `cancel_reservation`, `assign_units` moved to private cores; **`platform.reserve()` dropped**; coupon redemption `customer_id` foreign key; the deferred check that every order has its number (§4.2) |
 | 4 | `platform_payments_ledger` | 3 | `payments`, `payment_allocations` (both append-only), with every kind, method and column of §6.4 (decisions 33 to 42: `refunds_payment_id`, `reverses_payment_id`, `deposit_source_id`, `capture_id`, `source`, nullable `recorded_by`, the provider unique index, `rate_groups` on deposit rows); `tenants.deposit_vat_mode` and `deposit_needs_tax_invoice()`; the cores and staff wrappers of `record_payment`, `record_refund`, `record_deposit`; `write_off_credit` |
 | 5 | `platform_order_status` | 4 | `pick_up`, `return_rental` (late charge), reverts, archive, `pickup_blockers`, `order_state`, stock movements; `unit_blocks_guard` re-created so the return path can lengthen a **lost** unit's out block (§6.3) |
@@ -291,7 +300,7 @@ Names follow the repo rule; timestamps when written. Re-created functions are re
 
 ### 3.9 Who may do what, and RLS
 
-`booking_roles(action)` gains order actions; **`staff_may(tenant, permission)`** (§3.10) is checked inside each affected function, not only in the UI.
+`booking_roles(action)` gains order actions; **`staff_may(tenant, permission)`** (§3.10) is checked inside each affected function, not only in the UI. **As built (stage 2a):** two actions, `orders` (owner, manager, staff: see and work with orders, rentals and customers) and `order_settings` (owner, manager: archive, unarchive, Settings › Orders, the staff permissions); `apps/platform/lib/booking-permissions.ts` is their copy.
 
 | Action | Owner | Manager | Staff | Mechanic | Driver |
 | --- | --- | --- | --- | --- | --- |
@@ -332,7 +341,7 @@ Six booleans on `tenants`, written by `save_staff_permissions` (owner, manager),
 | `staff_can_refund` | Off |
 | `staff_can_write_off_credit` | Off |
 
-`platform_private.staff_may(tenant, permission)` is true for owners and managers always, and for staff when the setting is on. Every function in §3.9 calls it. **When staff can't refund, an early return by staff leaves a credit** for a manager to refund. Screen: Settings › Orders (stage 10).
+`platform_private.staff_may(tenant, permission)` is true for owners and managers always, and for staff when the setting is on. Every function in §3.9 calls it. **As built (stage 2a):** the permission is the setting's name without `staff_can_` (`change_price`, `waive_late_charge`, `edit_return_time`, `revert`, `refund`, `write_off_credit`); an unknown one raises `invalid_permission` rather than answering no; mechanics, drivers, non-members and a call with nobody signed in are answered no; the service role has no grant on it (the cores never ask it). **When staff can't refund, an early return by staff leaves a credit** for a manager to refund. Screen: Settings › Orders (stage 10).
 
 ### 3.11 Who is calling (decision 43)
 
@@ -836,4 +845,5 @@ Draft 2's other open points (the VAT on a payment, one invoice for several month
 | **Stage 1, 23 Nov 2026** (listing) | `review_catalog_request()` no longer switches a Moto Mangos listing on (Mark, 20 Nov 2026); added to migration 1 | §3.8, §4.3, §8 stage 1 |
 | **Stage 1, 23 Nov 2026** (gear) | "One unit per transaction to sold, retired or lost" gains its exception: unless the transaction already holds every such unit's lock (as `lock_units()` takes them). `report_gear_problem()` and `set_stock_quantity()` are its users; the unit lock's key in one place (Mark's decision and conditions) | §4.1, §4.3, §3.8 |
 | **Stage 1, 23 Nov 2026** (static test) | `save_product_extras` joins `swap_rental_unit` on the reviewed list of the lock-strength test | §4.1 |
+| **Stage 2a, 24 Nov 2026** (as built) | Who-columns are plain ids (no key to `auth.users`); the LINE id kept out of the audit with phone and email; `order_lines.currency` keyed to the shop's currency too; a line's charge and rental keyed to its own order; `request_status`, `cancelled_by`, `cancel_reason` left without value lists until first written; `order_counters` made by trigger, unaudited; `booking_roles()` gains `orders` and `order_settings`; `staff_may()`'s permission names; `tenants.time_step_minutes` stored with no writer yet | §3.1, §3.2, §3.8, §3.9, §3.10 |
 | **Stage 1, review of PR 70, 24 Nov 2026** | The `move_unit()` marker is set straight after the `one_move_per_transaction` check, so a second call is refused whatever the first answered; `review_catalog_request()` gets `lock_timeout = '6s'`; the wording of the lock-held exception corrected (the guard checks that the locks are held, not that they were taken sorted; `lock_units()` callers only; not reachable through PostgREST) | §4.1, §4.3 |

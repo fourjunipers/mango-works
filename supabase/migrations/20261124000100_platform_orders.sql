@@ -63,7 +63,8 @@ $guard$;
 -- and hold blocks that belong to it and every coupon use (a use names a
 -- booking that no longer exists; a use given back keeps its row, and goes
 -- too). Downtime blocks, coupons, products, units and prices are not
--- touched. Each deleted row leaves its audit event, as any delete does.
+-- touched. Each deleted reservation and coupon use leaves its audit event,
+-- as any delete does (a booking's blocks are not audited row by row).
 --
 -- The foreign keys set the order: blocks before the reservations they name.
 -- That is the opposite of a booking's own order (reservations, then blocks),

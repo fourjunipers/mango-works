@@ -13,6 +13,59 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
 
+## Phase 3, stage 2a: orders: tables, RLS, customers, settings (branch `platform/phase-3-stage-2a-orders`, 24 Nov 2026)
+
+The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 row 2, §3.9, §3.10, §9.1, §8 stage 2a). From `main` at `4901c0d` (PR 70 merged; 70 migrations). **One migration, `20261124000100_platform_orders.sql`, local only.** Nothing on staging or live was touched. **It deletes rows** (below), so its staging push is a separate step on the owner's word.
+
+**What the migration does** (re-created functions behind an MD5 guard: `move_unit()`, `booking_roles()`)
+
+1. **Clears Phase 2's bookings** (S7, decision 24): every reservation, its allocation and hold blocks, every coupon redemption. Downtime blocks, coupons, products, units and prices stay. Each deleted reservation and coupon use leaves its audit event (a booking's blocks are not audited row by row). It counts before and after (as notices) and stops if anything is left or a downtime block went.
+2. **Six tables:** `customers`, `orders`, `rentals`, `order_charges`, `order_lines`, `order_counters`, as plan §3.1 and §3.2. All have RLS; nobody signed in writes any of them. Owners, managers and staff read customers, orders and rentals (`booking_roles('orders')`) and charges and lines (`pricing_roles('read')`); nobody signed in has any grant on the counter. Empty until migration 3 brings their writers.
+3. **`reservations.rental_id`**, nullable until migration 3.
+4. **`move_unit()`** re-created from stage 1's text with one change: a split row carries the same `rental_id`. The marker rules are untouched (`started` straight after the `one_move_per_transaction` check, set again in the deadlock handler).
+5. **Shop order settings on `tenants`:** the six staff permissions (three on, three off) and `time_step_minutes` (default 15; only 1, 5, 10, 15, 30, 60). Members read them; nobody signed in writes them directly.
+6. **`platform_private.staff_may(tenant, permission)`**, **`platform.save_customer()`**, **`platform.save_staff_permissions()`**.
+7. **`booking_roles()`** gains `orders` and `order_settings`; `lib/booking-permissions.ts` is its copy.
+
+**Differed from the plan** (each is written into the plan where it belongs, and listed in its §14)
+
+- **No key to `auth.users`.** `created_by`, `picked_up_by`, `returned_by` and `override_by` are plain ids: root `CLAUDE.md` forbids a new key to the `auth` schema. They get a key when the platform has its own users table (Neon plan, open point).
+- **The LINE id is kept out of the audit too**, with phone and email (the plan named two). A customer's name, nationality, language and notes are recorded as any column is.
+- **`order_lines.currency`** also has the no-cascade key to the shop's currency; a line's charge and rental, and an extra's parent rental, are keyed to the same order.
+- **`request_status`, `cancelled_by`, `cancel_reason` have no value lists yet.** Neither the plan nor the spec names the values; each list is fixed by the stage that first writes the column (migration 3; 3M).
+- **`order_counters`** gets its row from a trigger on `tenants`, and is not audited.
+- **`citext`** is a new extension, for `customers.email`. Checked on Neon's list (24 Nov 2026): supported on Postgres 14 to 18.
+- **A phone is stored as E.164 only when it arrives as an international number** (`+…` or `00…`); otherwise as typed. Reading a national number needs the country and a phone library, which is the form's part (stage 9).
+
+**Open point for the owner: who writes the time step.** The column is stored and read from now on. No function changes it: plan §3.8 row 2 lists only `save_customer` and `save_staff_permissions`, stage 10 (Settings › Orders, where a shop changes it) has no migration, and no earlier row names its writer. It needs one in a migration before stage 10 (migration 9 adds the other order settings, so it could go there).
+
+**Tests** (`apps/platform/tests/db`; every accept test of plan §8 stage 2a passes)
+
+- **`orders.test.ts`** (new, 30 tests): who reads and who writes the six tables (5 roles × 2 shops, Bangkok THB and New York USD, a signed-in stranger, a Moto Mangos customer, a signed-out visitor); `save_customer()` (roles, what is stored, what is refused, stale, another shop's customer); contacts never in the audit (through the function and by a direct write, and a search of every audit row of both shops); the six permissions' defaults, `staff_may()` for each setting on and off and each role, `save_staff_permissions()` and its audit; the time step; what the tables refuse; the `move_unit()` split; the currency key; the clearing, run again from the migration's own text inside a transaction that is rolled back.
+- **`tenant-isolation.test.ts`:** the six tables joined the harness (fixture, payload, change, foreign keys across shops); 29 tests.
+- **`default-grants.test.ts`:** a stage 2a group (5 tests): table privileges, policies, function grants and settings, triggers, the new `tenants` columns.
+- **`caller-functions.test.ts`:** **the pin stays at 24 lines** (19 functions, 4 defaults, 1 policy). Nothing on it was converted: `move_unit()` was converted in stage 1 and `booking_roles()` never read the caller. Two new tests hold stage 2a's functions and defaults to `app_uid()`/`app_role()` and check that none of the six tables has a key into the `auth` schema.
+- **`unit-lock-rules.test.ts`:** the pin test the PR 70 re-check asked for: another session holds the unit's row `for update` at a gate, `move_unit()` answers `try_again`, and a second `move_unit()` (or a direct product change) in the same transaction is refused. Three shops.
+- **Unit:** `lib/booking-permissions.test.ts` (the two new actions).
+
+**Results** (24 Nov 2026, this worktree's stack)
+
+RESULTS_PLACEHOLDER
+
+**Known issues and follow-ups**
+
+- **The currency lock's read does not know about orders yet.** `platform.currency_locked()` (what Settings shows) and `settings/actions.ts` (which maps the trigger's `currency_locked` message) are unchanged; a shop with an order is refused by the foreign key (`23503`) instead. No order can exist before migration 3, so stage 2b should add orders to the read and map `23503` in the action.
+- **One-row reads.** PR 72 (`exactlyOne()`/`atMostOne()`) was still open, so no helper was used. This PR adds **no** `.single()` or `.maybeSingle()`: the new test code reads `.select(...)` and takes the one row through a local `only()` (`orders.test.ts`) or `[0]` (`tenant-isolation.test.ts`, five fixture inserts and one in the keys test). Those are the spots to move to the helpers after PR 72 merges.
+- **A customer's name and notes are in the audit** as plain values. The plan asks only for the contacts to be kept out; retention of personal data in audit rows is Phase 4.
+- **The clearing takes blocks before reservations** (the foreign key forces it), the opposite of a booking's order, and the `alter table` takes `reservations` whole. Push it while nobody is booking; a booking in flight would be broken as a deadlock and answer `try_again`, or the migration would fail with nothing changed and be sent again.
+- **`staff_may()` runs as its owner and is granted to signed-in people only**; the service role has no call (the cores never ask it). `default-grants.test.ts` pins that.
+
+**Before this goes to staging** (the owner's word; it deletes data): staging at 70 of 70 with `main`'s bodies (the guard checks `move_unit()` and `booking_roles()`); count reservations, blocks with a reservation and redemptions before, expect 0 of each after, downtime blocks unchanged; then `npm run seed:staging`. **On live** the three counts must be 0 before the push, or the push stops.
+
+**Local set-up.** This worktree (`.claude/worktrees/phase-3-stage-2a`) has its own stack, `Bike_Booking_phase3_s2a`, on ports 636xx (API 63621, database 63622, shadow 63620, Studio 63623, mail 63624, analytics 63627, pooler 63629, inspector 63683), started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Every other stack was left alone.
+
+**Next:** stage 2b, the core and the test port (migration 3).
+
 ## Phase 3, stage 1: unit lock rules (branch `platform/phase-3-stage-1-unit-locks`, 23 Nov 2026)
 
 The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §4, §8 stage 1). From `main` at `15dadd2` (PRs 57, 68 and 69 merged; 69 migrations). **One migration, `20261123000100_platform_unit_lock_rules.sql`, local only.** Nothing on staging or live was touched; staging gets it on the owner's word after the review.
