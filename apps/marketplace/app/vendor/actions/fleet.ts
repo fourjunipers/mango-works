@@ -29,18 +29,20 @@ import {
   parsePriceForm,
   repairSchema,
 } from "@/lib/validation/vendor";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 /** The model, if it belongs to the caller's shop (RLS also enforces this). */
 async function ownModel(modelId: string) {
   const shop = await vendorShopForAction();
   if (!shop) return null;
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("bike_models")
-    .select("id, shop_id, qty, ready_today_count, ready_today_on, photos")
-    .eq("id", modelId)
-    .eq("shop_id", shop.id)
-    .maybeSingle();
+  const { data } = await atMostOne(
+    supabase
+      .from("bike_models")
+      .select("id, shop_id, qty, ready_today_count, ready_today_on, photos")
+      .eq("id", modelId)
+      .eq("shop_id", shop.id),
+  );
   return data ? { shop, model: data, supabase } : null;
 }
 
@@ -61,24 +63,26 @@ export async function addModel(formData: FormData) {
   const catalogId = String(formData.get("catalog_id") ?? "");
   if (!shop || !catalogId) return;
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("bike_models")
-    .insert({
-      shop_id: shop.id,
-      catalog_id: catalogId,
-      qty: 1,
-      request_qty: 1,
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    supabase
+      .from("bike_models")
+      .insert({
+        shop_id: shop.id,
+        catalog_id: catalogId,
+        qty: 1,
+        request_qty: 1,
+      })
+      .select("id"),
+  );
   if (error?.code === "23505") {
     // Already in the fleet: one listing per bike, so open that one.
-    const { data: existing } = await supabase
-      .from("bike_models")
-      .select("id")
-      .eq("shop_id", shop.id)
-      .eq("catalog_id", catalogId)
-      .maybeSingle();
+    const { data: existing } = await atMostOne(
+      supabase
+        .from("bike_models")
+        .select("id")
+        .eq("shop_id", shop.id)
+        .eq("catalog_id", catalogId),
+    );
     if (existing) redirect(`/vendor/fleet/${existing.id}?existing=1`);
   }
   if (error || !data) redirect("/vendor/fleet/new?error=1");
@@ -94,22 +98,24 @@ export async function requestCatalogModel(
   const parsed = catalogRequestSchema.safeParse(formObject(formData));
   if (!parsed.success) return invalid(fieldErrors(parsed.error));
   const supabase = await createClient();
-  const { data: entry, error } = await supabase
-    .from("bike_catalog")
-    .insert({ ...parsed.data, requested_by_shop_id: shop.id })
-    .select("id")
-    .single();
+  const { data: entry, error } = await exactlyOne(
+    supabase
+      .from("bike_catalog")
+      .insert({ ...parsed.data, requested_by_shop_id: shop.id })
+      .select("id"),
+  );
   if (error || !entry) return failed;
-  const { data: model, error: modelError } = await supabase
-    .from("bike_models")
-    .insert({
-      shop_id: shop.id,
-      catalog_id: entry.id,
-      qty: 1,
-      request_qty: 1,
-    })
-    .select("id")
-    .single();
+  const { data: model, error: modelError } = await exactlyOne(
+    supabase
+      .from("bike_models")
+      .insert({
+        shop_id: shop.id,
+        catalog_id: entry.id,
+        qty: 1,
+        request_qty: 1,
+      })
+      .select("id"),
+  );
   if (modelError || !model) return failed;
   redirect(`/vendor/fleet/${model.id}`);
 }
@@ -258,11 +264,13 @@ export async function saveModelInclusions(
   });
   if (hasErrors(errors)) return invalid(errors);
 
-  const { data: shopDefaults } = await own.supabase
-    .from("shop_policies")
-    .select(INCLUSION_FIELDS.join(", "))
-    .eq("shop_id", own.shop.id)
-    .single<Inclusions>();
+  const { data: shopDefaults } = await exactlyOne(
+    own.supabase
+      .from("shop_policies")
+      .select(INCLUSION_FIELDS.join(", "))
+      .eq("shop_id", own.shop.id)
+      .overrideTypes<Inclusions[], { merge: false }>(),
+  );
   if (!shopDefaults) return failed;
   const kept = minimalOverrides(shopDefaults, overrides);
   // Every field written: anything not overridden goes back to null.

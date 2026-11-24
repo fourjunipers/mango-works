@@ -12,6 +12,7 @@ const platformClient = () =>
   );
 import { acquireFileLock } from "./file-lock";
 import { demoPassword } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 /**
  * A shop's pricing settings are one row the whole shop shares (Settings ›
@@ -68,11 +69,9 @@ export async function ownerClient(
     password: demoPassword(),
   });
   if (error) throw error;
-  const { data, error: readError } = await db
-    .from("tenants")
-    .select("id")
-    .eq("slug", slug)
-    .single();
+  const { data, error: readError } = await exactlyOne(
+    db.from("tenants").select("id").eq("slug", slug),
+  );
   if (readError) throw readError;
   return { db, tenantId: data.id as string };
 }

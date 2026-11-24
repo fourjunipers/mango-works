@@ -2,7 +2,11 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import prettier from "eslint-config-prettier/flat";
 import { globalIgnores } from "eslint/config";
-import { appImportPatterns, supabasePatterns } from "./boundaries.mjs";
+import {
+  appImportPatterns,
+  singleRowRule,
+  supabasePatterns,
+} from "./boundaries.mjs";
 
 /**
  * ESLint for a Next.js app in apps/<app>. Spread it into the app's
@@ -22,6 +26,7 @@ export function nextApp(app, { supabaseAllowed = [] } = {}) {
           "error",
           { patterns: [...appImportPatterns(app), ...supabasePatterns] },
         ],
+        "no-restricted-properties": singleRowRule,
       },
     },
     ...(supabaseAllowed.length

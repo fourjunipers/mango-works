@@ -9,6 +9,7 @@ import {
   signedInClient,
   type Db,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Phase 2: catalog, "What's included", extras, shop setup RPCs, review flags.
 
@@ -75,11 +76,9 @@ describe("seed", () => {
 
 describe("country and currency", () => {
   it("shops default to Thailand / THB and vendors can't change it", async () => {
-    const { data } = await anon
-      .from("shops")
-      .select("country, currency")
-      .eq("id", seed.bsrShop)
-      .single();
+    const { data } = await exactlyOne(
+      anon.from("shops").select("country, currency").eq("id", seed.bsrShop),
+    );
     expect(data).toEqual({ country: "TH", currency: "THB" });
     const { error } = await bsrOwner
       .from("shops")
@@ -182,23 +181,25 @@ describe("review flags", () => {
       .from("bike_models")
       .update({ flagged_for_review: false })
       .eq("id", seed.bsrPcx);
-    const { data: day5 } = await bsrStaff
-      .from("price_days")
-      .select("total")
-      .eq("bike_model_id", seed.bsrPcx)
-      .eq("day", 5)
-      .single();
+    const { data: day5 } = await exactlyOne(
+      bsrStaff
+        .from("price_days")
+        .select("total")
+        .eq("bike_model_id", seed.bsrPcx)
+        .eq("day", 5),
+    );
     await bsrStaff
       .from("price_days")
       .update({ total: day5!.total })
       .eq("bike_model_id", seed.bsrPcx)
       .eq("day", 5);
 
-    const { data: flagged } = await service
-      .from("bike_models")
-      .select("flagged_for_review")
-      .eq("id", seed.bsrPcx)
-      .single();
+    const { data: flagged } = await exactlyOne(
+      service
+        .from("bike_models")
+        .select("flagged_for_review")
+        .eq("id", seed.bsrPcx),
+    );
     expect(flagged!.flagged_for_review).toBe(true);
     await service
       .from("bike_models")
@@ -215,11 +216,9 @@ describe("review flags", () => {
       .from("shop_policies")
       .update({ helmets: 2 })
       .eq("shop_id", seed.bsrShop);
-    const { data } = await service
-      .from("shops")
-      .select("flagged_for_review")
-      .eq("id", seed.bsrShop)
-      .single();
+    const { data } = await exactlyOne(
+      service.from("shops").select("flagged_for_review").eq("id", seed.bsrShop),
+    );
     expect(data!.flagged_for_review).toBe(true);
     await service
       .from("shops")
@@ -234,11 +233,9 @@ describe("shop setup", () => {
       p_name: "Test Phase Two Rentals",
     });
     expect(error).toBeNull();
-    const { data: shop } = await newcomer
-      .from("shops")
-      .select("status, slug")
-      .eq("id", shopId!)
-      .single();
+    const { data: shop } = await exactlyOne(
+      newcomer.from("shops").select("status, slug").eq("id", shopId!),
+    );
     expect(shop!.status).toBe("draft");
     expect(shop!.slug).toMatch(/^test-phase-two-rentals/);
 
@@ -256,11 +253,9 @@ describe("shop setup", () => {
     expect(missing).toEqual(
       expect.arrayContaining(["about", "shop_photo", "hours", "model"]),
     );
-    const { data: submitted } = await newcomer
-      .from("shops")
-      .select("status")
-      .eq("id", shopId!)
-      .single();
+    const { data: submitted } = await exactlyOne(
+      newcomer.from("shops").select("status").eq("id", shopId!),
+    );
     expect(submitted!.status).toBe("pending");
     // Still invisible to the public.
     const { data: hidden } = await anon

@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { exactlyOne } from "@mango/db/rows";
 import { roles, type Role } from "@/lib/roles";
 import {
   allocationFor,
@@ -63,12 +64,11 @@ let renter: TestUser;
 /** The table name is a string here, so the typed client can't know it. */
 const from = (db: Db, table: string) => db.from(table as "orders");
 
-/** The one row of an answer; anything else is a failed step. */
-function only<T>(result: { data: T[] | null; error: unknown }): T {
-  if (result.error) throw result.error;
-  if (!result.data || result.data.length !== 1)
-    throw new Error(`Expected one row, got ${result.data?.length ?? 0}`);
-  return result.data[0]!;
+/** The one row a query answers with; anything else is a failed step. */
+async function only<T>(query: Parameters<typeof exactlyOne<T>>[0]): Promise<T> {
+  const { data, error } = await exactlyOne(query);
+  if (error) throw error;
+  return data;
 }
 
 const TABLES = [
@@ -92,8 +92,8 @@ const READERS: Record<Table, readonly Role[]> = {
 };
 
 async function vehicle(tenant: TestTenant, units: number) {
-  const product = only(
-    await service
+  const product = await only(
+    service
       .from("products")
       .insert({
         tenant_id: tenant.id,
@@ -104,8 +104,8 @@ async function vehicle(tenant: TestTenant, units: number) {
   );
   const unitIds: string[] = [];
   for (let i = 0; i < units; i++) {
-    const unit = only(
-      await service
+    const unit = await only(
+      service
         .from("units")
         .insert({
           tenant_id: tenant.id,
@@ -165,8 +165,8 @@ const lineRow = (tenant: TestTenant, orderId: string, chargeId: string) => ({
 /** One row in each of the five tables (the counter came with the shop). */
 async function withOrder(tenant: TestTenant): Promise<Shop> {
   const product = await vehicle(tenant, 0);
-  const customer = only(
-    await service
+  const customer = await only(
+    service
       .from("customers")
       .insert({
         tenant_id: tenant.id,
@@ -176,26 +176,26 @@ async function withOrder(tenant: TestTenant): Promise<Shop> {
       .select("id"),
   );
   // The same code in both shops: a code is unique in its own shop only.
-  const order = only(
-    await service
+  const order = await only(
+    service
       .from("orders")
       .insert({ ...orderRow(tenant, "SCENE2"), customer_id: customer.id })
       .select("id"),
   );
-  const rental = only(
-    await service
+  const rental = await only(
+    service
       .from("rentals")
       .insert(rentalRow(tenant, order.id, product.id))
       .select("id"),
   );
-  const charge = only(
-    await service
+  const charge = await only(
+    service
       .from("order_charges")
       .insert(chargeRow(tenant, order.id))
       .select("id"),
   );
-  const line = only(
-    await service
+  const line = await only(
+    service
       .from("order_lines")
       .insert({
         ...lineRow(tenant, order.id, charge.id),
@@ -454,7 +454,7 @@ describe("save_customer(): owners, managers and staff", () => {
     });
   type Saved = { ok: true; id: string; created: boolean; updated_at: string };
   const customerOf = async (id: string) =>
-    only(await service.from("customers").select("*").eq("id", id));
+    await only(service.from("customers").select("*").eq("id", id));
 
   it("owners, managers and staff add a customer; mechanics, drivers, a stranger, a Moto Mangos customer, the other shop's owner, a signed-out visitor and the server may not", async () => {
     for (const role of ["owner", "manager", "staff"] as const) {
@@ -779,8 +779,8 @@ describe("a customer's contacts are never in the audit", () => {
   });
 
   it("written or removed by the server directly: the same, since the table's own trigger writes the event", async () => {
-    const made = only(
-      await service
+    const made = await only(
+      service
         .from("customers")
         .insert({
           tenant_id: a.id,
@@ -877,12 +877,12 @@ describe("the six staff permissions (decision 6)", () => {
     });
 
   const settingsOf = async (shop: TestTenant) => {
-    const row = only(
-      await service
+    const row = (await only(
+      service
         .from("tenants")
         .select(PERMISSIONS.map(setting).join(", "))
         .eq("id", shop.id),
-    ) as unknown as Record<string, boolean>;
+    )) as unknown as Record<string, boolean>;
     return Object.fromEntries(
       PERMISSIONS.map((p) => [p, row[setting(p)]]),
     ) as Record<Permission, boolean>;
@@ -914,8 +914,8 @@ describe("the six staff permissions (decision 6)", () => {
     expect(await settingsOf(b)).toEqual(DEFAULTS);
     // Every member reads them.
     for (const role of roles) {
-      const row = only(
-        await a.members[role].db
+      const row = await only(
+        a.members[role].db
           .from("tenants")
           .select("staff_can_refund, staff_can_change_price")
           .eq("id", a.id),
@@ -1111,8 +1111,11 @@ describe("the six staff permissions (decision 6)", () => {
 
 describe("the time step of the date-and-time pickers (plan §9.1)", () => {
   const stepOf = async (db: Db, shop: TestTenant) =>
-    only(await db.from("tenants").select("time_step_minutes").eq("id", shop.id))
-      .time_step_minutes;
+    (
+      await only(
+        db.from("tenants").select("time_step_minutes").eq("id", shop.id),
+      )
+    ).time_step_minutes;
 
   it("is 15 minutes for a new shop, and every member reads it", async () => {
     const fresh = await createTenant("orders-step");
@@ -1370,8 +1373,8 @@ describe("move_unit(): a row for several units that is split keeps its rental (M
     return data as { ok: boolean; reservation_ids: string[] };
   };
   const reservation = async (id: string) =>
-    only(
-      await service
+    await only(
+      service
         .from("reservations")
         .select("id, booking_id, product_id, quantity, rental_id, state")
         .eq("id", id),
@@ -1380,14 +1383,14 @@ describe("move_unit(): a row for several units that is split keeps its rental (M
   it("the moved unit's new row carries the same rental; the row it left keeps it; a row for one unit moved in place keeps it; a booking with no rental stays without", async () => {
     const x = await vehicle(a, 3);
     const y = await vehicle(a, 0);
-    const order = only(
-      await service
+    const order = await only(
+      service
         .from("orders")
         .insert({ ...orderRow(a, "SPLT22"), status: "booked" })
         .select("id"),
     );
-    const rental = only(
-      await service
+    const rental = await only(
+      service
         .from("rentals")
         .insert({ ...rentalRow(a, order.id, x.id), status: "booked" })
         .select("id"),
@@ -1479,8 +1482,8 @@ describe("a shop's currency is held by its orders and charges (S8)", () => {
       expect(free.error).toBeNull();
       expect(free.data).toEqual([{ currency: "USD" }]);
 
-      const order = only(
-        await service
+      const order = await only(
+        service
           .from("orders")
           .insert({ ...orderRow(shop, "CRNC22"), currency: "USD" })
           .select("id"),
@@ -1500,8 +1503,8 @@ describe("a shop's currency is held by its orders and charges (S8)", () => {
       ).toContain("orders_currency_fkey");
 
       // A charge holds it as its order does (a void one too).
-      const charge = only(
-        await service
+      const charge = await only(
+        service
           .from("order_charges")
           .insert({
             ...chargeRow(shop, order.id),
@@ -1516,8 +1519,11 @@ describe("a shop's currency is held by its orders and charges (S8)", () => {
         /orders_currency_fkey|order_charges_currency_fkey/,
       );
       expect(
-        only(await service.from("tenants").select("currency").eq("id", shop.id))
-          .currency,
+        (
+          await only(
+            service.from("tenants").select("currency").eq("id", shop.id),
+          )
+        ).currency,
       ).toBe("USD");
 
       await service
@@ -1602,8 +1608,8 @@ describe("migration 2 clears Phase 2's bookings (S7, decision 24)", () => {
         period: period(hours(400), hours(410)),
       })
       .throwOnError();
-    const coupon = only(
-      await service
+    const coupon = await only(
+      service
         .from("coupons")
         .insert({
           tenant_id: a.id,

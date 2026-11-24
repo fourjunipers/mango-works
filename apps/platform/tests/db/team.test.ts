@@ -6,6 +6,7 @@ import {
   serviceClient,
   type TestTenant,
 } from "./helpers";
+import { atMostOne } from "@mango/db/rows";
 
 let t: TestTenant;
 
@@ -34,11 +35,9 @@ beforeEach(async () => {
 });
 
 async function roleOf(membershipId: string) {
-  const { data } = await serviceClient()
-    .from("memberships")
-    .select("role")
-    .eq("id", membershipId)
-    .maybeSingle();
+  const { data } = await atMostOne(
+    serviceClient().from("memberships").select("role").eq("id", membershipId),
+  );
   return data?.role ?? null;
 }
 

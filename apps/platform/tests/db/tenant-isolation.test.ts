@@ -28,6 +28,7 @@ import {
   type TestTenant,
   type TestUser,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 type Row = Record<string, unknown>;
 type Fixture = TestTenant & {
@@ -97,28 +98,30 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
     }),
   );
   const model = ok(
-    await service
-      .from("products")
-      .insert({
-        tenant_id: tenant.id,
-        catalog_id: catalogId,
-        ...modelSpec,
-        name: "Fixture",
-      })
-      .select("id")
-      .single(),
+    await exactlyOne(
+      service
+        .from("products")
+        .insert({
+          tenant_id: tenant.id,
+          catalog_id: catalogId,
+          ...modelSpec,
+          name: "Fixture",
+        })
+        .select("id"),
+    ),
   )!;
   const unit = ok(
-    await service
-      .from("units")
-      .insert({
-        tenant_id: tenant.id,
-        product_id: model.id,
-        location_id: tenant.locationId,
-        plate: "FIX-1",
-      })
-      .select("id")
-      .single(),
+    await exactlyOne(
+      service
+        .from("units")
+        .insert({
+          tenant_id: tenant.id,
+          product_id: model.id,
+          location_id: tenant.locationId,
+          plate: "FIX-1",
+        })
+        .select("id"),
+    ),
   )!;
   ok(
     await service.from("unit_financials").insert({
@@ -152,16 +155,17 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
   );
   // As the owner: a renewal with no signed-in user is refused.
   const renewal = ok(
-    await tenant.members.owner.db
-      .from("unit_renewals")
-      .insert({
-        tenant_id: tenant.id,
-        unit_id: unit.id,
-        kind: "road_tax",
-        expires_at: "2027-01-31",
-      })
-      .select("id")
-      .single(),
+    await exactlyOne(
+      tenant.members.owner.db
+        .from("unit_renewals")
+        .insert({
+          tenant_id: tenant.id,
+          unit_id: unit.id,
+          kind: "road_tax",
+          expires_at: "2027-01-31",
+        })
+        .select("id"),
+    ),
   )!;
   ok(
     await service.from("unit_renewal_costs").insert({
@@ -180,16 +184,17 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
     }),
   );
   const item = ok(
-    await service
-      .from("products")
-      .insert({
-        tenant_id: tenant.id,
-        type: "sale_item",
-        tracking: "consumable",
-        name: "Fixture item",
-      })
-      .select("id")
-      .single(),
+    await exactlyOne(
+      service
+        .from("products")
+        .insert({
+          tenant_id: tenant.id,
+          type: "sale_item",
+          tracking: "consumable",
+          name: "Fixture item",
+        })
+        .select("id"),
+    ),
   )!;
   ok(
     await service.from("stock_movements").insert({
@@ -212,11 +217,12 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
   // Pricing (stage D4): a tax profile, the shop's settings, a shared price
   // list with its 30 days, the model priced from it, and a season naming it.
   const taxProfile = ok(
-    await service
-      .from("tax_profiles")
-      .insert({ tenant_id: tenant.id, name: "Fixture VAT", rate_bp: 700 })
-      .select("id")
-      .single(),
+    await exactlyOne(
+      service
+        .from("tax_profiles")
+        .insert({ tenant_id: tenant.id, name: "Fixture VAT", rate_bp: 700 })
+        .select("id"),
+    ),
   )!;
   ok(
     await service.from("pricing_settings").insert({
@@ -226,16 +232,17 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
     }),
   );
   const template = ok(
-    await service
-      .from("price_templates")
-      .insert({
-        tenant_id: tenant.id,
-        name: "Fixture list",
-        currency: tenant.currency,
-        kind: "amounts",
-      })
-      .select("id")
-      .single(),
+    await exactlyOne(
+      service
+        .from("price_templates")
+        .insert({
+          tenant_id: tenant.id,
+          name: "Fixture list",
+          currency: tenant.currency,
+          kind: "amounts",
+        })
+        .select("id"),
+    ),
   )!;
   ok(
     await service.from("price_template_days").insert(
@@ -261,17 +268,18 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
     }),
   );
   const rule = ok(
-    await service
-      .from("price_rules")
-      .insert({
-        tenant_id: tenant.id,
-        name: "Fixture season",
-        starts_on: "2027-04-01",
-        ends_on: "2027-09-30",
-        adjust_bp: -2000,
-      })
-      .select("id")
-      .single(),
+    await exactlyOne(
+      service
+        .from("price_rules")
+        .insert({
+          tenant_id: tenant.id,
+          name: "Fixture season",
+          starts_on: "2027-04-01",
+          ends_on: "2027-09-30",
+          adjust_bp: -2000,
+        })
+        .select("id"),
+    ),
   )!;
   ok(
     await service.from("price_rule_products").insert({
@@ -282,16 +290,17 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
   );
   // Extras (Phase 2, stage 5): a service offered with every vehicle.
   const extra = ok(
-    await service
-      .from("products")
-      .insert({
-        tenant_id: tenant.id,
-        type: "service",
-        tracking: "none",
-        name: "Fixture delivery",
-      })
-      .select("id")
-      .single(),
+    await exactlyOne(
+      service
+        .from("products")
+        .insert({
+          tenant_id: tenant.id,
+          type: "service",
+          tracking: "none",
+          name: "Fixture delivery",
+        })
+        .select("id"),
+    ),
   )!;
   ok(
     await service.from("product_extras").insert({
@@ -303,18 +312,19 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
   );
   // Coupons (Phase 2, stage 8): a coupon for one product, used once.
   const coupon = ok(
-    await service
-      .from("coupons")
-      .insert({
-        tenant_id: tenant.id,
-        currency: tenant.currency,
-        code: "FIXTURE10",
-        kind: "percent",
-        percent_bp: 1000,
-        all_products: false,
-      })
-      .select("id")
-      .single(),
+    await exactlyOne(
+      service
+        .from("coupons")
+        .insert({
+          tenant_id: tenant.id,
+          currency: tenant.currency,
+          code: "FIXTURE10",
+          kind: "percent",
+          percent_bp: 1000,
+          all_products: false,
+        })
+        .select("id"),
+    ),
   )!;
   ok(
     await service.from("coupon_products").insert({
@@ -335,61 +345,69 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
   // its charge and the charge's line. order_counters got its row when the
   // shop was made.
   const customer = ok(
-    await service
-      .from("customers")
-      .insert({
-        tenant_id: tenant.id,
-        full_name: "Fixture Customer",
-        phone: "+66810000000",
-        email: "fixture@example.test",
-      })
-      .select("id"),
-  )![0]!;
+    await exactlyOne(
+      service
+        .from("customers")
+        .insert({
+          tenant_id: tenant.id,
+          full_name: "Fixture Customer",
+          phone: "+66810000000",
+          email: "fixture@example.test",
+        })
+        .select("id"),
+    ),
+  )!;
   const order = ok(
-    await service
-      .from("orders")
-      .insert({
-        tenant_id: tenant.id,
-        code: "FXTRA2",
-        customer_id: customer.id,
-        status: "draft",
-        channel: "walk_in",
-        mode: "staff",
-        currency: tenant.currency,
-      })
-      .select("id"),
-  )![0]!;
+    await exactlyOne(
+      service
+        .from("orders")
+        .insert({
+          tenant_id: tenant.id,
+          code: "FXTRA2",
+          customer_id: customer.id,
+          status: "draft",
+          channel: "walk_in",
+          mode: "staff",
+          currency: tenant.currency,
+        })
+        .select("id"),
+    ),
+  )!;
   const rental = ok(
-    await service
-      .from("rentals")
-      .insert({
-        tenant_id: tenant.id,
-        order_id: order.id,
-        product_id: model.id,
-        product_type: "vehicle",
-        location_id: tenant.locationId,
-        quantity: 1,
-        starts_at: "2027-05-01T03:00:00Z",
-        ends_at: "2027-05-03T03:00:00Z",
-        status: "draft",
-      })
-      .select("id"),
-  )![0]!;
+    await exactlyOne(
+      service
+        .from("rentals")
+        .insert({
+          tenant_id: tenant.id,
+          order_id: order.id,
+          product_id: model.id,
+          product_type: "vehicle",
+          location_id: tenant.locationId,
+          quantity: 1,
+          starts_at: "2027-05-01T03:00:00Z",
+          ends_at: "2027-05-03T03:00:00Z",
+          status: "draft",
+        })
+        .select("id"),
+    ),
+  )!;
   const charge = ok(
-    await service
-      .from("order_charges")
-      .insert({
-        tenant_id: tenant.id,
-        order_id: order.id,
-        kind: "booking",
-        currency: tenant.currency,
-        priced_at: "2027-04-01T03:00:00Z",
-        total: 2000,
-        tax_total: 0,
-        snapshot: {},
-      })
-      .select("id"),
-  )![0]!;
+    await exactlyOne(
+      service
+        .from("order_charges")
+        .insert({
+          tenant_id: tenant.id,
+          order_id: order.id,
+          kind: "booking",
+          currency: tenant.currency,
+          priced_at: "2027-04-01T03:00:00Z",
+          total: 2000,
+          tax_total: 0,
+          snapshot: {},
+        })
+        .select("id"),
+    ),
+  )!;
   ok(
     await service.from("order_lines").insert({
       tenant_id: tenant.id,
@@ -894,11 +912,9 @@ describe("reading", () => {
       .select("*")
       .eq("unit_id", b.unitId);
     expect(money.data).toEqual([]);
-    const token = await serviceClient()
-      .from("units")
-      .select("qr_token")
-      .eq("id", b.unitId)
-      .single();
+    const token = await exactlyOne(
+      serviceClient().from("units").select("qr_token").eq("id", b.unitId),
+    );
     const byToken = await db
       .from("units")
       .select("id")
@@ -1004,16 +1020,17 @@ describe("a row can't point at another tenant's parent (service role, so this is
       period: period(hours(100), hours(101)),
     });
     // B's unit already has financials; use a fresh unit of B.
-    const { data: unit } = await serviceClient()
-      .from("units")
-      .insert({
-        tenant_id: b.id,
-        product_id: b.modelId,
-        location_id: b.locationId,
-        plate: "CROSS-3",
-      })
-      .select("id")
-      .single();
+    const { data: unit } = await exactlyOne(
+      serviceClient()
+        .from("units")
+        .insert({
+          tenant_id: b.id,
+          product_id: b.modelId,
+          location_id: b.locationId,
+          plate: "CROSS-3",
+        })
+        .select("id"),
+    );
     await refused("unit_financials", {
       tenant_id: a.id,
       unit_id: unit!.id,
@@ -1121,12 +1138,14 @@ describe("a row can't point at another tenant's parent (service role, so this is
     });
     // Within one shop: a line's charge and rental are its own order's.
     const service = serviceClient();
-    const other = await service
-      .from("orders")
-      .insert({ ...order, code: "THR222" })
-      .select("id");
+    const other = await exactlyOne(
+      service
+        .from("orders")
+        .insert({ ...order, code: "THR222" })
+        .select("id"),
+    );
     expect(other.error).toBeNull();
-    const otherId = other.data![0]!.id;
+    const otherId = other.data!.id;
     await refused("order_lines", { ...line, order_id: otherId });
     await refused("rentals", {
       ...rental,

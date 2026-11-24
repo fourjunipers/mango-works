@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { test } from "@playwright/test";
 import { acquireFileLock } from "./file-lock";
 import { ownerClient } from "./shop-settings";
+import { exactlyOne } from "@mango/db/rows";
 
 /**
  * A shop's booking rules (Settings › Booking rules; Phase 2 stage 11) are
@@ -40,13 +41,14 @@ type Db = Awaited<ReturnType<typeof ownerClient>>["db"];
 
 async function readRules(db: Db, tenantId: string): Promise<Read> {
   const [shop, locations, products] = await Promise.all([
-    db
-      .from("tenants")
-      .select(
-        "allow_overbooking, hold_minutes, buffer_before_minutes, buffer_after_minutes",
-      )
-      .eq("id", tenantId)
-      .single(),
+    exactlyOne(
+      db
+        .from("tenants")
+        .select(
+          "allow_overbooking, hold_minutes, buffer_before_minutes, buffer_after_minutes",
+        )
+        .eq("id", tenantId),
+    ),
     db
       .from("locations")
       .select(

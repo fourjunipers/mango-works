@@ -3,6 +3,7 @@ import { createClient } from "@mango/db/platform-server";
 import type { CouponRecord } from "./coupon-form";
 import { readCouponsById, type CouponListDb } from "./coupons";
 import { exactAuditRows, type AuditRow } from "./history";
+import { atMostOne } from "@mango/db/rows";
 
 /**
  * Reads for Settings › Coupons (Phase 2 stage 9). Everything runs as the
@@ -51,12 +52,13 @@ export async function getCoupon(
   id: string,
 ): Promise<CouponRecord | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("coupons")
-    .select(couponColumns)
-    .eq("tenant_id", tenantId)
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await atMostOne(
+    supabase
+      .from("coupons")
+      .select(couponColumns)
+      .eq("tenant_id", tenantId)
+      .eq("id", id),
+  );
   if (error) throw error;
   return data ? record(data as unknown as Read) : null;
 }
@@ -86,13 +88,14 @@ export async function getLiveCouponByCode(
   code: string,
 ): Promise<{ id: string; code: string; name: string } | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("coupons")
-    .select("id, code, name")
-    .eq("tenant_id", tenantId)
-    .eq("code", code)
-    .is("archived_at", null)
-    .maybeSingle();
+  const { data, error } = await atMostOne(
+    supabase
+      .from("coupons")
+      .select("id, code, name")
+      .eq("tenant_id", tenantId)
+      .eq("code", code)
+      .is("archived_at", null),
+  );
   if (error) throw error;
   return data;
 }

@@ -5,6 +5,7 @@ import { requireVendorShop } from "@/lib/auth/session";
 import { createClient } from "@mango/db/server";
 import { getVendorLocale } from "@/i18n/vendor";
 import { SubmitForm } from "./submit-form";
+import { exactlyOne } from "@mango/db/rows";
 
 // Where each readiness item is fixed.
 const fixLinks: Record<string, string> = {
@@ -32,11 +33,12 @@ export default async function VendorPage() {
   const supabase = await createClient();
   const [{ data: missing }, { data: details }] = await Promise.all([
     supabase.rpc("shop_readiness", { p_shop_id: shop.id }),
-    supabase
-      .from("shops")
-      .select("status, review_notes, submitted_at, flagged_for_review")
-      .eq("id", shop.id)
-      .single(),
+    exactlyOne(
+      supabase
+        .from("shops")
+        .select("status, review_notes, submitted_at, flagged_for_review")
+        .eq("id", shop.id),
+    ),
   ]);
   const todo = new Set(missing ?? []);
   const status = details?.status ?? shop.status;

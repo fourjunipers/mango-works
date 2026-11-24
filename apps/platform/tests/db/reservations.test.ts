@@ -35,6 +35,7 @@ import {
   type TestUser,
   until,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -153,17 +154,18 @@ async function vehicle(
   options: { tenant?: TestTenant; before?: number; after?: number } = {},
 ) {
   const tenant = options.tenant ?? shop;
-  const product = await service
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: name("Scooter"),
-      vehicle_type: "motorbike",
-      buffer_before_minutes: options.before ?? null,
-      buffer_after_minutes: options.after ?? null,
-    })
-    .select("id")
-    .single();
+  const product = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        name: name("Scooter"),
+        vehicle_type: "motorbike",
+        buffer_before_minutes: options.before ?? null,
+        buffer_after_minutes: options.after ?? null,
+      })
+      .select("id"),
+  );
   if (product.error) throw product.error;
   const units = await service
     .from("units")
@@ -1124,16 +1126,17 @@ describe("a booking that overlaps a downtime block is refused", () => {
   it("by the pick, by name, and by the constraint itself when a block is written by hand", async () => {
     const bike = await vehicle(1);
     const [unit] = bike.units;
-    const down = await db("mechanic")
-      .from("unit_blocks")
-      .insert({
-        tenant_id: shop.id,
-        unit_id: unit,
-        kind: "downtime",
-        period: period(at(5), at(7)),
-      })
-      .select("id")
-      .single();
+    const down = await exactlyOne(
+      db("mechanic")
+        .from("unit_blocks")
+        .insert({
+          tenant_id: shop.id,
+          unit_id: unit,
+          kind: "downtime",
+          period: period(at(5), at(7)),
+        })
+        .select("id"),
+    );
     expect(down.error).toBeNull();
     const before = await written();
 
@@ -1163,24 +1166,25 @@ describe("a booking that overlaps a downtime block is refused", () => {
 
     // The constraint has the last word, whoever writes: a reservation made
     // by hand with the service role still can't put a block there.
-    const reservation = await service
-      .from("reservations")
-      .insert({
-        tenant_id: shop.id,
-        booking_id: randomUUID(),
-        product_id: bike.id,
-        product_type: "vehicle",
-        location_id: shop.locationId,
-        starts_at: at(6).toISOString(),
-        ends_at: at(8).toISOString(),
-        block_period: period(at(6), at(8)),
-        quantity: 1,
-        channel: "api",
-        mode: "instant",
-        state: "reserved",
-      })
-      .select("id")
-      .single();
+    const reservation = await exactlyOne(
+      service
+        .from("reservations")
+        .insert({
+          tenant_id: shop.id,
+          booking_id: randomUUID(),
+          product_id: bike.id,
+          product_type: "vehicle",
+          location_id: shop.locationId,
+          starts_at: at(6).toISOString(),
+          ends_at: at(8).toISOString(),
+          block_period: period(at(6), at(8)),
+          quantity: 1,
+          channel: "api",
+          mode: "instant",
+          state: "reserved",
+        })
+        .select("id"),
+    );
     expect(reservation.error).toBeNull();
     const byHand = await service.from("unit_blocks").insert({
       tenant_id: shop.id,
@@ -1707,17 +1711,18 @@ describe("unit_blocks.created_by is set in the database", () => {
   it("what a browser sends is overwritten, it can't be changed afterwards, and the service role leaves it empty", async () => {
     const bike = await vehicle(1);
     const [unit] = bike.units;
-    const forged = await db("mechanic")
-      .from("unit_blocks")
-      .insert({
-        tenant_id: shop.id,
-        unit_id: unit,
-        kind: "downtime",
-        period: period(at(1), at(2)),
-        created_by: shop.members.owner.id,
-      })
-      .select("id, created_by")
-      .single();
+    const forged = await exactlyOne(
+      db("mechanic")
+        .from("unit_blocks")
+        .insert({
+          tenant_id: shop.id,
+          unit_id: unit,
+          kind: "downtime",
+          period: period(at(1), at(2)),
+          created_by: shop.members.owner.id,
+        })
+        .select("id, created_by"),
+    );
     expect(forged.error).toBeNull();
     expect(forged.data!.created_by).toBe(shop.members.mechanic.id);
 
@@ -1746,17 +1751,18 @@ describe("unit_blocks.created_by is set in the database", () => {
       { created_by: shop.members.mechanic.id, note: "Done early" },
     ]);
 
-    const byServer = await service
-      .from("unit_blocks")
-      .insert({
-        tenant_id: shop.id,
-        unit_id: unit,
-        kind: "downtime",
-        period: period(at(3), at(4)),
-        created_by: shop.members.owner.id,
-      })
-      .select("created_by")
-      .single();
+    const byServer = await exactlyOne(
+      service
+        .from("unit_blocks")
+        .insert({
+          tenant_id: shop.id,
+          unit_id: unit,
+          kind: "downtime",
+          period: period(at(3), at(4)),
+          created_by: shop.members.owner.id,
+        })
+        .select("created_by"),
+    );
     expect(byServer.data!.created_by).toBeNull();
   });
 });
@@ -1859,16 +1865,17 @@ describe("lock order", () => {
     expect(pair, "no such pair among 8 units").not.toBe("");
     const [lowId, highId] = pair.split(" ");
     // By key, highId comes first. By id, lowId would.
-    const block = await service
-      .from("unit_blocks")
-      .insert({
-        tenant_id: shop.id,
-        unit_id: lowId,
-        kind: "downtime",
-        period: period(at(1), at(2)),
-      })
-      .select("id")
-      .single();
+    const block = await exactlyOne(
+      service
+        .from("unit_blocks")
+        .insert({
+          tenant_id: shop.id,
+          unit_id: lowId,
+          kind: "downtime",
+          period: period(at(1), at(2)),
+        })
+        .select("id"),
+    );
     expect(block.error).toBeNull();
 
     // Someone holds the lock that is second in key order.
@@ -2305,11 +2312,9 @@ describe("one side held in place, the other seen waiting", () => {
         reason: "unavailable",
         line: 0,
       });
-      const { data: unit } = await service
-        .from("units")
-        .select("status")
-        .eq("id", bike.units[0])
-        .single();
+      const { data: unit } = await exactlyOne(
+        service.from("units").select("status").eq("id", bike.units[0]),
+      );
       expect(unit!.status).toBe(status);
       expect(await blocksOf(bike.id)).toEqual([]);
       expect(await reservationsOf(bike.id)).toEqual([]);
@@ -2358,11 +2363,9 @@ describe("one side held in place, the other seen waiting", () => {
       expect(left.error?.message).toBe(
         status === "lost" ? undefined : "unit_has_future_blocks",
       );
-      const { data: unit } = await service
-        .from("units")
-        .select("status")
-        .eq("id", bike.units[0])
-        .single();
+      const { data: unit } = await exactlyOne(
+        service.from("units").select("status").eq("id", bike.units[0]),
+      );
       expect(unit!.status).toBe(status === "lost" ? "lost" : "active");
       expect(await blocksOf(bike.id)).toHaveLength(1);
     }, 60_000);
@@ -2717,11 +2720,9 @@ describe("more races, in every shop", () => {
               : ["ok / unit_has_future_blocks", "unavailable / ok"],
             `${where}, ${status}, round ${round}`,
           ).toContain(pair);
-          const { data: unit } = await service
-            .from("units")
-            .select("status")
-            .eq("id", bike.units[0])
-            .single();
+          const { data: unit } = await exactlyOne(
+            service.from("units").select("status").eq("id", bike.units[0]),
+          );
           const blocks = await blocksOf(bike.id);
           expect(`${unit!.status} ${blocks.length}`).toBe(
             pair === "ok / ok"

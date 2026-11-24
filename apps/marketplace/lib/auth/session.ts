@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { createClient } from "@mango/db/server";
 import { isAdminEmail, parseAdminEmails } from "./admin-emails";
 import { removeAdminRole } from "./sync-role";
+import { exactlyOne } from "@mango/db/rows";
 
 /**
  * Data access layer for the signed-in user. Every read here touches cookies,
@@ -38,11 +39,12 @@ export const getMyProfile = cache(async () => {
   const user = await getCurrentUser();
   if (!user) return null;
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("id, role, name, email, whatsapp, language, notify_channels")
-    .eq("id", user.id)
-    .single();
+  const { data } = await exactlyOne(
+    supabase
+      .from("profiles")
+      .select("id, role, name, email, whatsapp, language, notify_channels")
+      .eq("id", user.id),
+  );
   return data;
 });
 

@@ -9,6 +9,7 @@ import { catalogName, getCatalog, type CatalogEntry } from "@/lib/fleet-data";
 import { getUser } from "@/lib/session";
 import { createClient } from "@mango/db/platform-server";
 import { ReviewForm } from "./review-form";
+import { atMostOne } from "@mango/db/rows";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("Admin");
@@ -28,10 +29,9 @@ export default async function AdminCatalogPage({
   if (!user) redirect("/login?next=%2Fadmin%2Fcatalog");
   const supabase = await createClient();
   // RLS shows a user only their own row, so any row means "admin".
-  const { data: admin } = await supabase
-    .from("platform_admins")
-    .select("user_id")
-    .maybeSingle();
+  const { data: admin } = await atMostOne(
+    supabase.from("platform_admins").select("user_id"),
+  );
   if (!admin) notFound();
 
   const [t, tFleet, tNav, requests] = await Promise.all([

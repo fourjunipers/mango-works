@@ -42,6 +42,7 @@ import {
   type TestTenant,
   type TestUser,
 } from "./helpers";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 vi.setConfig(GATE_TIMEOUTS);
 
@@ -141,16 +142,17 @@ const noDeadlock = (results: Ended[], what: string) => {
 };
 
 async function vehicle(tenant: TestTenant, units: number, locationId?: string) {
-  const product = await service
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: `Lock rules ${tag} ${++counter}`,
-      vehicle_type: "motorbike",
-    })
-    .select("id")
-    .single()
-    .throwOnError();
+  const product = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        name: `Lock rules ${tag} ${++counter}`,
+        vehicle_type: "motorbike",
+      })
+      .select("id")
+      .throwOnError(),
+  );
   const id = product.data!.id as string;
   const unitIds: string[] = [];
   for (let i = 0; i < units; i++)
@@ -164,31 +166,33 @@ async function addUnit(
   locationId?: string,
   id?: string,
 ) {
-  const unit = await service
-    .from("units")
-    .insert({
-      ...(id ? { id } : {}),
-      tenant_id: tenant.id,
-      product_id: productId,
-      location_id: locationId ?? tenant.locationId,
-      plate: `LR-${tag}-${++counter}`,
-    })
-    .select("id")
-    .single()
-    .throwOnError();
+  const unit = await exactlyOne(
+    service
+      .from("units")
+      .insert({
+        ...(id ? { id } : {}),
+        tenant_id: tenant.id,
+        product_id: productId,
+        location_id: locationId ?? tenant.locationId,
+        plate: `LR-${tag}-${++counter}`,
+      })
+      .select("id")
+      .throwOnError(),
+  );
   return unit.data!.id as string;
 }
 
 async function branchOf(tenant: TestTenant) {
-  const { data, error } = await service
-    .from("locations")
-    .insert({
-      tenant_id: tenant.id,
-      name: `Branch ${tag} ${++counter}`,
-      timezone: "Asia/Bangkok",
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("locations")
+      .insert({
+        tenant_id: tenant.id,
+        name: `Branch ${tag} ${++counter}`,
+        timezone: "Asia/Bangkok",
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id as string;
 }
@@ -1658,13 +1662,14 @@ describe("review_catalog_request(): products before the catalog entry; the listi
             .throwOnError()
         ).data!,
         entry: (
-          await service
-            .schema("public")
-            .from("bike_catalog")
-            .select("status, reviewed_at")
-            .eq("id", entry)
-            .single()
-            .throwOnError()
+          await exactlyOne(
+            service
+              .schema("public")
+              .from("bike_catalog")
+              .select("status, reviewed_at")
+              .eq("id", entry)
+              .throwOnError(),
+          )
         ).data!,
         listings: (
           await service
@@ -1761,23 +1766,25 @@ describe("review_catalog_request(): products before the catalog entry; the listi
     const owner = tenant.members.owner.db;
     const row = async (productId: string) =>
       (
-        await service
-          .from("product_listings")
-          .select(
-            "enabled, instant_units, request_units, ready_now, updated_at",
-          )
-          .eq("product_id", productId)
-          .maybeSingle()
-          .throwOnError()
+        await atMostOne(
+          service
+            .from("product_listings")
+            .select(
+              "enabled, instant_units, request_units, ready_now, updated_at",
+            )
+            .eq("product_id", productId)
+            .throwOnError(),
+        )
       ).data;
     const approved = async (productId: string) =>
       (
-        await service
-          .from("products")
-          .select("catalog_id, catalog_approved_at")
-          .eq("id", productId)
-          .single()
-          .throwOnError()
+        await exactlyOne(
+          service
+            .from("products")
+            .select("catalog_id, catalog_approved_at")
+            .eq("id", productId)
+            .throwOnError(),
+        )
       ).data!;
 
     // Approve, no listing yet: none is made.

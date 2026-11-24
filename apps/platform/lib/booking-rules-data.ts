@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@mango/db/platform-server";
 import type { BookingRulesRead } from "./booking-rules";
+import { exactlyOne } from "@mango/db/rows";
 
 /**
  * The read of Settings › Booking rules (Phase 2 stage 11): the shop's rules
@@ -19,13 +20,14 @@ export async function getBookingRules(
 ): Promise<BookingRulesRead> {
   const supabase = await createClient();
   const [shop, locations, vehicles] = await Promise.all([
-    supabase
-      .from("tenants")
-      .select(
-        "allow_overbooking, hold_minutes, buffer_before_minutes, buffer_after_minutes",
-      )
-      .eq("id", tenantId)
-      .single(),
+    exactlyOne(
+      supabase
+        .from("tenants")
+        .select(
+          "allow_overbooking, hold_minutes, buffer_before_minutes, buffer_after_minutes",
+        )
+        .eq("id", tenantId),
+    ),
     supabase
       .from("locations")
       .select(

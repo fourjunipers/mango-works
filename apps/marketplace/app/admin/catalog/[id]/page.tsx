@@ -9,6 +9,7 @@ import { photoUrl, PHOTO_BUCKETS } from "@/lib/photos";
 import { createAdminClient } from "@mango/db/admin";
 import { supabaseUrl } from "@mango/db/env";
 import { CatalogForm } from "./catalog-form";
+import { atMostOne } from "@mango/db/rows";
 
 /** /admin/catalog/new adds an approved entry; /admin/catalog/<id> edits or reviews. */
 export default async function AdminCatalogEntryPage({
@@ -19,11 +20,12 @@ export default async function AdminCatalogEntryPage({
   const isNew = id === "new";
   const { data: entry } = isNew
     ? { data: null }
-    : await createAdminClient()
-        .from("bike_catalog")
-        .select("*, shop:shops (name)")
-        .eq("id", id)
-        .maybeSingle();
+    : await atMostOne(
+        createAdminClient()
+          .from("bike_catalog")
+          .select("*, shop:shops (name)")
+          .eq("id", id),
+      );
   if (!isNew && !entry) notFound();
 
   return (

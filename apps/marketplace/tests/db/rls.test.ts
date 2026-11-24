@@ -8,6 +8,7 @@ import {
   signedInClient,
   type Db,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Postgres "insufficient privilege": a column grant or RLS check refused it.
 const DENIED = "42501";
@@ -346,11 +347,12 @@ describe("booking_events", () => {
 
 describe("new sign-ups", () => {
   it("get a customer profile automatically", async () => {
-    const { data } = await serviceClient()
-      .from("profiles")
-      .select("role, email")
-      .eq("id", otherCustomerId)
-      .single();
+    const { data } = await exactlyOne(
+      serviceClient()
+        .from("profiles")
+        .select("role, email")
+        .eq("id", otherCustomerId),
+    );
     expect(data?.role).toBe("customer");
     expect(data?.email).toMatch(/^rls-other-/);
   });

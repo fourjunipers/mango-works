@@ -11,11 +11,13 @@
     "./env": "./src/env.ts",
     "./platform-server": "./src/platform-server.ts",
     "./public": "./src/public.ts",
+    "./rows": "./src/rows.ts",
     "./server": "./src/server.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint",
+    "test": "vitest run",
     "db:types": "supabase gen types typescript --local --schema public,graphql_public,platform --workdir ../.. > src/database.types.ts"
   },
   "dependencies": {
@@ -28,6 +30,7 @@
   },
   "devDependencies": {
     "@mango/config": "*",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.5"
   }
 }

@@ -24,6 +24,7 @@ import {
   type TestTenant,
   type TestUser,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 let shop: TestTenant;
 let other: TestTenant;
@@ -36,16 +37,17 @@ const service = serviceClient();
 let plateCounter = 0;
 /** A fresh active unit of the test model. */
 async function addUnit(tenant = shop, model = modelId): Promise<string> {
-  const { data, error } = await service
-    .from("units")
-    .insert({
-      tenant_id: tenant.id,
-      product_id: model,
-      location_id: tenant.locationId,
-      plate: `T-${++plateCounter}`,
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("units")
+      .insert({
+        tenant_id: tenant.id,
+        product_id: model,
+        location_id: tenant.locationId,
+        plate: `T-${++plateCounter}`,
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
@@ -70,16 +72,17 @@ beforeAll(async () => {
     createUser("fleet-admin"),
   ]);
   await service.from("platform_admins").insert({ user_id: admin.id });
-  const { data, error } = await service
-    .from("products")
-    .insert({
-      tenant_id: shop.id,
-      catalog_id: catalogId,
-      ...modelSpec,
-      name: "Test model",
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: shop.id,
+        catalog_id: catalogId,
+        ...modelSpec,
+        name: "Test model",
+      })
+      .select("id"),
+  );
   if (error) throw error;
   modelId = data.id;
 }, 120_000);
@@ -214,11 +217,12 @@ describe("role limits", () => {
     for (const [i, role] of (["mechanic", "staff"] as const).entries()) {
       const db = shop.members[role].db;
       // Open-ended: "until someone ends it".
-      const added = await db
-        .from("unit_blocks")
-        .insert(block(id, hours(1 + i * 10)))
-        .select("id, created_by")
-        .single();
+      const added = await exactlyOne(
+        db
+          .from("unit_blocks")
+          .insert(block(id, hours(1 + i * 10)))
+          .select("id, created_by"),
+      );
       expect(added.data?.created_by, role).toBe(shop.members[role].id);
       const ended = await db
         .from("unit_blocks")
@@ -352,11 +356,12 @@ describe("unit blocks: one lock for every kind", () => {
 
   it("ending a block while someone adds one after it gives a consistent answer", async () => {
     const id = await addUnit();
-    const { data: open } = await service
-      .from("unit_blocks")
-      .insert(block(id, hours(1)))
-      .select("id")
-      .single();
+    const { data: open } = await exactlyOne(
+      service
+        .from("unit_blocks")
+        .insert(block(id, hours(1)))
+        .select("id"),
+    );
     // The open-ended block is cut to end at +2h while another is added from +3h.
     const [ended, added] = await Promise.all([
       shop.members.staff.db
@@ -399,11 +404,12 @@ describe("selling or retiring a unit", () => {
   it("is refused while the unit has a future block, then allowed", async () => {
     for (const status of ["sold", "retired"] as const) {
       const id = await addUnit();
-      const { data: future } = await service
-        .from("unit_blocks")
-        .insert(await allocationFor(shop.id, id, hours(48), hours(72)))
-        .select("id")
-        .single();
+      const { data: future } = await exactlyOne(
+        service
+          .from("unit_blocks")
+          .insert(await allocationFor(shop.id, id, hours(48), hours(72)))
+          .select("id"),
+      );
       const refused = await shop.members.owner.db
         .from("units")
         .update({ status })
@@ -435,11 +441,12 @@ describe("selling or retiring a unit", () => {
   it("is refused by an open-ended downtime, and allowed by blocks in the past", async () => {
     const id = await addUnit();
     await service.from("unit_blocks").insert(block(id, hours(-48), hours(-24)));
-    const { data: open } = await service
-      .from("unit_blocks")
-      .insert(block(id, hours(-1)))
-      .select("id")
-      .single();
+    const { data: open } = await exactlyOne(
+      service
+        .from("unit_blocks")
+        .insert(block(id, hours(-1)))
+        .select("id"),
+    );
     const refused = await service
       .from("units")
       .update({ status: "sold" })
@@ -489,16 +496,17 @@ describe("units and models", () => {
     expect((await unit(shop, modelId, " 1กข-1234 ")).error?.code).toBe("23505");
     expect((await unit(shop, modelId, "ab-77")).error).toBeNull();
     expect((await unit(shop, modelId, "AB-77")).error?.code).toBe("23505");
-    const { data: otherModel } = await service
-      .from("products")
-      .insert({
-        tenant_id: other.id,
-        catalog_id: catalogId,
-        ...modelSpec,
-        name: "Other",
-      })
-      .select("id")
-      .single();
+    const { data: otherModel } = await exactlyOne(
+      service
+        .from("products")
+        .insert({
+          tenant_id: other.id,
+          catalog_id: catalogId,
+          ...modelSpec,
+          name: "Other",
+        })
+        .select("id"),
+    );
     expect((await unit(other, otherModel!.id, "AB-77")).error).toBeNull();
   });
 
@@ -536,16 +544,17 @@ describe("units and models", () => {
   });
 
   it("booking-mode counts can't exceed the model's active units", async () => {
-    const { data: model } = await service
-      .from("products")
-      .insert({
-        tenant_id: shop.id,
-        catalog_id: catalogId,
-        ...modelSpec,
-        name: "Counted",
-      })
-      .select("id")
-      .single();
+    const { data: model } = await exactlyOne(
+      service
+        .from("products")
+        .insert({
+          tenant_id: shop.id,
+          catalog_id: catalogId,
+          ...modelSpec,
+          name: "Counted",
+        })
+        .select("id"),
+    );
     await addUnit(shop, model!.id);
     await addUnit(shop, model!.id);
     const set = (values: Partial<ListingValues>) =>
@@ -579,16 +588,17 @@ describe("money", () => {
       expect((await change("USD")).data).toEqual([{ currency: "USD" }]);
       expect((await locked()).data).toBe(false);
 
-      const { data: model } = await service
-        .from("products")
-        .insert({
-          tenant_id: fresh.id,
-          catalog_id: catalogId,
-          ...modelSpec,
-          name: "M",
-        })
-        .select("id")
-        .single();
+      const { data: model } = await exactlyOne(
+        service
+          .from("products")
+          .insert({
+            tenant_id: fresh.id,
+            catalog_id: catalogId,
+            ...modelSpec,
+            name: "M",
+          })
+          .select("id"),
+      );
       const unitId = await addUnit(fresh, model!.id);
       await service.from("unit_financials").insert({
         tenant_id: fresh.id,
@@ -617,16 +627,17 @@ describe("money", () => {
     // The deposit lives in platform.product_pricing since stage D4, written
     // through platform.save_product_pricing().
     const product = async (name: string) => {
-      const { data, error } = await service
-        .from("products")
-        .insert({
-          tenant_id: shop.id,
-          catalog_id: catalogId,
-          ...modelSpec,
-          name,
-        })
-        .select("id")
-        .single();
+      const { data, error } = await exactlyOne(
+        service
+          .from("products")
+          .insert({
+            tenant_id: shop.id,
+            catalog_id: catalogId,
+            ...modelSpec,
+            name,
+          })
+          .select("id"),
+      );
       if (error) throw error;
       return data.id;
     };
@@ -637,11 +648,12 @@ describe("money", () => {
       });
     const stored = async (id: string) =>
       (
-        await service
-          .from("product_pricing")
-          .select("deposit, currency")
-          .eq("product_id", id)
-          .single()
+        await exactlyOne(
+          service
+            .from("product_pricing")
+            .select("deposit, currency")
+            .eq("product_id", id),
+        )
       ).data;
 
     const withDeposit = await product("Deposit");
@@ -717,15 +729,16 @@ describe("locations", () => {
     expect(unset.error?.message).toContain("default location");
 
     // A second, non-default location is fine and can go again.
-    const branch = await db
-      .from("locations")
-      .insert({
-        tenant_id: shop.id,
-        name: "Airport",
-        timezone: "Europe/London",
-      })
-      .select("id")
-      .single();
+    const branch = await exactlyOne(
+      db
+        .from("locations")
+        .insert({
+          tenant_id: shop.id,
+          name: "Airport",
+          timezone: "Europe/London",
+        })
+        .select("id"),
+    );
     expect(branch.error).toBeNull();
     const gone = await db
       .from("locations")
@@ -766,38 +779,38 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
       p_note: "Please add",
     });
   const model = async (id: string) => {
-    const { data } = await service
-      .from("products")
-      .select("catalog_id, make, model, cc, transmission, vehicle_type")
-      .eq("id", id)
-      .single();
+    const { data } = await exactlyOne(
+      service
+        .from("products")
+        .select("catalog_id, make, model, cc, transmission, vehicle_type")
+        .eq("id", id),
+    );
     return { ...data!, ...(await listingOf(id)) };
   };
   const addOwn = async (extra: object = {}) => {
-    const { data, error } = await shop.members.manager.db
-      .from("products")
-      .insert(own(extra))
-      .select("id")
-      .single();
+    const { data, error } = await exactlyOne(
+      shop.members.manager.db.from("products").insert(own(extra)).select("id"),
+    );
     if (error) throw error;
     return data.id;
   };
 
   it("a model on a preset takes its make, model and specs from the catalog", async () => {
-    const { data, error } = await shop.members.manager.db
-      .from("products")
-      .insert({
-        tenant_id: shop.id,
-        catalog_id: catalogId,
-        name: "Preset with made-up specs",
-        // Whatever is sent, the preset's own description is what's saved.
-        make: "Wrong",
-        model: "Wrong",
-        vehicle_type: "car",
-        cc: 9999,
-      })
-      .select("make, model, vehicle_type, cc, transmission")
-      .single();
+    const { data, error } = await exactlyOne(
+      shop.members.manager.db
+        .from("products")
+        .insert({
+          tenant_id: shop.id,
+          catalog_id: catalogId,
+          name: "Preset with made-up specs",
+          // Whatever is sent, the preset's own description is what's saved.
+          make: "Wrong",
+          model: "Wrong",
+          vehicle_type: "car",
+          cc: 9999,
+        })
+        .select("make, model, vehicle_type, cc, transmission"),
+    );
     expect(error).toBeNull();
     expect(data).toMatchObject({
       make: "Testmake",
@@ -832,11 +845,12 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
         transmission: null,
       },
     ]) {
-      const { data, error } = await shop.members.owner.db
-        .from("products")
-        .insert(own({ ...vehicle, name: `${vehicle.make} ${vehicle.model}` }))
-        .select("catalog_id, vehicle_type")
-        .single();
+      const { data, error } = await exactlyOne(
+        shop.members.owner.db
+          .from("products")
+          .insert(own({ ...vehicle, name: `${vehicle.make} ${vehicle.model}` }))
+          .select("catalog_id, vehicle_type"),
+      );
       expect(error, vehicle.vehicle_type).toBeNull();
       expect(data).toEqual({
         catalog_id: null,
@@ -869,11 +883,12 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
     ] as const)
       expect((await insert(extra)).error, what).toBeNull();
     // A saved car can become a motorbike without them.
-    const { data: car } = await service
-      .from("products")
-      .insert(own({ vehicle_type: "car", cc: null, transmission: null }))
-      .select("id")
-      .single();
+    const { data: car } = await exactlyOne(
+      service
+        .from("products")
+        .insert(own({ vehicle_type: "car", cc: null, transmission: null }))
+        .select("id"),
+    );
     const toBike = await shop.members.manager.db
       .from("products")
       .update({ vehicle_type: "motorbike" })
@@ -892,11 +907,9 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
 
   it("every catalog review leaves an audit record under the shop that sent it", async () => {
     const add = async () => {
-      const { data } = await service
-        .from("products")
-        .insert(own())
-        .select("id")
-        .single();
+      const { data } = await exactlyOne(
+        service.from("products").insert(own()).select("id"),
+      );
       const sent = await shop.members.owner.db.rpc(
         "submit_product_to_catalog",
         {
@@ -1053,16 +1066,17 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
   });
 
   it("a model on a preset is listable at once; picking the preset later works too", async () => {
-    const { data: onPreset } = await service
-      .from("products")
-      .insert({
-        ...modelSpec,
-        tenant_id: shop.id,
-        catalog_id: catalogId,
-        name: "Listable",
-      })
-      .select("id")
-      .single();
+    const { data: onPreset } = await exactlyOne(
+      service
+        .from("products")
+        .insert({
+          ...modelSpec,
+          tenant_id: shop.id,
+          catalog_id: catalogId,
+          name: "Listable",
+        })
+        .select("id"),
+    );
     const listed = await setListing(shop.members.manager.db, onPreset!.id, {
       marketplace_listed: true,
     });
@@ -1104,12 +1118,13 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
       make: "Testmake",
       cc: 125,
     });
-    const { data: request } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .select("status, review_notes")
-      .eq("id", sent.data!)
-      .single();
+    const { data: request } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .select("status, review_notes")
+        .eq("id", sent.data!),
+    );
     expect(request?.status).toBe("rejected");
     expect(request?.review_notes).toMatch(/^Merged into testmake-/);
     // Already decided: nothing left to review.
@@ -1175,12 +1190,13 @@ describe("presets, a shop's own models, and listing on Moto Mangos", () => {
       "motorbike",
       "other",
     ]);
-    const { data: entry } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .select("vehicle_type, specs")
-      .eq("id", catalogId)
-      .single();
+    const { data: entry } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .select("vehicle_type, specs")
+        .eq("id", catalogId),
+    );
     expect(entry).toEqual({ vehicle_type: "motorbike", specs: {} });
   });
 });
@@ -1457,11 +1473,12 @@ describe("follow-ups (11 Nov 2026): removed fields, year bands, renewals, remind
       starts_at: "2026-01-01",
       expires_at,
     });
-    const added = await shop.members.mechanic.db
-      .from("unit_renewals")
-      .insert(renewal("compulsory_insurance", "2026-12-31"))
-      .select("id, recorded_by")
-      .single();
+    const added = await exactlyOne(
+      shop.members.mechanic.db
+        .from("unit_renewals")
+        .insert(renewal("compulsory_insurance", "2026-12-31"))
+        .select("id, recorded_by"),
+    );
     expect(added.error).toBeNull();
     expect(added.data?.recorded_by).toBe(shop.members.mechanic.id);
     const driver = await shop.members.driver.db
@@ -1523,11 +1540,12 @@ describe("follow-ups (11 Nov 2026): removed fields, year bands, renewals, remind
         .update(values)
         .eq("id", shop.id)
         .select("renewal_reminder_days, renewal_digest_day");
-    const start = await service
-      .from("tenants")
-      .select("renewal_reminder_days, renewal_digest_day")
-      .eq("id", shop.id)
-      .single();
+    const start = await exactlyOne(
+      service
+        .from("tenants")
+        .select("renewal_reminder_days, renewal_digest_day")
+        .eq("id", shop.id),
+    );
     expect(start.data).toEqual({
       renewal_reminder_days: [45, 30, 14, 7],
       renewal_digest_day: null,
@@ -1586,11 +1604,12 @@ describe("renewal notifications are queued, once each, for a sender that doesn't
   };
   const addRenewal = async (unit: string, kind: string, expires_at: string) => {
     // As a member: a renewal with no signed-in user is refused.
-    const { data, error } = await queue.members.owner.db
-      .from("unit_renewals")
-      .insert({ tenant_id: queue.id, unit_id: unit, kind, expires_at })
-      .select("id")
-      .single();
+    const { data, error } = await exactlyOne(
+      queue.members.owner.db
+        .from("unit_renewals")
+        .insert({ tenant_id: queue.id, unit_id: unit, kind, expires_at })
+        .select("id"),
+    );
     if (error) throw error;
     return data.id;
   };
@@ -1602,16 +1621,17 @@ describe("renewal notifications are queued, once each, for a sender that doesn't
       locale: "th-TH",
       timezone: "Asia/Bangkok",
     });
-    const { data: model } = await service
-      .from("products")
-      .insert({
-        tenant_id: queue.id,
-        catalog_id: catalogId,
-        ...modelSpec,
-        name: "Queue",
-      })
-      .select("id")
-      .single();
+    const { data: model } = await exactlyOne(
+      service
+        .from("products")
+        .insert({
+          tenant_id: queue.id,
+          catalog_id: catalogId,
+          ...modelSpec,
+          name: "Queue",
+        })
+        .select("id"),
+    );
     unitId = await addUnit(queue, model!.id);
   }, 60_000);
   afterAll(async () => {
@@ -1652,11 +1672,9 @@ describe("renewal notifications are queued, once each, for a sender that doesn't
   it("uses the calendar date at the bike's location, not UTC", async () => {
     // 18:00 UTC on 26 Nov is already 27 Nov in Bangkok: the 14-day reminder
     // for 11 Dec is due there, though it is still 15 days away in UTC.
-    const { data: model } = await service
-      .from("products")
-      .select("id")
-      .eq("tenant_id", queue.id)
-      .single();
+    const { data: model } = await exactlyOne(
+      service.from("products").select("id").eq("tenant_id", queue.id),
+    );
     const unit = await addUnit(queue, model!.id);
     const id = await addRenewal(unit, "road_tax", "2026-12-11");
     await run("2026-11-11T12:00:00Z");
@@ -1668,11 +1686,9 @@ describe("renewal notifications are queued, once each, for a sender that doesn't
   });
 
   it("queues 'expired' once, only for the current record, and never for a sold bike", async () => {
-    const { data: model } = await service
-      .from("products")
-      .select("id")
-      .eq("tenant_id", queue.id)
-      .single();
+    const { data: model } = await exactlyOne(
+      service.from("products").select("id").eq("tenant_id", queue.id),
+    );
     const lapsed = await addUnit(queue, model!.id);
     const renewed = await addUnit(queue, model!.id);
     const sold = await addUnit(queue, model!.id);

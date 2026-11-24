@@ -2,6 +2,7 @@ import "server-only";
 import type { User } from "@supabase/supabase-js";
 import { createAdminClient } from "@mango/db/admin";
 import { isAdminEmail, parseAdminEmails } from "./admin-emails";
+import { exactlyOne } from "@mango/db/rows";
 
 /**
  * Runs after every sign-in. Grants the admin role to verified emails listed
@@ -14,11 +15,9 @@ export async function syncRoleAfterSignIn(user: User): Promise<void> {
     isAdminEmail(user.email, parseAdminEmails(process.env.ADMIN_EMAILS));
 
   const db = createAdminClient();
-  const { data: profile, error } = await db
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const { data: profile, error } = await exactlyOne(
+    db.from("profiles").select("role").eq("id", user.id),
+  );
   if (error) throw error;
 
   if (shouldBeAdmin && profile.role !== "admin") {

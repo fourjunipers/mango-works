@@ -27,6 +27,7 @@ import {
   dateInZone,
   fromLocalInput,
 } from "../lib/shop-time.ts";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 const staging = process.argv.includes("--staging");
 
@@ -308,11 +309,9 @@ async function existingUsers(): Promise<Map<string, string>> {
 
 /** Creates the shop with its default location, or updates its settings. */
 async function upsertTenant(tenant: (typeof tenants)[number]): Promise<string> {
-  const { data: found, error } = await db
-    .from("tenants")
-    .select("id")
-    .eq("slug", tenant.slug)
-    .maybeSingle();
+  const { data: found, error } = await atMostOne(
+    db.from("tenants").select("id").eq("slug", tenant.slug),
+  );
   if (error) throw error;
   if (found) {
     const { error: updateError } = await db
@@ -343,21 +342,22 @@ async function upsertTenant(tenant: (typeof tenants)[number]): Promise<string> {
 
 /** BSR's shop details (docs/marketplace/BSR_SEED.md), hours and one yearly closure. */
 async function seedBsrLocation(tenantId: string): Promise<string> {
-  const { data: location, error } = await db
-    .from("locations")
-    .update({
-      name: "BSR Bike Shop",
-      address:
-        "79/37 Soi Phumichit, Rama 4, Phra Khanong, Khlong Toei, Bangkok 10110",
-      phone: "+66850550247",
-      whatsapp: "+66850550247",
-      line_id: "bsrbikeshop",
-      email: "info@bsrbikeshop.com",
-    })
-    .eq("tenant_id", tenantId)
-    .eq("is_default", true)
-    .select("id")
-    .single();
+  const { data: location, error } = await exactlyOne(
+    db
+      .from("locations")
+      .update({
+        name: "BSR Bike Shop",
+        address:
+          "79/37 Soi Phumichit, Rama 4, Phra Khanong, Khlong Toei, Bangkok 10110",
+        phone: "+66850550247",
+        whatsapp: "+66850550247",
+        line_id: "bsrbikeshop",
+        email: "info@bsrbikeshop.com",
+      })
+      .eq("tenant_id", tenantId)
+      .eq("is_default", true)
+      .select("id"),
+  );
   if (error) throw error;
 
   // Mon–Fri 10:00–18:00, Sat–Sun 11:00–16:00. 0 = Sunday.
@@ -507,11 +507,12 @@ async function seedBsrFleet(
   }
   for (const unit of plan.units) {
     const { purchase_date, purchase_price, purchased_from, ...row } = unit;
-    const { data, error } = await db
-      .from("units")
-      .insert({ ...row, tenant_id: tenantId })
-      .select("id")
-      .single();
+    const { data, error } = await exactlyOne(
+      db
+        .from("units")
+        .insert({ ...row, tenant_id: tenantId })
+        .select("id"),
+    );
     if (error) throw error;
     const { error: moneyError } = await db.from("unit_financials").insert({
       tenant_id: tenantId,
@@ -693,13 +694,14 @@ async function seedBsrBookings(tenantId: string, locationId: string) {
     quantity: number,
   ): Promise<string> => {
     const found = must(
-      await owner
-        .from("products")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .eq("name", name)
-        .is("retired_at", null)
-        .maybeSingle(),
+      await atMostOne(
+        owner
+          .from("products")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("name", name)
+          .is("retired_at", null),
+      ),
       `find ${name}`,
     );
     if (found) return found.id as string;
@@ -833,11 +835,9 @@ async function seedBsrBookings(tenantId: string, locationId: string) {
   // Bookings at the counter, made by staff, from a few days out, at 12:00
   // on the location's own clock (inside its hours every day of the week).
   const where = must(
-    await owner
-      .from("locations")
-      .select("timezone")
-      .eq("id", locationId)
-      .single(),
+    await exactlyOne(
+      owner.from("locations").select("timezone").eq("id", locationId),
+    ),
     "location",
   )!;
   const zone = where.timezone as string;
@@ -931,25 +931,27 @@ async function seedBigFleet(tenantId: string, approved: CatalogRow[]) {
   if (count)
     fail("the big demo shop is half-seeded; delete its bikes and run again");
 
-  const { data: main, error } = await db
-    .from("locations")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("is_default", true)
-    .single();
+  const { data: main, error } = await exactlyOne(
+    db
+      .from("locations")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("is_default", true),
+  );
   if (error) throw error;
-  const { data: airport, error: airportError } = await db
-    .from("locations")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        name: "Airport desk",
-        timezone: "America/New_York",
-      },
-      { onConflict: "tenant_id,id" },
-    )
-    .select("id")
-    .single();
+  const { data: airport, error: airportError } = await exactlyOne(
+    db
+      .from("locations")
+      .upsert(
+        {
+          tenant_id: tenantId,
+          name: "Airport desk",
+          timezone: "America/New_York",
+        },
+        { onConflict: "tenant_id,id" },
+      )
+      .select("id"),
+  );
   if (airportError) throw airportError;
 
   const slugs = [
@@ -964,18 +966,19 @@ async function seedBigFleet(tenantId: string, approved: CatalogRow[]) {
   for (const slug of slugs) {
     const entry = approved.find((c) => c.slug === slug);
     if (!entry) fail(`catalog entry ${slug} is missing`);
-    const { data, error: modelError } = await db
-      .from("products")
-      .insert({
-        tenant_id: tenantId,
-        catalog_id: entry.id,
-        make: entry.make,
-        model: entry.model,
-        vehicle_type: "motorbike",
-        name: `${entry.make} ${entry.model}`,
-      })
-      .select("id, name")
-      .single();
+    const { data, error: modelError } = await exactlyOne(
+      db
+        .from("products")
+        .insert({
+          tenant_id: tenantId,
+          catalog_id: entry.id,
+          make: entry.make,
+          model: entry.model,
+          vehicle_type: "motorbike",
+          name: `${entry.make} ${entry.model}`,
+        })
+        .select("id, name"),
+    );
     if (modelError) throw modelError;
     models.push(data);
     const { error: bandError } = await db.from("product_year_bands").insert(

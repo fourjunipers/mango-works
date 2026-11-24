@@ -13,6 +13,7 @@ import {
 import { canSeeArea } from "@/lib/roles";
 import { requireMembership } from "@/lib/session";
 import { createClient } from "@mango/db/platform-server";
+import { exactlyOne } from "@mango/db/rows";
 
 /**
  * Location actions: owners and managers. The database also refuses a time-zone
@@ -65,11 +66,12 @@ export async function saveLocation(
   };
 
   if (!id) {
-    const { data, error } = await supabase
-      .from("locations")
-      .insert({ ...parsed.data, tenant_id: tenant.id })
-      .select("id")
-      .single();
+    const { data, error } = await exactlyOne(
+      supabase
+        .from("locations")
+        .insert({ ...parsed.data, tenant_id: tenant.id })
+        .select("id"),
+    );
     if (error) return toFormState(error);
     revalidatePath(`/${slug}`, "layout");
     redirect(`/${slug}/locations/${data.id}`);

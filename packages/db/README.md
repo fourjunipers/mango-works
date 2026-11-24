@@ -9,6 +9,7 @@ Supabase project (migrations live in `/supabase/migrations`).
 | `@mango/db/client` | Client Components (anon key, RLS) |
 | `@mango/db/public` | Public reads on the server with no session; safe inside `"use cache"` |
 | `@mango/db/admin` | Service role, server only (`server-only` breaks the build if a client imports it) |
+| `@mango/db/rows` | `exactlyOne()` and `atMostOne()`: use these, never `.single()` or `.maybeSingle()` (they count the rows themselves; ESLint enforces it) |
 | `@mango/db/database.types` | Generated types |
 
 After a migration, regenerate the types against local Supabase:

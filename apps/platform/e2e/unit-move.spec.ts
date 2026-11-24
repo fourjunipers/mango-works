@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { demo, signIn } from "./helpers";
 import { ownerClient } from "./shop-settings";
+import { exactlyOne } from "@mango/db/rows";
 
 /**
  * Moving a vehicle that has upcoming bookings to another product (the
@@ -25,12 +26,13 @@ test("a booked vehicle moved to another product: the form says how many bookings
   const from = `Move From ${id}`;
   const to = `Move To ${id}`;
   const { db, tenantId } = await ownerClient(demo.bsrOwner, "bsr");
-  const { data: place } = await db
-    .from("locations")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("is_default", true)
-    .single();
+  const { data: place } = await exactlyOne(
+    db
+      .from("locations")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("is_default", true),
+  );
   const products = await db
     .from("products")
     .insert(
@@ -44,16 +46,17 @@ test("a booked vehicle moved to another product: the form says how many bookings
   expect(products.error).toBeNull();
   const fromId = products.data!.find((p) => p.name === from)!.id as string;
   const toId = products.data!.find((p) => p.name === to)!.id as string;
-  const unit = await db
-    .from("units")
-    .insert({
-      tenant_id: tenantId,
-      product_id: fromId,
-      location_id: place!.id,
-      plate: `MV-${id}`.toUpperCase(),
-    })
-    .select("id")
-    .single();
+  const unit = await exactlyOne(
+    db
+      .from("units")
+      .insert({
+        tenant_id: tenantId,
+        product_id: fromId,
+        location_id: place!.id,
+        plate: `MV-${id}`.toUpperCase(),
+      })
+      .select("id"),
+  );
   expect(unit.error).toBeNull();
   const unitId = unit.data!.id as string;
 
@@ -135,11 +138,9 @@ test("a booked vehicle moved to another product: the form says how many bookings
       );
     await expect(details.getByText("Saved", { exact: true })).toBeVisible();
     await expect.poll(bookedOn).toEqual(["to", "to"]);
-    const { data: moved } = await db
-      .from("units")
-      .select("product_id, colour")
-      .eq("id", unitId)
-      .single();
+    const { data: moved } = await exactlyOne(
+      db.from("units").select("product_id, colour").eq("id", unitId),
+    );
     expect(moved).toEqual({ product_id: toId, colour: "Blue" });
     await page.reload();
     await expect(page.getByRole("link", { name: to })).toBeVisible();

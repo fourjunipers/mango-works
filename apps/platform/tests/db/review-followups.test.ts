@@ -26,6 +26,7 @@ import {
   type TestTenant,
   type TestUser,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 const service = serviceClient();
 const thailand = {
@@ -43,27 +44,29 @@ let otherUnitId: string;
 let plate = 0;
 
 async function addUnit(tenant: TestTenant): Promise<string> {
-  const product = await service
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      catalog_id: catalogId,
-      ...modelSpec,
-      name: `Followups model ${++plate}`,
-    })
-    .select("id")
-    .single();
+  const product = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        catalog_id: catalogId,
+        ...modelSpec,
+        name: `Followups model ${++plate}`,
+      })
+      .select("id"),
+  );
   if (product.error) throw product.error;
-  const unit = await service
-    .from("units")
-    .insert({
-      tenant_id: tenant.id,
-      product_id: product.data.id,
-      location_id: tenant.locationId,
-      plate: `RF-${plate}`,
-    })
-    .select("id")
-    .single();
+  const unit = await exactlyOne(
+    service
+      .from("units")
+      .insert({
+        tenant_id: tenant.id,
+        product_id: product.data.id,
+        location_id: tenant.locationId,
+        plate: `RF-${plate}`,
+      })
+      .select("id"),
+  );
   if (unit.error) throw unit.error;
   return unit.data.id;
 }
@@ -113,21 +116,23 @@ describe("unit_renewals.recorded_by is set in the database from the caller", () 
   });
 
   it("a recorded_by sent by the client is overwritten with the caller's own id", async () => {
-    const { data, error } = await shop.members.mechanic.db
-      .from("unit_renewals")
-      .insert(row({ recorded_by: shop.members.owner.id }))
-      .select("id, recorded_by")
-      .single();
+    const { data, error } = await exactlyOne(
+      shop.members.mechanic.db
+        .from("unit_renewals")
+        .insert(row({ recorded_by: shop.members.owner.id }))
+        .select("id, recorded_by"),
+    );
     expect(error).toBeNull();
     expect(data?.recorded_by).toBe(shop.members.mechanic.id);
 
     // Left out, or sent as null: the caller all the same.
     for (const more of [{}, { recorded_by: null }]) {
-      const added = await shop.members.staff.db
-        .from("unit_renewals")
-        .insert(row(more))
-        .select("recorded_by")
-        .single();
+      const added = await exactlyOne(
+        shop.members.staff.db
+          .from("unit_renewals")
+          .insert(row(more))
+          .select("recorded_by"),
+      );
       expect(added.error).toBeNull();
       expect(added.data?.recorded_by).toBe(shop.members.staff.id);
     }
@@ -152,20 +157,19 @@ describe("unit_renewals.recorded_by is set in the database from the caller", () 
   });
 
   it("it can't be changed afterwards, by its own shop or by the service role", async () => {
-    const added = await shop.members.mechanic.db
-      .from("unit_renewals")
-      .insert(row())
-      .select("id")
-      .single();
+    const added = await exactlyOne(
+      shop.members.mechanic.db.from("unit_renewals").insert(row()).select("id"),
+    );
     expect(added.error).toBeNull();
     const id = added.data!.id;
     const read = async () =>
       (
-        await service
-          .from("unit_renewals")
-          .select("recorded_by, provider")
-          .eq("id", id)
-          .single()
+        await exactlyOne(
+          service
+            .from("unit_renewals")
+            .select("recorded_by, provider")
+            .eq("id", id),
+        )
       ).data;
 
     // The rest of the update is saved; recorded_by stays.
@@ -194,19 +198,21 @@ describe("unit_renewals.recorded_by is set in the database from the caller", () 
       .from("memberships")
       .insert({ tenant_id: shop.id, user_id: temp.id, role: "staff" });
     expect(member.error).toBeNull();
-    const added = await temp.db
-      .from("unit_renewals")
-      .insert(row({ kind: "inspection" }))
-      .select("id, recorded_by")
-      .single();
+    const added = await exactlyOne(
+      temp.db
+        .from("unit_renewals")
+        .insert(row({ kind: "inspection" }))
+        .select("id, recorded_by"),
+    );
     expect(added.error).toBeNull();
     expect(added.data?.recorded_by).toBe(temp.id);
     await deleteUser(temp);
-    const after = await service
-      .from("unit_renewals")
-      .select("recorded_by")
-      .eq("id", added.data!.id)
-      .single();
+    const after = await exactlyOne(
+      service
+        .from("unit_renewals")
+        .select("recorded_by")
+        .eq("id", added.data!.id),
+    );
     expect(after.error).toBeNull();
     expect(after.data?.recorded_by).toBeNull();
   });
@@ -242,13 +248,14 @@ describe("record_renewal(): a renewal and its cost in one transaction", () => {
     );
     expect(error).toBeNull();
     const id = idOf(data)!;
-    const saved = await service
-      .from("unit_renewals")
-      .select(
-        "tenant_id, unit_id, kind, provider, reference_no, starts_at, expires_at, recorded_by",
-      )
-      .eq("id", id)
-      .single();
+    const saved = await exactlyOne(
+      service
+        .from("unit_renewals")
+        .select(
+          "tenant_id, unit_id, kind, provider, reference_no, starts_at, expires_at, recorded_by",
+        )
+        .eq("id", id),
+    );
     expect(saved.data).toEqual({
       tenant_id: shop.id,
       unit_id: unitId,
@@ -277,16 +284,17 @@ describe("record_renewal(): a renewal and its cost in one transaction", () => {
     ] as const) {
       const who = shop.members[role];
       // By hand, on the tables.
-      const byHand = await who.db
-        .from("unit_renewals")
-        .insert({
-          tenant_id: shop.id,
-          unit_id: unitId,
-          kind: "inspection",
-          expires_at: "2027-05-31",
-        })
-        .select("id")
-        .single();
+      const byHand = await exactlyOne(
+        who.db
+          .from("unit_renewals")
+          .insert({
+            tenant_id: shop.id,
+            unit_id: unitId,
+            kind: "inspection",
+            expires_at: "2027-05-31",
+          })
+          .select("id"),
+      );
       expect(byHand.error === null, `${role} by hand`).toBe(
         mayRecord.includes(role),
       );

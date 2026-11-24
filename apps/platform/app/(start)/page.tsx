@@ -6,6 +6,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { homeTab } from "@/lib/roles";
 import { getMemberships, getUser } from "@/lib/session";
 import { createClient } from "@mango/db/platform-server";
+import { atMostOne } from "@mango/db/rows";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("Picker");
@@ -25,7 +26,7 @@ export default async function StartPage() {
   const [memberships, { data: adminRow }] = await Promise.all([
     getMemberships(),
     // RLS shows a user only their own row, so any row means "platform admin".
-    supabase.from("platform_admins").select("user_id").maybeSingle(),
+    atMostOne(supabase.from("platform_admins").select("user_id")),
   ]);
   const isAdmin = !!adminRow;
 

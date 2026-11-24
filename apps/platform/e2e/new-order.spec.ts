@@ -25,6 +25,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { withBookingRules } from "./booking-rules";
 import { demo, signIn } from "./helpers";
 import { ownerClient, withShopSettings } from "./shop-settings";
+import { exactlyOne } from "@mango/db/rows";
 
 type Channel = "The counter" | "Your booking page" | "Moto Mangos";
 
@@ -39,12 +40,13 @@ type Booked = {
 /** BSR's location, and its seeded bookings with the product's name, read as the owner. */
 async function seeded() {
   const { db, tenantId } = await ownerClient(demo.bsrOwner, "bsr");
-  const { data: location, error: e1 } = await db
-    .from("locations")
-    .select("id, timezone")
-    .eq("tenant_id", tenantId)
-    .eq("is_default", true)
-    .single();
+  const { data: location, error: e1 } = await exactlyOne(
+    db
+      .from("locations")
+      .select("id, timezone")
+      .eq("tenant_id", tenantId)
+      .eq("is_default", true),
+  );
   if (e1) throw e1;
   const { data, error } = await db
     .from("reservations")

@@ -6,6 +6,7 @@ import { vendorShopForAction } from "@/lib/auth/session";
 import { failed, invalid, type ActionState } from "@/lib/forms";
 import { createClient } from "@mango/db/server";
 import { extraSchema, fieldErrors, formObject } from "@/lib/validation/vendor";
+import { exactlyOne } from "@mango/db/rows";
 
 async function ownerShop() {
   const shop = await vendorShopForAction();
@@ -42,14 +43,15 @@ export async function saveExtra(
     active: v.active,
   };
   const { data, error } = extraId
-    ? await supabase
-        .from("shop_extras")
-        .update(row)
-        .eq("id", extraId)
-        .eq("shop_id", shop.id)
-        .select("id")
-        .single()
-    : await supabase.from("shop_extras").insert(row).select("id").single();
+    ? await exactlyOne(
+        supabase
+          .from("shop_extras")
+          .update(row)
+          .eq("id", extraId)
+          .eq("shop_id", shop.id)
+          .select("id"),
+      )
+    : await exactlyOne(supabase.from("shop_extras").insert(row).select("id"));
   if (error || !data) return failed;
 
   const { error: clearError } = await supabase

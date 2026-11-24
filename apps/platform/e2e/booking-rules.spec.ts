@@ -11,6 +11,7 @@ import { expect, test } from "@playwright/test";
 import { withBookingRules } from "./booking-rules";
 import { demo, signIn } from "./helpers";
 import { ownerClient } from "./shop-settings";
+import { exactlyOne } from "@mango/db/rows";
 
 test("an owner saves the booking rules, and finds them after a reload", async ({
   page,
@@ -112,25 +113,27 @@ test("the Moto Mangos tab says when the shop's minimum notice is the stricter on
 }) => {
   await withBookingRules(demo.bsrOwner, "bsr", async () => {
     const { db, tenantId } = await ownerClient(demo.bsrOwner, "bsr");
-    const { data: location } = await db
-      .from("locations")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("is_default", true)
-      .single()
-      .throwOnError();
-    const { data: unit } = await db
-      .from("units")
-      .select(
-        "product_id, products!inner(type, lead:product_listings(lead_time_hours))",
-      )
-      .eq("tenant_id", tenantId)
-      .eq("location_id", location!.id)
-      .eq("status", "active")
-      .eq("products.type", "vehicle")
-      .limit(1)
-      .single()
-      .throwOnError();
+    const { data: location } = await exactlyOne(
+      db
+        .from("locations")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("is_default", true)
+        .throwOnError(),
+    );
+    const { data: unit } = await exactlyOne(
+      db
+        .from("units")
+        .select(
+          "product_id, products!inner(type, lead:product_listings(lead_time_hours))",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("location_id", location!.id)
+        .eq("status", "active")
+        .eq("products.type", "vehicle")
+        .limit(1)
+        .throwOnError(),
+    );
     const lead = (
       unit!.products as unknown as {
         lead:
