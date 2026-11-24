@@ -127,6 +127,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"customers": {
+                  Row: {
+                    "archived_at": string | null,"created_at": string,"created_by": string | null,"email": string | null,"full_name": string,"id": string,"language": string | null,"line_id": string | null,"marketplace_account_id": string | null,"nationality": string | null,"notes": string | null,"phone": string | null,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "archived_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"email"?: string | null,"full_name": string,"id"?: string,"language"?: string | null,"line_id"?: string | null,"marketplace_account_id"?: string | null,"nationality"?: string | null,"notes"?: string | null,"phone"?: string | null,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "archived_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"email"?: string | null,"full_name"?: string,"id"?: string,"language"?: string | null,"line_id"?: string | null,"marketplace_account_id"?: string | null,"nationality"?: string | null,"notes"?: string | null,"phone"?: string | null,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "customers_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"location_closures": {
                   Row: {
                     "created_at": string,"end_date": string,"id": string,"location_id": string,"note": string | null,"repeats_yearly": boolean,"start_date": string,"tenant_id": string
@@ -221,6 +241,140 @@ isOneToOne: false
                   Relationships: [
                     {
       foreignKeyName: "notification_outbox_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"order_charges": {
+                  Row: {
+                    "created_at": string,"currency": string,"deposit": number,"due_at": string | null,"id": string,"kind": string,"order_id": string,"priced_at": string,"rate_groups": NonNullable<Json>,"snapshot": NonNullable<Json>,"status": string,"tax_total": number,"tenant_id": string,"total": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"currency": string,"deposit"?: number,"due_at"?: string | null,"id"?: string,"kind": string,"order_id": string,"priced_at": string,"rate_groups"?: NonNullable<Json>,"snapshot": NonNullable<Json>,"status"?: string,"tax_total": number,"tenant_id": string,"total": number,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"currency"?: string,"deposit"?: number,"due_at"?: string | null,"id"?: string,"kind"?: string,"order_id"?: string,"priced_at"?: string,"rate_groups"?: NonNullable<Json>,"snapshot"?: NonNullable<Json>,"status"?: string,"tax_total"?: number,"tenant_id"?: string,"total"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "order_charges_currency_fkey"
+      columns: ["tenant_id","currency"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id","currency"]
+    },{
+      foreignKeyName: "order_charges_order_fkey"
+      columns: ["tenant_id","order_id"]
+isOneToOne: false
+      referencedRelation: "orders"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "order_charges_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"order_counters": {
+                  Row: {
+                    "next_number": number,"tenant_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "next_number"?: number,"tenant_id": string
+                  }
+                  Update: {
+                    "next_number"?: number,"tenant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "order_counters_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: true
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"order_lines": {
+                  Row: {
+                    "amount": number,"charge_id": string,"charged_quantity": number | null,"closed_at": string | null,"created_at": string,"currency": string,"deposit": number,"discount_total": number | null,"id": string,"included_quantity": number | null,"kind": string,"list_price": number | null,"note": string | null,"order_id": string,"override_by": string | null,"override_reason": string | null,"period_end": string | null,"period_start": string | null,"position": number,"product_id": string | null,"product_type": string | null,"quantity": number,"rental_id": string | null,"season_total": number | null,"snapshot": Json | null,"tax_amount": number,"tax_inclusive": boolean | null,"tax_profile_id": string | null,"tax_profile_name": string | null,"tax_rate_bp": number | null,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "amount": number,"charge_id": string,"charged_quantity"?: number | null,"closed_at"?: string | null,"created_at"?: string,"currency": string,"deposit"?: number,"discount_total"?: number | null,"id"?: string,"included_quantity"?: number | null,"kind": string,"list_price"?: number | null,"note"?: string | null,"order_id": string,"override_by"?: string | null,"override_reason"?: string | null,"period_end"?: string | null,"period_start"?: string | null,"position": number,"product_id"?: string | null,"product_type"?: string | null,"quantity"?: number,"rental_id"?: string | null,"season_total"?: number | null,"snapshot"?: Json | null,"tax_amount"?: number,"tax_inclusive"?: boolean | null,"tax_profile_id"?: string | null,"tax_profile_name"?: string | null,"tax_rate_bp"?: number | null,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "amount"?: number,"charge_id"?: string,"charged_quantity"?: number | null,"closed_at"?: string | null,"created_at"?: string,"currency"?: string,"deposit"?: number,"discount_total"?: number | null,"id"?: string,"included_quantity"?: number | null,"kind"?: string,"list_price"?: number | null,"note"?: string | null,"order_id"?: string,"override_by"?: string | null,"override_reason"?: string | null,"period_end"?: string | null,"period_start"?: string | null,"position"?: number,"product_id"?: string | null,"product_type"?: string | null,"quantity"?: number,"rental_id"?: string | null,"season_total"?: number | null,"snapshot"?: Json | null,"tax_amount"?: number,"tax_inclusive"?: boolean | null,"tax_profile_id"?: string | null,"tax_profile_name"?: string | null,"tax_rate_bp"?: number | null,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "order_lines_charge_fkey"
+      columns: ["tenant_id","order_id","charge_id"]
+isOneToOne: false
+      referencedRelation: "order_charges"
+      referencedColumns: ["tenant_id","order_id","id"]
+    },{
+      foreignKeyName: "order_lines_currency_fkey"
+      columns: ["tenant_id","currency"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id","currency"]
+    },{
+      foreignKeyName: "order_lines_order_fkey"
+      columns: ["tenant_id","order_id"]
+isOneToOne: false
+      referencedRelation: "orders"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "order_lines_product_fkey"
+      columns: ["tenant_id","product_id","product_type"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id","type"]
+    },{
+      foreignKeyName: "order_lines_rental_fkey"
+      columns: ["tenant_id","order_id","rental_id"]
+isOneToOne: false
+      referencedRelation: "rentals"
+      referencedColumns: ["tenant_id","order_id","id"]
+    },{
+      foreignKeyName: "order_lines_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"orders": {
+                  Row: {
+                    "archived_at": string | null,"cancel_reason": string | null,"canceled_at": string | null,"cancelled_by": string | null,"channel": string,"code": string,"created_at": string,"created_by": string | null,"currency": string,"customer_id": string | null,"hold_expires_at": string | null,"id": string,"idempotency_key": string | null,"mode": string,"no_show": boolean,"notes": string | null,"number": number | null,"request_status": string | null,"status": string,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "archived_at"?: string | null,"cancel_reason"?: string | null,"canceled_at"?: string | null,"cancelled_by"?: string | null,"channel": string,"code": string,"created_at"?: string,"created_by"?: string | null,"currency": string,"customer_id"?: string | null,"hold_expires_at"?: string | null,"id"?: string,"idempotency_key"?: string | null,"mode": string,"no_show"?: boolean,"notes"?: string | null,"number"?: number | null,"request_status"?: string | null,"status": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "archived_at"?: string | null,"cancel_reason"?: string | null,"canceled_at"?: string | null,"cancelled_by"?: string | null,"channel"?: string,"code"?: string,"created_at"?: string,"created_by"?: string | null,"currency"?: string,"customer_id"?: string | null,"hold_expires_at"?: string | null,"id"?: string,"idempotency_key"?: string | null,"mode"?: string,"no_show"?: boolean,"notes"?: string | null,"number"?: number | null,"request_status"?: string | null,"status"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "orders_currency_fkey"
+      columns: ["tenant_id","currency"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id","currency"]
+    },{
+      foreignKeyName: "orders_customer_fkey"
+      columns: ["tenant_id","customer_id"]
+isOneToOne: false
+      referencedRelation: "customers"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "orders_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
       referencedRelation: "tenants"
@@ -545,19 +699,69 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"reservations": {
+                },"rentals": {
                   Row: {
-                    "block_period": unknown,"booking_id": string,"channel": string,"created_at": string,"created_by": string | null,"ends_at": string,"hold_expires_at": string | null,"id": string,"location_id": string,"mode": string,"parent_id": string | null,"product_id": string,"product_type": string,"quantity": number,"shortage": number,"starts_at": string,"state": string,"tenant_id": string,"updated_at": string
+                    "created_at": string,"ends_at": string,"id": string,"location_id": string,"order_id": string,"parent_rental_id": string | null,"picked_up_at": string | null,"picked_up_by": string | null,"product_id": string,"product_type": string,"quantity": number,"returned_at": string | null,"returned_by": string | null,"starts_at": string,"status": string,"tenant_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "block_period": unknown,"booking_id": string,"channel": string,"created_at"?: string,"created_by"?: string | null,"ends_at": string,"hold_expires_at"?: string | null,"id"?: string,"location_id": string,"mode": string,"parent_id"?: string | null,"product_id": string,"product_type": string,"quantity": number,"shortage"?: number,"starts_at": string,"state": string,"tenant_id": string,"updated_at"?: string
+                    "created_at"?: string,"ends_at": string,"id"?: string,"location_id": string,"order_id": string,"parent_rental_id"?: string | null,"picked_up_at"?: string | null,"picked_up_by"?: string | null,"product_id": string,"product_type": string,"quantity": number,"returned_at"?: string | null,"returned_by"?: string | null,"starts_at": string,"status": string,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "block_period"?: unknown,"booking_id"?: string,"channel"?: string,"created_at"?: string,"created_by"?: string | null,"ends_at"?: string,"hold_expires_at"?: string | null,"id"?: string,"location_id"?: string,"mode"?: string,"parent_id"?: string | null,"product_id"?: string,"product_type"?: string,"quantity"?: number,"shortage"?: number,"starts_at"?: string,"state"?: string,"tenant_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"ends_at"?: string,"id"?: string,"location_id"?: string,"order_id"?: string,"parent_rental_id"?: string | null,"picked_up_at"?: string | null,"picked_up_by"?: string | null,"product_id"?: string,"product_type"?: string,"quantity"?: number,"returned_at"?: string | null,"returned_by"?: string | null,"starts_at"?: string,"status"?: string,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "rentals_location_fkey"
+      columns: ["tenant_id","location_id"]
+isOneToOne: false
+      referencedRelation: "locations"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "rentals_order_fkey"
+      columns: ["tenant_id","order_id"]
+isOneToOne: false
+      referencedRelation: "orders"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "rentals_parent_fkey"
+      columns: ["tenant_id","order_id","parent_rental_id"]
+isOneToOne: false
+      referencedRelation: "rentals"
+      referencedColumns: ["tenant_id","order_id","id"]
+    },{
+      foreignKeyName: "rentals_product_fkey"
+      columns: ["tenant_id","product_id","product_type"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["tenant_id","id","type"]
+    },{
+      foreignKeyName: "rentals_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"reservations": {
+                  Row: {
+                    "block_period": unknown,"booking_id": string,"channel": string,"created_at": string,"created_by": string | null,"ends_at": string,"hold_expires_at": string | null,"id": string,"location_id": string,"mode": string,"parent_id": string | null,"product_id": string,"product_type": string,"quantity": number,"rental_id": string | null,"shortage": number,"starts_at": string,"state": string,"tenant_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "block_period": unknown,"booking_id": string,"channel": string,"created_at"?: string,"created_by"?: string | null,"ends_at": string,"hold_expires_at"?: string | null,"id"?: string,"location_id": string,"mode": string,"parent_id"?: string | null,"product_id": string,"product_type": string,"quantity": number,"rental_id"?: string | null,"shortage"?: number,"starts_at": string,"state": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "block_period"?: unknown,"booking_id"?: string,"channel"?: string,"created_at"?: string,"created_by"?: string | null,"ends_at"?: string,"hold_expires_at"?: string | null,"id"?: string,"location_id"?: string,"mode"?: string,"parent_id"?: string | null,"product_id"?: string,"product_type"?: string,"quantity"?: number,"rental_id"?: string | null,"shortage"?: number,"starts_at"?: string,"state"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "reservations_rental_fkey"
+      columns: ["tenant_id","rental_id"]
+isOneToOne: false
+      referencedRelation: "rentals"
+      referencedColumns: ["tenant_id","id"]
+    },{
       foreignKeyName: "reservations_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
@@ -637,14 +841,14 @@ isOneToOne: false
                   ]
                 },"tenants": {
                   Row: {
-                    "allow_overbooking": boolean,"buffer_after_minutes": number | null,"buffer_before_minutes": number | null,"country": string,"created_at": string,"currency": string,"distance_unit": string,"hold_minutes": number,"id": string,"locale": string,"name": string,"renewal_digest_day": number | null,"renewal_reminder_days": (number)[],"slug": string,"updated_at": string
+                    "allow_overbooking": boolean,"buffer_after_minutes": number | null,"buffer_before_minutes": number | null,"country": string,"created_at": string,"currency": string,"distance_unit": string,"hold_minutes": number,"id": string,"locale": string,"name": string,"renewal_digest_day": number | null,"renewal_reminder_days": (number)[],"slug": string,"staff_can_change_price": boolean,"staff_can_edit_return_time": boolean,"staff_can_refund": boolean,"staff_can_revert": boolean,"staff_can_waive_late_charge": boolean,"staff_can_write_off_credit": boolean,"time_step_minutes": number,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "allow_overbooking"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"country": string,"created_at"?: string,"currency": string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale": string,"name": string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug": string,"updated_at"?: string
+                    "allow_overbooking"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"country": string,"created_at"?: string,"currency": string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale": string,"name": string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug": string,"staff_can_change_price"?: boolean,"staff_can_edit_return_time"?: boolean,"staff_can_refund"?: boolean,"staff_can_revert"?: boolean,"staff_can_waive_late_charge"?: boolean,"staff_can_write_off_credit"?: boolean,"time_step_minutes"?: number,"updated_at"?: string
                   }
                   Update: {
-                    "allow_overbooking"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"country"?: string,"created_at"?: string,"currency"?: string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale"?: string,"name"?: string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug"?: string,"updated_at"?: string
+                    "allow_overbooking"?: boolean,"buffer_after_minutes"?: number | null,"buffer_before_minutes"?: number | null,"country"?: string,"created_at"?: string,"currency"?: string,"distance_unit"?: string,"hold_minutes"?: number,"id"?: string,"locale"?: string,"name"?: string,"renewal_digest_day"?: number | null,"renewal_reminder_days"?: (number)[],"slug"?: string,"staff_can_change_price"?: boolean,"staff_can_edit_return_time"?: boolean,"staff_can_refund"?: boolean,"staff_can_revert"?: boolean,"staff_can_waive_late_charge"?: boolean,"staff_can_write_off_credit"?: boolean,"time_step_minutes"?: number,"updated_at"?: string
                   }
                   Relationships: [
                     
@@ -923,6 +1127,9 @@ isOneToOne: false
 "save_coupon":
 { Args: { "p_coupon": Json,"p_tenant_id": string }; Returns: Json
                            },
+"save_customer":
+{ Args: { "p_customer": Json,"p_tenant_id": string }; Returns: Json
+                           },
 "save_listing":
 { Args: { "p_product_id": string,"p_settings": Json }; Returns: Json
                            },
@@ -943,6 +1150,9 @@ isOneToOne: false
                            },
 "save_product_pricing":
 { Args: { "p_product_id": string,"p_settings": Json }; Returns: Json
+                           },
+"save_staff_permissions":
+{ Args: { "p_permissions": Json,"p_tenant_id": string }; Returns: Json
                            },
 "save_tax_profile":
 { Args: { "p_profile": Json,"p_tenant_id": string }; Returns: string

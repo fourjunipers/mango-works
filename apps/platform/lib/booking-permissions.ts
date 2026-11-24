@@ -4,7 +4,11 @@ import type { Role } from "./roles";
  * Who may do what with bookings (docs/phase-2-plan.md §6): everyone in a
  * shop sees reservations (dates, product, units; no money); owners, managers
  * and staff make, confirm, cancel and re-assign them; owners and managers
- * set the booking rules.
+ * set the booking rules. From Phase 3 (docs/phase-3-plan.md §3.9): owners,
+ * managers and staff see and work with orders, rentals and customers;
+ * owners and managers archive orders and change Settings › Orders and the
+ * staff permissions. (What staff may do behind a shop setting is asked of
+ * the database: platform_private.staff_may().)
  *
  * The one place in the app: every screen and every server action asks
  * canBooking(). It mirrors platform_private.booking_roles() in the database,
@@ -23,6 +27,8 @@ export const bookingActions = [
   "confirm",
   "assign",
   "rules",
+  "orders",
+  "order_settings",
 ] as const;
 export type BookingAction = (typeof bookingActions)[number];
 
@@ -42,6 +48,10 @@ const allowed: Record<BookingAction, readonly Role[]> = {
    * minimum days, the shop's default buffers, hold length and overbooking.
    */
   rules: ["owner", "manager"],
+  /** See and work with orders, rentals and customers. */
+  orders: ["owner", "manager", "staff"],
+  /** Archive and unarchive; Settings › Orders; the staff permissions. */
+  order_settings: ["owner", "manager"],
 };
 
 export function bookingRoles(action: BookingAction): readonly Role[] {
