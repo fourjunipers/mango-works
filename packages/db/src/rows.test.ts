@@ -92,7 +92,10 @@ describe("exactlyOne", () => {
 
   it("takes a function's single value (not a set) as one row", async () => {
     expect((await exactlyOne(query(a))).data).toEqual(a);
-    expect((await exactlyOne(query(null))).error?.code).toBe("PGRST116");
+    const none = (await exactlyOne(query(null))) as {
+      error: { code: string } | null;
+    };
+    expect(none.error?.code).toBe("PGRST116");
   });
 
   it("throws on a wrong count when the query was built with .throwOnError()", async () => {

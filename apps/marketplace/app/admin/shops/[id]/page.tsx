@@ -49,11 +49,15 @@ export default async function AdminShopPage({
       .select("weekday, open, close")
       .eq("shop_id", id)
       .order("weekday"),
-    atMostOne<Inclusions & { deposit_amount: number | null }>(
+    atMostOne(
       db
         .from("shop_policies")
         .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
-        .eq("shop_id", id),
+        .eq("shop_id", id)
+        .overrideTypes<
+          (Inclusions & { deposit_amount: number | null })[],
+          { merge: false }
+        >(),
     ),
     db
       .from("bike_models")

@@ -22,11 +22,15 @@ export default async function ShopDefaultsPage() {
         )
         .eq("id", shop.id),
     ),
-    exactlyOne<Inclusions & { deposit_amount: number | null }>(
+    exactlyOne(
       supabase
         .from("shop_policies")
         .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
-        .eq("shop_id", shop.id),
+        .eq("shop_id", shop.id)
+        .overrideTypes<
+          (Inclusions & { deposit_amount: number | null })[],
+          { merge: false }
+        >(),
     ),
   ]);
   if (!s || !policies) return null;

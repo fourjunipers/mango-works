@@ -2,7 +2,6 @@ import {
   PostgrestError,
   type PostgrestMaybeSingleResponse,
   type PostgrestResponse,
-  type PostgrestResponseSuccess,
   type PostgrestSingleResponse,
 } from "@supabase/supabase-js";
 
@@ -27,6 +26,12 @@ import {
  * A query that ends in `.throwOnError()` keeps it: a wrong row count then
  * throws, as `.single().throwOnError()` did.
  */
+
+/** A successful answer (supabase-js doesn't export this type by name). */
+type PostgrestResponseSuccess<T> = Extract<
+  PostgrestSingleResponse<T>,
+  { error: null }
+>;
 
 /** Any query that has not been made single: it answers with rows. */
 type RowsQuery<T> = PromiseLike<PostgrestResponse<T>>;

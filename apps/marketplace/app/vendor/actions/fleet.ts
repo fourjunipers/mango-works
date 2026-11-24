@@ -264,11 +264,12 @@ export async function saveModelInclusions(
   });
   if (hasErrors(errors)) return invalid(errors);
 
-  const { data: shopDefaults } = await exactlyOne<Inclusions>(
+  const { data: shopDefaults } = await exactlyOne(
     own.supabase
       .from("shop_policies")
       .select(INCLUSION_FIELDS.join(", "))
-      .eq("shop_id", own.shop.id),
+      .eq("shop_id", own.shop.id)
+      .overrideTypes<Inclusions[], { merge: false }>(),
   );
   if (!shopDefaults) return failed;
   const kept = minimalOverrides(shopDefaults, overrides);

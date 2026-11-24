@@ -50,17 +50,22 @@ export default async function ModelPage({
       .from("price_days")
       .select("day, total, is_anchor, is_manual")
       .eq("bike_model_id", id),
-    atMostOne<InclusionOverrides>(
+    atMostOne(
       supabase
         .from("bike_model_policies")
         .select(INCLUSION_FIELDS.join(", "))
-        .eq("bike_model_id", id),
+        .eq("bike_model_id", id)
+        .overrideTypes<InclusionOverrides[], { merge: false }>(),
     ),
-    exactlyOne<Inclusions & { deposit_amount: number | null }>(
+    exactlyOne(
       supabase
         .from("shop_policies")
         .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
-        .eq("shop_id", shop.id),
+        .eq("shop_id", shop.id)
+        .overrideTypes<
+          (Inclusions & { deposit_amount: number | null })[],
+          { merge: false }
+        >(),
     ),
     supabase
       .from("shop_extras")

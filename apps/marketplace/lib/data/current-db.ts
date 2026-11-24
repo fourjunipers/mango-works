@@ -329,17 +329,22 @@ export async function getListing(
         .select("day, total")
         .eq("bike_model_id", model.id)
         .order("day"),
-      atMostOne<InclusionOverrides>(
+      atMostOne(
         db
           .from("bike_model_policies")
           .select(INCLUSION_FIELDS.join(", "))
-          .eq("bike_model_id", model.id),
+          .eq("bike_model_id", model.id)
+          .overrideTypes<InclusionOverrides[], { merge: false }>(),
       ),
-      atMostOne<Inclusions & { deposit_amount: number | null }>(
+      atMostOne(
         db
           .from("shop_policies")
           .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
-          .eq("shop_id", shopId),
+          .eq("shop_id", shopId)
+          .overrideTypes<
+            (Inclusions & { deposit_amount: number | null })[],
+            { merge: false }
+          >(),
       ),
       listExtras(shopId, model.id),
     ]);
