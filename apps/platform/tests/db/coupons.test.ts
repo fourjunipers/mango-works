@@ -58,6 +58,7 @@ import {
   type TestUser,
   until,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -133,16 +134,17 @@ async function coupon(
 
 /** A vehicle product with `count` units, made with the service role. */
 async function vehicle(count: number, tenant: TestTenant = shop) {
-  const product = await service
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: name("Scooter"),
-      vehicle_type: "motorbike",
-    })
-    .select("id, name")
-    .single()
-    .throwOnError();
+  const product = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        name: name("Scooter"),
+        vehicle_type: "motorbike",
+      })
+      .select("id, name")
+      .throwOnError(),
+  );
   const units = count
     ? await service
         .from("units")
@@ -1392,12 +1394,13 @@ describe("the returning-customer discount's settings", () => {
     const row = async () =>
       JSON.stringify(
         (
-          await service
-            .from("pricing_settings")
-            .select("*")
-            .eq("tenant_id", shop.id)
-            .single()
-            .throwOnError()
+          await exactlyOne(
+            service
+              .from("pricing_settings")
+              .select("*")
+              .eq("tenant_id", shop.id)
+              .throwOnError(),
+          )
         ).data,
       );
     const before = await row();
@@ -3242,12 +3245,13 @@ describe("stage 10: a shop's currency change racing save_coupon() and reserve()"
     );
   const currencyOf = async (tenant: TestTenant) =>
     (
-      await service
-        .from("tenants")
-        .select("currency")
-        .eq("id", tenant.id)
-        .single()
-        .throwOnError()
+      await exactlyOne(
+        service
+          .from("tenants")
+          .select("currency")
+          .eq("id", tenant.id)
+          .throwOnError(),
+      )
     ).data!.currency;
   /** Every coupon of the shop with its currency, and whether any differs. */
   const coupons = async (tenant: TestTenant) =>
@@ -3626,11 +3630,9 @@ describe("the currency lock counts a coupon that holds an amount of money", () =
       expect((await change(fresh)).error?.message).toBe("currency_locked");
       expect(
         (
-          await service
-            .from("tenants")
-            .select("currency")
-            .eq("id", fresh.id)
-            .single()
+          await exactlyOne(
+            service.from("tenants").select("currency").eq("id", fresh.id),
+          )
         ).data?.currency,
       ).toBe("THB");
       // Another shop's member is told nothing.

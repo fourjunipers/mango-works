@@ -7,6 +7,7 @@ import { catalogLabel } from "@/lib/catalog";
 import { createClient } from "@mango/db/server";
 import { getVendorLocale } from "@/i18n/vendor";
 import { DeleteExtraForm, ExtraForm } from "./extra-form";
+import { atMostOne } from "@mango/db/rows";
 
 /** /vendor/extras/new creates; /vendor/extras/<id> edits. */
 export default async function ExtraPage({
@@ -24,14 +25,15 @@ export default async function ExtraPage({
   const [{ data: extra }, { data: models }] = await Promise.all([
     isNew
       ? Promise.resolve({ data: null })
-      : supabase
-          .from("shop_extras")
-          .select(
-            "id, name, description, terms, price_kind, price_rental, price_1d, price_7d, price_30d, all_models, active, shop_extra_models (bike_model_id)",
-          )
-          .eq("id", id)
-          .eq("shop_id", shop.id)
-          .maybeSingle(),
+      : atMostOne(
+          supabase
+            .from("shop_extras")
+            .select(
+              "id, name, description, terms, price_kind, price_rental, price_1d, price_7d, price_30d, all_models, active, shop_extra_models (bike_model_id)",
+            )
+            .eq("id", id)
+            .eq("shop_id", shop.id),
+        ),
     supabase
       .from("bike_models")
       .select("id, catalog:bike_catalog (make, model, year_from, year_to, cc)")

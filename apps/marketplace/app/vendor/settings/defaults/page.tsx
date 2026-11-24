@@ -5,6 +5,7 @@ import { INCLUSION_FIELDS, type Inclusions } from "@/lib/inclusions";
 import { createClient } from "@mango/db/server";
 import { getVendorLocale } from "@/i18n/vendor";
 import { ShopDefaultsForm } from "../forms";
+import { exactlyOne } from "@mango/db/rows";
 
 /** Shop settings → Default settings: booking rules and "What's included". */
 export default async function ShopDefaultsPage() {
@@ -13,18 +14,24 @@ export default async function ShopDefaultsPage() {
   const t = await getTranslations({ locale, namespace: "Settings" });
   const supabase = await createClient();
   const [{ data: s }, { data: policies }] = await Promise.all([
-    supabase
-      .from("shops")
-      .select(
-        "cutoff_minutes, buffer_before_h, buffer_after_h, request_window_min, min_days_walkin, min_days_booking, notice_h",
-      )
-      .eq("id", shop.id)
-      .single(),
-    supabase
-      .from("shop_policies")
-      .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
-      .eq("shop_id", shop.id)
-      .single<Inclusions & { deposit_amount: number | null }>(),
+    exactlyOne(
+      supabase
+        .from("shops")
+        .select(
+          "cutoff_minutes, buffer_before_h, buffer_after_h, request_window_min, min_days_walkin, min_days_booking, notice_h",
+        )
+        .eq("id", shop.id),
+    ),
+    exactlyOne(
+      supabase
+        .from("shop_policies")
+        .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
+        .eq("shop_id", shop.id)
+        .overrideTypes<
+          (Inclusions & { deposit_amount: number | null })[],
+          { merge: false }
+        >(),
+    ),
   ]);
   if (!s || !policies) return null;
 

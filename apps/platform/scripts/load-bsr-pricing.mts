@@ -27,6 +27,7 @@ import { quote } from "@mango/core/quote";
 import { minorDecimal, parseMinorUnits } from "../lib/money.ts";
 import { quoteInputFor, type PricingInputs } from "../lib/pricing-inputs.ts";
 import { fromLocalInput } from "../lib/shop-time.ts";
+import { exactlyOne } from "@mango/db/rows";
 
 const load = process.argv.includes("--load");
 
@@ -233,11 +234,9 @@ async function main() {
   });
   if (signInError) fail(`sign-in as ${OWNER} refused: ${signInError.message}`);
 
-  const { data: tenant, error: tenantError } = await db
-    .from("tenants")
-    .select("id, currency")
-    .eq("slug", SHOP)
-    .single();
+  const { data: tenant, error: tenantError } = await exactlyOne(
+    db.from("tenants").select("id, currency").eq("slug", SHOP),
+  );
   if (tenantError) throw tenantError;
   if (tenant.currency !== CURRENCY)
     fail(`BSR's currency is ${tenant.currency}; the figures are ${CURRENCY}`);
@@ -444,12 +443,13 @@ async function main() {
     { days: 45, dropoff: "2027-05-16T10:00" },
   ];
   // Days and months run on the clock of the shop's main location.
-  const { data: location, error: locationError } = await db
-    .from("locations")
-    .select("timezone")
-    .eq("tenant_id", tenantId)
-    .eq("is_default", true)
-    .single();
+  const { data: location, error: locationError } = await exactlyOne(
+    db
+      .from("locations")
+      .select("timezone")
+      .eq("tenant_id", tenantId)
+      .eq("is_default", true),
+  );
   if (locationError) throw locationError;
   const timeZone = location.timezone as string;
   const start = fromLocalInput(pickup, timeZone);

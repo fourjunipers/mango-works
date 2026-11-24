@@ -9,18 +9,20 @@
 import { expect, test } from "@playwright/test";
 import { demo, signIn } from "./helpers";
 import { ownerClient } from "./shop-settings";
+import { exactlyOne } from "@mango/db/rows";
 
 /** A unit that holds a seeded booking, read as the owner. */
 async function bookedUnit(): Promise<string> {
   const { db, tenantId } = await ownerClient(demo.bsrOwner, "bsr");
-  const { data, error } = await db
-    .from("unit_blocks")
-    .select("unit_id, reservations!inner(state)")
-    .eq("tenant_id", tenantId)
-    .eq("kind", "allocation")
-    .eq("reservations.state", "reserved")
-    .limit(1)
-    .single();
+  const { data, error } = await exactlyOne(
+    db
+      .from("unit_blocks")
+      .select("unit_id, reservations!inner(state)")
+      .eq("tenant_id", tenantId)
+      .eq("kind", "allocation")
+      .eq("reservations.state", "reserved")
+      .limit(1),
+  );
   if (error) throw error;
   return data.unit_id as string;
 }

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mergeStations } from "@/lib/stations/merge";
 import type { OsmStation } from "@/lib/stations/osm";
 import { serviceClient, type Db } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // The monthly OpenStreetMap refresh writes stations correctly (UI batch,
 // item 2): links a seeded station, adds a new one, switches a vanished one
@@ -27,7 +28,7 @@ const row = async (filter: { id?: string; osm_id?: string }) => {
     );
   if (filter.id) q = q.eq("id", filter.id);
   if (filter.osm_id) q = q.eq("osm_id", filter.osm_id);
-  return (await q.single()).data!;
+  return (await exactlyOne(q)).data!;
 };
 
 beforeAll(async () => {

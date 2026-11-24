@@ -23,6 +23,7 @@ import {
   listingOf,
   setListing,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 let shop: TestTenant;
 let other: TestTenant;
@@ -49,27 +50,26 @@ const ownModel = (extra: object = {}) => ({
 });
 
 async function addModel(extra: object = {}): Promise<string> {
-  const { data, error } = await service
-    .from("products")
-    .insert(ownModel(extra))
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service.from("products").insert(ownModel(extra)).select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
 
 async function addUnit(modelId: string, status = "active"): Promise<string> {
-  const { data, error } = await service
-    .from("units")
-    .insert({
-      tenant_id: shop.id,
-      product_id: modelId,
-      location_id: shop.locationId,
-      plate: `RV-${tag}-${++counter}`,
-      status,
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("units")
+      .insert({
+        tenant_id: shop.id,
+        product_id: modelId,
+        location_id: shop.locationId,
+        plate: `RV-${tag}-${++counter}`,
+        status,
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
@@ -107,12 +107,13 @@ const review = (
 
 const catalogRow = async (id: string) =>
   (
-    await service
-      .schema("public")
-      .from("bike_catalog")
-      .select("status, request_note, requested_by_tenant_id, review_notes")
-      .eq("id", id)
-      .single()
+    await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .select("status, request_note, requested_by_tenant_id, review_notes")
+        .eq("id", id),
+    )
   ).data!;
 
 const block = (unitId: string, from: Date, to?: Date) => ({
@@ -177,13 +178,14 @@ describe("1. the catalog's private fields", () => {
       request_note: null,
       requested_by_tenant_id: null,
     });
-    const { data: audit } = await service
-      .from("audit_events")
-      .select("tenant_id, before")
-      .eq("entity", "bike_catalog")
-      .eq("entity_id", entry)
-      .eq("action", "approve")
-      .single();
+    const { data: audit } = await exactlyOne(
+      service
+        .from("audit_events")
+        .select("tenant_id, before")
+        .eq("entity", "bike_catalog")
+        .eq("entity_id", entry)
+        .eq("action", "approve"),
+    );
     expect(audit).toMatchObject({
       tenant_id: shop.id,
       before: { request_note: "Only for the admin" },
@@ -339,15 +341,16 @@ describe("3. owners changing each other at the same instant", () => {
   it("the same for one owner removing the other while being demoted by them", async () => {
     for (let round = 0; round < 5; round++) {
       // A second owner to race with, added fresh each round.
-      const { data: second, error } = await service
-        .from("memberships")
-        .insert({
-          tenant_id: team.id,
-          user_id: other.members.owner.id,
-          role: "owner",
-        })
-        .select("id")
-        .single();
+      const { data: second, error } = await exactlyOne(
+        service
+          .from("memberships")
+          .insert({
+            tenant_id: team.id,
+            user_id: other.members.owner.id,
+            role: "owner",
+          })
+          .select("id"),
+      );
       if (error) throw error;
       await Promise.all([
         team.members.owner.db.rpc("remove_member", {
@@ -374,7 +377,7 @@ describe("4. a sold or retired bike never has a future block", () => {
     modelId = await addModel();
   });
   const statusOf = async (unitId: string) =>
-    (await service.from("units").select("status").eq("id", unitId).single())
+    (await exactlyOne(service.from("units").select("status").eq("id", unitId)))
       .data!.status;
 
   it("selling a bike while someone adds a block to it: one wins, never both", async () => {
@@ -411,11 +414,12 @@ describe("4. a sold or retired bike never has a future block", () => {
       addUnit(modelId, "sold"),
       addUnit(modelId),
     ]);
-    const { data: added, error } = await service
-      .from("unit_blocks")
-      .insert(block(inFleet, hours(5), hours(6)))
-      .select("id")
-      .single();
+    const { data: added, error } = await exactlyOne(
+      service
+        .from("unit_blocks")
+        .insert(block(inFleet, hours(5), hours(6)))
+        .select("id"),
+    );
     if (error) throw error;
     for (const db of [service, shop.members.manager.db]) {
       const moved = await db
@@ -437,11 +441,12 @@ describe("4. a sold or retired bike never has a future block", () => {
 
   it("a sold bike's old block can be shortened but not stretched into the future", async () => {
     const unitId = await addUnit(modelId);
-    const { data: old, error } = await service
-      .from("unit_blocks")
-      .insert(block(unitId, hours(-10), hours(-5)))
-      .select("id")
-      .single();
+    const { data: old, error } = await exactlyOne(
+      service
+        .from("unit_blocks")
+        .insert(block(unitId, hours(-10), hours(-5)))
+        .select("id"),
+    );
     if (error) throw error;
     const sale = await service
       .from("units")
@@ -472,19 +477,20 @@ describe("4. a sold or retired bike never has a future block", () => {
 describe("5. review_catalog_request", () => {
   it("(a) leaves marketplace shops' requests alone: only a platform shop's request is found", async () => {
     // A waiting entry no platform shop sent (the marketplace's own queue).
-    const { data: entry, error } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .insert({
-        make: "Marketmake",
-        model: `M ${tag}`,
-        type: "city_scooter",
-        transmission: "automatic",
-        cc: 125,
-        status: "requested",
-      })
-      .select("id")
-      .single();
+    const { data: entry, error } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .insert({
+          make: "Marketmake",
+          model: `M ${tag}`,
+          type: "city_scooter",
+          transmission: "automatic",
+          cc: 125,
+          status: "requested",
+        })
+        .select("id"),
+    );
     if (error) throw error;
     catalogIds.push(entry.id);
     for (const approve of [true, false]) {
@@ -551,12 +557,13 @@ describe("5. review_catalog_request", () => {
       { id: second, catalog_id: null, marketplace_listed: false },
       { id: untouched, catalog_id: null, marketplace_listed: false },
     ]);
-    const { data: audit } = await service
-      .from("audit_events")
-      .select("after")
-      .eq("entity_id", entry)
-      .eq("action", "reject")
-      .single();
+    const { data: audit } = await exactlyOne(
+      service
+        .from("audit_events")
+        .select("after")
+        .eq("entity_id", entry)
+        .eq("action", "reject"),
+    );
     expect(
       (audit!.after as { kept_linked: { product_id: string }[] }).kept_linked,
     ).toMatchObject([{ product_id: first }]);
@@ -566,11 +573,9 @@ describe("5. review_catalog_request", () => {
     const modelId = await addModel();
     const { data } = await review(admin, await submit(modelId), false);
     expect(data).toEqual({ decision: "reject", kept_linked: [] });
-    const { data: model } = await service
-      .from("products")
-      .select("catalog_id")
-      .eq("id", modelId)
-      .single();
+    const { data: model } = await exactlyOne(
+      service.from("products").select("catalog_id").eq("id", modelId),
+    );
     expect(model?.catalog_id).toBeNull();
   });
 
@@ -753,11 +758,12 @@ describe("small fixes", () => {
     const unitId = await addUnit(await addModel());
     const add = async (from: Date, to?: Date) =>
       (
-        await service
-          .from("unit_blocks")
-          .insert(block(unitId, from, to))
-          .select("id")
-          .single()
+        await exactlyOne(
+          service
+            .from("unit_blocks")
+            .insert(block(unitId, from, to))
+            .select("id"),
+        )
       ).data!.id;
     const ended = await add(hours(-10), hours(-5));
     const running = await add(hours(-2));
@@ -772,11 +778,9 @@ describe("small fixes", () => {
         .select("id, period");
     // A stale page: the block ended five hours ago. Nothing is re-extended.
     expect((await end(ended)).data).toEqual([]);
-    const { data: still } = await service
-      .from("unit_blocks")
-      .select("period")
-      .eq("id", ended)
-      .single();
+    const { data: still } = await exactlyOne(
+      service.from("unit_blocks").select("period").eq("id", ended),
+    );
     expect(
       new Date(
         String(still!.period).split(",")[1].replace(/[")]/g, ""),
@@ -789,11 +793,12 @@ describe("small fixes", () => {
     const unitId = await addUnit(await addModel());
     const read = async () =>
       (
-        await shop.members.manager.db
-          .from("units")
-          .select("updated_at, current_odometer_km")
-          .eq("id", unitId)
-          .single()
+        await exactlyOne(
+          shop.members.manager.db
+            .from("units")
+            .select("updated_at, current_odometer_km")
+            .eq("id", unitId),
+        )
       ).data!;
     const opened = await read();
     // Meanwhile a mechanic records a newer reading.
@@ -816,11 +821,12 @@ describe("small fixes", () => {
   });
 
   it("9. a 49 cc moped saves as the shop's own and can be submitted for Moto Mangos", async () => {
-    const { data, error } = await shop.members.manager.db
-      .from("products")
-      .insert(ownModel({ cc: 49 }))
-      .select("id")
-      .single();
+    const { data, error } = await exactlyOne(
+      shop.members.manager.db
+        .from("products")
+        .insert(ownModel({ cc: 49 }))
+        .select("id"),
+    );
     expect(error).toBeNull();
     const sent = await shop.members.owner.db.rpc("submit_product_to_catalog", {
       p_product_id: data!.id,

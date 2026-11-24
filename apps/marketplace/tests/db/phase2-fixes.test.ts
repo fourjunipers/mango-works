@@ -7,6 +7,7 @@ import {
   signedInClient,
   type Db,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Owner feedback on Phase 2 (2026-11-04): yearly closures, price per day
 // after 30 days, helmet types, catalog without generation.
@@ -106,11 +107,12 @@ describe("schema changes", () => {
       .update({ helmet_types: ["full_face", "half"] })
       .eq("shop_id", seed.bsrShop);
     expect(error).toBeNull();
-    const { data } = await anon
-      .from("shop_policies")
-      .select("helmet_types")
-      .eq("shop_id", seed.bsrShop)
-      .single();
+    const { data } = await exactlyOne(
+      anon
+        .from("shop_policies")
+        .select("helmet_types")
+        .eq("shop_id", seed.bsrShop),
+    );
     expect(data?.helmet_types).toEqual(["full_face", "half"]);
     await service
       .from("shop_policies")
@@ -119,20 +121,21 @@ describe("schema changes", () => {
   });
 
   it("names catalog slugs from make, model and years", async () => {
-    const { data, error } = await service
-      .from("bike_catalog")
-      .insert({
-        make: "Test",
-        model: "Slug 125",
-        year_from: 2025,
-        year_to: 2026,
-        cc: 125,
-        type: "city_scooter",
-        transmission: "automatic",
-        status: "approved",
-      })
-      .select("id, slug")
-      .single();
+    const { data, error } = await exactlyOne(
+      service
+        .from("bike_catalog")
+        .insert({
+          make: "Test",
+          model: "Slug 125",
+          year_from: 2025,
+          year_to: 2026,
+          cc: 125,
+          type: "city_scooter",
+          transmission: "automatic",
+          status: "approved",
+        })
+        .select("id, slug"),
+    );
     expect(error).toBeNull();
     expect(data?.slug).toBe("test-slug-125-2025-2026");
     await service.from("bike_catalog").delete().eq("id", data!.id);

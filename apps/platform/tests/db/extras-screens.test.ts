@@ -43,6 +43,7 @@ import {
   sqlBackground,
   type TestTenant,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -61,16 +62,17 @@ const at = (d: number, h = 4) =>
   new Date(Date.UTC(2034, 0, 1) + d * 86_400_000 + h * 3_600_000);
 
 async function vehicle(count: number) {
-  const product = await service
-    .from("products")
-    .insert({
-      tenant_id: shop.id,
-      name: name("Scooter"),
-      vehicle_type: "motorbike",
-    })
-    .select("id")
-    .single()
-    .throwOnError();
+  const product = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: shop.id,
+        name: name("Scooter"),
+        vehicle_type: "motorbike",
+      })
+      .select("id")
+      .throwOnError(),
+  );
   await service
     .from("units")
     .insert(
@@ -570,12 +572,9 @@ describe("History names an extra that has since been deleted", () => {
     const bike = await vehicle(1);
     // No stock, so it can be deleted.
     const gone = await gear(0);
-    const { data: named } = await service
-      .from("products")
-      .select("name")
-      .eq("id", gone)
-      .single()
-      .throwOnError();
+    const { data: named } = await exactlyOne(
+      service.from("products").select("name").eq("id", gone).throwOnError(),
+    );
     expect(
       await saveExtrasList(
         asExtrasDb("owner"),

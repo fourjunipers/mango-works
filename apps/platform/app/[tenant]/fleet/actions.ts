@@ -31,6 +31,7 @@ import { moveUnit, type StaffDb } from "@/lib/staff-booking";
 import { fromLocalInput } from "@/lib/shop-time";
 import { checkCategories } from "@/lib/vehicle-kinds";
 import { createClient } from "@mango/db/platform-server";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 /**
  * Fleet actions. Each checks the caller's role for a quick, clear answer, but
@@ -137,11 +138,12 @@ export async function saveModel(
   };
 
   if (!id) {
-    const { data, error } = await supabase
-      .from("products")
-      .insert({ ...common, vehicle_type: kind, tenant_id: tenant.id })
-      .select("id")
-      .single();
+    const { data, error } = await exactlyOne(
+      supabase
+        .from("products")
+        .insert({ ...common, vehicle_type: kind, tenant_id: tenant.id })
+        .select("id"),
+    );
     if (error) return failed(error);
     refresh(slug);
     redirect(
@@ -236,12 +238,13 @@ async function resolveModel(
 ): Promise<string | null> {
   const picked = parseModelChoice(choice);
   if (!picked) return null;
-  const { data } = await supabase
-    .from("products")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("id", picked.id)
-    .maybeSingle();
+  const { data } = await atMostOne(
+    supabase
+      .from("products")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("id", picked.id),
+  );
   return data?.id ?? null;
 }
 
@@ -282,16 +285,17 @@ export async function saveUnit(
   if (!modelId) return { errors: { model_choice: "required" } };
 
   if (!id) {
-    const { data, error } = await supabase
-      .from("units")
-      .insert({
-        ...parsed.data,
-        tenant_id: tenant.id,
-        product_id: modelId,
-        current_odometer_km: odometer ?? 0,
-      })
-      .select("id")
-      .single();
+    const { data, error } = await exactlyOne(
+      supabase
+        .from("units")
+        .insert({
+          ...parsed.data,
+          tenant_id: tenant.id,
+          product_id: modelId,
+          current_odometer_km: odometer ?? 0,
+        })
+        .select("id"),
+    );
     if (error) return unitError(error);
     refresh(slug);
     redirect(`/${slug}/fleet/units/${data.id}`);
@@ -302,12 +306,13 @@ export async function saveUnit(
   // locks and writes the rest of this form in the same call: all of it or
   // none of it. It refuses an old form (stale), and a bike whose bookings
   // are not the ones the person was just warned about (bookings_changed).
-  const { data: current } = await supabase
-    .from("units")
-    .select("product_id, location_id")
-    .eq("tenant_id", tenant.id)
-    .eq("id", id)
-    .maybeSingle();
+  const { data: current } = await atMostOne(
+    supabase
+      .from("units")
+      .select("product_id, location_id")
+      .eq("tenant_id", tenant.id)
+      .eq("id", id),
+  );
   if (!current) return { errors: { form: "saveFailed" } };
   if (
     current.product_id !== modelId ||
@@ -360,12 +365,13 @@ export async function saveUnit(
     .select("id");
   if (error) return unitError(error);
   if (data.length !== 1) {
-    const { data: still } = await supabase
-      .from("units")
-      .select("id")
-      .eq("tenant_id", tenant.id)
-      .eq("id", id)
-      .maybeSingle();
+    const { data: still } = await atMostOne(
+      supabase
+        .from("units")
+        .select("id")
+        .eq("tenant_id", tenant.id)
+        .eq("id", id),
+    );
     return { errors: { form: still ? "staleUnit" : "saveFailed" } };
   }
   refresh(slug);
@@ -597,12 +603,13 @@ export async function addDowntime(
   const unitId = field(formData, "id");
 
   // Times are typed in the time zone of the unit's location.
-  const { data: unit } = await supabase
-    .from("units")
-    .select("id, location:locations!inner(timezone)")
-    .eq("tenant_id", tenant.id)
-    .eq("id", unitId)
-    .maybeSingle();
+  const { data: unit } = await atMostOne(
+    supabase
+      .from("units")
+      .select("id, location:locations!inner(timezone)")
+      .eq("tenant_id", tenant.id)
+      .eq("id", unitId),
+  );
   if (!unit) return notAllowed;
   const zone = unit.location.timezone;
 
@@ -651,13 +658,14 @@ export async function endDowntime(
     );
   };
 
-  const { data: block } = await supabase
-    .from("unit_blocks")
-    .select("id, period")
-    .eq("tenant_id", tenant.id)
-    .eq("id", blockId)
-    .eq("kind", "downtime")
-    .maybeSingle();
+  const { data: block } = await atMostOne(
+    supabase
+      .from("unit_blocks")
+      .select("id, period")
+      .eq("tenant_id", tenant.id)
+      .eq("id", blockId)
+      .eq("kind", "downtime"),
+  );
   if (!block) return alreadyGone();
   const start = new Date(
     String(block.period).replace(/^[[(]/, "").split(",")[0].replace(/"/g, ""),
@@ -799,12 +807,13 @@ export async function submitModelToCatalog(
   const raw = Object.fromEntries(formData);
   // Moto Mangos files a motorbike under one type: the product's first
   // category (in the order of the list in lib/vehicle-kinds.ts).
-  const { data: model } = await supabase
-    .from("products")
-    .select("categories")
-    .eq("tenant_id", tenant.id)
-    .eq("id", field(formData, "id"))
-    .maybeSingle();
+  const { data: model } = await atMostOne(
+    supabase
+      .from("products")
+      .select("categories")
+      .eq("tenant_id", tenant.id)
+      .eq("id", field(formData, "id")),
+  );
   const type =
     bikeTypes.find((bikeType) => model?.categories.includes(bikeType)) ?? null;
   if (!type) return { errors: { form: "categoryFirst" } };

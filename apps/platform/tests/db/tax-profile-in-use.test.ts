@@ -26,6 +26,7 @@ import {
   type TestTenant,
   watch,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -52,17 +53,18 @@ afterAll(async () => {
 });
 
 async function addProduct(): Promise<string> {
-  const { data, error } = await service
-    .from("products")
-    .insert({
-      tenant_id: shop.id,
-      name: `Taxed ${tag} ${++counter}`,
-      type: "vehicle",
-      tracking: "unit",
-      vehicle_type: "motorbike",
-    })
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: shop.id,
+        name: `Taxed ${tag} ${++counter}`,
+        type: "vehicle",
+        tracking: "unit",
+        vehicle_type: "motorbike",
+      })
+      .select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
@@ -94,11 +96,9 @@ const setDefault = (profileId: string | null) =>
 
 const archivedAt = async (id: string) =>
   (
-    await service
-      .from("tax_profiles")
-      .select("archived_at")
-      .eq("id", id)
-      .single()
+    await exactlyOne(
+      service.from("tax_profiles").select("archived_at").eq("id", id),
+    )
   ).data!.archived_at;
 
 /**
@@ -186,11 +186,9 @@ describe("a tax profile in use", () => {
         } as never,
       })
       .throwOnError();
-    const row = await service
-      .from("tax_profiles")
-      .select("rate_bp, name")
-      .eq("id", profile)
-      .single();
+    const row = await exactlyOne(
+      service.from("tax_profiles").select("rate_bp, name").eq("id", profile),
+    );
     expect(row.data).toEqual({ rate_bp: 1000, name: `VAT10 ${tag}` });
   });
 

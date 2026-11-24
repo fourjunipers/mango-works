@@ -12,6 +12,7 @@ import {
   type Db,
 } from "./helpers";
 import { KEPT_MAPS_URLS, REFUSED_MAPS_URLS } from "../../lib/maps-url.cases";
+import { exactlyOne } from "@mango/db/rows";
 
 /**
  * The marketplace findings of the 19 Nov 2026 security audit
@@ -302,11 +303,12 @@ describe("a shop's map link and photos", () => {
   });
 
   it("Google Maps links, the shop's own files and our placeholders are saved", async () => {
-    const { data: before } = await service
-      .from("shops")
-      .select("maps_url, photos")
-      .eq("id", seed.bsrShop)
-      .single();
+    const { data: before } = await exactlyOne(
+      service
+        .from("shops")
+        .select("maps_url, photos")
+        .eq("id", seed.bsrShop),
+    );
     try {
       for (const maps_url of [...KEPT_MAPS_URLS, null]) {
         const { error } = await update(bsrOwner, { maps_url });
@@ -373,11 +375,15 @@ describe("two owners removing each other at the same moment", () => {
       createUser("audit-owner-b"),
     ]);
     madeUsers.push(a.id, b.id);
-    const { data: shop, error } = await service
-      .from("shops")
-      .insert({ name: "Audit Two Owners", slug: `audit-two-owners-${Date.now()}` })
-      .select("id")
-      .single();
+    const { data: shop, error } = await exactlyOne(
+      service
+        .from("shops")
+        .insert({
+          name: "Audit Two Owners",
+          slug: `audit-two-owners-${Date.now()}`,
+        })
+        .select("id"),
+    );
     if (error) throw error;
     madeShops.push(shop.id);
     const added = await service.from("shop_members").insert([

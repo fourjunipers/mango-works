@@ -35,6 +35,7 @@ import type {
   ShopSummary,
   Station,
 } from "./types";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 /**
  * TEMPORARY implementation of the data adapter: reads this project's own
@@ -71,10 +72,11 @@ export async function listStations(): Promise<Station[]> {
 export async function getRankingWeights(): Promise<RankingWeights> {
   "use cache";
   cacheLife("minutes");
-  const { data } = await createPublicClient()
-    .from("ranking_settings")
-    .select("boost, rating, response, cancellation, distance")
-    .single();
+  const { data } = await exactlyOne(
+    createPublicClient()
+      .from("ranking_settings")
+      .select("boost, rating, response, cancellation, distance"),
+  );
   return {
     boost: Number(data?.boost ?? 0.3),
     rating: Number(data?.rating ?? 0.2),
@@ -109,13 +111,14 @@ async function loadShop(
   value: string,
 ): Promise<Shop | null> {
   const db = createPublicClient();
-  const { data: s } = await db
-    .from("shops")
-    .select(
-      "id, slug, name, about, photos, maps_url, nearest_station, google_place_id",
-    )
-    .eq(column, value)
-    .maybeSingle();
+  const { data: s } = await atMostOne(
+    db
+      .from("shops")
+      .select(
+        "id, slug, name, about, photos, maps_url, nearest_station, google_place_id",
+      )
+      .eq(column, value),
+  );
   if (!s) return null;
   const [{ data: coords }, { data: hours }, { data: closures }] =
     await Promise.all([
@@ -176,13 +179,14 @@ export async function getCatalogModel(
 ): Promise<CatalogModel | null> {
   "use cache";
   cacheLife("minutes");
-  const { data: c } = await createPublicClient()
-    .from("bike_catalog")
-    .select(
-      "id, slug, make, model, year_from, year_to, cc, type, transmission, abs, underseat_storage, usb_charger, key_type, description, stock_photo",
-    )
-    .eq("slug", slug)
-    .maybeSingle();
+  const { data: c } = await atMostOne(
+    createPublicClient()
+      .from("bike_catalog")
+      .select(
+        "id, slug, make, model, year_from, year_to, cc, type, transmission, abs, underseat_storage, usb_charger, key_type, description, stock_photo",
+      )
+      .eq("slug", slug),
+  );
   if (!c) return null;
   const photo = url(PHOTO_BUCKETS.catalog, c.stock_photo, BIKE_PLACEHOLDER);
   return {
@@ -310,12 +314,13 @@ export async function getListing(
   "use cache";
   cacheLife("minutes");
   const db = createPublicClient();
-  const { data: model } = await db
-    .from("bike_models")
-    .select("id, photos, deposit_amount")
-    .eq("shop_id", shopId)
-    .eq("catalog_id", catalogId)
-    .maybeSingle();
+  const { data: model } = await atMostOne(
+    db
+      .from("bike_models")
+      .select("id, photos, deposit_amount")
+      .eq("shop_id", shopId)
+      .eq("catalog_id", catalogId),
+  );
   if (!model) return null;
   const [{ data: prices }, { data: overrides }, { data: shopPolicy }, extras] =
     await Promise.all([
@@ -324,16 +329,23 @@ export async function getListing(
         .select("day, total")
         .eq("bike_model_id", model.id)
         .order("day"),
-      db
-        .from("bike_model_policies")
-        .select(INCLUSION_FIELDS.join(", "))
-        .eq("bike_model_id", model.id)
-        .maybeSingle<InclusionOverrides>(),
-      db
-        .from("shop_policies")
-        .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
-        .eq("shop_id", shopId)
-        .maybeSingle<Inclusions & { deposit_amount: number | null }>(),
+      atMostOne(
+        db
+          .from("bike_model_policies")
+          .select(INCLUSION_FIELDS.join(", "))
+          .eq("bike_model_id", model.id)
+          .overrideTypes<InclusionOverrides[], { merge: false }>(),
+      ),
+      atMostOne(
+        db
+          .from("shop_policies")
+          .select(`deposit_amount, ${INCLUSION_FIELDS.join(", ")}`)
+          .eq("shop_id", shopId)
+          .overrideTypes<
+            (Inclusions & { deposit_amount: number | null })[],
+            { merge: false }
+          >(),
+      ),
       listExtras(shopId, model.id),
     ]);
   return {

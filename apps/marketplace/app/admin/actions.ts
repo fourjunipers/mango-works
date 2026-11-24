@@ -12,6 +12,7 @@ import {
   fieldErrors,
   formObject,
 } from "@/lib/validation/vendor";
+import { atMostOne, exactlyOne } from "@mango/db/rows";
 
 // Admin uses the service role, on the server only, after requireAdmin()
 // (CLAUDE.md security rules). Every action checks again.
@@ -124,21 +125,19 @@ export async function saveCatalogEntry(
   };
   const db = createAdminClient();
   const { data, error } = entryId
-    ? await db
-        .from("bike_catalog")
-        .update(row)
-        .eq("id", entryId)
-        .select("id")
-        .single()
-    : await db
-        .from("bike_catalog")
-        .insert({
-          ...row,
-          status: "approved",
-          reviewed_at: now().toISOString(),
-        })
-        .select("id")
-        .single();
+    ? await exactlyOne(
+        db.from("bike_catalog").update(row).eq("id", entryId).select("id"),
+      )
+    : await exactlyOne(
+        db
+          .from("bike_catalog")
+          .insert({
+            ...row,
+            status: "approved",
+            reviewed_at: now().toISOString(),
+          })
+          .select("id"),
+      );
   if (error)
     return error.code === "23505" ? invalid({ slug: "invalid" }) : failed;
 
@@ -156,11 +155,9 @@ export async function saveCatalogEntry(
     const next = typeof paths[0] === "string" ? paths[0] : null;
     if (next && !next.startsWith(`${entryId}/`))
       return invalid({ stock_photo: "invalid" });
-    const { data: old } = await db
-      .from("bike_catalog")
-      .select("stock_photo")
-      .eq("id", entryId)
-      .single();
+    const { data: old } = await exactlyOne(
+      db.from("bike_catalog").select("stock_photo").eq("id", entryId),
+    );
     if ((old?.stock_photo ?? null) !== next) {
       await db
         .from("bike_catalog")
@@ -205,11 +202,9 @@ export async function deleteShop(formData: FormData) {
   await requireAdmin();
   const shopId = id(formData);
   const db = createAdminClient();
-  const { data: shop } = await db
-    .from("shops")
-    .select("status")
-    .eq("id", shopId)
-    .maybeSingle();
+  const { data: shop } = await atMostOne(
+    db.from("shops").select("status").eq("id", shopId),
+  );
   if (!shop || shop.status === "live") return;
 
   // Photos live in folders named after the shop (and its models).

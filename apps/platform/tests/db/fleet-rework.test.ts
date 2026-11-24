@@ -19,6 +19,7 @@ import {
   type TestTenant,
   type TestUser,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 let shop: TestTenant;
 let admin: TestUser;
@@ -42,22 +43,21 @@ const own = (extra: object = {}) => ({
 
 const row = async (id: string) =>
   (
-    await service
-      .from("products")
-      .select(
-        "catalog_id, categories, catalog_approved_at, catalog_rejected_at, catalog_reject_reason",
-      )
-      .eq("id", id)
-      .single()
+    await exactlyOne(
+      service
+        .from("products")
+        .select(
+          "catalog_id, categories, catalog_approved_at, catalog_rejected_at, catalog_reject_reason",
+        )
+        .eq("id", id),
+    )
   ).data!;
 const listed = async (id: string) => (await listingOf(id)).marketplace_listed;
 
 async function addModel(extra: object = {}): Promise<string> {
-  const { data, error } = await shop.members.owner.db
-    .from("products")
-    .insert(own(extra))
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    shop.members.owner.db.from("products").insert(own(extra)).select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
@@ -297,17 +297,18 @@ describe("CSV import", () => {
 describe("retiring a make & model", () => {
   const owner = () => shop.members.owner.db;
   const addUnit = async (modelId: string, status = "active") => {
-    const { data, error } = await service
-      .from("units")
-      .insert({
-        tenant_id: shop.id,
-        product_id: modelId,
-        location_id: shop.locationId,
-        plate: `RW-${tag}-${++counter}`,
-        status,
-      })
-      .select("id")
-      .single();
+    const { data, error } = await exactlyOne(
+      service
+        .from("units")
+        .insert({
+          tenant_id: shop.id,
+          product_id: modelId,
+          location_id: shop.locationId,
+          plate: `RW-${tag}-${++counter}`,
+          status,
+        })
+        .select("id"),
+    );
     if (error) throw error;
     return data.id;
   };
@@ -414,16 +415,17 @@ describe("deleting vehicles and models", () => {
     new Date(Date.now() - days * 86_400_000).toISOString();
   const unitWithBlock = async (kind: string) => {
     const model = await addModel();
-    const { data: unit } = await service
-      .from("units")
-      .insert({
-        tenant_id: shop.id,
-        product_id: model,
-        location_id: shop.locationId,
-        plate: `RW-${tag}-${kind}-${++counter}`,
-      })
-      .select("id")
-      .single();
+    const { data: unit } = await exactlyOne(
+      service
+        .from("units")
+        .insert({
+          tenant_id: shop.id,
+          product_id: model,
+          location_id: shop.locationId,
+          plate: `RW-${tag}-${kind}-${++counter}`,
+        })
+        .select("id"),
+    );
     const { error } = await service.from("unit_blocks").insert(
       kind === "allocation"
         ? await allocationFor(
@@ -506,12 +508,13 @@ describe("deleting vehicles and models", () => {
       .delete()
       .eq("id", model);
     expect(error).toBeNull();
-    const { data } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .select("status, review_notes, reviewed_at")
-      .eq("id", entry)
-      .single();
+    const { data } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .select("status, review_notes, reviewed_at")
+        .eq("id", entry),
+    );
     expect(data).toMatchObject({
       status: "rejected",
       review_notes: "Withdrawn: the shop deleted the model.",
@@ -526,12 +529,13 @@ describe("deleting vehicles and models", () => {
       .delete()
       .eq("id", model)
       .throwOnError();
-    const { data } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .select("status")
-      .eq("id", presetId)
-      .single();
+    const { data } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .select("status")
+        .eq("id", presetId),
+    );
     expect(data?.status).toBe("approved");
   });
 });

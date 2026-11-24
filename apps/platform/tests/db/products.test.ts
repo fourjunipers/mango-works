@@ -23,6 +23,7 @@ import {
   listingOf,
   setListing,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 let shop: TestTenant;
 let admin: TestUser;
@@ -57,28 +58,27 @@ const other = (type: string, tracking: string, extra: object = {}) => ({
 });
 
 async function addVehicle(extra: object = {}): Promise<string> {
-  const { data, error } = await shop.members.owner.db
-    .from("products")
-    .insert(vehicle(extra))
-    .select("id")
-    .single();
+  const { data, error } = await exactlyOne(
+    shop.members.owner.db.from("products").insert(vehicle(extra)).select("id"),
+  );
   if (error) throw error;
   return data.id;
 }
 
 let plates = 0;
 async function addUnit(productId: string, extra: object = {}) {
-  return shop.members.owner.db
-    .from("units")
-    .insert({
-      tenant_id: shop.id,
-      product_id: productId,
-      location_id: shop.locationId,
-      plate: `P${tag}${++plates}`,
-      ...extra,
-    })
-    .select("id, product_type")
-    .single();
+  return exactlyOne(
+    shop.members.owner.db
+      .from("units")
+      .insert({
+        tenant_id: shop.id,
+        product_id: productId,
+        location_id: shop.locationId,
+        plate: `P${tag}${++plates}`,
+        ...extra,
+      })
+      .select("id, product_type"),
+  );
 }
 
 beforeAll(async () => {
@@ -156,25 +156,24 @@ describe("the rename", () => {
 describe("type and tracking", () => {
   it("a product is a vehicle tracked by unit unless it says otherwise", async () => {
     const id = await addVehicle();
-    const { data } = await service
-      .from("products")
-      .select("type, tracking")
-      .eq("id", id)
-      .single();
+    const { data } = await exactlyOne(
+      service.from("products").select("type, tracking").eq("id", id),
+    );
     expect(data).toEqual({ type: "vehicle", tracking: "unit" });
   });
 
   it("accepts the four types with their own tracking, and nothing else", async () => {
     const insert = (type: string, tracking: string) =>
-      service
-        .from("products")
-        .insert(
-          (type === "vehicle"
-            ? vehicle({ type, tracking })
-            : other(type, tracking)) as never,
-        )
-        .select("id")
-        .single();
+      exactlyOne(
+        service
+          .from("products")
+          .insert(
+            (type === "vehicle"
+              ? vehicle({ type, tracking })
+              : other(type, tracking)) as never,
+          )
+          .select("id"),
+      );
     for (const [type, tracking] of [
       ["vehicle", "unit"],
       ["gear", "bulk"],
@@ -233,11 +232,9 @@ describe("type and tracking", () => {
       .eq("id", id);
     expect(toGear.error?.message).toContain("product_type_fixed");
 
-    const { data: gear } = await service
-      .from("products")
-      .insert(other("gear", "bulk"))
-      .select("id")
-      .single();
+    const { data: gear } = await exactlyOne(
+      service.from("products").insert(other("gear", "bulk")).select("id"),
+    );
     const tracked = await service
       .from("products")
       .update({ tracking: "unit" })
@@ -271,11 +268,12 @@ describe("a product is a kind and a name (owner, 13 Nov 2026)", () => {
     ...extra,
   });
   const add = (name: string, extra: object = {}) =>
-    shop.members.owner.db
-      .from("products")
-      .insert(named(name, extra))
-      .select("id, make, model, cc, transmission")
-      .single();
+    exactlyOne(
+      shop.members.owner.db
+        .from("products")
+        .insert(named(name, extra))
+        .select("id, make, model, cc, transmission"),
+    );
 
   it("a motorbike is saved with a name alone; its details stay empty", async () => {
     const { data, error } = await add(`Name only ${tag}`);
@@ -366,11 +364,12 @@ describe("a product is a kind and a name (owner, 13 Nov 2026)", () => {
       },
     );
     expect(partly.error?.message).toContain("specs_required");
-    const { data: after } = await service
-      .from("products")
-      .select("make, model, cc, transmission, catalog_id")
-      .eq("id", data!.id)
-      .single();
+    const { data: after } = await exactlyOne(
+      service
+        .from("products")
+        .select("make, model, cc, transmission, catalog_id")
+        .eq("id", data!.id),
+    );
     expect(after).toEqual({
       make: null,
       model: null,
@@ -394,11 +393,12 @@ describe("a product is a kind and a name (owner, 13 Nov 2026)", () => {
     });
     expect(sent.error).toBeNull();
     catalogIds.push(sent.data!);
-    const { data: product } = await service
-      .from("products")
-      .select("make, model, cc, transmission, catalog_id")
-      .eq("id", data!.id)
-      .single();
+    const { data: product } = await exactlyOne(
+      service
+        .from("products")
+        .select("make, model, cc, transmission, catalog_id")
+        .eq("id", data!.id),
+    );
     expect(product).toEqual({
       make: "Prodmake",
       model: `Full ${tag}`,
@@ -406,12 +406,15 @@ describe("a product is a kind and a name (owner, 13 Nov 2026)", () => {
       transmission: "manual",
       catalog_id: sent.data,
     });
-    const { data: entry } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .select("make, model, cc, transmission, status, type, year_from, year_to")
-      .eq("id", sent.data!)
-      .single();
+    const { data: entry } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .select(
+          "make, model, cc, transmission, status, type, year_from, year_to",
+        )
+        .eq("id", sent.data!),
+    );
     // The one year of the shop's bike is both ends of the request's range.
     expect(entry).toEqual({
       make: "Prodmake",
@@ -439,12 +442,13 @@ describe("a product is a kind and a name (owner, 13 Nov 2026)", () => {
     });
     expect(again.error).toBeNull();
     catalogIds.push(again.data!);
-    const { data: second } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .select("make, cc, transmission")
-      .eq("id", again.data!)
-      .single();
+    const { data: second } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .select("make, cc, transmission")
+        .eq("id", again.data!),
+    );
     expect(second).toEqual({
       make: "Prodmake",
       cc: 320,
@@ -473,12 +477,13 @@ describe("a product is a kind and a name (owner, 13 Nov 2026)", () => {
     };
     const years = async (id: string) =>
       (
-        await service
-          .schema("public")
-          .from("bike_catalog")
-          .select("status, year_from, year_to")
-          .eq("id", id)
-          .single()
+        await exactlyOne(
+          service
+            .schema("public")
+            .from("bike_catalog")
+            .select("status, year_from, year_to")
+            .eq("id", id),
+        )
       ).data;
 
     const ranged = await send(`Years A ${tag}`, 2022);
@@ -528,12 +533,13 @@ describe("a product is a kind and a name (owner, 13 Nov 2026)", () => {
 
   it("a product with a name alone takes its details from the list entry it is put on, and can then be listed", async () => {
     const { data } = await add(`From list ${tag}`, { categories: ["sport"] });
-    const linked = await shop.members.owner.db
-      .from("products")
-      .update({ catalog_id: presetId })
-      .eq("id", data!.id)
-      .select("make, model, cc, transmission")
-      .single();
+    const linked = await exactlyOne(
+      shop.members.owner.db
+        .from("products")
+        .update({ catalog_id: presetId })
+        .eq("id", data!.id)
+        .select("make, model, cc, transmission"),
+    );
     expect(linked.error).toBeNull();
     for (const value of Object.values(linked.data!))
       expect(value).not.toBeNull();
@@ -587,11 +593,9 @@ describe("a unit knows what it is a unit of", () => {
       ["service", "none"],
       ["sale_item", "consumable"],
     ]) {
-      const { data: product } = await service
-        .from("products")
-        .insert(other(type, tracking))
-        .select("id")
-        .single();
+      const { data: product } = await exactlyOne(
+        service.from("products").insert(other(type, tracking)).select("id"),
+      );
       // As a vehicle unit the key doesn't match; as its own type it isn't allowed.
       expect((await addUnit(product!.id)).error?.code, type).toBe("23503");
       expect(
@@ -605,11 +609,9 @@ describe("a unit knows what it is a unit of", () => {
 describe("every re-created function runs", () => {
   it("products_guard: a known model fills in the description; listing needs an approved one", async () => {
     const id = await addVehicle({ catalog_id: presetId });
-    const { data } = await service
-      .from("products")
-      .select("make, model, cc")
-      .eq("id", id)
-      .single();
+    const { data } = await exactlyOne(
+      service.from("products").select("make, model, cc").eq("id", id),
+    );
     expect(data?.make).toBeTruthy();
     const own = await addVehicle();
     const listed = await setListing(shop.members.owner.db, own, {
@@ -675,11 +677,9 @@ describe("every re-created function runs", () => {
       p_approve: true,
     });
     expect(review.error).toBeNull();
-    const { data } = await service
-      .from("products")
-      .select("catalog_approved_at")
-      .eq("id", approved)
-      .single();
+    const { data } = await exactlyOne(
+      service.from("products").select("catalog_approved_at").eq("id", approved),
+    );
     // Connected, and left for the shop to list (since 20261123000100).
     expect((await listingOf(approved)).marketplace_listed).toBe(false);
     expect(data?.catalog_approved_at).not.toBeNull();
@@ -688,12 +688,13 @@ describe("every re-created function runs", () => {
     const waiting = await addVehicle({ categories: ["sport"] });
     const request = await submit(waiting);
     await shop.members.owner.db.from("products").delete().eq("id", waiting);
-    const { data: closed } = await service
-      .schema("public")
-      .from("bike_catalog")
-      .select("status")
-      .eq("id", request)
-      .single();
+    const { data: closed } = await exactlyOne(
+      service
+        .schema("public")
+        .from("bike_catalog")
+        .select("status")
+        .eq("id", request),
+    );
     expect(closed?.status).toBe("rejected");
   });
 
@@ -782,11 +783,9 @@ describe("a product is deleted only when it has no vehicles (owner, 13 Nov 2026)
       }
     }
     // Still there, with its vehicle.
-    const { data } = await service
-      .from("products")
-      .select("id, units(id)")
-      .eq("id", id)
-      .single();
+    const { data } = await exactlyOne(
+      service.from("products").select("id, units(id)").eq("id", id),
+    );
     expect(data?.units).toHaveLength(1);
   });
 

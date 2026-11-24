@@ -50,6 +50,7 @@ import {
   type TestUser,
   until,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 // Tests here hold sessions at gates: see GATE_TIMEOUTS in helpers.ts.
 vi.setConfig(GATE_TIMEOUTS);
@@ -105,16 +106,17 @@ const save = (
 
 /** A vehicle product with `count` units, made with the service role. */
 async function vehicle(count: number, tenant: TestTenant = shop) {
-  const product = await service
-    .from("products")
-    .insert({
-      tenant_id: tenant.id,
-      name: name("Scooter"),
-      vehicle_type: "motorbike",
-    })
-    .select("id, name")
-    .single()
-    .throwOnError();
+  const product = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: tenant.id,
+        name: name("Scooter"),
+        vehicle_type: "motorbike",
+      })
+      .select("id, name")
+      .throwOnError(),
+  );
   const units = count
     ? await service
         .from("units")

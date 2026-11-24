@@ -21,6 +21,7 @@ import { getProductPricingExtras, getSharedList } from "@/lib/pricing-data";
 import { canPricing } from "@/lib/pricing-permissions";
 import { requireMembership } from "@/lib/session";
 import { createClient } from "@mango/db/platform-server";
+import { atMostOne } from "@mango/db/rows";
 
 /**
  * Pricing actions (docs/products-redesign.md §9.2, §9.12). Every write goes
@@ -88,11 +89,12 @@ async function stepOf(
   tenantId: string,
   currency: string,
 ): Promise<bigint> {
-  const { data } = await supabase
-    .from("pricing_settings")
-    .select("rounding_step::text")
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
+  const { data } = await atMostOne(
+    supabase
+      .from("pricing_settings")
+      .select("rounding_step::text")
+      .eq("tenant_id", tenantId),
+  );
   return data?.rounding_step
     ? BigInt(data.rounding_step)
     : suggestedStep(currency);
@@ -125,17 +127,19 @@ export async function saveProductPricing(
   if (!productId || !draft) return { errors: { form: "saveFailed" } };
 
   const [product, settings, lists, profiles, extras] = await Promise.all([
-    supabase
-      .from("products")
-      .select("id, type")
-      .eq("tenant_id", tenant.id)
-      .eq("id", productId)
-      .maybeSingle(),
-    supabase
-      .from("pricing_settings")
-      .select("rounding_step::text, deposit_mode")
-      .eq("tenant_id", tenant.id)
-      .maybeSingle(),
+    atMostOne(
+      supabase
+        .from("products")
+        .select("id, type")
+        .eq("tenant_id", tenant.id)
+        .eq("id", productId),
+    ),
+    atMostOne(
+      supabase
+        .from("pricing_settings")
+        .select("rounding_step::text, deposit_mode")
+        .eq("tenant_id", tenant.id),
+    ),
     supabase
       .from("price_templates")
       .select("id, kind")

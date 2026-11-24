@@ -13,6 +13,10 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
 
+## One-row reads counted by us (branch `platform/db-single-wrapper`, 23 Nov 2026)
+
+**No migration, no SQL; behaviour unchanged on Supabase.** `exactlyOne()` and `atMostOne()` in `@mango/db/rows` replace all 279 `.single()` / `.maybeSingle()` calls in `apps/` (63 in app code, 193 in database tests, 13 in Playwright, 10 in scripts; 7 of the tests came with PR 70), because Neon's Data API gives no error when zero or several rows match. The seven typed `.single<T>()` / `.maybeSingle<T>()` (marketplace inclusions) now say `.overrideTypes<T[], { merge: false }>()` on the query. They return what Supabase returned (PGRST116, 406), keep `.throwOnError()`, and are unit-tested (`packages/db/src/rows.test.ts`). ESLint refuses `.single()` and `.maybeSingle()` outside `packages/db` (`singleRowRule`). **Known difference:** on a write, PostgREST rolled back an insert, update or delete that touched other than one row; the helpers report it after the write. Every write call site touches one row at most: a one-row insert or upsert, an update by primary key, or (demo seed) a tenant's one default location.
+
 ## Phase 3, stage 1: unit lock rules (branch `platform/phase-3-stage-1-unit-locks`, 23 Nov 2026)
 
 The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §4, §8 stage 1). From `main` at `15dadd2` (PRs 57, 68 and 69 merged; 69 migrations). **One migration, `20261123000100_platform_unit_lock_rules.sql`.** **Migration on staging since 24 Nov 2026, 70/70** (see "On staging" below); **not on live.**

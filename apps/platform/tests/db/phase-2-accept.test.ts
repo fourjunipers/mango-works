@@ -30,6 +30,7 @@ import {
   serviceClient,
   type TestTenant,
 } from "./helpers";
+import { exactlyOne } from "@mango/db/rows";
 
 let shop: TestTenant;
 const service = serviceClient();
@@ -73,16 +74,17 @@ const online = (lines: Line[], channel = "booking_page") =>
 
 /** A vehicle product with `count` units at the shop's location (fixtures). */
 async function vehicle(count: number) {
-  const product = await service
-    .from("products")
-    .insert({
-      tenant_id: shop.id,
-      name: `Accept scooter ${tag} ${++counter}`,
-      vehicle_type: "motorbike",
-    })
-    .select("id")
-    .single()
-    .throwOnError();
+  const product = await exactlyOne(
+    service
+      .from("products")
+      .insert({
+        tenant_id: shop.id,
+        name: `Accept scooter ${tag} ${++counter}`,
+        vehicle_type: "motorbike",
+      })
+      .select("id")
+      .throwOnError(),
+  );
   const units = await service
     .from("units")
     .insert(
@@ -204,16 +206,17 @@ describe("Phase 2 accept: two parallel bookings for the last unit give one succe
 describe("Phase 2 accept: a booking that overlaps a downtime block is refused", () => {
   it("a booking that overlaps a downtime block is refused, staff and online, and nothing is written", async () => {
     const bike = await vehicle(1);
-    const down = await db("mechanic")
-      .from("unit_blocks")
-      .insert({
-        tenant_id: shop.id,
-        unit_id: bike.units[0],
-        kind: "downtime",
-        period: period(at(40), at(42)),
-      })
-      .select("id")
-      .single();
+    const down = await exactlyOne(
+      db("mechanic")
+        .from("unit_blocks")
+        .insert({
+          tenant_id: shop.id,
+          unit_id: bike.units[0],
+          kind: "downtime",
+          period: period(at(40), at(42)),
+        })
+        .select("id"),
+    );
     expect(down.error).toBeNull();
 
     for (const [from, to] of [
