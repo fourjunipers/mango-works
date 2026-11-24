@@ -13,6 +13,8 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
 
+**Neon plan updated after the spike (branch `docs/neon-plan-update`, 23 Nov 2026; docs only).** `docs/platform/neon-move-plan.md` §7.1 marked done (Go, Mark, 23 Nov 2026) and the spike's 18 points folded into the stages (§7.0 says where each went). New stage 4a: a one-row wrapper in `packages/db` for the 35 `.single()` calls, a separate PR before the move. Root CLAUDE.md's "Not tied to Supabase" gained the rules that follow (no `.single()`/`.maybeSingle()` outside `packages/db` once the wrapper lands; nothing relies on the `auth` schema; no role-level settings; no branching on error text). Open before stage 2: the migration tool, our own users table, the anon token (plan §8).
+
 ## Price check: compact layout (branch `platform/price-check-compact`, 20 Nov 2026)
 
 **No migration; what the screen calculates is unchanged.** The owner's feedback (20 Nov 2026): "much more consolidated", the top card repeated much of the bottom one, the long list of products was inconvenient; "simple to use, easy to understand. A compact price checker."
