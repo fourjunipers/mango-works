@@ -569,6 +569,7 @@
     "unit_not_in_fleet": "This vehicle has been sold or retired, so it can't be blocked.",
     "unit_busy": "Someone is saving a booking or a block on this one right now. Please try again.",
     "unit_has_bookings": "This vehicle has upcoming bookings. Change its product or location on its Details form, which moves the bookings with it.",
+    "one_unit_status_change": "Only one vehicle or unit can be sold, retired or marked lost at a time. Please do them one at a time.",
     "bookingsChanged": "This vehicle's bookings changed while this form was open. Reload the page to see them, then make your change again.",
     "more_units_than_active": "Total units listed on Moto Mangos can not exceed the number of units in your inventory",
     "catalog_entry_not_usable": "Choose a catalog entry from the list.",
