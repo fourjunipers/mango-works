@@ -1,6 +1,6 @@
 # Neon spike: results
 
-**Status: in progress (23 Nov 2026).** Rows 1, 3, 4, 5 and 8 are measured. Row 6 passed on 23 Nov. Row 2 (cold start: the overnight check) and row 7 (24 hours of pg_cron) are still running; their lines say so. The recommendation at the end is provisional until they finish.
+**Status: finished (24 Nov 2026).** All eight rows have an answer. One part of row 2 (the always-on compute after a whole night) could not be measured cleanly and says so. The recommendation is at the end.
 
 This is stage 1 of `docs/platform/neon-move-plan.md` (§7.1). It answers the plan's eight rows with a number or a yes or no, lists what the plan got wrong, and ends with a go or no-go recommendation for Mark. The spike's code is under `spike/neon/` and its raw results under `spike/neon/results/`. Nothing in `apps/` or `packages/` changed, no migration file was edited, and live was never touched.
 
@@ -22,13 +22,13 @@ The same throwaway shop was made on each database through the data API: one owne
 | # | Question | Answer | Against the plan's line | How it was measured |
 | --- | --- | --- | --- | --- |
 | 1 | Latency from Netlify to Neon against Supabase | Neon's median is 39 to 52 ms **lower** than Supabase's on every call, and its 95th percentile about 520 ms lower. Figures below | **Pass** on all three calls, for both Neon projects | 200 warm calls of each of three calls, against staging, Neon Launch and Neon Free, interleaved from one Netlify function instance in `us-east-2` in one run. 0 failures in 1,800 calls |
-| 2 | Cold start | **Running.** Free: 20 cycles of 10.5 idle minutes (done, 20 of 20 answered correctly: first call median 2,176 ms, range 1,497 to 6,120 ms; the second call is slow too, median 909 ms, once 7,679 ms; warm median 260 ms. An awake control from a new process takes about 805 then 766 ms on its first two calls, so the sleep itself costs about 1.4 s on the first call at the median, not Neon's "few hundred milliseconds". Six more cycles with one reused token agree: first call median 2,058 ms, range 1,511 to 3,465 ms, second call 746 to 1,257 ms). Launch: after 1 hour and after a night. Two Launch attempts were thrown away as my method's fault: the first signed a new token for the first call (slow with no idle spell too), the second reused a one-hour token that ran out during the 61 idle minutes (401 `PGRST303`). Third attempt, with a token that outlives the run, two cycles of 61 idle minutes: first call 1,078 and 1,079 ms, second 1,281 and 771 ms, then about 255 ms. The awake control (a new connection after 20 idle seconds) is 750 to 772 ms on the first call, so an idle hour adds about 0.3 s to the first call: no compute cold start (Free's is about 1.4 s), but not "no slower" either. A control of four 10-minute idle spells gave 1,073, 1,123, 815 and 794 ms, so the same 0.3 s shows up after ten minutes about half the time: it is what a quiet connection path costs, not something an hour makes worse. The overnight check (two spells of 8 h 20 min) is running | Pending (after 1 hour: about 0.3 s over the line, the same as after 10 minutes) | First call through the Data API after the idle spell, then five more |
+| 2 | Cold start | **Free (scale-to-zero): about 2.1 s on the first call after 10 idle minutes, of which about 1.4 s is the sleep.** **Launch (always on): no cold start after 10 minutes, 1 hour or 4 h 45 min; the 8 h 20 min reading is not reliable.** Figures below | Free: **the number is written down** (it is not Neon's "few hundred milliseconds"). Launch: **pass in substance**, with two caveats: any first call on a new connection is slower than a warm one, idle or not, and the overnight reading has to be discounted | First call through the Data API after the idle spell, then five more; a new client each time, from Mark's computer in Thailand |
 | 3 | Can a role made in SQL bypass RLS? | **Yes.** `create role service_role nologin bypassrls` works in plain SQL. A token with `role: service_role` sees the shop's 13 products; a signed-in stranger sees 0; the Data API's login role (`authenticator`) has no BYPASSRLS | **Pass** | SQL as `neondb_owner`, then reads of `platform.products` through the Data API with three tokens |
 | 4 | Does the Data API apply a role's statement timeout? | **A 10-second call is cancelled at 8.4 s with `57014`.** But not because of the role's setting: see "Timeouts" below | **Pass**, with a caveat | `pg_sleep(10)` through the Data API as `authenticated`; then roles given other values |
 | 5 | Does the Data API handle our RPC calls? | **Yes, with one real difference (`.single()`).** `55P03` after 6.3 s, `try_again` at the caller, nothing written; `57014` at 8.3 s; a real `40P01` reaches the caller. Codes, HTTP statuses, messages and times match Supabase | **Pass** on codes and times. One difference to handle: below | 32 shape and error checks and 3 lock tests, the same script against staging and both Neon projects, compared field by field |
 | 6 | LINE and Google sign-in through Better Auth | **Yes, both.** Mark signed in with LINE and then Google on 23 Nov 2026 (11:11 and 11:12 UTC); each made its own Better Auth user (2 users, 2 accounts, both linked as staff of the spike shop). For each: the token is ES256 with a `kid`, `sub` = the user's id, `role: authenticated`, 900 s; the Data API ran the call as `authenticated` (login role `authenticator`, 8 s timeout), the database's "who is this" returned that user's id, and RLS showed 1 shop and its 13 products and nothing else. A forged role was refused three ways: a token with its payload changed (401 `PGRST301`), a token signed by another key under our `kid` (401 `PGRST301`), and an update-user request carrying a role field (accepted, but the role claim stayed `authenticated`). LINE's ID token is HS256 with no `kid` and was verified with the channel secret; with the `openid profile` scopes it carries no email | Pass | Real LINE and Google test channels; then a Data API call as that user |
-| 7 | pg_cron running the minute hold sweep for 24 hours | **Running since 23 Nov 01:16 UTC.** First 36 minutes: 36 runs, 36 succeeded, longest 16 ms; holds are being made and released | Pending (ends 24 Nov 01:16 UTC) | `cron.job_run_details` on the Launch compute |
-| 8 | The rest of the unknowns | Each has an answer: below | Answered, except one | See below |
+| 7 | pg_cron running the minute hold sweep for 24 hours | **1,440 runs in 1,440 minutes, all succeeded.** No minute missed, no gap other than 60 s, no run overlapping the one before. Median run 3 ms, longest 24 ms, latest start 1.0 s after the minute. The sweep had real work: a second job made a hold every 5 minutes (289 holds), 286 had run out and been released by the end, 3 were still live, and no expired hold was left holding a unit. No session was waiting on a lock at the end | **Pass** | `cron.job_run_details` on the Launch compute, 23 Nov 01:16 to 24 Nov 01:16 UTC (`spike/neon/results/row7.json`) |
+| 8 | The rest of the unknowns | Each has an answer: below | **Answered** | See below |
 
 ### Row 1: the numbers
 
@@ -55,6 +55,28 @@ Three things to know about these numbers:
 - **Staging is a Supabase Free project** on shared compute, and the Neon Launch project is the smallest size (0.25 CU). At these latencies almost all of the time is the network crossing from US East to Singapore and back, so the size of either database hardly shows.
 
 As the plan says, this answers "is Neon slower than Supabase from the same place", not "how fast will the sites be". Stage 11 measures again from Singapore.
+
+### Row 2: the numbers
+
+Milliseconds, product-list read through the Data API, measured from Mark's computer in Thailand (about 250 ms a round trip when warm). Each cycle uses a new client; the first two calls of any new client are slow, idle or not, because the connection is new.
+
+| Database | Idle spell | Cycles | First call | Second call | Warm |
+| --- | --- | --- | --- | --- | --- |
+| Free | none (awake control) | 1 | 805 | 766 | about 255 |
+| Free | 10.5 minutes, new token each time | 20 | median 2,176 (1,497 to 6,120) | median 909 (745 to 7,679) | median 260 |
+| Free | 10.5 minutes, one reused token | 6 | median 2,058 (1,511 to 3,465) | 746 to 1,257 | about 250 |
+| Launch | 20 seconds (awake control, 23 Nov) | 3 | 750 to 772 | 734 to 1,025 | about 253 |
+| Launch | 20 seconds (awake control, 24 Nov) | 3 | 753, 996, 1,096 | 978 to 1,365 | about 255 |
+| Launch | 10 minutes | 4 | 1,073, 1,123, 815, 794 | 748 to 1,043 | about 255 |
+| Launch | 61 minutes | 2 | 1,078, 1,079 | 1,281, 771 | about 255 |
+| Launch | 4 h 45 min | 1 | 1,180 | 788 | about 255 |
+| Launch | 8 h 20 min | 1 | 3,651 (not reliable) | 2,256 | about 250 |
+
+- **Free.** All 26 cold cycles answered correctly; none timed out. The sleep costs about 1.3 to 1.4 s on the first call at the median (first call less the awake control), and the second call is often slow too. One cycle in 26 took 6.1 s and then 7.7 s: inside Playwright's 15-second wait, but close to the 8-second statement timeout.
+- **Launch.** A first call on a new connection takes 0.75 to 1.1 s when the database was used 20 seconds before, and 0.8 to 1.2 s after 10 minutes, an hour or 4 h 45 min of quiet. Those ranges overlap, so no cost of idleness was found on the always-on compute. The compute itself was never idle in the strict sense: row 7's cron job ran on it every minute throughout.
+- **The 8 h 20 min reading is discounted.** Mark's computer was in and out of standby during that night, and a name lookup from it failed eight seconds after the reading, so the 3.65 s is as likely the computer's network waking as anything at Neon. It was not measured again: the Launch project is deleted by 26 Nov. The 4 h 45 min reading stands in for "after a night" (it was meant to be 8 h 20 min; Mark's row 6 sign-ins fell inside it).
+- **Two Launch attempts were thrown away as the method's fault:** one signed a new token for the first call (slow with no idle spell too), and one reused a one-hour token that ran out during the 61 idle minutes (401 `PGRST303`). The Free awake control counts one cycle only, because its later cycles ran back to back in one process and reused the connection.
+- **What this was not:** a measurement from a Netlify function. A function instance that has been idle starts cold itself; stage 11 measures the sites end to end.
 
 ### Row 5: what matches and what does not
 
@@ -117,13 +139,15 @@ So the 6-seconds-under-8 rule in CLAUDE.md holds on Neon today. It holds because
 13. **`.single()` differs** (row 5). Not foreseen.
 14. **Three migrations check function bodies by md5** before replacing them (`20261117000200`, `20261118000100` and `20261119000100`). Any baseline that renames `auth.uid()` inside those bodies must be built from the final schema, not by replaying those migrations.
 15. **Better Auth does not check LINE's ID token signature in the redirect flow** (1.7.27 decodes the token it receives from LINE's token endpoint). That is why LINE's HS256 does not break it. The spike adds its own HS256 check with the channel secret; the real build should keep one.
-16. **Netlify:** a new site in the team starts with team-login protection on every deploy, which blocks Neon from reading the key file and the providers from reaching the callbacks. It was switched off for the spike site only. Draft deploys cost no credits (190.9 before, 190.8 after the first).
+16. **Netlify:** a new site in the team starts with team-login protection on every deploy, which blocks Neon from reading the key file and the providers from reaching the callbacks. It was switched off for the spike site only. Draft deploys cost no credits (190.9 before, 190.8 after the first). Function calls do cost credits; the balance after the whole spike is Mark's to read (it was 190.9 before).
+17. **A Free compute's cold start is not "a few hundred milliseconds" (§7.1 row 2).** Measured through the Data API it adds about 1.4 s to the first call, and the second call is often slow too; one cycle in 26 took 6 to 8 s.
+18. **The always-on line for row 2 cannot be met as written.** "The first call is no slower than the rest" fails for any new connection, idle or not: a new client's first two calls take 0.75 to 1.1 s against 0.25 s warm, on Neon and (row 1's slow 9%) on Supabase. The useful line is "no slower than a new connection to a database in use", and that one was met.
 
 The spike loaded the migrations with four changes made in memory as each file was sent (no file was edited): `for role postgres` to the current role; the pg_cron check made false; `auth.users`, `auth.identities`, `auth.uid()` and `auth.role()` pointed at the stand-ins; and the md5 checks made to allow for that.
 
-## Recommendation (provisional)
+## Recommendation
 
-**Go, so far.** Nothing measured stops the move. Neon is faster than Supabase from today's function region on every call, the lock rules behave identically through the Data API to the millisecond scale that matters, a `service_role` that bypasses RLS can be made in plain SQL, and the 8-second timeout is in place. The surprises are all in the access model's plumbing (points 1 to 7 above) and each has a known, small answer that fits decisions the plan already made; they make stage 2 a little larger and none of them is a reason to stop. This paragraph is provisional until row 2 (cold start on an always-on compute), row 6 (LINE and Google) and row 7 (24 hours of pg_cron) are in.
+**Go.** Nothing measured stops the move, and seven of the eight rows pass outright. Neon is faster than Supabase from today's function region on every call. The lock rules behave the same through the Data API (`55P03` after 6 s, `try_again`, nothing written; `57014` and `40P01` unchanged). A `service_role` that bypasses RLS can be made in plain SQL, and the 8-second timeout is in place. LINE and Google both sign in through Better Auth, with RLS seeing the right user and a forged role refused. pg_cron ran the minute sweep 1,440 times in 24 hours without a miss. Row 2 is the soft one: the always-on compute showed no cold start after 10 minutes, an hour or 4 h 45 min, but the whole-night reading was spoiled by the measuring computer and was not repeated, so stage 11 should watch the first request of the morning. The surprises are in the access model's plumbing (points 1 to 7 below the results) and in `.single()`; each has a known, small answer that fits decisions the plan already made. They make stage 2 larger than planned (our own "who is calling" functions and users table in the baseline, a schema-cache refresh after every migration run) and none is a reason to stop. Two things the plan should now say outright: staging on Neon Free cannot run the minute sweep (it keeps the compute awake, about 182 CU-hours against 100), and its first request after a quiet spell takes about 2 seconds, occasionally 6 to 8.
 
 ## Staging: before and after
 
@@ -139,16 +163,16 @@ Every table in `platform`, `public`, `auth` and `storage` was counted; no table'
 
 ## Clean-up list
 
-Nothing here has been deleted yet: the Launch project is still running row 7, and Mark does the deleting.
+Nothing here has been deleted: Mark does the deleting. Every row is read, so all of it can go now. On the Launch project the two cron jobs are still scheduled and stop with the project; on the Free project the job is unscheduled.
 
 | # | What Mark deletes | Where | When |
 | --- | --- | --- | --- |
-| 1 | **Project `mango-spike-launch`, then the organisation "Mango Works spike"** (the only paid thing; about $0.64 a day) | Neon Console | **By 26 Nov 2026**, after row 7 is read |
-| 2 | Project `mango-spike-free` (never `faregoblin`) | Neon Console, organisation "Four Junipers (Start ups)" | After the write-up is final |
+| 1 | **Project `mango-spike-launch`, then the organisation "Mango Works spike"** (the only paid thing; about $0.64 a day) | Neon Console | **By 26 Nov 2026.** Row 7 is read, so now |
+| 2 | Project `mango-spike-free` (never `faregoblin`) | Neon Console, organisation "Four Junipers (Start ups)" | Now |
 | 3 | The two project-scoped API keys | Neon Console, each organisation's Settings, API keys | With the projects |
-| 4 | Site `mango-neon-spike` (its environment variables go with it) | Netlify, team FourJumipers | After the write-up is final |
-| 5 | LINE Login channel "Neon spike" | LINE Developers Console, provider Four Junipers | After row 6 |
-| 6 | Google Cloud project `mango-neon-spike` (its OAuth client goes with it) | Google Cloud Console | After row 6 |
+| 4 | Site `mango-neon-spike` (its environment variables go with it) | Netlify, team FourJumipers | Now |
+| 5 | LINE Login channel "Neon spike" | LINE Developers Console, provider Four Junipers | Now |
+| 6 | Google Cloud project `mango-neon-spike` (its OAuth client goes with it) | Google Cloud Console | Now |
 | 7 | `spike/neon/.env`, `.env.spike`, `.env.netlify`, `.state/`, `.netlify/` and `node_modules/` in the worktree | Local disk (all git-ignored) | With the worktree |
 
 Staging needs nothing: it is as it was.
