@@ -13,6 +13,10 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
 
+## Faster `wrappers.test.ts` sweep (branch `core/wrappers-test-speed`, 24 Nov 2026)
+
+`packages/core/src/wrappers.test.ts`, the first time.ts test ("over 8939 instants…", 5.3 s and one timeout in a busy full run): the wrappers cost about 70 µs a call and it made four of them, plus four reference calls and four `toEqual`s, per instant. It now runs over 2,855 instants: every fourth of the grid (time of day and weekday still cycle through every value) plus, for every month from 2019 to 2035, the millisecond before Bangkok midnight, midnight and the millisecond after (so every month end, year end and the four leap days are hit on purpose, not by chance), plus the eight named edge instants. Same four properties. That test went from 1.9 to 2.7 s to 1.0 to 1.4 s back to back on the same machine; the other tests in the file still take 1 to 2 s each and are the next to look at if it flakes again. No timeout raised, source untouched.
+
 ## Faster "totals never fall" tests (branch `core/discounts-test-speed`, 24 Nov 2026)
 
 `packages/core/src/discounts.test.ts`: the six "totals never fall" tests timed out at 5 s on a busy machine (each priced 2,418 quotes, and `decideDiscounts` plus `quote` per quote was the cost). They now price every day to 70, every tenth day after, and days 365, 366 and 400, with the lines built once per start date instead of once per play: same properties, same start dates; the file went from 42 s (4 timeouts) to 13 s, each of those tests from 4 to 9 s down to 1 to 2 s. No timeout raised; `packages/core` source untouched. Separately seen, not fixed: `wrappers.test.ts` "over 8939 instants" took 5.3 s and timed out once in a full run on the same busy machine.
