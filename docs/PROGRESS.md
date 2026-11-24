@@ -17,6 +17,15 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 **No migration, no SQL; behaviour unchanged on Supabase.** `exactlyOne()` and `atMostOne()` in `@mango/db/rows` replace all 272 `.single()` / `.maybeSingle()` calls in `apps/` (63 in app code, 186 in database tests, 13 in Playwright, 10 in scripts), because Neon's Data API gives no error when zero or several rows match. The seven typed `.single<T>()` / `.maybeSingle<T>()` (marketplace inclusions) now say `.overrideTypes<T[], { merge: false }>()` on the query. They return what Supabase returned (PGRST116, 406), keep `.throwOnError()`, and are unit-tested (`packages/db/src/rows.test.ts`). ESLint refuses `.single()` and `.maybeSingle()` outside `packages/db` (`singleRowRule`). **Known difference:** on a write, PostgREST rolled back an insert, update or delete that touched other than one row; the helpers report it after the write. Every write call site touches one row at most: a one-row insert or upsert, an update by primary key, or (demo seed) a tenant's one default location.
 
+## Neon spike (branch `spike/neon`, 23 to 24 Nov 2026)
+
+Stage 1 of `docs/platform/neon-move-plan.md` (§7.1) is done. **Decision: Go (Mark, 23 Nov 2026).**
+
+- **Write-up:** `docs/platform/neon-spike.md`. All eight rows have a number or a yes or no. Seven pass; row 2's reading on the always-on compute after a whole night was not clean, so stage 11 watches the first request of the morning.
+- **To fold into `neon-move-plan.md` (a separate PR):** the write-up's 18 points under "What the plan got wrong, or did not foresee". The ones that change the stages: Neon's `auth` schema is closed to us, so stage 2's baseline needs our own "who is calling" functions and users table from the start; the Data API's schema cache must be refreshed after every migration run; `.single()` returns no error for zero or many rows (35 call sites in the apps); a request with no token is refused, so the signed-out path needs a signed `role: anon` token; staging on Neon Free cannot run the minute sweep.
+- **Spike code:** not on `main`. It is kept at the tag `archive/neon-spike-2026-11` (`spike/neon/`).
+- **Clean-up:** the Launch project and the organisation "Mango Works spike" are deleted (23 Nov 2026 US time). The rest is in hand: the Free project, the API keys, the Netlify site, the LINE channel, the Google Cloud project and the local files. Staging is as it was (91 tables, 4,487 rows before and after); live was never touched.
+
 ## Price check: compact layout (branch `platform/price-check-compact`, 20 Nov 2026)
 
 **No migration; what the screen calculates is unchanged.** The owner's feedback (20 Nov 2026): "much more consolidated", the top card repeated much of the bottom one, the long list of products was inconvenient; "simple to use, easy to understand. A compact price checker."
