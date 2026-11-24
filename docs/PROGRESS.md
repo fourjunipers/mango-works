@@ -99,6 +99,9 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 **Local set-up.** This worktree (`.claude/worktrees/phase-3-stage-1`) has its own stack, `Bike_Booking_phase3_s1`, on ports 634xx (API 63421, database 63422, shadow 63420, Studio 63423, mail 63424, analytics 63427, pooler 63429, inspector 63483), started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Another project's stack (on the default ports) was left alone; no older Mango Works stack was running.
 
 **Next:** stage 2a, orders: tables, RLS, customers, settings (migration 2).
+## Faster `wrappers.test.ts` sweep (branch `core/wrappers-test-speed`, 24 Nov 2026)
+
+`packages/core/src/wrappers.test.ts`, the first time.ts test ("over 8939 instants…", 5.3 s and one timeout in a busy full run): the wrappers cost about 70 µs a call and it made four of them, plus four reference calls and four `toEqual`s, per instant. It now runs over 2,855 instants: every fourth of the grid (time of day and weekday still cycle through every value) plus, for every month from 2019 to 2035, the millisecond before Bangkok midnight, midnight and the millisecond after (so every month end, year end and the four leap days are hit on purpose, not by chance), plus the eight named edge instants. Same four properties. That test went from 1.9 to 2.7 s to 1.0 to 1.4 s back to back on the same machine; the other tests in the file still take 1 to 2 s each and are the next to look at if it flakes again. No timeout raised, source untouched.
 
 ## Faster "totals never fall" tests (branch `core/discounts-test-speed`, 24 Nov 2026)
 
