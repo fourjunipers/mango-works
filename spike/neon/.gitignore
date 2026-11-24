@@ -1,5 +1,0 @@
-.env*
-.netlify
-node_modules
-site/.well-known/
-.state/
