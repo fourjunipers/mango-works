@@ -208,8 +208,10 @@ const moveSql = (
   unit: string,
   product: string,
   location: string,
+  /** The form's `updated_at`: an old one is answered `stale`. */
+  expectedUpdatedAt?: string,
 ) =>
-  `select platform.move_unit('${tenant.id}', '${unit}', '${product}', '${location}');`;
+  `select platform.move_unit('${tenant.id}', '${unit}', '${product}', '${location}', null, ${expectedUpdatedAt ? `'${expectedUpdatedAt}'` : "null"});`;
 
 /** Day `d` at 03:00 UTC, far ahead: every round books its own days. */
 const at = (d: number) => new Date(Date.UTC(2033, 0, 1) + d * 86_400_000);
@@ -364,7 +366,7 @@ describe("a unit's product changes only through move_unit()", () => {
     RACE_TIMEOUT,
   );
 
-  it("a direct product change is refused for the owner, the service role and the database's owner, with or without bookings; nothing changes", async () => {
+  it("a direct product change is refused for the owner, the manager, the service role and the database's owner, with or without bookings; nothing changes", async () => {
     for (const [where, tenant] of everyShop()) {
       const a = await vehicle(tenant, 1);
       const b = await vehicle(tenant, 0);
@@ -376,6 +378,13 @@ describe("a unit's product changes only through move_unit()", () => {
         .eq("id", unit!)
         .select("id");
       expect(owner.error?.message, where).toBe("use_move_unit");
+
+      const manager = await tenant.members.manager.db
+        .from("units")
+        .update({ product_id: b.id })
+        .eq("id", unit!)
+        .select("id");
+      expect(manager.error?.message, where).toBe("use_move_unit");
 
       const server = await service
         .from("units")
@@ -467,38 +476,190 @@ describe("a unit's product changes only through move_unit()", () => {
       );
       expect(next.failed, where).toBe("");
       expect(JSON.parse(answers(next.out).pop()!).ok, where).toBe(true);
-      // A move that changed nothing set no marker: it can be sent again in
-      // the same transaction.
-      const twice = sql(
+      expect((await unitRow(one!)).product_id, where).toBe(b.id);
+    }
+  });
+
+  it("whatever the first move_unit() answered (nothing to do, stale, bookings changed), a second one in the same transaction is refused: the first one's locks are still held", async () => {
+    for (const [where, tenant] of everyShop()) {
+      const a = await vehicle(tenant, 2);
+      const b = await vehicle(tenant, 0);
+      const [one, two] = a.units;
+      const firsts: [string, string, object][] = [
+        [
+          "nothing to do (it is there already)",
+          moveSql(tenant, one!, a.id, tenant.locationId),
+          { ok: true, bookings: 0 },
+        ],
+        [
+          "stale (an old form)",
+          moveSql(
+            tenant,
+            one!,
+            b.id,
+            tenant.locationId,
+            "2000-01-01T00:00:00Z",
+          ),
+          { ok: false, reason: "stale" },
+        ],
+        [
+          "bookings changed (the person was warned of one, there is none)",
+          `select platform.move_unit('${tenant.id}', '${one}', '${b.id}', '${tenant.locationId}', 1);`,
+          { ok: false, reason: "bookings_changed" },
+        ],
+      ];
+      for (const [what, first, answer] of firsts) {
+        // By itself the first call answers as expected, and writes nothing.
+        const alone = sql(
+          ["begin;", actingAs(null), first, "commit;"].join("\n"),
+        );
+        expect(alone.failed, `${where}: ${what}`).toBe("");
+        expect(
+          JSON.parse(answers(alone.out).pop()!),
+          `${where}: ${what}`,
+        ).toMatchObject(answer);
+        // Followed by a second call, of the same unit or of another: refused.
+        for (const second of [
+          moveSql(tenant, one!, b.id, tenant.locationId),
+          moveSql(tenant, two!, b.id, tenant.locationId),
+        ]) {
+          const run = sql(
+            ["begin;", actingAs(null), first, second, "commit;"].join("\n"),
+          );
+          expect(run.failed, `${where}: ${what}`).toContain(
+            "one_move_per_transaction",
+          );
+        }
+        // And so is a direct product change after it.
+        const direct = sql(
+          [
+            "begin;",
+            actingAs(null),
+            first,
+            `update platform.units set product_id = '${b.id}' where id = '${two}';`,
+            "commit;",
+          ].join("\n"),
+        );
+        expect(direct.failed, `${where}: ${what}`).toContain("use_move_unit");
+        for (const row of await unitRows([one!, two!]))
+          expect(row.product_id, `${where}: ${what}`).toBe(a.id);
+      }
+      // Someone who may not move units is answered before the check, with
+      // no lock taken: nothing is closed to whoever calls next.
+      const stranger = sql(
         [
           "begin;",
-          actingAs(null),
-          move(one!, b.id),
-          move(one!, c.id),
+          actingAs(tenant.members.staff.id),
+          moveSql(tenant, one!, b.id, tenant.locationId),
+          moveSql(tenant, one!, b.id, tenant.locationId),
           "commit;",
         ].join("\n"),
       );
-      expect(twice.failed, where).toBe("");
-      expect((await unitRow(one!)).product_id, where).toBe(c.id);
+      expect(stranger.failed, where).toBe("");
+      expect(JSON.parse(answers(stranger.out).pop()!), where).toEqual({
+        ok: false,
+        reason: "not_allowed",
+      });
     }
   });
 });
 
 describe("a statement that changes or deletes units takes its product rows once, in id order", () => {
   /**
-   * Two products X < Y (by id), with one unit each at a branch. Y's unit is
-   * first in a statement over the two whichever way the statement reads
-   * them: it was inserted first and has the lower id.
+   * Run before a statement over several units, in its own transaction: the
+   * planner then reads the units by their key, in id order. Without it the
+   * order follows the plan the planner happens to pick and, for a scan of
+   * the table's pages, where each row happens to lie, which depends on the
+   * free room earlier tests left behind: on one database Y's unit came
+   * first, on another X's (the review of PR 70). A plan the planner may
+   * choose anyway, made certain; the order is still read back and asserted
+   * before every crossing and every round.
    */
-  async function crossingScene(tenant: TestTenant) {
+  const BY_KEY =
+    "set local enable_seqscan = off; set local enable_bitmapscan = off;";
+
+  /** The statement's own `where`, Y's unit named first. */
+  const bothUnits = (unitX: string, unitY: string) =>
+    `where id in ('${unitY}', '${unitX}')`;
+
+  /**
+   * The order in which a statement with that `where` reads the two units,
+   * run as `as` would run it (a member's id; undefined: the database's
+   * owner), read by the key (BY_KEY). Asked of the database, not assumed.
+   */
+  function scanOrder(unitX: string, unitY: string, as?: string): string[] {
+    const { out, failed } = sql(
+      [
+        "begin;",
+        as === undefined ? "" : actingAs(as),
+        BY_KEY,
+        `select 'unit ' || id from platform.units ${bothUnits(unitX, unitY)};`,
+        "commit;",
+      ].join("\n"),
+    );
+    expect(failed).toBe("");
+    return out
+      .split("\n")
+      .filter((line) => line.startsWith("unit "))
+      .map((line) => line.slice(5));
+  }
+
+  /**
+   * One unit of X and one of Y at the branch, such that a statement over
+   * the two reads **Y's unit first**: the old row trigger then took Y's
+   * product row before X's, against a booking's X before Y. Built, the
+   * order read back, and built again another way (which is inserted first,
+   * which has the lower id) until it is so.
+   */
+  async function yFirstPair(
+    tenant: TestTenant,
+    x: { id: string },
+    y: { id: string },
+    branch: string,
+    as?: string,
+  ) {
+    const tried: string[] = [];
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const [low, high] = [randomUUID(), randomUUID()].sort();
+      const yLow = attempt % 2 === 0;
+      const yInsertedFirst = attempt % 4 < 2;
+      const make = (product: string, id: string) =>
+        addUnit(tenant, product, branch, id);
+      let unitX: string;
+      let unitY: string;
+      if (yInsertedFirst) {
+        unitY = await make(y.id, yLow ? low! : high!);
+        unitX = await make(x.id, yLow ? high! : low!);
+      } else {
+        unitX = await make(x.id, yLow ? high! : low!);
+        unitY = await make(y.id, yLow ? low! : high!);
+      }
+      const order = scanOrder(unitX, unitY, as);
+      if (order.length === 2 && order[0] === unitY) return { unitX, unitY };
+      tried.push(
+        `${yLow ? "Y lower id" : "Y higher id"}, ${yInsertedFirst ? "Y inserted first" : "Y inserted second"}: ${order[0] === unitX ? "X first" : order.join(",")}`,
+      );
+      await service
+        .from("units")
+        .delete()
+        .in("id", [unitX, unitY])
+        .throwOnError();
+    }
+    throw new Error(`No pair of units is read Y's first: ${tried.join("; ")}`);
+  }
+
+  /** Two products X < Y (by id) and a pair of units read Y's first. */
+  async function crossingScene(tenant: TestTenant, as?: string) {
     const [x, y] = [await vehicle(tenant, 2), await vehicle(tenant, 2)].sort(
       (a, b) => (a.id < b.id ? -1 : 1),
     );
     const branch = await branchOf(tenant);
-    const [low, high] = [randomUUID(), randomUUID()].sort();
-    const unitY = await addUnit(tenant, y!.id, branch, low);
-    const unitX = await addUnit(tenant, x!.id, branch, high);
-    return { x: x!, y: y!, branch, unitX, unitY };
+    return {
+      x: x!,
+      y: y!,
+      branch,
+      ...(await yFirstPair(tenant, x!, y!, branch, as)),
+    };
   }
 
   /**
@@ -519,6 +680,9 @@ describe("a statement that changes or deletes units takes its product rows once,
     for (const [where, tenant] of everyShop()) {
       const before = deadlocks();
       const { x, y, unitX, unitY } = await crossingScene(tenant);
+      // The crossing is only one if the statement reads Y's unit first.
+      expect(x.id < y.id, where).toBe(true);
+      expect(scanOrder(unitX, unitY), where).toEqual([unitY, unitX]);
       const marker = `booking-between-rows-${tag}-${++counter}`;
       const gate = await closedGate();
       const booking = sqlBackground(`
@@ -530,7 +694,7 @@ describe("a statement that changes or deletes units takes its product rows once,
       `);
       await holding(marker, booking);
       const change = sqlBackground(
-        `begin;\n${statement(unitX, unitY)}\ncommit;`,
+        `begin;\n${BY_KEY}\n${statement(unitX, unitY)}\ncommit;`,
       );
       await seenWaitingForLock(waitingText);
       await gate.open();
@@ -547,7 +711,7 @@ describe("a statement that changes or deletes units takes its product rows once,
     await crossing(
       "status change",
       (unitX, unitY) =>
-        `update platform.units set status = 'maintenance' where id in ('${unitY}', '${unitX}');`,
+        `update platform.units set status = 'maintenance' ${bothUnits(unitX, unitY)};`,
       "set status = 'maintenance'",
     );
   }, 180_000);
@@ -556,21 +720,179 @@ describe("a statement that changes or deletes units takes its product rows once,
     await crossing(
       "delete",
       (unitX, unitY) =>
-        `delete from platform.units where id in ('${unitY}', '${unitX}');`,
+        `delete from platform.units ${bothUnits(unitX, unitY)};`,
       "delete from platform.units",
     );
   }, 180_000);
 
+  // ---------------------------------------------------------------- the races
+  // The same crossing against a real reserve() of both products, both
+  // sides released at the same instant. With two units the old trigger's
+  // window (Y's product row taken, X's not yet asked for) is a few
+  // microseconds, and a race almost never lands in it. So the statement
+  // here is over MANY of Y's units and then one of X's, on products with a
+  // listing to clamp: the old row trigger did a product's whole clamp for
+  // each of Y's rows before it reached X's, with Y's product row in hand
+  // all that time.
+
+  /** Y's units in a race's statement, all read before X's one unit. */
+  const MANY = 40;
+
+  const unitsWhere = (ids: string[]) =>
+    `where id in (${ids.map((id) => `'${id}'`).join(", ")})`;
+
+  /** The order in which a statement with that `where` reads the units. */
+  function readOrder(ids: string[], as?: string): string[] {
+    const { out, failed } = sql(
+      [
+        "begin;",
+        as === undefined ? "" : actingAs(as),
+        BY_KEY,
+        `select 'unit ' || id from platform.units ${unitsWhere(ids)};`,
+        "commit;",
+      ].join("\n"),
+    );
+    expect(failed).toBe("");
+    return out
+      .split("\n")
+      .filter((line) => line.startsWith("unit "))
+      .map((line) => line.slice(5));
+  }
+
+  type RaceUnits = { unitX: string; unitYs: string[]; all: string[] };
+
+  /**
+   * MANY units of Y and one of X at the branch, such that a statement over
+   * all of them reads **X's unit last**. Built, the order read back as `as`
+   * would read it, and built again another way until it is so.
+   */
+  async function manyYThenX(
+    tenant: TestTenant,
+    x: { id: string },
+    y: { id: string },
+    branch: string,
+    as: string | undefined,
+  ): Promise<RaceUnits> {
+    const tried: string[] = [];
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const ids = Array.from({ length: MANY + 1 }, () => randomUUID()).sort();
+      const xHighest = attempt % 2 === 0;
+      const xInsertedLast = attempt % 4 < 2;
+      const unitX = xHighest ? ids.pop()! : ids.shift()!;
+      const row = (id: string, product: string) => ({
+        id,
+        tenant_id: tenant.id,
+        product_id: product,
+        location_id: branch,
+        plate: `LR-${tag}-${++counter}`,
+      });
+      const units = service.from("units");
+      if (!xInsertedLast) await units.insert(row(unitX, x.id)).throwOnError();
+      await service
+        .from("units")
+        .insert(ids.map((id) => row(id, y.id)))
+        .throwOnError();
+      if (xInsertedLast)
+        await service.from("units").insert(row(unitX, x.id)).throwOnError();
+      const all = [...ids, unitX];
+      const order = readOrder(all, as);
+      if (order.length === all.length && order[order.length - 1] === unitX)
+        return { unitX, unitYs: ids, all };
+      tried.push(
+        `${xHighest ? "X highest id" : "X lowest id"}, ${xInsertedLast ? "X inserted last" : "X inserted first"}: X read at ${order.indexOf(unitX) + 1} of ${order.length}`,
+      );
+      await service.from("units").delete().in("id", all).throwOnError();
+    }
+    throw new Error(`X's unit is never read last: ${tried.join("; ")}`);
+  }
+
+  type RaceScene = RaceUnits & {
+    where: string;
+    tenant: TestTenant;
+    x: { id: string; units: string[] };
+    y: { id: string; units: string[] };
+    branch: string;
+  };
+
+  async function raceScene(
+    where: string,
+    tenant: TestTenant,
+    as: string | undefined,
+  ): Promise<RaceScene> {
+    const [x, y] = [await vehicle(tenant, 2), await vehicle(tenant, 2)].sort(
+      (a, b) => (a.id < b.id ? -1 : 1),
+    );
+    const branch = await branchOf(tenant);
+    return {
+      where,
+      tenant,
+      x: x!,
+      y: y!,
+      branch,
+      ...(await manyYThenX(tenant, x!, y!, branch, as)),
+    };
+  }
+
+  /** Both products offer every unit they have: each unit leaving is a clamp. */
+  async function listEverything(scene: RaceScene) {
+    for (const [product, count] of [
+      [scene.x.id, scene.x.units.length + 1],
+      [scene.y.id, scene.y.units.length + scene.unitYs.length],
+    ] as const)
+      await forceListing(scene.tenant.id, product, {
+        instant_units: count,
+        ready_now: count,
+      }).throwOnError();
+  }
+
+  /** Before a round: X's unit is read last, as `as` reads them. */
+  function readXLast(scene: RaceScene, as: string | undefined, round: number) {
+    const order = readOrder(scene.all, as);
+    expect(order, `${scene.where} round ${round}`).toHaveLength(MANY + 1);
+    expect(order[order.length - 1], `${scene.where} round ${round}`).toBe(
+      scene.unitX,
+    );
+  }
+
   it(
-    `a two-unit change to maintenance against a real booking of both products, released at the same instant: both finish, no deadlock (${ROUNDS} rounds, three shops)`,
+    `a change to maintenance of ${MANY} units of Y and then one of X against a real booking of both products, released at the same instant: both finish, no deadlock (${ROUNDS} rounds, three shops)`,
     async () => {
       const before = deadlocks();
-      const scenes = [];
+      const scenes: RaceScene[] = [];
       for (const [where, tenant] of everyShop())
-        scenes.push({ where, tenant, ...(await crossingScene(tenant)) });
+        scenes.push(await raceScene(where, tenant, undefined));
       for (let round = 0; round < ROUNDS; round++) {
+        for (const scene of scenes) {
+          // The statement runs as the database's owner: with a member's
+          // policy in the plan the units can be read by product instead
+          // of by key, X's first. The locks are the triggers', whoever asks.
+          const as = undefined;
+          // An update writes a new row version, which can lie elsewhere:
+          // the units are made again whenever the last round moved X's
+          // away from the end.
+          const order = readOrder(scene.all, as);
+          if (order[order.length - 1] !== scene.unitX) {
+            await service
+              .from("units")
+              .delete()
+              .in("id", scene.all)
+              .throwOnError();
+            Object.assign(
+              scene,
+              await manyYThenX(
+                scene.tenant,
+                scene.x,
+                scene.y,
+                scene.branch,
+                as,
+              ),
+            );
+          }
+          readXLast(scene, as, round);
+          await listEverything(scene);
+        }
         const results = await sameInstant(
-          scenes.flatMap(({ tenant, x, y, unitX, unitY }) => [
+          scenes.flatMap(({ tenant, x, y, all }) => [
             {
               as: tenant.members.staff.id,
               sql: reserveSql(
@@ -581,8 +903,7 @@ describe("a statement that changes or deletes units takes its product rows once,
               ),
             },
             {
-              as: tenant.members.mechanic.id,
-              sql: `update platform.units set status = 'maintenance' where id in ('${unitY}', '${unitX}');`,
+              sql: `${BY_KEY} update platform.units set status = 'maintenance' ${unitsWhere(all)};`,
             },
           ]),
         );
@@ -595,11 +916,11 @@ describe("a statement that changes or deletes units takes its product rows once,
             );
         });
         // Back in use for the next round (no unit leaves a product: no lock).
-        for (const { unitX, unitY } of scenes)
+        for (const { all } of scenes)
           await service
             .from("units")
             .update({ status: "active" })
-            .in("id", [unitX, unitY])
+            .in("id", all)
             .throwOnError();
       }
       expect(await deadlocksReported()).toBe(before);
@@ -608,15 +929,19 @@ describe("a statement that changes or deletes units takes its product rows once,
   );
 
   it(
-    `a two-product unit delete against a real booking of both products, released at the same instant: both finish, no deadlock (${ROUNDS} rounds, three shops)`,
+    `a delete of ${MANY} units of Y and then one of X against a real booking of both products, released at the same instant: both finish, no deadlock (${ROUNDS} rounds, three shops)`,
     async () => {
       const before = deadlocks();
-      const scenes = [];
+      const scenes: RaceScene[] = [];
       for (const [where, tenant] of everyShop())
-        scenes.push({ where, tenant, ...(await crossingScene(tenant)) });
+        scenes.push(await raceScene(where, tenant, undefined));
       for (let round = 0; round < ROUNDS; round++) {
+        for (const scene of scenes) {
+          readXLast(scene, undefined, round);
+          await listEverything(scene);
+        }
         const results = await sameInstant(
-          scenes.flatMap(({ tenant, x, y, unitX, unitY }) => [
+          scenes.flatMap(({ tenant, x, y, all }) => [
             {
               as: tenant.members.staff.id,
               sql: reserveSql(
@@ -627,8 +952,7 @@ describe("a statement that changes or deletes units takes its product rows once,
               ),
             },
             {
-              as: tenant.members.owner.id,
-              sql: `delete from platform.units where id in ('${unitY}', '${unitX}');`,
+              sql: `${BY_KEY} delete from platform.units ${unitsWhere(all)};`,
             },
           ]),
         );
@@ -640,21 +964,18 @@ describe("a statement that changes or deletes units takes its product rows once,
               true,
             );
         });
-        // Two more to delete next round, Y's first again.
+        // As many again to delete next round, X's read last again.
         for (const scene of scenes) {
-          expect(await unitRows([scene.unitX, scene.unitY])).toEqual([]);
-          const [low, high] = [randomUUID(), randomUUID()].sort();
-          scene.unitY = await addUnit(
-            scene.tenant,
-            scene.y.id,
-            scene.branch,
-            low,
-          );
-          scene.unitX = await addUnit(
-            scene.tenant,
-            scene.x.id,
-            scene.branch,
-            high,
+          expect(await unitRows(scene.all)).toEqual([]);
+          Object.assign(
+            scene,
+            await manyYThenX(
+              scene.tenant,
+              scene.x,
+              scene.y,
+              scene.branch,
+              undefined,
+            ),
           );
         }
       }
@@ -1253,6 +1574,119 @@ describe("review_catalog_request(): products before the catalog entry; the listi
     },
     RACE_TIMEOUT,
   );
+
+  it("a product linked to the entry between the review's two steps: try_again with nothing written; sent again, both products are approved and no listing is touched", async () => {
+    for (const [where, tenant] of everyShop()) {
+      const before = deadlocks();
+      const { product, entry } = await requested(tenant);
+      const late = await vehicle(tenant, 1);
+      const state = async () => ({
+        products: (
+          await service
+            .from("products")
+            .select("id, catalog_id, catalog_approved_at")
+            .in("id", [product.id, late.id])
+            .order("id")
+            .throwOnError()
+        ).data!,
+        entry: (
+          await service
+            .schema("public")
+            .from("bike_catalog")
+            .select("status, reviewed_at")
+            .eq("id", entry)
+            .single()
+            .throwOnError()
+        ).data!,
+        listings: (
+          await service
+            .from("product_listings")
+            .select("product_id")
+            .in("product_id", [product.id, late.id])
+            .throwOnError()
+        ).data!,
+        events: (
+          await service
+            .from("audit_events")
+            .select("id", { count: "exact", head: true })
+            .eq("entity", "bike_catalog")
+            .eq("entity_id", entry)
+            .in("action", ["approve", "merge", "reject"])
+            .throwOnError()
+        ).count,
+      });
+
+      // A second product is linked to the entry, written and not yet saved.
+      const marker = `links-second-product-${tag}-${++counter}`;
+      const gate = await closedGate();
+      const linking = sqlBackground(`
+        begin;
+        update platform.products set catalog_id = '${entry}' where id = '${late.id}';
+        ${gate.wait(marker)}
+        commit;
+      `);
+      await holding(marker, linking);
+      // The review locks the one product it can see, then waits for the
+      // entry (the link's foreign key holds it).
+      const review = sqlBackground(
+        `begin;\n${actingAs(admin.id)}\n${reviewSql(entry, true)}\ncommit;`,
+      );
+      await seenWaitingForLock("review_catalog_request");
+      await gate.open();
+      expect((await linking).failed, where).toBe("");
+      const first = await review;
+      expect(first.failed, where).not.toMatch(/deadlock/i);
+      expect(first.failed, where).toContain("try_again");
+      // Nothing written: the second product is linked (its own doing), no
+      // product is approved, the entry still waits, no review event.
+      const after = await state();
+      expect(
+        after.products.map((p) => p.catalog_id),
+        where,
+      ).toEqual([entry, entry]);
+      expect(
+        after.products.map((p) => p.catalog_approved_at),
+        where,
+      ).toEqual([null, null]);
+      expect(after.entry, where).toEqual({
+        status: "requested",
+        reviewed_at: null,
+      });
+      expect(after.listings, where).toEqual([]);
+      expect(after.events, where).toBe(0);
+
+      // Sent again: both products approved, and still no listing.
+      const second = await admin.db.rpc("review_catalog_request", {
+        p_catalog_id: entry,
+        p_approve: true,
+      });
+      expect(second.error, where).toBeNull();
+      const done = await state();
+      expect(done.entry.status, where).toBe("approved");
+      expect(
+        done.products.every((p) => p.catalog_approved_at !== null),
+        where,
+      ).toBe(true);
+      expect(done.listings, where).toEqual([]);
+      expect(done.events, where).toBe(1);
+      expect(await deadlocksReported(), where).toBe(before);
+    }
+  }, 180_000);
+
+  it("review_catalog_request() gives up on a lock after 6 seconds, like every function that waits for these rows", () => {
+    const { out, failed } = sql(
+      `select array_to_string(proconfig, ',') from pg_proc where oid = 'platform.review_catalog_request'::regproc;`,
+    );
+    expect(failed).toBe("");
+    expect(out.split(",")).toContain("lock_timeout=6s");
+    expect(out.split(",")).toContain('search_path=""');
+    // And move_unit(), as before.
+    expect(
+      sql(
+        `select array_to_string(proconfig, ',') from pg_proc where oid = 'platform.move_unit'::regproc;`,
+      ).out.split(","),
+    ).toContain("lock_timeout=6s");
+  });
 
   it("approve and merge connect the product and leave its listing off; a listing that exists keeps its values; the shop then switches it on with save_listing()", async () => {
     const tenant = bangkok;
