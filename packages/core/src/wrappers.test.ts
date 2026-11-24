@@ -159,6 +159,33 @@ function instants(): Date[] {
 }
 
 const all = instants();
+
+/**
+ * What the first time.ts test runs over (the wrappers cost about 70 µs a
+ * call, so the full grid of `all` took 2.6 s, over 5 s on a busy machine):
+ * every fourth instant of the grid, so the steps are about 2.8 days and the
+ * time of day and the weekday still cycle through every value, plus the
+ * edges the grid only met by chance, on purpose. For every month from 2019 to
+ * 2035, so every month end, every year end and the four leap days among
+ * them: the last millisecond of the old month, Bangkok midnight, and the first
+ * millisecond after it (Bangkok midnight is 17:00 UTC the day before). The
+ * eight named edge instants that end `instants()` are kept whole too.
+ */
+function sweepOf(): Date[] {
+  const out = all.filter((_, i) => i % 4 === 0);
+  const midnight = (year: number, month: number) =>
+    Date.UTC(year, month, 1) - 7 * HOUR_MS;
+  for (let year = 2019; year <= 2035; year++) {
+    for (let month = 0; month < 12; month++) {
+      for (const offset of [-1, 0, 1]) {
+        out.push(new Date(midnight(year, month) + offset));
+      }
+    }
+  }
+  out.push(...all.slice(-8));
+  return out;
+}
+const sweep = sweepOf();
 const sameOrThrows = <T>(now: () => T, then: () => T, what: string) => {
   let expected: T | "throws";
   try {
@@ -175,9 +202,9 @@ const sameOrThrows = <T>(now: () => T, then: () => T, what: string) => {
 };
 
 describe("time.ts: the marketplace gets the answers it had before, to the minute", () => {
-  it(`over ${all.length} instants from 2019 to 2035: the clock, the date, the weekday and the day's start`, () => {
-    expect(all.length).toBeGreaterThan(8000);
-    for (const instant of all) {
+  it(`over ${sweep.length} instants from 2019 to 2035: the clock, the date, the weekday and the day's start`, () => {
+    expect(sweep.length).toBeGreaterThan(2500);
+    for (const instant of sweep) {
       const what = instant.toISOString();
       expect(toBangkok(instant), what).toEqual(before.toBangkok(instant));
       expect(bangkokDateString(instant), what).toBe(

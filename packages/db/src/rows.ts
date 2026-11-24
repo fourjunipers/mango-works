@@ -23,6 +23,16 @@ import {
  * report the error after the write has landed. Only use them on writes that
  * can touch one row at most (by primary key, or a one-row insert).
  *
+ * Filter the query down to one row (by primary key, a unique column, or
+ * `.limit()`). These helpers fetch every row that matches and count them
+ * here, where `.single()` failed early on the server: a loose filter now
+ * brings back every match before it is refused.
+ *
+ * Don't use them on a function that returns an array as one value (`uuid[]`,
+ * a `jsonb` array): its answer is an array, which is read as rows, so
+ * `[a, b]` is "two rows" and `[]` "no row". Read such a function's answer
+ * as it comes, without either helper.
+ *
  * A query that ends in `.throwOnError()` keeps it: a wrong row count then
  * throws, as `.single().throwOnError()` did.
  */

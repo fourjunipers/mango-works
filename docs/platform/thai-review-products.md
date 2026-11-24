@@ -1319,3 +1319,15 @@ New and changed Thai lines on the branch `platform/price-check-compact`: the Pri
 | `NewOrder.pickHintCounts` | Find a product to see how many are free for these dates. | ค้นหาสินค้าเพื่อดูจำนวนที่ว่างในวันที่เลือก |
 | `Pricing.check.more` | Quantity and extras | จำนวนและของเสริม |
 | `Pricing.check.moreQuantity` | Quantity | จำนวน |
+
+## Phase 3, stage 1: unit lock rules (23 Nov 2026)
+
+One changed and one new Thai line on the branch `platform/phase-3-stage-1-unit-locks`. Since migration `20261123000100`, approving a model connects the product to the Moto Mangos list and no longer lists it: the shop switches its listing on itself (the owner, 20 and 23 Nov 2026). The English is final. **The Thai is Claude's provisional line; please check.** Words chosen: เปิดการลงประกาศ (switch the listing on, after `Fleet.motoMangos.list`, "ลงประกาศสินค้านี้บน Moto Mangos"), ได้รับอนุมัติ (approved, as in `Fleet.motoMangos.listingLocked`).
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Fleet.motoMangos.waiting` (was) | Sent to Moto Mangos. It is waiting for review and goes live once approved; you can keep using the model meanwhile. | ส่งให้ Moto Mangos แล้ว กำลังรอตรวจ และจะขึ้นแสดงเมื่ออนุมัติ ระหว่างนี้ใช้งานรุ่นนี้ต่อได้ |
+| `Fleet.motoMangos.waiting` (now) | Sent to Moto Mangos. It is waiting for review. Once it is approved, you switch its listing on here yourself; you can keep using the model meanwhile. | ส่งให้ Moto Mangos แล้ว กำลังรอตรวจ เมื่อได้รับอนุมัติแล้ว คุณเปิดการลงประกาศเองได้ที่นี่ ระหว่างนี้ใช้งานรุ่นนี้ต่อได้ |
+| `FormErrors.one_unit_status_change` (new) | Only one vehicle or unit can be sold, retired or marked lost at a time. Please do them one at a time. | ขาย ปลดระวาง หรือแจ้งสูญหายได้ครั้งละหนึ่งคันหรือหนึ่งชิ้นเท่านั้น กรุณาทำทีละรายการ |
+
+The second line is new (24 Nov 2026): the database refuses a change of several vehicles or units to sold, retired or lost in one go (`one_unit_status_change`). The screens change one at a time, so a person should rarely see it. Words chosen: ปลดระวาง, สูญหาย (as the status names), ครั้งละหนึ่งคันหรือหนึ่งชิ้น (one vehicle or one piece of gear at a time). **Provisional; please check.**

@@ -792,7 +792,7 @@ describe("the switch going on or off is an event on the product", () => {
     expect((await switches(id)).map((e) => e.action)).toEqual(["listing_on"]);
   });
 
-  it("an approval switches it on (the reviewer's doing); a merge too", async () => {
+  it("an approval or a merge switches nothing on and writes no event; the shop's own switch is the event", async () => {
     const approved = await addProduct(null);
     const merged = await addProduct(null);
     await service
@@ -804,9 +804,14 @@ describe("the switch going on or off is an event on the product", () => {
       (await review(await submit(merged), false, presetB)).error,
     ).toBeNull();
     for (const id of [approved, merged]) {
-      expect((await listingOf(id)).marketplace_listed).toBe(true);
+      // Since 20261123000100 the review connects the product only.
+      expect((await listingOf(id)).marketplace_listed).toBe(false);
+      expect(await switches(id)).toEqual([]);
+      await setListing(db("owner"), id, {
+        marketplace_listed: true,
+      }).throwOnError();
       expect(await switches(id)).toMatchObject([
-        { action: "listing_on", actor: admin.id },
+        { action: "listing_on", actor: shop.members.owner.id },
       ]);
     }
   });

@@ -412,6 +412,10 @@ export function dbErrorKey(
     "unit_busy",
     // A booked unit changes product or place through platform.move_unit().
     "unit_has_bookings",
+    // Sold, retired or lost: one unit per transaction (20261123000100). The
+    // screens change one at a time, and the gear functions lock all their
+    // units first, so this is only met by a caller that does neither.
+    "one_unit_status_change",
     "more_units_than_active",
     "catalog_entry_not_usable",
     "not_listable",

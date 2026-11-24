@@ -1882,28 +1882,45 @@ describe("totals never fall as days rise, with each discount in play", () => {
     ],
   ];
 
+  // The days asked about. Every day to 70 covers each price step (day, week,
+  // two weeks, month), the month end, the leap day and both clock changes,
+  // each with the days after it; past a month the price only adds days at a
+  // flat rate, so after 70 every tenth day and the year's own edges (365, 366,
+  // 400) are enough. Each pair of neighbours is still compared. All six plays
+  // use the same dates, so the lines are built once per start, not once per play.
+  const DAYS = [
+    ...new Set([
+      ...Array.from({ length: 70 }, (_, i) => i + 1),
+      ...Array.from({ length: 33 }, (_, i) => 80 + i * 10),
+      365,
+      366,
+      400,
+    ]),
+  ].sort((a, b) => a - b);
+  const series = starts.map(([start, timeZone]) => {
+    const ends: Date[] = [];
+    for (const hours of [1, 6, 23]) {
+      ends.push(new Date(start.getTime() + hours * 60 * 60 * 1000));
+    }
+    for (const days of DAYS) ends.push(addZonedDays(start, days, timeZone));
+    const linesTo = (end: Date) => [
+      line("scooter", bike300(), { span: { start, end, timeZone } }),
+      line("helmet", perDay(thb("50")), {
+        span: { start, end, timeZone },
+        quantity: 2,
+        vehicle: false,
+        extraOf: { lineId: "scooter", includedQuantity: 1 },
+      }),
+    ];
+    return { start, timeZone, ends, built: ends.map(linesTo) };
+  });
+
   it.each(plays)("%s", (_name, play) => {
     let checked = 0;
-    for (const [start, timeZone] of starts) {
-      const linesTo = (end: Date) => [
-        line("scooter", bike300(), { span: { start, end, timeZone } }),
-        line("helmet", perDay(thb("50")), {
-          span: { start, end, timeZone },
-          quantity: 2,
-          vehicle: false,
-          extraOf: { lineId: "scooter", includedQuantity: 1 },
-        }),
-      ];
-      const ends: Date[] = [];
-      for (const hours of [1, 6, 23]) {
-        ends.push(new Date(start.getTime() + hours * 60 * 60 * 1000));
-      }
-      for (let days = 1; days <= 400; days += 1) {
-        ends.push(addZonedDays(start, days, timeZone));
-      }
+    for (const { start, timeZone, ends, built } of series) {
       let before: Priced | null = null;
-      for (const end of ends) {
-        const { q } = priced({ lines: linesTo(end), timeZone, ...play });
+      for (const [at, end] of ends.entries()) {
+        const { q } = priced({ lines: built[at], timeZone, ...play });
         if (before) {
           const label = `${timeZone} ${start.toISOString()} → ${end.toISOString()}`;
           expect(q.totals.total >= before.totals.total, label).toBe(true);
@@ -1921,7 +1938,9 @@ describe("totals never fall as days rise, with each discount in play", () => {
         checked += 1;
       }
     }
-    expect(checked).toBe(starts.length * 403);
+    expect(checked).toBe(
+      series.reduce((all, each) => all + each.ends.length, 0),
+    );
   });
 
   it("a coupon's own thresholds are the exception: reaching the minimum days makes the longer rental cheaper", () => {

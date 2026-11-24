@@ -212,61 +212,98 @@ describe("1. locks no stronger than they need to be", () => {
     expect((await first).failed).toBe("");
   });
 
-  // SKIPPED, and the only test skipped here. Known bug, confirmed by the
-  // review of PR 51 and seen in CI on e3d7ae9: two bikes moved between the
-  // same two models in opposite directions deadlock. Each move locks its new
-  // model "for share" in units_product_not_retired (a before trigger) and
-  // then its old model "for no key update" in units_clamp_product_counts,
-  // so the two wait for each other and Postgres ends one with 40P01. This
-  // test only passed when its 1.2-second starting line happened to keep
-  // the two moves apart. The triggers are not changed in Phase 2: Phase 3
-  // stage 1 fixes it (a model change through move_unit() only, one unit per
-  // transaction, the stock trigger once per statement).
-  // Phase 3 stage 1 rewrites this as a gate test that must pass.
-  it.skip(
+  // The stage 10 deadlock, fixed in Phase 3 stage 1 (20261123000100): a
+  // unit's product changes only through move_unit(), one unit per
+  // transaction, and the counts trigger takes its product rows once per
+  // statement, in id order. Two bikes moved between the same two models in
+  // opposite directions used to lock the models in opposite orders (the new
+  // one "for share" in units_product_not_retired, then the old one "for no
+  // key update" in the row trigger units_clamp_product_counts) and Postgres
+  // ended one with 40P01.
+  //
+  // A true-concurrency gate test: both moves wait at one gate, each in its
+  // transaction, and are released at the same instant. More rounds, in
+  // three shops and at two places, are in unit-lock-rules.test.ts.
+  it(
     "two bikes swapping models at the same moment both finish: no deadlock",
     async () => {
+      const deadlocks = () =>
+        Number(
+          sql(
+            `select pg_stat_force_next_flush(); select deadlocks from pg_stat_database where datname = current_database();`,
+          )
+            .out.split("\n")
+            .pop(),
+        );
+      const before = deadlocks();
       const [modelX, modelY] = [await addModel(), await addModel()];
       const [bikeA, bikeB] = [await addUnit(modelX), await addUnit(modelY)];
-      // Each session first holds what a bike arriving on a model holds (the
-      // foreign key's share lock on the model it moves to), waits until the
-      // other has done the same, then moves its bike. With a full row lock in
-      // the counts trigger each then waited for the other: a deadlock.
-      //
-      // The pause is a starting line, not a held lock, and the one timed wait
-      // left in these files on purpose: released from a gate at the same
-      // instant the two moves do deadlock, on another pair of locks
-      // (docs/PROGRESS.md, Phase 2 stage 10, "Found, not fixed").
-      const swap = (bike: string, to: string) =>
-        sqlBackground(`
-        begin;
-        select 1 from platform.products where id = '${to}' for key share;
-        select pg_sleep(1.2);
-        update platform.units set product_id = '${to}' where id = '${bike}';
-        commit;
-      `);
-      const results = await Promise.all([
-        swap(bikeA, modelY),
-        swap(bikeB, modelX),
-      ]);
-      for (const result of results) {
-        expect(result.failed).not.toMatch(/deadlock/i);
+      const modelOf = async (bike: string) =>
+        (
+          await exactlyOne(
+            service
+              .from("units")
+              .select("product_id")
+              .eq("id", bike)
+              .throwOnError(),
+          )
+        ).data!.product_id;
+
+      for (let round = 0; round < 6; round++) {
+        // A goes to Y and B to X; the next round, back again.
+        const [toA, toB] =
+          round % 2 === 0 ? [modelY, modelX] : [modelX, modelY];
+        const gate = await closedGate();
+        const swap = (bike: string, to: string, by: string) => {
+          const marker = `swap-${tag}-${round}-${bike.slice(0, 8)}`;
+          const claims = JSON.stringify({ sub: by, role: "authenticated" });
+          const run = sqlBackground(`
+            begin;
+            ${gate.wait(marker)}
+            select set_config('request.jwt.claims', '${claims}', true);
+            set local role authenticated;
+            select platform.move_unit('${shop.id}', '${bike}', '${to}', '${shop.locationId}');
+            commit;
+          `);
+          return { marker, run };
+        };
+        const moves = [
+          swap(bikeA, toA, shop.members.owner.id),
+          swap(bikeB, toB, shop.members.manager.id),
+        ];
+        // Both are at the gate, nothing locked yet; then both at once.
+        await Promise.all(moves.map(({ marker, run }) => holding(marker, run)));
+        await gate.open();
+        const results = await Promise.all(moves.map(({ run }) => run));
+        for (const result of results) {
+          expect(result.failed, `round ${round}`).toBe("");
+          // Neither was sent away: one waited for the other.
+          expect(
+            // psql prints BEGIN, SET, the claims and COMMIT too: the move's
+            // answer is the line with "ok".
+            JSON.parse(
+              result.out.split("\n").find((line) => line.includes('"ok"'))!,
+            ),
+            `round ${round}`,
+          ).toMatchObject({ ok: true });
+        }
+        expect(await modelOf(bikeA), `round ${round}`).toBe(toA);
+        expect(await modelOf(bikeB), `round ${round}`).toBe(toB);
       }
-      // Both finished, or one was refused for a reason a person can read.
-      const refused = results.filter((r) => r.failed);
-      expect(refused.length).toBeLessThanOrEqual(1);
-      const { data: bikes } = await service
+      // The server hands in a session's numbers up to a second after its
+      // last statement: being late can only hide a deadlock, never invent one.
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(deadlocks()).toBe(before);
+
+      // The way this test used to swap them is closed.
+      const direct = await service
         .from("units")
-        .select("id, product_id")
-        .in("id", [bikeA, bikeB]);
-      const modelOf = (id: string) =>
-        bikes!.find((b) => b.id === id)!.product_id;
-      if (refused.length === 0) {
-        expect(modelOf(bikeA)).toBe(modelY);
-        expect(modelOf(bikeB)).toBe(modelX);
-      }
+        .update({ product_id: modelY })
+        .eq("id", bikeA)
+        .select("id");
+      expect(direct.error?.message).toBe("use_move_unit");
     },
-    GATE_TEST_TIMEOUT,
+    GATE_TEST_TIMEOUT * 2,
   );
 
   it("the counts are still clamped when a bike leaves a model", async () => {

@@ -699,11 +699,16 @@ describe("6. booking-mode counts follow the active bikes", () => {
       request_units: 0,
       ready_now: 2,
     });
-    // 2 -> 1: moved to another model.
-    await service
-      .from("units")
-      .update({ product_id: elsewhere })
-      .eq("id", units[2]);
+    // 2 -> 1: moved to another model, through move_unit() (the only way a
+    // unit's product changes since Phase 3 stage 1).
+    const moved = await service.rpc("move_unit", {
+      p_tenant_id: shop.id,
+      p_unit_id: units[2],
+      p_product_id: elsewhere,
+      p_location_id: shop.locationId,
+    });
+    expect(moved.error).toBeNull();
+    expect(moved.data).toMatchObject({ ok: true });
     expect(await counts(modelId)).toEqual({
       instant_units: 1,
       request_units: 0,

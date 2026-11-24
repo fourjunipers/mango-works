@@ -680,7 +680,8 @@ describe("every re-created function runs", () => {
     const { data } = await exactlyOne(
       service.from("products").select("catalog_approved_at").eq("id", approved),
     );
-    expect((await listingOf(approved)).marketplace_listed).toBe(true);
+    // Connected, and left for the shop to list (since 20261123000100).
+    expect((await listingOf(approved)).marketplace_listed).toBe(false);
     expect(data?.catalog_approved_at).not.toBeNull();
 
     // Deleting a product that waits for review withdraws its request.

@@ -594,6 +594,9 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
       order by 1;
     `);
     expect(rows).toEqual([
+      // Who is calling (Phase 3 stage 1): the server's own calls ask too.
+      "platform_private.app_role()",
+      "platform_private.app_uid()",
       // The availability read, which runs as its caller.
       "platform_private.booking_roles(text)",
       // Behind coupon_inputs(), which runs as its caller (stage 8).

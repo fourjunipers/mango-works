@@ -2320,7 +2320,7 @@ describe("one side held in place, the other seen waiting", () => {
       expect(await reservationsOf(bike.id)).toEqual([]);
     }, 60_000);
 
-    it(`a booking written, not yet saved: marking its unit ${status} waits for the unit's lock, then is refused because the unit is booked`, async () => {
+    it(`a booking written, not yet saved: marking its unit ${status} waits for the unit's lock, then ${status === "lost" ? "goes through, and the booking keeps its block (lost at any time)" : "is refused because the unit is booked"}`, async () => {
       const bike = await vehicle(1);
       const marker = `booked-before-${status}-${tag}`;
       const gate = await closedGate();
@@ -2358,11 +2358,15 @@ describe("one side held in place, the other seen waiting", () => {
       expect(saved.out).toContain("true");
       const left = await leaving;
       noDeadlock([left]);
-      expect(left.error?.message).toBe("unit_has_future_blocks");
+      // Sold and retired are refused while a block lies ahead. Lost is not
+      // (Phase 3 stage 1, decision 19): the booking stays, at risk.
+      expect(left.error?.message).toBe(
+        status === "lost" ? undefined : "unit_has_future_blocks",
+      );
       const { data: unit } = await exactlyOne(
         service.from("units").select("status").eq("id", bike.units[0]),
       );
-      expect(unit!.status).toBe("active");
+      expect(unit!.status).toBe(status === "lost" ? "lost" : "active");
       expect(await blocksOf(bike.id)).toHaveLength(1);
     }, 60_000);
   }
@@ -2684,7 +2688,7 @@ describe("more races, in every shop", () => {
     }
   }, 180_000);
 
-  it("a booking against its unit being sold, retired or marked lost: the unit is booked or gone, never both", async () => {
+  it("a booking against its unit being sold, retired or marked lost: booked or gone, never both, for sold and retired; a unit marked lost keeps a booking that got there first", async () => {
     for (const [where, tenant] of everyShop()) {
       for (const status of ["sold", "retired", "lost"] as const) {
         for (let round = 0; round < 6; round++) {
@@ -2708,8 +2712,12 @@ describe("more races, in every shop", () => {
           ]);
           noDeadlock([booked, left]);
           const pair = `${outcome(booked)} / ${left.error?.message ?? "ok"}`;
+          // Lost at any time (Phase 3 stage 1): the booking that got there
+          // first stays, on a unit now lost. A lost unit is never booked.
           expect(
-            ["ok / unit_has_future_blocks", "unavailable / ok"],
+            status === "lost"
+              ? ["ok / ok", "unavailable / ok"]
+              : ["ok / unit_has_future_blocks", "unavailable / ok"],
             `${where}, ${status}, round ${round}`,
           ).toContain(pair);
           const { data: unit } = await exactlyOne(
@@ -2717,7 +2725,11 @@ describe("more races, in every shop", () => {
           );
           const blocks = await blocksOf(bike.id);
           expect(`${unit!.status} ${blocks.length}`).toBe(
-            pair.startsWith("ok") ? "active 1" : `${status} 0`,
+            pair === "ok / ok"
+              ? "lost 1"
+              : pair.startsWith("ok")
+                ? "active 1"
+                : `${status} 0`,
           );
         }
       }

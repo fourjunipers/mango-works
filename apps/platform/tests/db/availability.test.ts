@@ -3288,7 +3288,7 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     ]);
   });
 
-  it("a direct change of a booked unit's product or place is refused, for the owner and for the service role; an unbooked unit moves as before", async () => {
+  it("a direct change of a booked unit's place is refused, and of any unit's product (move_unit() only), for the owner and for the service role; an unbooked unit moves through move_unit()", async () => {
     const a = await vehicle(2);
     const b = await vehicle(0);
     const branch = await exactlyOne(
@@ -3327,8 +3327,10 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
           .update(change)
           .eq("id", bookedUnit)
           .select("id");
+        // A product change is refused whatever the bookings (since Phase 3
+        // stage 1); a place change while a booking names the old place.
         expect(error?.message, JSON.stringify(change)).toBe(
-          "unit_has_bookings",
+          "product_id" in change ? "use_move_unit" : "unit_has_bookings",
         );
       }
     }
@@ -3340,25 +3342,45 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
       .select("colour");
     expect(other.error).toBeNull();
     expect(other.data).toEqual([{ colour: "Red" }]);
-    // A unit with no booking moves directly, as it always did.
-    const free = await db("owner")
+    // A unit with no booking: its product still changes through
+    // move_unit() only; its place alone, directly, as it always did.
+    const direct = await db("owner")
       .from("units")
       .update({ product_id: b.id, location_id: branch.data!.id })
       .eq("id", freeUnit)
       .select("product_id");
+    expect(direct.error?.message).toBe("use_move_unit");
+    expect(
+      outcome(
+        await move(db("owner"), shop, freeUnit, {
+          product: b.id,
+          location: branch.data!.id,
+        }),
+      ),
+    ).toBe("ok");
+    const free = await db("owner")
+      .from("units")
+      .update({ location_id: shop.locationId })
+      .eq("id", freeUnit)
+      .select("product_id, location_id");
     expect(free.error).toBeNull();
-    expect(free.data).toEqual([{ product_id: b.id }]);
+    expect(free.data).toEqual([
+      { product_id: b.id, location_id: shop.locationId },
+    ]);
     // Once its booking is over, so does the first.
     expect(outcome(await cancel(db("staff"), shop, hold.booking_id))).toBe(
       "ok",
     );
     const after = await db("owner")
       .from("units")
-      .update({ product_id: b.id })
+      .update({ location_id: branch.data!.id })
       .eq("id", bookedUnit)
-      .select("product_id");
+      .select("location_id");
     expect(after.error).toBeNull();
-    expect(after.data).toEqual([{ product_id: b.id }]);
+    expect(after.data).toEqual([{ location_id: branch.data!.id }]);
+    expect(
+      outcome(await move(db("owner"), shop, bookedUnit, { product: b.id })),
+    ).toBe("ok");
   });
 
   it("assign_units() by name after a move: the unit it holds is its own again, and it can be swapped for another of the new product", async () => {
@@ -3572,7 +3594,7 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     }
   });
 
-  it("a hold that has run out on a unit that got to another product some other way is released by a booking of that product", async () => {
+  it("a hold that has run out on a unit since moved to another product (through move_unit(), the hold with it) is released by a booking of that product", async () => {
     const a = await vehicle(1);
     const b = await vehicle(0);
     const [unit] = a.units;
@@ -3582,23 +3604,25 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
         hold: true,
       }),
     );
-    // Past the guard, as a unit moved before move_unit() existed would be.
-    const forced = sql(`
-      begin;
-      set local session_replication_role = replica;
-      update platform.units set product_id = '${b.id}' where id = '${unit}';
-      commit;
-    `);
-    expect(forced.failed).toBe("");
+    // The only way a unit gets to another product (Phase 3 stage 1): the
+    // hold goes with it. (This test once forced the unit across with the
+    // triggers switched off, leaving the hold naming A: a state that
+    // move_unit() never leaves and nothing else can make any more.)
+    expect(
+      outcome(await move(db("owner"), shop, unit, { product: b.id })),
+    ).toBe("ok");
     await runOut(hold.booking_id);
-    // B's only unit carries a run-out hold whose reservation still says A.
+    // B's only unit carries a run-out hold, which now names B.
     const next = booked(await onlineBook([{ product_id: b.id, ...window }]));
     expect(next.lines[0].unit_ids).toEqual([unit]);
-    expect((await reservationsOf(a.id)).map((r) => r.state)).toEqual([
+    expect(await reservationsOf(a.id)).toEqual([]);
+    expect((await reservationsOf(b.id)).map((r) => r.state).sort()).toEqual([
       "expired",
+      "reserved",
     ]);
     expect((await eventsOf(hold.booking_id)).map((e) => e.action)).toEqual([
       "reserve",
+      "move",
       "expire",
     ]);
     expect(
@@ -3727,9 +3751,10 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     }
   }, 90_000);
 
-  it("a direct change of an unbooked unit's product while a booking of it is written and not yet saved: it waits for the unit's lock, then is refused", async () => {
+  it("a direct change of an unbooked unit's place while a booking of it is written and not yet saved: it waits for the unit's lock, then is refused; a direct change of its product is refused at once, before any lock", async () => {
     const a = await vehicle(1);
     const b = await vehicle(0);
+    const branch = await branchOf(shop);
     const [unit] = a.units;
     const marker = `booking-before-direct-${tag}`;
     const call = request(
@@ -3748,10 +3773,17 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
       commit;
     `);
     await holding(marker);
+    // The product: refused straight away, with the booking still open.
+    const product = await db("owner")
+      .from("units")
+      .update({ product_id: b.id })
+      .eq("id", unit)
+      .select("id");
+    expect(product.error?.message).toBe("use_move_unit");
     const direct = Promise.resolve(
       db("owner")
         .from("units")
-        .update({ product_id: b.id })
+        .update({ location_id: branch })
         .eq("id", unit)
         .select("id"),
     );
