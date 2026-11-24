@@ -92,7 +92,7 @@ On Google Maps: the 20 Nov run in `docs/PROGRESS.md` loaded Google's loader on a
 
 The [Next.js CSP guide](https://nextjs.org/docs/app/guides/content-security-policy) says `'unsafe-eval'` is required in development "because React uses `eval`" (React's debugging of server stacks) and "is not required for production". Its own examples add it only when `NODE_ENV` is `development`.
 
-Both apps already do exactly that: `next.config.ts` passes `development: process.env.NODE_ENV === "development"`, and `contentSecurityPolicy()` adds `'unsafe-eval'` only then. `next build` and `next start` run with `NODE_ENV=production`, and so do Vercel's preview and production deployments, so every deployed copy gets the production policy. No change is needed here. Neither dev nor production uses WebAssembly.
+Both apps already do exactly that: `next.config.ts` passes `development: process.env.NODE_ENV === "development"`, and `contentSecurityPolicy()` adds `'unsafe-eval'` only then. `next build` and `next start` run with `NODE_ENV=production`, and so do Netlify's deploy previews and production deploys, so every deployed copy gets the production policy. No change is needed here. Neither dev nor production uses WebAssembly.
 
 ## 4. Recommendation
 
@@ -101,7 +101,7 @@ Both apps already do exactly that: `next.config.ts` passes `development: process
 - `'wasm-unsafe-eval'`: nothing needs it. Sentry only reads the name `WebAssembly`.
 
 **Marketplace: leave out both, after one check.**
-- `'unsafe-eval'`: nothing in our bundle needs it. Before enforcing, open on the Vercel deploy preview with the real Maps key and map ID: search with a map, a shop's map, and the vendor map picker with a Places search. If the console shows no `unsafe-eval` report, leave it out. If Google's script does report one, add `'unsafe-eval'` to the marketplace's production `script-src` only, and note why next to it.
+- `'unsafe-eval'`: nothing in our bundle needs it. Before enforcing, open on the Netlify deploy preview with the real Maps key and map ID: search with a map, a shop's map, and the vendor map picker with a Places search. If the console shows no `unsafe-eval` report, leave it out. If Google's script does report one, add `'unsafe-eval'` to the marketplace's production `script-src` only, and note why next to it.
 - `'wasm-unsafe-eval'`: nothing needs it. Same check covers it.
 
 **Do not add `'unsafe-eval'` "to be safe"** to either app: it would let any injected string become code (see risks).
