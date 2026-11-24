@@ -41,14 +41,14 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 
 **Tests** (`apps/platform/tests/db`; every accept test of plan §8 stage 1 passes)
 
-- **`unit-lock-rules.test.ts`** (new, 20 tests). The races hold real sessions at one gate and release them at the same instant, **30 rounds, three shops at once** (Bangkok THB, New York USD, Saigon VND), with Postgres's deadlock count read before and after:
+- **`unit-lock-rules.test.ts`** (new, 23 tests after the review). The races hold real sessions at one gate and release them at the same instant, **30 rounds, three shops at once** (Bangkok THB, New York USD, Saigon VND), with Postgres's deadlock count read before and after:
 
 | Race | Rounds × shops | Deadlocks |
 | --- | --- | --- |
 | Two opposite `move_unit()` calls at one place | 30 × 3 | 0 |
 | Two opposite `move_unit()` calls at two places | 30 × 3 | 0 |
-| Two-unit change to maintenance against a real two-product `reserve()` | 30 × 3 | 0 |
-| Two-product unit delete against a real two-product `reserve()` | 30 × 3 | 0 |
+| A change to maintenance of 40 units of Y and then one of X against a real two-product `reserve()` (two units before the review) | 30 × 3 | 0 |
+| A delete of 40 units of Y and then one of X against a real two-product `reserve()` (two units before the review) | 30 × 3 | 0 |
 | `report_gear_problem()` against `set_stock_quantity()`, same units | 30 × 3 | 0 |
 | Catalog review against the product's delete | 30 × 3 | 0 |
 
@@ -64,13 +64,17 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 
 - `npm run typecheck`, `npm run lint`: clean in every workspace.
 - `npm test`: marketplace 370, platform 713, `@mango/core` 720. One core test (`discounts.test.ts`, "a percentage coupon") ran past its 5-second timeout in the full run on a busy machine; the file alone: 134 of 134.
-- Platform database suite, run once on its own: **749 of 749 passed, 0 skipped, 26 files**.
+- Platform database suite, run once on its own: **749 of 749 passed, 0 skipped, 26 files** (23 Nov). **After the review's fixes and the merge of `main` (24 Nov), again on a fresh reset: 752 of 752 passed, 0 skipped, 26 files; the database's deadlock counter 0 afterwards.**
 
 **Help:** `en/platform-admin/review-catalog-requests.md` and `en/products/connect-a-bike-to-moto-mangos.md` say approval and merge connect the product and the shop lists it; the entry in `docs/help/PENDING.md` is removed.
 
 **After the independent review of PR 70** ("ready after small fixes", 24 Nov 2026; the migration was still local only, so it was edited in place)
 
-- **S1, the crossing tests did not reliably fail on the old trigger.** They assumed a statement over two units reads Y's unit first (inserted first, lower id). Once earlier tests have left free room in the table, the rows can lie the other way round, and then the old row trigger takes the product rows in the booking's own order: no crossing, and a test that passes on the bug. Now the scene **asks the database** in which order a statement with the same `where id in (…)` reads the two units (as the role that will run it), builds the pair again another way until Y's unit comes first, and asserts that order before each crossing and before each round of the two `reserve()` races. **Proof, on this worktree's stack: S1_PROOF**
+- **S1, the crossing tests did not reliably fail on the old trigger.** They assumed a statement over two units reads Y's unit first (inserted first, lower id). That holds on an empty table only: the order follows the plan the planner picks and, for a scan of the table's pages, where each row lies, which depends on the free room earlier tests left behind (and, with a member's policy in the plan, the units can be read by product, X's first). With X's unit first the old row trigger takes the product rows in the booking's own order: no crossing, and a test that passes on the bug. Three changes:
+  - **The statements read the units by their key.** The test's own transaction switches off the two other scans (`set local enable_seqscan`, `enable_bitmapscan`), so the units come in id order, Y's given the lower ids: a plan the planner may choose anyway, made certain. The race statements run as the database's owner for the same reason.
+  - **The order is read back and asserted**, with the same `where id in (…)`, before each crossing and each round; a scene that does not read Y's first is built again another way, and the test stops if none does.
+  - **The two `reserve()` races are over 40 units of Y and then one of X**, on products with a listing to clamp. With two units the old trigger's window (Y's product row taken, X's not yet asked for) was a few microseconds and a race almost never landed in it; now the old trigger works through 40 clamps with Y's row in hand.
+  - **Proof, on this worktree's stack, the WHOLE file each time (24 Nov 2026).** With `main`'s row trigger put back (`units_clamp_product_counts`, the same body, MD5 `9bd013e2…`) and the statement triggers dropped: **7 of 23 failed**: both crossing tests with a real `deadlock detected`, both `reserve()` races in round 0 (`reserve()` answered `try_again`, which is how it reports a deadlock Postgres broke), the trigger-shape test, the audit-detail test, and the file's own deadlock count, **0 before, 8 after**. Restored (a fresh `supabase db reset`): the whole file inside the full suite on a fresh reset, 23 of 23, deadlock count unmoved. Along the way: the first red run, before the two later changes, had the crossing tests red and the two-unit races green, and a run on a fresh database could not build a "X read last" scene from row placement alone, which is why the statements now read by key.
 - **S2:** a gate test for the new `try_again` in `review_catalog_request()`: a second product is linked to the entry and held at a gate, the review is seen waiting for the entry, the gate opens, the review answers `try_again` with nothing written (no approval, the entry still waiting, no event, no listing); sent again, both products are approved and no listing exists. Three shops.
 - **N2:** `move_unit()` sets its marker (`started`) straight after the `one_move_per_transaction` check, before anything that can answer early. A second call in the same transaction is refused whatever the first answered (nothing to do, `stale`, `bookings_changed`, `try_again`), because the first one's locks are still held; the handler that turns a broken deadlock into `try_again` sets the marker again. `not_allowed` is answered before the check, with no lock. The test that pinned "a move that changed nothing can be sent again" now pins the opposite, with a new test for the three early answers.
 - **N4:** wording. The guard checks that the transaction already **holds** every such unit's lock; it cannot check that they were taken sorted. Only `lock_units()` callers are meant to use the path, and it is not reachable through PostgREST. Plan §4.1 and §4.3, root `CLAUDE.md`, the PR description.
@@ -95,6 +99,7 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 **Local set-up.** This worktree (`.claude/worktrees/phase-3-stage-1`) has its own stack, `Bike_Booking_phase3_s1`, on ports 634xx (API 63421, database 63422, shadow 63420, Studio 63423, mail 63424, analytics 63427, pooler 63429, inspector 63483), started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Another project's stack (on the default ports) was left alone; no older Mango Works stack was running.
 
 **Next:** stage 2a, orders: tables, RLS, customers, settings (migration 2).
+
 ## Faster "totals never fall" tests (branch `core/discounts-test-speed`, 24 Nov 2026)
 
 `packages/core/src/discounts.test.ts`: the six "totals never fall" tests timed out at 5 s on a busy machine (each priced 2,418 quotes, and `decideDiscounts` plus `quote` per quote was the cost). They now price every day to 70, every tenth day after, and days 365, 366 and 400, with the lines built once per start date instead of once per play: same properties, same start dates; the file went from 42 s (4 timeouts) to 13 s, each of those tests from 4 to 9 s down to 1 to 2 s. No timeout raised; `packages/core` source untouched. Separately seen, not fixed: `wrappers.test.ts` "over 8939 instants" took 5.3 s and timed out once in a full run on the same busy machine.
