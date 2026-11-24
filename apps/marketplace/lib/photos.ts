@@ -28,10 +28,21 @@ export function photoUrl(
   fallback = BIKE_PLACEHOLDER,
 ): string {
   if (!path) return fallback;
-  if (path.startsWith("/")) return path;
+  // A file in /public: only our own images folder, and only a plain path.
+  // Anything else starting with "/" ("//host/x" is another site to a
+  // browser) is not a photo.
+  if (path.startsWith("/")) return isPublicImagePath(path) ? path : fallback;
   const base = supabaseUrl.replace(/\/+$/, "");
   const encoded = path.split("/").map(encodeURIComponent).join("/");
   return `${base}/storage/v1/object/public/${bucket}/${encoded}`;
+}
+
+/** A plain path under /images: letters, digits, dots, dashes, single slashes. */
+export function isPublicImagePath(path: string): boolean {
+  return (
+    /^\/images(\/[A-Za-z0-9][A-Za-z0-9._-]*)+$/.test(path) &&
+    !path.includes("..")
+  );
 }
 
 /**
@@ -43,7 +54,7 @@ export function isOwnPhotoPath(
   shopId: string,
   modelId?: string,
 ): boolean {
-  if (path.startsWith("/images/")) return !path.includes("..");
+  if (path.startsWith("/")) return isPublicImagePath(path);
   const parts = path.split("/");
   if (parts.some((p) => p === "" || p === "." || p === "..")) return false;
   if (modelId) {

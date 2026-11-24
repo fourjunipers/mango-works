@@ -1,5 +1,6 @@
 import { isCustomerLocale } from "@/i18n/config";
 import { getShopById } from "@/lib/data";
+import { overLimit, rateLimited } from "@/lib/places-server";
 
 /**
  * Google rating and reviews for a live shop that linked its Google Business
@@ -8,6 +9,10 @@ import { getShopById } from "@/lib/data";
  * nothing here is cached. Asking for `reviews` bills the Enterprise +
  * Atmosphere SKU, so the page calls this only when the block scrolls into
  * view. Needs GOOGLE_PLACES_SERVER_KEY (server-only, restricted to Places API).
+ *
+ * Each call is a billed request, so a caller gets the same per-minute budget
+ * as place search (lib/places-server.ts), checked before anything is asked
+ * of Google or the database.
  */
 
 const FIELDS = "rating,userRatingCount,reviews,googleMapsUri";
@@ -27,6 +32,7 @@ export async function GET(
 ) {
   const key = process.env.GOOGLE_PLACES_SERVER_KEY;
   if (!key) return new Response(null, { status: 404 });
+  if (overLimit(request)) return rateLimited();
   const { shopId } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(shopId))
     return new Response(null, { status: 404 });

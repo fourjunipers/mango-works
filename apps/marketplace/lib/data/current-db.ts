@@ -7,6 +7,7 @@ import {
   type InclusionOverrides,
   type Inclusions,
 } from "@/lib/inclusions";
+import { safeMapsUrl } from "@/lib/maps-url";
 import {
   BIKE_PLACEHOLDER,
   PHOTO_BUCKETS,
@@ -142,7 +143,7 @@ async function loadShop(
     thumbUrl: photoUrls[0] ?? SHOP_PLACEHOLDER,
     photoUrls,
     location: coords?.[0] ? { lat: coords[0].lat, lng: coords[0].lng } : null,
-    mapsUrl: s.maps_url,
+    mapsUrl: safeMapsUrl(s.maps_url),
     googlePlaceId: s.google_place_id,
     hours: (hours ?? []).map((h) => ({
       weekday: h.weekday,

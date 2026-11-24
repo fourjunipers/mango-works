@@ -3,6 +3,8 @@ import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@mango/db/server";
+import { isAdminEmail, parseAdminEmails } from "./admin-emails";
+import { removeAdminRole } from "./sync-role";
 
 /**
  * Data access layer for the signed-in user. Every read here touches cookies,
@@ -49,11 +51,20 @@ export const getMyProfile = cache(async () => {
  * Call this in every admin page and action, not only the layout: Next.js
  * renders a page in parallel with its layout, so a layout check alone does not
  * stop the page's code (and its service-role queries) from running.
+ *
+ * The role on the profile is written at sign-in (sync-role.ts), so by itself
+ * it would keep someone an admin for as long as their session lasts. Every
+ * call here therefore reads ADMIN_EMAILS again: an admin whose email is no
+ * longer listed gets the 404 and loses the role on the spot.
  */
 export async function requireAdmin() {
-  await requireUser("/admin");
+  const user = await requireUser("/admin");
   const profile = await getMyProfile();
   if (profile?.role !== "admin") notFound();
+  if (!isAdminEmail(user.email, parseAdminEmails(process.env.ADMIN_EMAILS))) {
+    await removeAdminRole(user.id);
+    notFound();
+  }
   return profile;
 }
 

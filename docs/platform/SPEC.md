@@ -97,9 +97,9 @@ The stack keeps your existing tools (GitHub, Netlify, Tailwind, Resend, GA) and 
 | App framework | Next.js (App Router) + TypeScript, in a monorepo: platform app (admin, staff app, booking pages, API) and marketplace app, sharing packages | One repo, shared rules; server actions; works on Netlify or Vercel |
 | Database | Supabase Postgres until the Neon move (after Phase 3); then Neon Postgres, Singapore, always on | Range types + exclusion constraints for availability; row-level security for tenants |
 | Auth | Supabase Auth until the Neon move; then Better Auth run in the apps: email, Google, LINE; 2FA for staff | LINE login matters for Thai staff |
-| File storage | Private files (receipts, renewal documents, passports and licences, inspection and damage photos, signed agreements, tax-invoice PDFs): only in the shop's connected Google Drive; the platform keeps a link (file id) per file (decision 49, 19 Nov 2026). Public listing images (Moto Mangos shop and bike photos): Supabase Storage until the Neon move, then Cloudflare R2. Both behind one storage module | Passports, licences, damage photos, signed PDFs, receipts; shop and bike photos for Moto Mangos listings. No private files are stored on the platform |
+| File storage | Private files (receipts, renewal documents, passports and licences, inspection and damage photos, signed agreements, tax-invoice PDFs): only in the shop's connected Google Drive; the platform keeps a link (file id) per file (decision 49, 19 Nov 2026; design: docs/platform/file-storage-design.md, decided 20 and 21 Nov 2026). Public listing images (Moto Mangos shop and bike photos): Supabase Storage until the Neon move, then Cloudflare R2. Both behind one storage module | Passports, licences, damage photos, signed PDFs, receipts; shop and bike photos for Moto Mangos listings. No private files are stored on the platform |
 | UI | Tailwind CSS + shadcn/ui, light/dark | Fast to build, consistent, accessible |
-| Payments | Stripe Connect (Standard accounts) for shop payments; Stripe Billing for SaaS subscriptions | Money goes straight to each shop; you never hold their revenue |
+| Payments | Stripe Connect (Standard accounts) for shop payments; Mango Works' own invoices for SaaS subscriptions, with Stripe only to collect (card, PromptPay QR) and bank transfer marked paid by hand | Money goes straight to each shop; you never hold their revenue |
 | Email | Resend + React Email templates | Already in your stack |
 | Messaging | LINE Messaging API (per-tenant channel) | Thai customers and staff |
 | PDFs | Server-side render (react-pdf) | Contracts, invoices, quotes |
@@ -255,14 +255,14 @@ The core idea: renters book a **model** (e.g. Honda PCX 160). Staff assign a spe
 
 | Table | Key fields | Notes |
 | --- | --- | --- |
-| tenants | name, slug, country, currency, timezone, vat\_rate, vat\_inclusive, locale, plan, stripe\_account\_id, line\_channel, google\_drive\_folder (the shop's connected Drive), charge\_before\_days, overdue\_alert\_days, document\_retention\_months, track\_maintenance\_costs, allow\_overbooking, closures, min\_notice\_hours, booking\_cutoff\_minutes, min\_days\_advance, min\_days\_walkin, request\_reply\_hours, inclusions\_default, marketplace\_listed, marketplace\_approved, google\_place\_id, deposit\_methods | One per shop |
+| tenants | name, slug, country, currency, timezone, vat\_rate, vat\_inclusive, locale, plan, stripe\_account\_id, line\_channel, charge\_before\_days, overdue\_alert\_days, document\_retention\_months, track\_maintenance\_costs, allow\_overbooking, closures, min\_notice\_hours, booking\_cutoff\_minutes, min\_days\_advance, min\_days\_walkin, request\_reply\_hours, inclusions\_default, marketplace\_listed, marketplace\_approved, google\_place\_id, deposit\_methods | One per shop |
 | memberships | tenant\_id, user\_id, role (owner, manager, staff, mechanic, driver) | Users can belong to several tenants |
 | locations | name, address, geo, opening\_hours, is\_default | Multi-location later; one by default |
 | vehicle\_types | name, spec\_schema (JSON schema). Platform-wide vehicle\_catalog table (no tenant\_id): make, model, year\_from, year\_to, cc, type, transmission, abs, underseat\_storage, usb\_charger, key\_type, stock photo, approved | Motorbike, car; drives spec fields |
 | models | type\_id, catalog\_id (optional), instant\_units, request\_units, walkin\_only\_units, ready\_now, ready\_updated\_at, inclusions\_override, make, model, year, cc, specs (JSON), photos, description, buffer\_before, buffer\_after, deposit, min\_age, licence\_class, bookable\_online | What renters see |
 | units | model\_id, location\_id, plate, frame\_number (VIN), engine\_number, colour, model\_year, keys (list: type, number, spares), current\_odometer, avg\_daily\_km, status (active, maintenance, retired, sold), road\_tax\_expires\_at, insurance\_expires\_at (the expiry of the latest renewal record of each kind), qr\_code, purchase\_date, purchase\_price, purchased\_from, sold\_at, sale\_price, sold\_to, notes (free text: fitted accessories and anything else about this vehicle) | Each real vehicle |
-| unit\_renewals | unit\_id, kind (road\_tax, compulsory\_insurance, voluntary\_insurance, inspection), provider, reference\_no, cost, starts\_at, expires\_at, file (a link to the shop's Drive, added with the file storage stage), recorded\_by | Full renewal history; latest per kind = current; drives reminders |
-| maintenance\_jobs | unit\_id, tasks (from schedule or custom), odometer, opened\_at, closed\_at, parts\_cost, labour\_cost, done\_by (staff or garage), receipt\_file, notes, blocks\_availability | The maintenance log; can create a downtime block |
+| unit\_renewals | unit\_id, kind (road\_tax, compulsory\_insurance, voluntary\_insurance, inspection), provider, reference\_no, cost, starts\_at, expires\_at, files (rows in files naming this renewal as owner kind and id; file storage stage), recorded\_by | Full renewal history; latest per kind = current; drives reminders |
+| maintenance\_jobs | unit\_id, tasks (from schedule or custom), odometer, opened\_at, closed\_at, parts\_cost, labour\_cost, done\_by (staff or garage), notes (the receipt is a row in files naming this job as owner kind and id), blocks\_availability | The maintenance log; can create a downtime block |
 | service\_schedules | model\_id or unit\_id, task, every\_km, every\_days, warn\_km, warn\_days, blocks\_when\_overdue | Unit row overrides the model template; next due computed from the last job with that task |
 | odometer\_readings | unit\_id, km, source (check\_out, check\_in, manual, service), recorded\_by, at | Feeds current\_odometer and avg\_daily\_km |
 | gps\_trackers | unit\_id, brand\_model, device\_id (IMEI), sim\_number, install\_location, installed\_at, removed\_at, notes | Battery changes run through service\_schedules |
@@ -271,17 +271,20 @@ The core idea: renters book a **model** (e.g. Honda PCX 160). Staff assign a spe
 | price\_rules | scope (model or all), date range or weekdays, adjustment (% or fixed), priority | Seasonal, weekend, holiday |
 | coupons | code, kind, value, limits, valid range |  |
 | customers | name, email, phone, line\_id, nationality, dob, local\_address, tags, custom\_fields, deposit\_waived, blacklisted, notes |  |
-| customer\_documents | customer\_id, kind (passport, licence, IDP, visa), number, country, expires\_at, file\_front\_ref, file\_back\_ref (links to files in the shop's Drive), verified\_by, delete\_after | Files live in the shop's Drive; access logged |
+| customer\_documents | customer\_id, kind (passport, licence, IDP, visa), number, country, expires\_at, images (rows in files naming this document as owner kind and id, slots front and back; each file's delete\_after is set by the shop's document\_retention\_months after the rental closes, held while a case is open), verified\_by, delete\_after | Files live in the shop's Drive; access logged |
+| storage\_connections | scope (tenant or platform), tenant\_id, provider, account\_id, account\_email, root\_folder\_id, folder\_ids, state, granted\_scopes, grant\_expires\_at, connected\_by, connected\_at, last\_ok\_at, last\_error, encrypted refresh token | One active per shop, plus Mango Works' own; owner connects; token readable by no signed-in role (file-storage-design §2.5) |
+| files | tenant\_id, connection\_id, owner\_kind, owner\_id, slot, client\_key, provider\_file\_id, preview\_file\_id, name, mime, size, sha256, state, source, created\_by, delete\_after, deleted\_at | A link to one file in the shop's Drive; names its owner, so no owning table carries a file column; no path or URL stored |
+| file\_access\_log | tenant\_id, file\_id, kind, user\_id, action, purpose, at | Append-only; written in the same call that opens the file |
 | orders | number, code (6 characters), customer\_id, status, request\_status (pending, accepted, declined, expired), cancelled\_by, no\_show, marketplace\_fee\_status, starts\_at, ends\_at, location\_out, location\_in, delivery fields, rental\_kind (short, long\_term), subtotal, discount, tax, total, deposit\_amount, deposit\_status, paid\_amount, charge\_due\_at, saved\_payment\_method, channel (walk\_in, booking\_page, phone, marketplace, api), created\_by |  |
 | order\_lines | order\_id, kind (model, extra, bundle, fee, discount), model\_id, quantity, price, line\_status |  |
 | allocations | order\_line\_id, unit\_id, period (tstzrange incl. buffers), state (reserved, out, returned) | The availability lock |
 | downtime | unit\_id, period, reason, maintenance\_job\_id |  |
-| inspections | order\_id, unit\_id, kind (out, in), odometer, fuel\_level, photos, damage\_marks (JSON on diagram), notes, signed\_by\_customer, signature\_file, at | Check-out/in record |
+| inspections | order\_id, unit\_id, kind (out, in), odometer, fuel\_level, photos (→ files; none when no Drive is connected), damage\_marks (JSON on diagram), notes, signed\_by\_customer, at | Check-out/in record |
 | damage\_charges | inspection\_id, description, amount, status | Billed against the deposit |
-| documents | order\_id, kind (contract, addendum, invoice, receipt, credit\_note), number, pdf, signed\_at, sent\_at | Numbered per tenant per kind |
+| documents | order\_id, kind (contract, addendum, invoice, receipt, credit\_note), number, content\_snapshot, signature\_strokes, hash, signed\_at, sent\_at (the PDF, when stored, is a row in files naming this document as owner kind and id) | Numbered per tenant per kind. The data is the record; the PDF is regenerated from it on request. Tax documents are kept 5 years. A signed agreement's text and signature strokes are kept for the shop's agreement\_retention\_months after the rental closes (held while a case is open), then erased, keeping the hash, signer, time and device (file-storage-design §7.1) |
 | payments | order\_id, kind (charge, deposit\_hold, deposit\_capture, refund), method (card, promptpay, cash, transfer), amount, stripe\_ids, status |  |
 | scheduled\_charges | order\_id, amount, due\_at, payment\_method\_id, status (scheduled, paid, failed, action\_needed), attempts, last\_error | Reserve now, charge N days before |
-| cash\_expenses | location\_id, business\_date, amount, category, description, receipt\_file, paid\_by, at | Cash paid out; deducted in the daily close |
+| cash\_expenses | location\_id, business\_date, amount, category, description, paid\_by (the receipt is a row in files naming this expense as owner kind and id), at | Cash paid out; deducted in the daily close |
 | agreement\_templates | name, language, body (with merge fields), initial\_clauses, version, active | Signed copies live in documents with signer, time, device and hash |
 | traffic\_fines | unit\_id, occurred\_at, place, offence, amount, reference, notice\_file, order\_id (matched), admin\_fee, status, notified\_at, paid\_at | Matched to the allocation covering occurred\_at |
 | cash\_closes | location\_id, business\_date, opening\_float, cash\_in, cash\_refunds, cash\_paid\_out, expected\_cash, counted\_cash, difference, note, closed\_by, at | Daily close |
@@ -384,10 +387,10 @@ The full admin (settings, pricing, reports, fleet setup) stays in the desktop we
 1. Scan the unit's QR, or pick the unit.
 2. Confirm customer documents are on file and valid (licence class matches the vehicle, licence and passport not expired).
 3. Record odometer and fuel level (fuel gauge slider).
-4. Take guided photos: front, back, left, right, dash; extra photos optional.
+4. Take guided photos: front, back, left, right, dash; extra photos optional. Without a connected Google Drive the check-out completes without photos, and the screen warns clearly, before this step and again where the hand-over is confirmed, that no photos will be kept (decided 20 Nov 2026).
 5. Tap to mark existing damage on a vehicle diagram (scratch, dent, crack, missing), with a photo per mark.
 6. Hand over extras (helmets counted out).
-7. Customer reviews and signs the contract on screen. The PDF is generated, stored, then emailed or sent by LINE.
+7. Customer reviews and signs the contract on screen. The signed agreement is kept as data (its text, the signature strokes and a hash), and its PDF is always generated, whether or not a Drive is connected. Staff can send it to the customer with "Send agreement" on the order (email), only when they choose to, never automatically. The PDF is stored only when the shop's Drive is connected (decided 21 Nov 2026).
 8. Take the deposit (hold or charge) and any balance due.
 
 Check-in repeats steps 1, 3, 4, 5 and 6, then shows the out/in comparison side by side. New damage becomes a damage charge. km over any allowance and fuel difference are charged as configured. The deposit is released, partly captured, or refunded.
@@ -404,7 +407,7 @@ Check-in repeats steps 1, 3, 4, 5 and 6, then shows the out/in comparison side b
 
 - Profile with nationality, phone, LINE, email, local address and tags; full order history and lifetime value.
 - Documents: passport and driving licence (plus IDP or visa if needed), with number, expiry, front/back photos and who verified them. An expired document blocks pickup. Never hold the original passport.
-- Online booking collects documents at checkout or by a pre-arrival link.
+- Online booking collects documents at checkout or by a pre-arrival link: a signed link for one document record, with size and count caps, an expiry and rate limits, writing into the shop's Drive; staff check every file it brings (file-storage-design §3.5; built in Phase 4).
 - Blacklist with reason (within the shop only, never shared across shops).
 
 **Is storing passport and licence copies legal?** Yes, under Thailand's PDPA, if it's handled properly. The PDPA treats these copies as personal data. A shop can keep them when it has a clear purpose: identifying the renter, the rental contract, traffic fines, theft and accidents. The platform builds in what the law expects:
@@ -422,15 +425,17 @@ This is general information, not legal advice. Have a Thai lawyer review the pri
 
 - **The shop's Google Drive:** the shop connects its own Google account. Passport, licence, contract PDF, inspection photos, maintenance receipts and renewal documents are uploaded to a folder in that Drive, and the platform keeps only a link (the file id) to each file. This keeps customer IDs out of the platform's database, and the shop owns its files if it leaves.
 - **No connected Drive, no attachments:** a shop that has not connected a Drive can't attach files; the file fields are hidden or disabled with a note. Everything else works.
-- **One module** serves every file, built as its own stage, "Shop file storage (Google Drive)", before Phase 4 (outline in `docs/phase-1b-plan.md` §7; its design is still to be written).
+- **One module** serves every file, built as its own stage, "Shop file storage (Google Drive)", before Phase 4 (design: `docs/platform/file-storage-design.md`, decided 20 and 21 Nov 2026).
 - **Trade-offs to know:** the shop is still responsible under the PDPA wherever the files sit; anyone with access to that Drive folder sees every passport; if the shop disconnects Drive, the files can't be opened from its records until it reconnects; and the automatic deletion has to reach into Drive to work. The connection uses the narrowest Google permission, so the platform can see only files it created.
+- **Public images stay on the platform.** Shop, model and catalog photos and logos are shown on the public sites and stay on the platform's own store. Everything else is a private file in the shop's Drive.
+- **Mango Works never opens a shop's files** (decided 20 Nov 2026). No screen, role or support tool reaches them; when support needs to see a file, it asks the shop for a screenshot.
 
 ### Documents and messages
 
 - **Rental agreement:** the shop's own template, in English and Thai, with fields filled in automatically (customer, passport and licence numbers, bike, plate, frame number, dates, price, deposit, fuel and km at check-out, existing damage). Optional initials on key clauses.
 - **Signing:** with a finger on a phone or tablet, a stylus, or a mouse/trackpad on a laptop, on the same signature pad. Staff countersign. The customer can also sign remotely through a pre-arrival link.
-- **Signed record:** the signed PDF is locked and stored with time, signer name, device and a tamper-check fingerprint, then emailed (and sent by LINE) to the customer. Extensions and unit swaps produce a signed addendum.
-- Invoice, tax invoice/receipt and credit note, numbered per tenant (e.g. INV-2026-00042). Templates per tenant: logo, colours, terms, custom fields.
+- **Signed record:** the signed agreement is kept as data (its text, the signature strokes, the time, signer name, device and a tamper-check fingerprint). Its PDF is always generated from that data and stored in the shop's Drive when one is connected; staff send it to the customer with "Send agreement" (email) only when they choose to, never automatically (decided 21 Nov 2026). Extensions and unit swaps produce a signed addendum.
+- Invoice, tax invoice/receipt and credit note, numbered per tenant (e.g. INV-2026-00042). Templates per tenant: logo, colours, terms, custom fields. Each document's data is frozen at issue and kept 5 years on the platform; its PDF is regenerated identically on request, with a copy in the shop's Drive when one is connected (decided 20 Nov 2026).
 - Automated messages by event: booking received, confirmed, payment taken or failed, pickup reminder (24h), rental period ended, overdue (shop's schedule), deposit released, renewal due. Each event can go by email, LINE or both; templates are editable.
 
 ### Payments
@@ -483,13 +488,13 @@ This is general information, not legal advice. Have a Thai lawyer review the pri
 - Enforced 2FA option; session list; audit log viewer.
 - CSV import for models, units and customers. A Booqable importer migrates BSR's data.
 - Platform admin: tenants, plans, usage, impersonate-with-consent for support, feature flags.
-- SaaS billing: plans and trials via Stripe Billing; limits per plan (vehicles, seats, locations).
+- SaaS billing: plans and trials on Mango Works' own invoices and ledger, with Stripe only to collect (decided 19 Nov 2026; docs/platform/payments-design.md §7); limits per plan (vehicles, seats, locations).
 
 ## Review decisions (10 Nov 2026)
 
 These came from an independent review of the plan after Phase 0. They are binding and override anything earlier in this spec that disagrees. Items marked for a later phase are settled when that phase is prepared.
 
-**Build order.** 0 → 1a → 2 → 3 → Neon move → 3M → 1b → 4 onward → go-live preparation (the Neon move and the go-live preparation step were added on 19 Nov 2026; see Hosting and data below). Phase 1 is split in two:
+**Build order.** 0 → 1a → 2 → 3 → Neon move → 3M → 1b → file storage → 4 onward → go-live preparation (the Neon move and the go-live preparation step were added on 19 Nov 2026; see Hosting and data below). Phase 1 is split in two:
 
 - **1a Fleet core:** locations, optional catalog link, models, units, CSV import, QR stickers, unit blocks (downtime), the audit table, and the legacy-table mapping.
 - **1b Fleet care:** maintenance log, service schedules, odometer alerts, tax and insurance renewals, keys, GPS, vehicle notes (fitted accessories; see Vehicle record), unit timeline, profit per vehicle. It runs after Phase 3, because profit needs orders and payments. Update 11 Nov 2026: the tax and insurance renewal records, expiry dates and reminder settings were built in Phase 1a with dashboard reminders and a queue for the messages. Nothing sends yet: email arrives with Phase 3 and LINE with Phase 6.
@@ -514,7 +519,7 @@ These came from an independent review of the plan after Phase 0. They are bindin
 
 **Payments.** Provider-neutral from the start of the schema (before Phase 3): payment\_accounts (tenant, provider, external id, capabilities) and payments.provider + provider\_ref, an append-only payments ledger, and a webhook\_events table unique on provider + event id. Features switch on capabilities (hold, save card, partial refund, platform fee). Goal: support the major payment providers in each country; Stripe and PromptPay first for Thailand. The Moto Mangos booking fee is charged fee-only on Moto Mangos' own account (as in INTEGRATION), not as a Connect platform fee. Stripe's written answers on Thai Connect limits come before Phase 2. Tap to Pay moves to Later (needs a native app; Stripe Terminal doesn't serve Thailand).
 
-**Stripe in Thailand (Stripe's answers, 10 Nov 2026).** Shops get their own connected accounts through Stripe-hosted Connect Onboarding (Accounts v2 or controller properties; Stripe liable for negative balances; the shop pays processing and dispute fees). Payments are direct charges on the shop's account. A Thai platform can't take an application fee from Thai shops, so Mango Works earns through its subscription (Stripe Billing), and the Moto Mangos booking fee is charged on Moto Mangos' own account. Stripe keeps its fee on refunds (cards 3.65% + ฿10 domestic, 4.75% + ฿10 foreign; PromptPay 1.65%).
+**Stripe in Thailand (Stripe's answers, 10 Nov 2026).** Shops get their own connected accounts through Stripe-hosted Connect Onboarding (Accounts v2 or controller properties; Stripe liable for negative balances; the shop pays processing and dispute fees). Payments are direct charges on the shop's account. A Thai platform can't take an application fee from Thai shops, so Mango Works earns through its subscription (its own invoices, with Stripe only to collect), and the Moto Mangos booking fee is charged on Moto Mangos' own account. Stripe keeps its fee on refunds (cards 3.65% + ฿10 domestic, 4.75% + ฿10 foreign; PromptPay 1.65%).
 
 **When the renter pays.** Moto Mangos bookings: free cancellation until 72 hours before pickup. At booking the card is saved with explicit consent (checkbox, terms stating timing and amount; recorded); it is charged off-session 72 hours before pickup (unscheduled), and monthly for long-term rentals (recurring). Bookings made within 72 hours are charged at booking. PromptPay can't be charged later, so PromptPay bookings pay in full at booking. **Deposit:** for a shop's own bookings (booking page, staff app), each shop picks a security deposit mode: (1) none; (2) a percentage of the order total, including or excluding the deposit amount; (3) per-model deposits set on each model; (4) a fixed amount per order. Every card payment, deposit or not, can be charged or authorized. An authorization carries an at-expiry action chosen by staff (shop default, per-order override): release, or capture shortly before the hold's capture\_before time (about 7 days). Staff can capture or release by hand at any time before then. A captured deposit that is later refunded loses Stripe's fee; the shop is told this in settings. If Stripe grants extended authorisation (requires removing Link as a payment method), holds can last up to about 30 days. Cash deposits stay outside revenue in the cash close.
 
@@ -676,7 +681,7 @@ Read the phases left to right, band by band. Nothing reaches other shops until B
    - Accept: 50+ unit tests on pricing (tiers, season, VAT inclusive/exclusive); a concurrency test where two parallel bookings for the last unit results in one success, through the staff path and the online model-level path; a booking that overlaps a downtime block is refused; the total never falls as days rise; the tests include one tenant in a daylight-saving time zone and one in a zero-decimal currency.
 3. **Orders + calendar.** Order editor, status workflow with revert, allocations, shortage flag, today board, unit timeline (drag to reassign/extend), order list with filters, end-of-rental email, overdue alert schedule, audit events.
    - Accept: full new → returned lifecycle in Playwright; drag-extend re-prices; an overlap is refused with a clear message.
-4. **Customers + KYC.** Customer profiles, documents with expiry, blacklist, privacy notice, documents stored in the shop's connected Google Drive (the file storage stage comes first), access logging, retention purge job.
+4. **Customers + KYC.** Customer profiles, documents with expiry, blacklist, privacy notice, documents stored in the shop's connected Google Drive (the file storage stage, docs/platform/file-storage-design.md, comes first; a shop without a Drive records document numbers and expiry without images), access logging, retention purge job.
    - Accept: pickup blocked when licence expired; document image views appear in the audit log.
 5. **Check-out / check-in.** The phone and desktop flow (phone optional): QR scan, odometer, fuel, guided photos, damage diagram, extras, rental agreement template + signature pad (finger, stylus, mouse/trackpad) with signed PDF record, comparison at return, damage charges.
    - Accept: whole check-out in under 3 minutes on a mid-range Android; works on poor signal (photos queue and upload); the same check-out and check-in complete in a desktop browser.
@@ -690,7 +695,7 @@ Read the phases left to right, band by band. Nothing reaches other shops until B
    - Accept: a 3-month rental auto-charges each month in test clock; a failed charge alerts staff.
 10. **Sales history, reports + import.** Dashboard KPIs, sales history page (periods, compare, filters, saved views, drill-down), revenue basis switch, cash paid out + daily cash close + evening LINE summary, other reports, CSV/Excel export, Booqable importer (products, stock items, customers, future orders).
     - Accept: import of BSR's Booqable export reconciles counts exactly. **Gate A:** BSR runs in parallel for 2 weeks.
-11. **SaaS layer.** Marketing site with pricing page; self-serve signup, payment and automatic shop setup (country sets currency, timezone, language and tax; no manual step by Mango Works) + onboarding wizard, 5 shop website templates, plans and trials (Stripe Billing), plan limits, multi-location, platform admin, enforced 2FA (built after the Neon move, on Better Auth; decided 19 Nov 2026), public API + webhooks.
+11. **SaaS layer.** Marketing site with pricing page; self-serve signup, payment and automatic shop setup (country sets currency, timezone, language and tax; no manual step by Mango Works) + onboarding wizard, 5 shop website templates, plans and trials (own invoices; Stripe only to collect), plan limits, multi-location, platform admin, enforced 2FA (built after the Neon move, on Better Auth; decided 19 Nov 2026), public API + webhooks.
     - Accept: a new shop goes from signup to first online booking in under 30 minutes without help.
 12. **BSR cutover + hardening.** Fix pilot issues, Stripe Tap to Pay in the staff app, backups and restore drill, load test, security review, terms/privacy pages, help docs.
     - Accept: restore from backup works; no open P1 bugs for 2 weeks. **Gate B:** cancel Booqable, open signups.
@@ -713,7 +718,7 @@ The root CLAUDE.md also applies. Work only in apps/platform, packages/ and supab
 
 ## Stack
 Next.js (App Router) + TypeScript strict, Supabase (Postgres, Auth, Storage, RLS),
-Tailwind + shadcn/ui, Stripe Connect + Billing, Resend, LINE Messaging API, next-intl (en, th).
+Tailwind + shadcn/ui, Stripe Connect, Resend, LINE Messaging API, next-intl (en, th).
 
 ## Rules
 - Every table has tenant_id and an RLS policy. Add an RLS test for every new table.
@@ -758,6 +763,7 @@ This log tracks your additions and removals. Each one is already worked into the
 
 | # | Request | Type | Where in the spec | Phase |
 | --- | --- | --- | --- | --- |
+| 52 | File storage design decided: private files in the shop's Drive through one module, each file naming its owner; owner connects (openid email and drive.file); uploads straight to Drive, checked by the server; viewing through the server with an access log and locked-down headers; one contact sheet per inspection; 10 MB cap; check-out without a Drive completes without photos, with a warning; the signed agreement PDF always generated, sent only when staff choose, stored only with a Drive; tax documents kept as data with the PDF regenerated; a customer upload link for documents before arrival; Mango Works never opens shop files | Decision | Tech stack; Data model; Check-out; Customers › Document storage; Documents; Build order | Before 4 |
 | 51 | Move the database from Supabase to Neon after Phase 3 (before 3M and BSR's go-live), spike first, live always on; Better Auth for sign-in | Decision | Tech stack; Review decisions › Build order, Hosting and data; docs/platform/neon-move-plan.md | After 3 |
 | 50 | Phase 1b decisions: expired renewals never block a pickup (reminders and a check-out warning only); a lower odometer reading is confirmed and audited; no registration renewal kind | Change | Fleet › Vehicle record; Data model (unit\_renewals) | 1b |
 | 49 | No files stored on the platform: every file lives in the shop's connected Google Drive, with only a link kept; a separate stage before Phase 4. Reverses the deferral in request 45 and the "option" in request 10 | Decision | Tech stack; Customers › Document storage; Data model; Review decisions | Before 4 |

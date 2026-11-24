@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseWholeInRange } from "./number-input";
+import { parseWholeInRange, parseWholeNumber } from "./number-input";
 
 /**
  * General products (docs/products-redesign.md §5.7): rental gear, items for
@@ -177,6 +177,19 @@ export function parseQuantity(text: string, max: number): number | "invalid" {
 }
 
 /**
+ * Why a typed quantity that parseQuantity refused was refused: a whole number
+ * outside 0 to the most gets the range message, anything else (words,
+ * decimals, "1e3") "Enter a whole number.".
+ */
+export function quantityProblem(
+  text: string,
+): "invalidQuantity" | "quantity_out_of_range" {
+  return typeof parseWholeNumber(text) === "bigint"
+    ? "quantity_out_of_range"
+    : "invalidQuantity";
+}
+
+/**
  * The quantities typed on the create form, one field per location named
  * "quantity:<location id>". A service has none, whatever was sent.
  */
@@ -194,7 +207,8 @@ export function readQuantities(
   for (const id of locationIds) {
     const name = `quantity:${id}`;
     const quantity = parseQuantity(String(fields[name] ?? ""), max);
-    if (quantity === "invalid") errors[name] = "invalidQuantity";
+    if (quantity === "invalid")
+      errors[name] = quantityProblem(String(fields[name] ?? ""));
     else if (quantity > 0) quantities.push({ location_id: id, quantity });
   }
   return Object.keys(errors).length > 0 ? { errors } : { quantities };

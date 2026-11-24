@@ -10,10 +10,22 @@ import { createClient } from "@mango/db/platform-server";
  * - `code`, from Supabase's default template (used until branded emails
  *   arrive). A PKCE code, so it only works in the browser that asked for it.
  */
+/**
+ * The one-time-code types this route verifies: a sign-in link by email, under
+ * either name Supabase gives it. Every other type (recovery, invite,
+ * email_change, signup, the phone ones) is refused before Supabase is asked:
+ * neither app offers those flows, so a link naming one was not made here.
+ */
+const LINK_TYPES = ["email", "magiclink"] as const satisfies EmailOtpType[];
+
+function emailLinkType(value: string | null) {
+  return LINK_TYPES.find((type) => type === value) ?? null;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const tokenHash = searchParams.get("token_hash");
-  const type = searchParams.get("type") as EmailOtpType | null;
+  const type = emailLinkType(searchParams.get("type"));
   const code = searchParams.get("code");
   const next = safeNextPath(searchParams.get("next"));
 

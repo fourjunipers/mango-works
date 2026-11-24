@@ -94,6 +94,11 @@ export function bangkokDay(days: number): string {
  * rows first, in one transaction, with a short lock timeout so that it fails
  * rather than waits. Throws if it could not: a test must not leave a tenant
  * behind without saying so. Only tests do this; no app can delete a tenant.
+ *
+ * No audit row can be deleted either (20261120000200: the table's own
+ * triggers refuse it, its owner included), so the audit rows go with those
+ * triggers switched off for that one statement (session_replication_role,
+ * which only a superuser may set).
  */
 export async function deleteTenant(tenantId: string | undefined) {
   if (!tenantId) return;
@@ -111,7 +116,9 @@ export async function deleteTenant(tenantId: string | undefined) {
   const statements = [
     "begin;",
     "set local lock_timeout = '5s';",
+    "set local session_replication_role = replica;",
     `delete from platform.audit_events where tenant_id = '${tenantId}';`,
+    "set local session_replication_role = origin;",
     `delete from platform.tenants where id = '${tenantId}';`,
     "commit;",
   ].join("\n");
