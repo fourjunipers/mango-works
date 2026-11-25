@@ -140,7 +140,9 @@ describe("product row locks: one strength per function, or a reviewed reason", (
       .filter(({ strengths }) => strengths.length > 0);
     // The reader reaches the functions it must: these are known lockers.
     for (const name of [
-      "platform.reserve",
+      // platform.reserve() until Phase 3 stage 2b (20261125000100), which
+      // dropped it: the booking core takes the product rows now.
+      "platform_private.reserve_core",
       "platform.move_unit",
       "platform.review_catalog_request",
       "platform_private.units_counts_after_update",

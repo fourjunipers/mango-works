@@ -234,12 +234,22 @@ export async function allocationFor(
       .eq("id", unitId),
   );
   if (unit.error) throw unit.error;
+  // A reservation is a rental of an order (Phase 3 stage 2b): both are
+  // written first, by hand as the reservation is.
+  const { orderId, rentalId } = await orderWithRental(tenantId, {
+    product_id: unit.data.product_id,
+    product_type: unit.data.product_type as "vehicle" | "gear" | "service",
+    location_id: unit.data.location_id,
+    starts_at: from.toISOString(),
+    ends_at: to.toISOString(),
+  });
   const reservation = await exactlyOne(
     service
       .from("reservations")
       .insert({
         tenant_id: tenantId,
-        booking_id: randomUUID(),
+        booking_id: orderId,
+        rental_id: rentalId,
         product_id: unit.data.product_id,
         product_type: unit.data.product_type,
         location_id: unit.data.location_id,

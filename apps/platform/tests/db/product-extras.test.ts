@@ -8,8 +8,9 @@
  * profile in force; quote() fed by the adapter giving stage 4's pinned
  * figures; the lock order (a save against a booking and a move_unit(), held
  * in place and as a race, with no deadlock); and the lock timeout on
- * confirm_hold(), cancel_reservation(), assign_units() and move_unit(),
- * through the API. The race runs in three shops: Bangkok (THB), New York
+ * confirm_order(), cancel_order(), assign_order_units() and move_unit()
+ * (Phase 2's confirm_hold(), cancel_reservation() and assign_units(); every
+ * booking is an order since Phase 3 stage 2b), through the API. The race runs in three shops: Bangkok (THB), New York
  * (USD, daylight saving) and Saigon (VND).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -36,6 +37,8 @@ import {
 import {
   anonClient,
   closedGate,
+  createOrder,
+  orderSql,
   createTenant,
   createUser,
   type Db,
@@ -233,7 +236,12 @@ type Line = {
 type Booked = {
   ok: true;
   booking_id: string;
-  lines: { reservation_id: string; unit_ids: string[]; shortage: number }[];
+  lines: {
+    reservation_id: string;
+    rental_id: string;
+    unit_ids: string[];
+    shortage: number;
+  }[];
 };
 type Answer = Booked | { ok: false; reason: string; line?: number | null };
 type Result = { data: Answer | null; error: Failure };
@@ -264,16 +272,17 @@ const staffBook = (
   lines: Line[],
   o: { tenant?: TestTenant; hold?: boolean; role?: Role } = {},
 ): Promise<Result> =>
-  Promise.resolve(
-    db(o.role ?? "staff", o.tenant ?? shop).rpc(
-      "reserve",
-      request(o.tenant ?? shop, "walk_in", "staff", lines, !!o.hold),
-    ),
+  createOrder(
+    db(o.role ?? "staff", o.tenant ?? shop),
+    (o.tenant ?? shop).id,
+    request(o.tenant ?? shop, "walk_in", "staff", lines, !!o.hold).p_request,
   ) as Promise<Result>;
 
 const pageBook = (lines: Line[], tenant: TestTenant = shop): Promise<Result> =>
-  Promise.resolve(
-    service.rpc("reserve", request(tenant, "booking_page", "instant", lines)),
+  createOrder(
+    service,
+    tenant.id,
+    request(tenant, "booking_page", "instant", lines).p_request,
   ) as Promise<Result>;
 
 const booked = (result: Result): Booked => {
@@ -1378,7 +1387,7 @@ describe("the lock order: a save against a booking and a move", () => {
     const booking = sqlBackground(`
       begin;
       ${actingAs(shop.members.staff.id)}
-      select platform.reserve('${call.p_tenant_id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
+      select ${orderSql(call.p_tenant_id, call.p_request)} ->> 'ok';
       ${gate.wait(marker)}
       commit;
     `);
@@ -1411,7 +1420,7 @@ describe("the lock order: a save against a booking and a move", () => {
     `);
     await holding(marker, saving);
     const booking = staffBook(s.lines(1));
-    const seen = await waitingForRow("reserve");
+    const seen = await waitingForRow("create_order");
     expect(seen).toMatch(
       /^waiting for a row; product locks: 2, unit locks: [1-9]\d*$/,
     );
@@ -1629,14 +1638,14 @@ describe("a lock that can't be had in time, through the API: each function gives
     { product_id: bike.id, starts_at: at(day), ends_at: at(day + 1) },
   ];
 
-  it("confirm_hold()", async () => {
+  it("confirm_order() (Phase 2's confirm_hold())", async () => {
     const bike = await vehicle(1);
     const hold = booked(await staffBook(oneDay(bike, 1), { hold: true }));
-    const args = { p_tenant_id: shop.id, p_booking_id: hold.booking_id };
+    const args = { p_tenant_id: shop.id, p_order_id: hold.booking_id };
     await timedOut(
       bike.id,
-      "confirm_hold",
-      () => db("staff").rpc("confirm_hold", args),
+      "confirm_order",
+      () => db("staff").rpc("confirm_order", args),
       () => confirmHold(staffDb("manager"), shop.id, hold.booking_id),
     );
     // Sent again once the lock is free, it goes through.
@@ -1645,20 +1654,23 @@ describe("a lock that can't be had in time, through the API: each function gives
     ).toMatchObject({ ok: true });
   }, 60_000);
 
-  it("cancel_reservation()", async () => {
+  it("cancel_order() (Phase 2's cancel_reservation())", async () => {
     const bike = await vehicle(1);
     const made = booked(await staffBook(oneDay(bike, 1)));
     await timedOut(
       bike.id,
-      "cancel_reservation",
+      "cancel_order",
       () =>
-        db("staff").rpc("cancel_reservation", {
+        db("staff").rpc("cancel_order", {
           p_tenant_id: shop.id,
-          p_booking_id: made.booking_id,
+          p_order_id: made.booking_id,
         }),
+      // The staff path cancels a whole order now (Phase 2's test cancelled
+      // one row by its id here; that form has no function until
+      // cancel_rental(), migration 6).
       () =>
         cancelReservation(staffDb("manager"), shop.id, {
-          reservationId: made.lines[0].reservation_id,
+          bookingId: made.booking_id,
         }),
     );
     expect(
@@ -1668,26 +1680,31 @@ describe("a lock that can't be had in time, through the API: each function gives
     ).toMatchObject({ ok: true });
   }, 60_000);
 
-  it("assign_units()", async () => {
+  it("assign_order_units() (Phase 2's assign_units())", async () => {
     const bike = await vehicle(2);
     const made = booked(await staffBook(oneDay(bike, 1)));
-    const reservation = made.lines[0].reservation_id;
+    // The staff path names the order and its rental (assign_order_units()).
+    const rental = {
+      bookingId: made.booking_id,
+      rentalId: made.lines[0].rental_id,
+    };
     const spare = bike.units.filter(
       (unit) => !made.lines[0].unit_ids.includes(unit),
     );
     await timedOut(
       bike.id,
-      "assign_units",
+      "assign_order_units",
       () =>
-        db("staff").rpc("assign_units", {
+        db("staff").rpc("assign_order_units", {
           p_tenant_id: shop.id,
-          p_reservation_id: reservation,
+          p_order_id: made.booking_id,
+          p_rental_id: made.lines[0].rental_id,
           p_unit_ids: spare,
         }),
-      () => assignUnits(staffDb("manager"), shop.id, reservation, spare),
+      () => assignUnits(staffDb("manager"), shop.id, rental, spare),
     );
     expect(
-      await assignUnits(staffDb("staff"), shop.id, reservation, spare),
+      await assignUnits(staffDb("staff"), shop.id, rental, spare),
     ).toMatchObject({ ok: true });
   }, 60_000);
 
@@ -1723,7 +1740,7 @@ describe("a lock that can't be had in time, through the API: each function gives
     ).toMatchObject({ ok: true, bookings: 1 });
   }, 90_000);
 
-  it("reserve() from the counter: the staff path answers try_again for it too", async () => {
+  it("create_order() from the counter (Phase 2's reserve()): the staff path answers try_again for it too", async () => {
     const bike = await vehicle(1);
     const line = {
       productId: bike.id,
@@ -1734,7 +1751,7 @@ describe("a lock that can't be had in time, through the API: each function gives
     };
     await timedOut(
       bike.id,
-      "reserve",
+      "create_order",
       () => staffBook(oneDay(bike, 1)),
       () =>
         reserveAsStaff(staffDb("staff"), shop.id, {

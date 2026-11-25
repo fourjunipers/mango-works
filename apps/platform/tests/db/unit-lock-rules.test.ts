@@ -23,6 +23,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   allocationFor,
   closedGate,
+  createOrder,
+  orderSql,
   createTenant,
   createUser,
   deleteTenant,
@@ -226,7 +228,9 @@ const reserveSql = (
   from: Date,
   to: Date,
 ) =>
-  `select platform.reserve('${tenant.id}', '${JSON.stringify({
+  // create_order() since Phase 3 stage 2b (reserve() is gone): one bike of
+  // each product, so the request needs no line split.
+  `select ${orderSql(tenant.id, {
     channel: "walk_in",
     mode: "staff",
     lines: products.map((product_id) => ({
@@ -236,7 +240,7 @@ const reserveSql = (
       ends_at: to.toISOString(),
       quantity: 1,
     })),
-  })}'::jsonb);`;
+  })};`;
 
 beforeAll(async () => {
   deadlocksBefore = deadlocks();
@@ -798,7 +802,7 @@ describe("a statement that changes or deletes units takes its product rows once,
   }, 180_000);
 
   // ---------------------------------------------------------------- the races
-  // The same crossing against a real reserve() of both products, both
+  // The same crossing against a real create_order() of both products, both
   // sides released at the same instant. With two units the old trigger's
   // window (Y's product row taken, X's not yet asked for) is a few
   // microseconds, and a race almost never lands in it. So the statement
@@ -1448,22 +1452,19 @@ describe("lost at any time (decision 19)", () => {
         .update({ state: "out" })
         .eq("id", outNow.reservation_id!)
         .throwOnError();
-      // A booking ahead, through reserve().
-      const ahead = await tenant.members.staff.db.rpc("reserve", {
-        p_tenant_id: tenant.id,
-        p_request: {
-          channel: "walk_in",
-          mode: "staff",
-          lines: [
-            {
-              product_id: bike.id,
-              location_id: tenant.locationId,
-              starts_at: hours(48).toISOString(),
-              ends_at: hours(72).toISOString(),
-              quantity: 1,
-            },
-          ],
-        },
+      // A booking ahead, through create_order().
+      const ahead = await createOrder(tenant.members.staff.db, tenant.id, {
+        channel: "walk_in",
+        mode: "staff",
+        lines: [
+          {
+            product_id: bike.id,
+            location_id: tenant.locationId,
+            starts_at: hours(48).toISOString(),
+            ends_at: hours(72).toISOString(),
+            quantity: 1,
+          },
+        ],
       });
       expect(ahead.error, where).toBeNull();
       expect((ahead.data as { ok: boolean }).ok, where).toBe(true);

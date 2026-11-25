@@ -22,12 +22,11 @@ import { createTenant, deleteTenant, sql, type TestTenant } from "./helpers";
 
 /** `kind name: auth.uid() uses, auth.role() uses`. */
 const PINNED = [
-  // Functions (19)
+  // Functions (16). Phase 3 stage 2b (20261125000100) dropped
+  // platform.reserve(), confirm_hold() and cancel_reservation(), three
+  // lines here; what replaced them reads the caller through app_role().
   "function platform.availability(p_tenant_id uuid, p_items jsonb): uid 0, role 1",
   "function platform.booking_inputs(p_tenant_id uuid, p_location_id uuid, p_product_ids uuid[]): uid 0, role 1",
-  "function platform.cancel_reservation(p_tenant_id uuid, p_booking_id uuid, p_reservation_id uuid): uid 0, role 1",
-  "function platform.confirm_hold(p_tenant_id uuid, p_booking_id uuid): uid 0, role 1",
-  "function platform.reserve(p_tenant_id uuid, p_request jsonb): uid 0, role 1",
   "function platform_private.assert_can_change(p_membership platform.memberships, p_new_role platform.platform_role): uid 1, role 0",
   "function platform_private.audit(p_tenant_id uuid, p_entity text, p_entity_id text, p_action text, p_before jsonb, p_after jsonb): uid 1, role 2",
   "function platform_private.audit_row(): uid 1, role 0",
@@ -96,13 +95,13 @@ describe("direct auth.uid() and auth.role() uses are pinned; the count only goes
     expect(PINNED.filter((line) => !now.has(line))).toEqual([]);
   });
 
-  it("the list is 24 lines: 19 functions, 4 column defaults, 1 policy", () => {
-    expect(PINNED).toHaveLength(24);
-    expect(new Set(PINNED).size).toBe(24);
+  it("the list is 21 lines: 16 functions, 4 column defaults, 1 policy", () => {
+    expect(PINNED).toHaveLength(21);
+    expect(new Set(PINNED).size).toBe(21);
     const count = (kind: string) =>
       PINNED.filter((line) => line.startsWith(`${kind} `)).length;
     expect([count("function"), count("default"), count("policy")]).toEqual([
-      19, 4, 1,
+      16, 4, 1,
     ]);
   });
 

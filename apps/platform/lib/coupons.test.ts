@@ -1,6 +1,6 @@
 /**
  * The coupon's way from the database to decideDiscounts(), quote() and
- * reserve() (lib/coupons.ts, lib/staff-booking.ts, lib/coupon-save.ts).
+ * create_order() (lib/coupons.ts, lib/staff-booking.ts, lib/coupon-save.ts).
  * tests/db/coupons.test.ts holds the same against real rows.
  */
 import { describe, expect, it } from "vitest";
@@ -284,7 +284,7 @@ describe("a code that could not be a coupon's is never sent to the database", ()
     }
   });
 
-  it("bookAsStaff(): the booking is refused with coupon_refused, unknown; nothing is read for the code and nothing is reserved", async () => {
+  it("bookAsStaff(): the booking is refused with coupon_refused, unknown; nothing is read for the code and no order is made", async () => {
     for (const typed of [nul, surrogate]) {
       const s = staffDb({});
       expect(
@@ -295,7 +295,7 @@ describe("a code that could not be a coupon's is never sent to the database", ()
   });
 });
 
-describe("decideFor() and what reserve() is handed", () => {
+describe("decideFor() and what create_order() is handed", () => {
   it("a coupon for the scooter alone: taken on its line, and the use is what the quote says it took", () => {
     const inputs = pricing();
     const decided = ask(inputs, { code: "save 200", coupon: row() });
@@ -313,9 +313,13 @@ describe("decideFor() and what reserve() is handed", () => {
       coupon_id: COUPON,
       amount: "20000",
     });
-    expect(
-      couponRequestOf(couponUseOf(decided.decision, priced, CUSTOMER)!),
-    ).toEqual({ coupon_id: COUPON, amount: "20000", customer_id: CUSTOMER });
+    // Whose use it is, is the order's customer: the coupon carries no
+    // customer of its own, in the use or in the request.
+    expect(Object.keys(use!).sort()).toEqual(["amount", "couponId"]);
+    expect(Object.keys(couponRequestOf(use!)).sort()).toEqual([
+      "amount",
+      "coupon_id",
+    ]);
     expect(couponOutcomeOf(decided.decision)).toMatchObject({
       applied: true,
       code: "SAVE200",
@@ -407,7 +411,18 @@ type Reply = {
 
 const bookingInputs = {
   location: { id: PLACE, timezone: "Asia/Bangkok" },
+  // Which products are vehicles: a line for N of those is sent as N.
+  products: [
+    { product_id: SCOOTER, type: "vehicle" },
+    { product_id: HELMET, type: "gear" },
+  ],
 } as unknown as BookingInputs;
+
+type SentOrder = {
+  lines: Record<string, unknown>[];
+  coupon?: unknown;
+  charges?: unknown[];
+};
 
 function staffDb(scene: {
   pricing?: PricingInputs;
@@ -425,11 +440,22 @@ function staffDb(scene: {
           data: scene.coupon ?? { coupon: null, uses: null },
           error: null,
         },
-        reserve: scene.reserve ?? {
+        // One rental for every line it was sent, as the database answers.
+        create_order: scene.reserve ?? {
           data: {
             ok: true,
-            booking_id: "b-1",
-            lines: [{ reservation_id: "r-1", unit_ids: ["u-1"], shortage: 0 }],
+            order_id: "b-1",
+            number: 7,
+            code: "ABCDEF",
+            status: "booked",
+            lines: (
+              (args.p_order as { lines?: unknown[] } | undefined)?.lines ?? []
+            ).map((_, index) => ({
+              rental_id: `n-${index + 1}`,
+              reservation_id: `r-${index + 1}`,
+              unit_ids: [`u-${index + 1}`],
+              shortage: 0,
+            })),
           },
           error: null,
         },
@@ -450,28 +476,50 @@ const counter = (over: Partial<Parameters<typeof bookAsStaff>[2]> = {}) => ({
 });
 
 describe("bookAsStaff(): a counter booking with a coupon", () => {
-  it("a good code: decided, priced by quote(), and reserve() is handed the coupon with what it took, as the member", async () => {
+  it("a good code: decided, priced by quote(), and create_order() is handed the coupon with what it took and the booking charge, as the member", async () => {
     const s = staffDb({ coupon: row() });
     const answer = await bookAsStaff(
       s.db,
       TENANT,
       counter({ couponCode: "save200", customerId: CUSTOMER }),
     );
-    expect(s.called().at(-1)).toBe("reserve");
+    expect(s.called().at(-1)).toBe("create_order");
     expect(s.called().slice(0, -1).sort()).toEqual([
       "booking_inputs",
       "coupon_inputs",
       "pricing_inputs",
     ]);
+    // The uses counted beside the total are the order's customer's.
+    expect(
+      s.calls.find((call) => call.fn === "coupon_inputs")!.args,
+    ).toMatchObject({ p_code: "save200", p_customer_id: CUSTOMER });
     if (!answer.ok) throw new Error(answer.reason);
     expect(answer.quote.totals.total).toBe(BigInt(40000));
     expect(answer.coupon).toMatchObject({ applied: true, couponId: COUPON });
+    // The order under the booking's names, one entry per line asked for.
+    expect(answer).toMatchObject({
+      booking_id: "b-1",
+      number: 7,
+      code: "ABCDEF",
+      status: "booked",
+      lines: [
+        {
+          reservation_id: "r-1",
+          rental_ids: ["n-1"],
+          unit_ids: ["u-1"],
+          shortage: 0,
+        },
+      ],
+    });
+    expect(answer).not.toHaveProperty("order_id");
     expect(s.calls.at(-1)!.args).toEqual({
       p_tenant_id: TENANT,
-      p_request: {
+      p_order: {
         channel: "walk_in",
         mode: "staff",
-        hold: false,
+        action: "reserve",
+        // Whose use the coupon's is: the order's customer, said once.
+        customer_id: CUSTOMER,
         lines: [
           {
             product_id: SCOOTER,
@@ -481,12 +529,122 @@ describe("bookAsStaff(): a counter booking with a coupon", () => {
             quantity: 1,
           },
         ],
-        coupon: { coupon_id: COUPON, amount: "20000", customer_id: CUSTOMER },
+        coupon: { coupon_id: COUPON, amount: "20000" },
+        // The booking charge: the quote's snapshot, amounts as digits.
+        charges: [
+          expect.objectContaining({
+            kind: "booking",
+            priced_at: now.toISOString(),
+            total: "40000",
+            tax_total: "0",
+            deposit: "0",
+            lines: [
+              expect.objectContaining({
+                rental: 0,
+                kind: "period",
+                product_id: SCOOTER,
+                product_type: "vehicle",
+                quantity: 1,
+                list_price: "60000",
+                discount_total: "20000",
+                amount: "40000",
+                tax_amount: "0",
+              }),
+            ],
+          }),
+        ],
       },
     });
   });
 
-  it("no code: the coupon is never read and reserve() is sent none; a staff discount still prices", async () => {
+  it("two scooters and their helmets: priced as two lines, sent as one rental per bike, the helmets with the first bike, and answered as the two lines asked for", async () => {
+    const s = staffDb({});
+    const answer = await bookAsStaff(
+      s.db,
+      TENANT,
+      counter({
+        hold: true,
+        lines: [
+          { productId: SCOOTER, start, end, quantity: 2 },
+          { productId: HELMET, start, end, quantity: 2, parent: 0 },
+          { productId: SCOOTER, start, end, quantity: 1 },
+        ],
+      }),
+    );
+    const sent = s.calls.at(-1)!.args.p_order as SentOrder & {
+      action: string;
+    };
+    expect(sent.action).toBe("hold");
+    const span = {
+      location_id: PLACE,
+      starts_at: start.toISOString(),
+      ends_at: end.toISOString(),
+    };
+    expect(sent.lines).toEqual([
+      { product_id: SCOOTER, ...span, quantity: 1 },
+      { product_id: SCOOTER, ...span, quantity: 1 },
+      { product_id: HELMET, ...span, quantity: 2, parent: 0 },
+      { product_id: SCOOTER, ...span, quantity: 1 },
+    ]);
+    // One charge; each billed line names its line's first rental.
+    expect(sent.charges).toEqual([
+      expect.objectContaining({
+        kind: "booking",
+        total: "200000",
+        lines: [
+          expect.objectContaining({ rental: 0, quantity: 2, amount: "120000" }),
+          expect.objectContaining({ rental: 2, quantity: 2, amount: "20000" }),
+          expect.objectContaining({ rental: 3, quantity: 1, amount: "60000" }),
+        ],
+      }),
+    ]);
+    if (!answer.ok) throw new Error(answer.reason);
+    expect(answer.quote.lines).toHaveLength(3);
+    expect(answer.quote.totals.total).toBe(BigInt(200000));
+    expect(answer.lines).toEqual([
+      {
+        reservation_id: "r-1",
+        rental_ids: ["n-1", "n-2"],
+        unit_ids: ["u-1", "u-2"],
+        shortage: 0,
+      },
+      {
+        reservation_id: "r-3",
+        rental_ids: ["n-3"],
+        unit_ids: ["u-3"],
+        shortage: 0,
+      },
+      {
+        reservation_id: "r-4",
+        rental_ids: ["n-4"],
+        unit_ids: ["u-4"],
+        shortage: 0,
+      },
+    ]);
+
+    // A refusal names the caller's line, not the rental's place in what was sent.
+    const refused = staffDb({
+      reserve: {
+        data: { ok: false, reason: "unavailable", line: 3 },
+        error: null,
+      },
+    });
+    expect(
+      await bookAsStaff(
+        refused.db,
+        TENANT,
+        counter({
+          lines: [
+            { productId: SCOOTER, start, end, quantity: 2 },
+            { productId: HELMET, start, end, quantity: 2, parent: 0 },
+            { productId: SCOOTER, start, end, quantity: 1 },
+          ],
+        }),
+      ),
+    ).toEqual({ ok: false, reason: "unavailable", line: 2 });
+  });
+
+  it("no code: the coupon is never read and create_order() is sent none; a staff discount still prices", async () => {
     const s = staffDb({});
     const answer = await bookAsStaff(
       s.db,
@@ -501,7 +659,13 @@ describe("bookAsStaff(): a counter booking with a coupon", () => {
     if (!answer.ok) throw new Error(answer.reason);
     expect(answer.coupon).toBeNull();
     expect(answer.quote.totals.total).toBe(BigInt(50000));
-    expect(s.calls.at(-1)!.args.p_request).not.toHaveProperty("coupon");
+    const sent = s.calls.at(-1)!.args.p_order as SentOrder;
+    expect(sent).not.toHaveProperty("coupon");
+    // No customer was named, so none is sent; the charge is what was priced.
+    expect(sent).not.toHaveProperty("customer_id");
+    expect(sent.charges).toEqual([
+      expect.objectContaining({ kind: "booking", total: "50000" }),
+    ]);
   });
 
   it("a refused code books nothing and says why; a product with no price books nothing", async () => {
@@ -509,7 +673,7 @@ describe("bookAsStaff(): a counter booking with a coupon", () => {
     expect(
       await bookAsStaff(refused.db, TENANT, counter({ couponCode: "SAVE200" })),
     ).toEqual({ ok: false, reason: "coupon_refused", coupon: "wrong_channel" });
-    expect(refused.called()).not.toContain("reserve");
+    expect(refused.called()).not.toContain("create_order");
 
     const unpriced = staffDb({ pricing: pricing({}, null) });
     expect(await bookAsStaff(unpriced.db, TENANT, counter())).toEqual({
@@ -517,11 +681,15 @@ describe("bookAsStaff(): a counter booking with a coupon", () => {
       reason: "cant_be_priced",
       line: 0,
     });
-    expect(unpriced.called()).not.toContain("reserve");
+    expect(unpriced.called()).not.toContain("create_order");
   });
 
-  it("what reserve() answers is passed on: used up or changed under the lock, and a lock not had in time is try_again", async () => {
-    for (const reason of ["coupon_used_up", "coupon_not_valid"]) {
+  it("what create_order() answers is passed on: used up or changed under the lock, or no customer to count for; a lock not had in time, or a deadlock Postgres broke, is try_again", async () => {
+    for (const reason of [
+      "coupon_used_up",
+      "coupon_not_valid",
+      "customer_needed",
+    ]) {
       const s = staffDb({
         coupon: row(),
         reserve: { data: { ok: false, reason, line: null }, error: null },
@@ -530,7 +698,7 @@ describe("bookAsStaff(): a counter booking with a coupon", () => {
         await bookAsStaff(s.db, TENANT, counter({ couponCode: "SAVE200" })),
       ).toEqual({ ok: false, reason, line: null });
     }
-    for (const code of ["55P03", "57014"]) {
+    for (const code of ["55P03", "57014", "40P01"]) {
       const s = staffDb({
         coupon: row(),
         reserve: { data: null, error: { code, message: "timeout" } },
@@ -555,8 +723,9 @@ describe("bookAsStaff(): a counter booking with a coupon", () => {
       lines: [line],
       coupon: { couponId: COUPON, amount: BigInt(1) },
     });
+    expect(s.called()).toEqual(["create_order", "create_order", "create_order"]);
     const sent = s.calls.map(
-      (call) => (call.args.p_request as { coupon?: unknown }).coupon,
+      (call) => (call.args.p_order as SentOrder).coupon,
     );
     expect(sent).toEqual([
       undefined,

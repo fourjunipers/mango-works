@@ -530,7 +530,7 @@ begin
       v_sum_gross := v_sum_gross + v_gross;
     end loop;
     v_non_taxable := coalesce(
-      platform_private.json_whole(v_snapshot, 'nonTaxable', 'invalid_charge'), 0);
+      platform_private.json_whole(v_snapshot, 'non_taxable', 'invalid_charge'), 0);
     if v_sum_vat <> v_tax or v_sum_gross + v_non_taxable <> v_total then
       raise exception 'invalid_charge' using errcode = '22023';
     end if;
@@ -853,7 +853,7 @@ begin
       raise exception 'invalid_request' using errcode = '22023';
     end if;
     -- Not found, or another shop's: the same answer.
-    select o.channel, o.mode, o.customer_id into v_found
+    select o.channel, o.mode, o.customer_id, o.status, o.hold_expires_at into v_found
     from platform.orders o
     where o.id = v_order_id and o.tenant_id = p_tenant_id;
     if not found then
@@ -879,6 +879,19 @@ begin
   -- the phone are a signed-in member's. Neither may use the other's.
   if (v_online and not v_service) or (not v_online and not v_staff) then
     return jsonb_build_object('ok', false, 'reason', 'not_allowed', 'line', null);
+  end if;
+
+  -- Only a draft is held or reserved, or a hold that has run out (settled
+  -- below, under the order's row). Anything else is told so now, before
+  -- the pick could trip over the order's own units; the same is checked
+  -- again under the row.
+  if v_existing then
+    if not (
+      v_found.status = 'draft'
+      or (v_found.status = 'new' and v_found.hold_expires_at <= clock_timestamp())
+    ) then
+      return jsonb_build_object('ok', false, 'reason', 'not_draft', 'line', null);
+    end if;
   end if;
 
   if not v_existing then
@@ -2330,11 +2343,14 @@ drop function platform.cancel_reservation(uuid, uuid, uuid);
 drop function platform.assign_units(uuid, uuid, uuid[]);
 
 -- 8. The order functions ------------------------------------------------------------------------
--- Who may call what (plan §3.9): the service role for booking_page,
+-- Who may call what (plan §3.9). Making, holding, reserving and confirming
+-- follow the channel, as Phase 2 did: the service role for booking_page,
 -- marketplace and api orders only; a signed-in owner, manager or staff
--- member for walk_in and phone orders only. Each has the 6-second lock
--- timeout; its caller answers try_again for 55P03, 57014 and 40P01
--- (apps/platform/lib/try-again.ts).
+-- member for walk_in and phone orders only. Cancelling is the server's and
+-- a member's for any order of the shop, as Phase 2's cancel was: the shop
+-- cancels a web booking at the counter. Naming units is a member's. Each
+-- has the 6-second lock timeout; its caller answers try_again for 55P03,
+-- 57014 and 40P01 (packages/booking/src/try-again.ts).
 
 -- create_order(): a new order with its rentals and charges, held, reserved
 -- or saved as a draft, through reserve_core().
@@ -2502,15 +2518,18 @@ revoke all on function platform.reserve_order(uuid, uuid, jsonb) from public, an
 grant execute on function platform.reserve_order(uuid, uuid, jsonb) to authenticated, service_role;
 alter function platform.reserve_order(uuid, uuid, jsonb) set lock_timeout = '6s';
 
--- Whether the caller may work on this order: the server for an online
--- order, a member with the action's role for a counter or phone order.
+-- Whether the caller may work on this order. p_rule:
+--   'channel'  the server for an online order, a member with the action's
+--              role for a counter or phone order (confirm);
+--   'any'      the server, or a member with the action's role (cancel);
+--   'members'  a member with the action's role only (assign).
 -- 'not_found' for no such order or another shop's, but only once the caller
 -- is known to be someone who may ask.
 create function platform_private.order_caller(
   p_tenant_id uuid,
   p_order_id uuid,
   p_action text,
-  p_members_only boolean
+  p_rule text
 )
 returns text
 language plpgsql
@@ -2525,7 +2544,7 @@ declare
   v_channel text;
   v_online boolean;
 begin
-  if not v_staff and (p_members_only or not v_service) then
+  if not v_staff and (p_rule = 'members' or not v_service) then
     return 'not_allowed';
   end if;
   if p_order_id is null then
@@ -2537,7 +2556,7 @@ begin
   if not found then
     return 'not_found';
   end if;
-  if p_members_only then
+  if p_rule <> 'channel' then
     return 'ok';
   end if;
   v_online := v_channel in ('booking_page', 'marketplace', 'api');
@@ -2548,7 +2567,7 @@ begin
 end;
 $function$;
 
-revoke all on function platform_private.order_caller(uuid, uuid, text, boolean)
+revoke all on function platform_private.order_caller(uuid, uuid, text, text)
   from public, anon, authenticated;
 
 -- confirm_order(): a held order becomes booked.
@@ -2559,7 +2578,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_caller text := platform_private.order_caller(p_tenant_id, p_order_id, 'confirm', false);
+  v_caller text := platform_private.order_caller(p_tenant_id, p_order_id, 'confirm', 'channel');
 begin
   if v_caller <> 'ok' then
     return jsonb_build_object('ok', false, 'reason', v_caller);
@@ -2589,7 +2608,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_caller text := platform_private.order_caller(p_tenant_id, p_order_id, 'cancel', false);
+  v_caller text := platform_private.order_caller(p_tenant_id, p_order_id, 'cancel', 'any');
   v_by text;
   v_reason text;
 begin
@@ -2632,7 +2651,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_caller text := platform_private.order_caller(p_tenant_id, p_order_id, 'assign', true);
+  v_caller text := platform_private.order_caller(p_tenant_id, p_order_id, 'assign', 'members');
   v_ids uuid[];
 begin
   if v_caller <> 'ok' then

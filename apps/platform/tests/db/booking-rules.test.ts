@@ -4,8 +4,8 @@
  *
  * The rule columns and what they refuse; save_booking_rules() by every role
  * and shop against shop; booking_inputs(), the read; the shop's default
- * buffers in reserve() and in the availability read; the Moto Mangos cap
- * inside reserve(), also under races (two online bookings for the cap's last
+ * buffers in create_order() and in the availability read; the Moto Mangos
+ * cap inside create_order(), also under races (two online bookings for the cap's last
  * place give one success and no deadlock, at one place and at two); and
  * bookOnline(), the one server entry point, against this database: a
  * booking the rules refuse leaves it unchanged, and nobody but the server
@@ -22,8 +22,12 @@ import {
 import { roles, type Role } from "@/lib/roles";
 import {
   anonClient,
+  type BookingAnswer,
+  type BookingResult,
+  cancelOrder,
   closedGate,
   createCatalogEntry,
+  createOrder,
   createTenant,
   createUser,
   type Db,
@@ -32,6 +36,7 @@ import {
   forceListing,
   GATE_TIMEOUTS,
   holding,
+  orderSql,
   removeCatalogEntry,
   serviceClient,
   sql,
@@ -77,12 +82,11 @@ type Line = {
   quantity?: number;
   parent?: number;
 };
-type Booked = {
-  ok: true;
-  booking_id: string;
-  lines: { reservation_id: string; unit_ids: string[]; shortage: number }[];
-};
-type Answer = Booked | { ok: false; reason: string; line: number | null };
+// Since Phase 3 stage 2b every booking is an order: create_order(), through
+// the createOrder() helper, which keeps Phase 2's request and answer shapes
+// (booking_id is the order's id).
+type Answer = BookingAnswer;
+type Booked = Extract<BookingAnswer, { ok: true }>;
 type Result<T = Answer> = {
   data: T | null;
   error: { code?: string; message?: string } | null;
@@ -114,41 +118,39 @@ function request(
 
 type Options = { tenant?: TestTenant; mode?: string; hold?: boolean };
 
-/** The server booking for Moto Mangos, straight at reserve(). */
-const mmBook = (lines: Line[], o: Options = {}): Promise<Result> =>
-  Promise.resolve(
-    service.rpc(
-      "reserve",
-      request(
-        o.tenant ?? shop,
-        "marketplace",
-        o.mode ?? "instant",
-        lines,
-        !!o.hold,
-      ),
-    ),
-  ) as Promise<Result>;
+/** The server booking for Moto Mangos, straight at create_order(). */
+const mmBook = (lines: Line[], o: Options = {}): Promise<BookingResult> =>
+  createOrder(
+    service,
+    (o.tenant ?? shop).id,
+    request(
+      o.tenant ?? shop,
+      "marketplace",
+      o.mode ?? "instant",
+      lines,
+      !!o.hold,
+    ).p_request,
+  );
 
 /** The server booking for the shop's own page. */
-const pageBook = (lines: Line[], o: Options = {}): Promise<Result> =>
-  Promise.resolve(
-    service.rpc(
-      "reserve",
-      request(o.tenant ?? shop, "booking_page", "instant", lines, !!o.hold),
-    ),
-  ) as Promise<Result>;
+const pageBook = (lines: Line[], o: Options = {}): Promise<BookingResult> =>
+  createOrder(
+    service,
+    (o.tenant ?? shop).id,
+    request(o.tenant ?? shop, "booking_page", "instant", lines, !!o.hold)
+      .p_request,
+  );
 
 const staffBook = (
   role: Role,
   lines: Line[],
   o: Options = {},
-): Promise<Result> =>
-  Promise.resolve(
-    db(role, o.tenant ?? shop).rpc(
-      "reserve",
-      request(o.tenant ?? shop, "walk_in", "staff", lines, !!o.hold),
-    ),
-  ) as Promise<Result>;
+): Promise<BookingResult> =>
+  createOrder(
+    db(role, o.tenant ?? shop),
+    (o.tenant ?? shop).id,
+    request(o.tenant ?? shop, "walk_in", "staff", lines, !!o.hold).p_request,
+  );
 
 const booked = (result: Result): Booked => {
   expect(result.error, result.error?.message).toBeNull();
@@ -1154,7 +1156,7 @@ describe("the shop's default buffers", () => {
       expect(await free(plain.id, at(11, 12), at(12, 12))).toBe(0);
       expect(await free(plain.id, at(11, 13), at(12, 12))).toBe(1);
       expect(await free(none.id, at(11, 10), at(12, 12))).toBe(1);
-      // And reserve() agrees with the read.
+      // And create_order() agrees with the read.
       expect(
         outcome(
           await pageBook(
@@ -1178,7 +1180,7 @@ describe("the shop's default buffers", () => {
   }, 90_000);
 });
 
-describe("the Moto Mangos cap inside reserve()", () => {
+describe("the Moto Mangos cap inside create_order()", () => {
   const window = (d = 1) => ({ starts_at: at(d), ends_at: at(d + 2) });
 
   it("a vehicle that is not listed, or whose listing is off, can't be booked through Moto Mangos at all; the shop's own page can", async () => {
@@ -1263,10 +1265,14 @@ describe("the Moto Mangos cap inside reserve()", () => {
     );
     // Its time runs out, as the clock would run it.
     // A second ago by the database's clock, which is the one that judges.
+    // (The order carries the hold's expiry now, and its reservations a copy.)
     expect(
       sql(`
-        update platform.reservations
+        update platform.orders
         set hold_expires_at = clock_timestamp() - interval '1 second'
+        where id = '${hold.booking_id}';
+        update platform.reservations
+        set hold_expires_at = (select o.hold_expires_at from platform.orders o where o.id = '${hold.booking_id}')
         where booking_id = '${hold.booking_id}';
       `).failed,
     ).toBe("");
@@ -1274,10 +1280,7 @@ describe("the Moto Mangos cap inside reserve()", () => {
     expect(outcome(await mmBook([{ product_id: bike.id, ...window() }]))).toBe(
       "cap_reached",
     );
-    const cancelled = await service.rpc("cancel_reservation", {
-      p_tenant_id: shop.id,
-      p_booking_id: next.booking_id,
-    });
+    const cancelled = await cancelOrder(service, shop.id, next.booking_id);
     expect(cancelled.data).toMatchObject({ ok: true });
     booked(await mmBook([{ product_id: bike.id, ...window() }]));
   });
@@ -1365,7 +1368,8 @@ describe("the Moto Mangos cap inside reserve()", () => {
     const before = deadlocks();
     const marker = `cap-two-places-${tag}`;
     const lineAt = (location: string) =>
-      JSON.stringify(
+      orderSql(
+        shop.id,
         request(shop, "marketplace", "instant", [
           { product_id: bike.id, location_id: location, ...window() },
         ]).p_request,
@@ -1376,7 +1380,7 @@ describe("the Moto Mangos cap inside reserve()", () => {
     const holder = sqlBackground(`
       begin;
       ${asServer}
-      select platform.reserve('${shop.id}', '${lineAt(shop.locationId)}'::jsonb) ->> 'ok';
+      select ${lineAt(shop.locationId)} ->> 'ok';
       ${gate.wait(marker)}
       commit;
     `);
@@ -1397,7 +1401,7 @@ describe("the Moto Mangos cap inside reserve()", () => {
       from pg_locks w
       join pg_stat_activity a on a.pid = w.pid
       where w.locktype in ('transactionid', 'tuple') and not w.granted
-        and a.query like '%reserve%' and a.query not like '%${marker}%'
+        and a.query like '%create_order%' and a.query not like '%${marker}%'
         and a.pid <> pg_backend_pid()
       limit 1;
     `);
@@ -1416,19 +1420,24 @@ describe("the Moto Mangos cap inside reserve()", () => {
   }, 60_000);
 });
 
-describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its expiry judged once it holds it", () => {
+describe("confirm_order() for a Moto Mangos hold: under the listing's row, its expiry judged once it holds it", () => {
   const window = { starts_at: at(1), ends_at: at(3) };
   const confirmSql = (booking: string) =>
-    `select 'confirm: ' || coalesce(platform.confirm_hold('${shop.id}', '${booking}') ->> 'reason', 'ok');`;
+    `select 'confirm: ' || coalesce(platform.confirm_order('${shop.id}', '${booking}') ->> 'reason', 'ok');`;
   /**
    * Runs a booking's hold out at this very moment, by the database's own
    * clock, as the superuser: to a transaction already open the expiry is
    * after its start, and to everything that follows it is past.
    */
   const runOutNow = (booking: string) => {
-    const { failed } = sql(
-      `update platform.reservations set hold_expires_at = clock_timestamp() where booking_id = '${booking}';`,
-    );
+    // The order carries the expiry that confirm_order() judges; its
+    // reservations carry the copy the sweep and the cap read. Both, the same.
+    const { failed } = sql(`
+      update platform.orders set hold_expires_at = clock_timestamp() where id = '${booking}';
+      update platform.reservations
+        set hold_expires_at = (select o.hold_expires_at from platform.orders o where o.id = '${booking}')
+        where booking_id = '${booking}';
+    `);
     expect(failed).toBe("");
   };
   /**
@@ -1436,9 +1445,12 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
    * it comes by, and a scene that needs such a hold left alone can't keep
    * it away. So the scene is not timed to miss it: it is run with a scooter
    * of its own, and again with a new one if the sweep is seen to have
-   * taken its hold (only the sweep leaves these scenes a reservation in
-   * state expired). The job can't meet two runs within its minute; the
-   * third run is for a sweep some other test file called meanwhile.
+   * taken its hold (a reservation in state expired). The job can't meet two
+   * runs within its minute; the third run is for a sweep some other test
+   * file called meanwhile. Since Phase 3 stage 2b a confirm that finds its
+   * hold run out settles it, which leaves an expired reservation too: so a
+   * scene that fails after such a confirm is run again as well, and its
+   * failure is thrown from the third run.
    */
   async function leftAloneByTheSweep(
     scene: (bike: { id: string; units: string[] }) => Promise<void>,
@@ -1506,9 +1518,12 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
         const states = (await reservationsOf(bike.id)).map(
           (r) => `${r.channel} ${r.state}`,
         );
+        // Phase 3 stage 2b: a confirm that finds the hold run out settles
+        // it (an online order is canceled, its reservations expired);
+        // Phase 2 left the rows held for the sweep.
         expect(states.sort()).toEqual([
-          "booking_page held",
-          "marketplace held",
+          "booking_page expired",
+          "marketplace expired",
         ]);
       } finally {
         await gate.open();
@@ -1533,8 +1548,11 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
     // nothing but that one step has to fit inside the second.
     const gate = await closedGate();
     const holder = sqlBackground(`
-      update platform.reservations
+      update platform.orders
         set hold_expires_at = clock_timestamp() + interval '1 second'
+        where id = '${hold.booking_id}';
+      update platform.reservations
+        set hold_expires_at = (select o.hold_expires_at from platform.orders o where o.id = '${hold.booking_id}')
         where booking_id = '${hold.booking_id}';
       begin;
       ${asServer}
@@ -1565,7 +1583,7 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
       from pg_locks w
       join pg_stat_activity a on a.pid = w.pid
       where w.locktype in ('transactionid', 'tuple') and not w.granted
-        and a.query like '%reserve%' and a.query not like '%${marker}%'
+        and a.query like '%create_order%' and a.query not like '%${marker}%'
         and a.pid <> pg_backend_pid()
       limit 1;
     `);
@@ -1624,7 +1642,8 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
       // The booking, begun after the expiry: to it the hold has run out, so
       // it does not count it, takes the cap's one place and is not yet saved.
       const marker = `booking-in-flight-${tag}-${++counter}`;
-      const body = JSON.stringify(
+      const body = orderSql(
+        shop.id,
         request(shop, "marketplace", "instant", [
           { product_id: bike.id, location_id: second, ...window },
         ]).p_request,
@@ -1632,7 +1651,7 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
       const booking = sqlBackground(`
         begin;
         ${asServer}
-        select 'booking: ' || (platform.reserve('${shop.id}', '${body}'::jsonb) ->> 'ok');
+        select 'booking: ' || (${body} ->> 'ok');
         ${bookingGate.wait(marker)}
         commit;
       `);
@@ -1667,7 +1686,7 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
       from pg_locks w
       join pg_stat_activity a on a.pid = w.pid
       where not w.granted
-        and a.query like '%confirm_hold%'
+        and a.query like '%confirm_order%'
         and a.pid <> pg_backend_pid()
         and (
           (w.locktype = 'tuple'
@@ -1691,7 +1710,7 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
           (
             await watch(`
         select count(*) from pg_stat_activity a
-        where a.query like '%confirm_hold%' and a.pid <> pg_backend_pid()
+        where a.query like '%confirm_order%' and a.pid <> pg_backend_pid()
           and pg_blocking_pids(a.pid) = array(
             select b.pid from pg_stat_activity b
             where b.query like '%${marker}%' and b.pid <> pg_backend_pid());
@@ -1713,12 +1732,13 @@ describe("confirm_hold() for a Moto Mangos hold: under the listing's row, its ex
       expect(confirmed.out).not.toContain("confirm: ok");
       expect(deadlocks()).toBe(before);
 
-      // One place under the cap, one booking: the new one. The hold is still
-      // a run-out hold for the sweep to release; it was never confirmed.
+      // One place under the cap, one booking: the new one. The hold was
+      // never confirmed. (Phase 3 stage 2b: the refused confirm settled it,
+      // so its row is expired; Phase 2 left it held for the sweep.)
       const rows = await reservationsOf(bike.id);
       expect(
         rows.map((r) => `${r.location_id === second} ${r.state}`).sort(),
-      ).toEqual(["false held", "true reserved"]);
+      ).toEqual(["false expired", "true reserved"]);
       expect(rows.filter((r) => r.state === "reserved")).toHaveLength(1);
     } finally {
       await confirmGate.open();
@@ -1873,6 +1893,13 @@ describe("races for the cap's last place", () => {
         // around the expiry, either side of it. Nothing waits for the
         // clock, and whichever side they land is one of the answers below.
         const expires = new Date(Date.now() + 10 + (round % 5) * 15);
+        // On the order, which confirm_order() judges, and on its
+        // reservations, which the cap and the sweep read.
+        await service
+          .from("orders")
+          .update({ hold_expires_at: expires.toISOString() })
+          .eq("id", hold.booking_id)
+          .throwOnError();
         await service
           .from("reservations")
           .update({ hold_expires_at: expires.toISOString() })
@@ -1880,9 +1907,9 @@ describe("races for the cap's last place", () => {
           .throwOnError();
         const [confirmed, booking] = await Promise.all([
           Promise.resolve(
-            service.rpc("confirm_hold", {
+            service.rpc("confirm_order", {
               p_tenant_id: tenant.id,
-              p_booking_id: hold.booking_id,
+              p_order_id: hold.booking_id,
             }),
           ) as Promise<Result>,
           mmBook([{ ...line, location_id: second }], { tenant }),
@@ -2160,7 +2187,7 @@ describe("bookOnline(): the one server entry point, against the database", () =>
       .throwOnError();
   }, 60_000);
 
-  it("a lock that can't be had in time, through the API: reserve() gives up after its own 6 seconds with 55P03, before the API's 8-second limit, and bookOnline() answers try_again with nothing written", async () => {
+  it("a lock that can't be had in time, through the API: create_order() gives up after its own 6 seconds with 55P03, before the API's 8-second limit, and bookOnline() answers try_again with nothing written", async () => {
     const single = await vehicle(1, { tenant });
     await priceByDay(single.id, 10_000, tenant);
     const marker = `lock-timeout-${tag}`;
@@ -2182,17 +2209,18 @@ describe("bookOnline(): the one server entry point, against the database", () =>
     // The same call twice, at once, both through the API as the server:
     // what the database itself says, and what the entry point makes of it.
     const [raw, answer] = await Promise.all([
-      service.rpc(
-        "reserve",
+      createOrder(
+        service,
+        tenant.id,
         request(tenant, "booking_page", "instant", [
           { product_id: single.id, starts_at: pickup(82), ends_at: pickup(84) },
-        ]),
+        ]).p_request,
       ),
       bookOnline(ask(lines), { db: server, now }),
     ]);
     // Both have answered with the lock still held; now it is let go.
     await gate.open();
-    // lock_not_available, not the statement timeout (57014): reserve()'s
+    // lock_not_available, not the statement timeout (57014): create_order()'s
     // own limit ran out first, before the API's 8 seconds.
     expect(raw.error?.code).toBe("55P03");
     expect(raw.error?.message).toMatch(/lock timeout/);
@@ -2200,7 +2228,7 @@ describe("bookOnline(): the one server entry point, against the database", () =>
     // And that limit is the function's own 6 seconds: read, not timed.
     expect(
       sql(
-        `select array_to_string(proconfig, ',') from pg_proc where oid = 'platform.reserve(uuid, jsonb)'::regprocedure;`,
+        `select array_to_string(proconfig, ',') from pg_proc where oid = 'platform.create_order(uuid, jsonb)'::regprocedure;`,
       ).out.split(","),
     ).toContain("lock_timeout=6s");
     expect(written(tenant)).toBe(before);
@@ -2209,7 +2237,7 @@ describe("bookOnline(): the one server entry point, against the database", () =>
     expect((await bookOnline(ask(lines), { db: server, now })).ok).toBe(true);
   }, 60_000);
 
-  it("Ride today through the entry point: Moto Mangos only, and only for a pickup that is now; reserve() itself refuses the mode on any other channel", async () => {
+  it("Ride today through the entry point: Moto Mangos only, and only for a pickup that is now; create_order() itself refuses the mode on any other channel", async () => {
     const listed = await listedVehicle(3, { instant: 1 }, tenant);
     await priceByDay(listed.id, 20_000, tenant);
     await service
@@ -2257,11 +2285,12 @@ describe("bookOnline(): the one server entry point, against the database", () =>
       await expect(ride(pickup(5), pickup(7), { channel })).rejects.toThrow(
         RangeError,
       );
-      const direct = await service.rpc(
-        "reserve",
+      const direct = await createOrder(
+        service,
+        tenant.id,
         request(tenant, channel, "now", [
           { product_id: listed.id, starts_at: pickup(5), ends_at: pickup(7) },
-        ]),
+        ]).p_request,
       );
       expect(direct.error?.message, channel).toBe("invalid_request");
       expect(direct.error?.code, channel).toBe("22023");
@@ -2350,7 +2379,7 @@ describe("bookOnline(): the one server entry point, against the database", () =>
       .throwOnError();
   }, 60_000);
 
-  it("nobody but the server books an online channel: a signed-out visitor and a signed-in Moto Mangos customer can't run reserve() for any shop; a member can't use an online channel", async () => {
+  it("nobody but the server books an online channel: a signed-out visitor and a signed-in Moto Mangos customer can't run create_order() for any shop; a member can't use an online channel", async () => {
     const before = written(tenant);
     const line = [
       { product_id: bike.id, starts_at: pickup(90), ends_at: pickup(92) },
@@ -2358,11 +2387,19 @@ describe("bookOnline(): the one server entry point, against the database", () =>
     for (const channel of ["booking_page", "marketplace", "api"]) {
       const body = request(tenant, channel, "instant", line);
       // Signed out: not granted at all.
-      const visitor = await anonClient().rpc("reserve", body);
+      const visitor = await createOrder(
+        anonClient(),
+        body.p_tenant_id,
+        body.p_request,
+      );
       expect(visitor.error?.code, `signed out, ${channel}`).toBe("42501");
       expect(visitor.data).toBeNull();
       // A Moto Mangos customer is a signed-in person with no place in any shop.
-      const customer = (await outsider.db.rpc("reserve", body)) as Result;
+      const customer = await createOrder(
+        outsider.db,
+        body.p_tenant_id,
+        body.p_request,
+      );
       expect(customer.data, `customer, ${channel}`).toEqual({
         ok: false,
         reason: "not_allowed",
@@ -2370,7 +2407,11 @@ describe("bookOnline(): the one server entry point, against the database", () =>
       });
       // The shop's own people book as themselves, at the counter or on the phone.
       for (const role of roles) {
-        const member = (await db(role, tenant).rpc("reserve", body)) as Result;
+        const member = await createOrder(
+          db(role, tenant),
+          body.p_tenant_id,
+          body.p_request,
+        );
         expect(member.data, `${role}, ${channel}`).toEqual({
           ok: false,
           reason: "not_allowed",
@@ -2379,10 +2420,11 @@ describe("bookOnline(): the one server entry point, against the database", () =>
       }
     }
     // And the customer can't book as staff either.
-    const asStaff = (await outsider.db.rpc(
-      "reserve",
-      request(tenant, "walk_in", "staff", line),
-    )) as Result;
+    const asStaff = await createOrder(
+      outsider.db,
+      tenant.id,
+      request(tenant, "walk_in", "staff", line).p_request,
+    );
     expect(asStaff.data).toMatchObject({ ok: false, reason: "not_allowed" });
     expect(written(tenant)).toBe(before);
   }, 60_000);
