@@ -13,6 +13,107 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
 
+## Phase 3, stage 2b: the order core and the test port (branch `platform/phase-3-stage-2b-core`, 25 Nov 2026)
+
+The third build stage of Phase 3 (`docs/phase-3-plan.md` §2, §3.3, §3.8 row 3, §4.2, §5.1, §8 row 2b). From `main` at `e2cf33d` (PR 77 merged; 71 migrations). **One migration, `20261125000100_platform_order_core.sql`, local only.** Nothing on staging or live was touched. **It deletes rows** (item 1), so its staging push is a separate step on the owner's word.
+
+**Every booking is an order.** `platform.reserve()`, `confirm_hold()`, `cancel_reservation()` and `assign_units()` are dropped; the only ways in are `create_order()`, `hold_order()`, `reserve_order()`, `confirm_order()`, `cancel_order()` and `assign_order_units()`.
+
+**What the migration does** (replaced functions behind an MD5 guard: `reserve`, `confirm_hold`, `cancel_reservation`, `assign_units`, `currency_locked`)
+
+1. **Locks the three booking tables first, then looks again for reservations with no rental and clears them** with their blocks and the coupon uses of bookings that are no order, as migration 2 did; then `reservations.rental_id` is required. Same lock hardening as migration 2 (one `DO` block: `set_config('lock_timeout', '10s', true)`, then `lock table … in access exclusive mode`). Downtime blocks are counted before and after and must not move.
+2. **A reservation's rental is one of its own order's**: `(tenant_id, booking_id, rental_id)` is keyed to `rentals (tenant_id, order_id, id)`.
+3. **`rentals.position`** (the line a rental was booked as); **`coupon_redemptions.customer_id` is keyed to `customers`**; **value lists**: `orders.cancelled_by` is `customer`, `shop` or `system`, `cancel_reason` is `expired`, `customer_request`, `shop_request`, `no_show` or `other` (`request_status` stays without a list until 3M).
+4. **No order is committed without its number**: a deferred constraint trigger, `orders_require_number`.
+5. **`platform_private.reserve_core(tenant, order, rentals, request)`**: `reserve()` written for orders. It inserts the order and its rentals after the coupon's row and before the reservations, each reservation with its `rental_id`, stores the booking charge with its lines, writes the coupon's use with the order's customer, and takes the shop's counter last. Hold, reserve or draft (a draft takes no stock and no lock). 200 lines. Only an exclusion violation and the block's own key to its unit are "a unit was taken, pick again"; any other key failure is raised.
+6. **The cores** `confirm_hold` (live reservations only), `cancel_reservation` and `assign_units` in `platform_private`, each taking the order's row; nobody signed in can call them.
+7. **The six order functions**, each `security definer`, empty search path, `lock_timeout = '6s'`; `create_order` is idempotent by an optional key.
+8. **`platform.currency_locked()`** is true for a shop with an order, and Settings maps the orders' currency key (`23503`) to the same "currency is fixed" message as the trigger's.
+
+**The owner's decisions in this stage**
+
+- **"A unit on an order only once" means not twice at the same time** (25 Nov 2026). Extensions, a long rental's monthly periods and a swap back may reuse the unit. **No new table constraint and no `rentals.unit_id`** (plan M2 stands). `create_order` and the assign core refuse the same unit on two lines of one order whose rental times overlap or touch (`unit_twice`, not `unit_taken`), and the automatic pick follows the rule; another period of the same unit is allowed. Plan §3.8 row 3 and §14.
+
+**Decided here, for the owner to confirm** (asked 25 Nov 2026 with the unit question; the answer covered the unit rule only, so these went ahead as recommended)
+
+- **One line per vehicle.** A vehicle rental is one bike (`rentals_vehicle_quantity_check`), so `create_order` refuses a vehicle line with a quantity above 1 (`invalid_request`) and callers send N lines. `bookOnline()` and `bookAsStaff()` still take a line for N bikes: they price it as one quote line and send N rentals, and its one billed line names the first rental. The screens of stage 9 send one line per bike.
+- **The cancel lists** above.
+- **"Touch" is read on rental times**: a line that starts the moment another ends, for the same unit, is refused; a period that starts after the turnaround (so the two blocks sit back to back) is allowed. The owner's note said both "overlapping or touching: refused" and "back-to-back periods: allowed"; this is the reading that keeps both.
+
+**Differed from the plan** (each is in the plan's §14)
+
+- **Where the order's row is taken.** §3.3 says "advisory locks, then the order's row, then settle". A function that picks units knows its unit locks only after the pick, and a retry must give them back. So `reserve_core` (holding or reserving a draft) and the `assign_units` core take the order's row inside each attempt, after that attempt's unit locks: §4.2's order holds exactly. A run-out hold is settled there; since a refusal undoes the attempt, `reserve_core` takes the row once more after the loop, with no unit lock held, and settles again, so the settlement is still kept.
+- **Who may cancel.** The server or a member with the cancel role, for any order of the shop, as Phase 2's cancel was (a shop cancels a web booking at the counter). Making, holding, reserving and confirming follow the channel, as §3.9 says.
+- **One reservation of an order can't be cancelled through the API** until `cancel_rental()` (migration 6). The core still can; only tests reach it.
+- **Charges are optional in `create_order`**, and checked by addition and comparison only: the rate groups against the totals, the lines' VAT against the charge's, the snapshot's totals and deposit against the columns. Kinds `booking` and `period`.
+- **A draft holds no coupon use**; `hold_order` and `reserve_order` take the coupon again (`p_request`).
+- **`create_order` takes the id of a customer there is**; it does not make one (plan §4.2 class 3.6). `save_customer()` first, today.
+- **The idempotent repeat answers the order as it stands now**, marked `repeat`.
+- **Callers answer `try_again` for `40P01` too** (`isOrderTryAgain`), with `55P03` and `57014`.
+- **Audit**: the booking events keep Phase 2's entity `bookings` (the order's id), beside the row events of `orders` and `rentals`; a settled hold writes `hold_expired`.
+
+**App code**
+
+- **`packages/booking` (`@mango/booking`)**, new, server-only (decision 15): `bookOnline()` moved here with `booking-inputs`, `pricing-inputs`, `coupons` and `try-again`, plus `charges` (the booking charge from a quote snapshot) and `order-lines` (N bikes to N lines and back). `apps/platform/lib` keeps re-exports. The static test (`src/book-online.test.ts`) walks both apps and every package: nothing but `bookOnline()` can be a path to `create_order()` for an online channel. CI's matrix has the new workspace.
+- **`apps/platform/lib/staff-booking.ts`** calls the order functions; new `reserveDraft()`; `cancelReservation()` cancels a whole order; `assignUnits()` names the order and the rental.
+- **Seed** (`scripts/seed.mts`) and `e2e/unit-move.spec.ts` book through `create_order`.
+
+**Stage 1's known issues**
+
+- **N7: gone with `reserve()`.** The tolerance it described lives in `expire_holds()` (a run-out hold found through its blocks' units as well as through its own product), which this stage did not re-create; `move_unit()` keeps a reservation on its unit's product, so that branch still can't be reached by a test.
+- **N3 and N6: not fixed here.** This stage re-created none of their functions (`units_product_not_retired`, the counts triggers, `units_busy_on_delete`, `unit_blocks_guard`). N6's `unit_blocks_guard` is still migration 5's.
+
+**Tests** (`apps/platform/tests/db`)
+
+**The port, counted per file** (tests are `it(` / `it.each(` declarations; assertions are `expect(` calls). No test was deleted, skipped or weakened; every race keeps its rounds.
+
+| File | Tests before | Tests after | Assertions before | Assertions after |
+| --- | --- | --- | --- | --- |
+| `reservations.test.ts` | 52 | 52 | 281 | 282 |
+| `availability.test.ts` | 78 | 78 | 462 | 469 |
+| `booking-rules.test.ts` | 45 | 45 | 205 | 205 |
+| `coupons.test.ts` | 57 | 57 | 414 | 418 |
+| `product-extras.test.ts` | 28 | 28 | 147 | 147 |
+| `phase-2-accept.test.ts` | 4 | 4 | 14 | 14 |
+| `unit-lock-rules.test.ts` | 24 | 24 | 157 | 157 |
+| `orders.test.ts` | 30 | 30 | 164 | 165 |
+
+- **How it was ported.** Shared helpers at the end of `helpers.ts` (`createOrder`, `orderSql`, `cancelOrder`, `cancelReservationCore`, `orderWithRental`, `createCustomer`) take a Phase 2 request, send a vehicle line for N bikes as N lines and fold the answer back to one entry per line the test sent, so requests, rounds and outcomes stay as they were.
+- **Outcomes that changed, by design:**
+  - a vehicle line for N bikes is N reservations of one, so row assertions count rows and add up shortages; a shortage is filled rental by rental;
+  - two lines of one product whose times touch no longer share a bike (the 25 Nov rule): `reservations.test.ts` moves the second line an hour later;
+  - a coupon with a limit per customer and no customer is refused `customer_needed` (it was booked, with the limit not enforced);
+  - a confirm or an assign on a run-out hold answers `hold_expired` and settles the order (assign answered `not_assignable`; a confirm left the rows `held` for the sweep);
+  - cancelling one row with its extras goes through the core, so who may do it is not tested until `cancel_rental()`;
+  - the `move_unit()` split tests use gear, since a vehicle row is never for several units now;
+  - an order by hand needs its number, and a rental its position; `rental_id` is required.
+- **`order-core.test.ts`** (new, 30 tests, 191 assertions): what an order writes; one line per vehicle; a held order's one expiry; drafts; who may; **50 orders at once in each of three shops** (no number or code twice, numbers run on from the counter); an order with no number refused at commit; the idempotency key, also six calls at once; **200 lines booked and timed, 201 refused**; a refusal leaves nothing written (orders, rentals, reservations, blocks, charges, lines, uses, the counter); a key failure that is not the block's key to its unit is raised, the unit's own is "pick again"; the unit rule (twice with overlapping or touching times refused, back-to-back periods allowed, an overlap across orders refused by the pick, by name and by the exclusion constraint; the assign core); **a draft held, run out, held again and confirmed**, three shops; **a run-out hold settled and kept** when `confirm_order` or `assign_order_units` answers `hold_expired`, staff and online; `cancel_order` and its lists; charges stored; **the per-customer limit, the last use of one customer by two staff at once, 10 rounds × 3 shops**; the currency lock; the cores closed to everyone; **migration 3's re-check**, run again from the migration's own text inside a transaction that is rolled back.
+- **`caller-functions.test.ts`: the pin went down from 24 lines to 21** (16 functions, 4 column defaults, 1 policy): `reserve`, `confirm_hold` and `cancel_reservation` left it and nothing joined.
+- `default-grants.test.ts`, `lock-strength.test.ts`, `tenant-isolation.test.ts`: the new functions and columns.
+- **Unit:** `packages/booking` 39 (the 28 of `book-online.test.ts` moved from the platform, 11 new for `order-lines`); the platform's `staff-booking.test.ts` and `coupons.test.ts` rewritten for the order functions.
+
+**Results** (25 Nov 2026, this worktree's stack)
+
+- `npm run typecheck`, `npm run lint`: clean in every workspace.
+- `npm test`: marketplace 370, platform 693, `@mango/booking` 39, `@mango/core` 720, `@mango/db` 11.
+- Platform database suite, once, on a fresh `supabase db reset` (72 migrations): see "The full suite" below.
+
+**Known issues and follow-ups**
+
+- **An online or priced staff line for N bikes is one billed line** naming the first of its N rentals. Per-vehicle revenue (Phase 1b) wants a line per bike: the screens of stage 9 should send one line per bike, and Phase 8's booking page too.
+- **`create_order` does not make a customer.** A caller saves the customer first.
+- **`assign_order_units` on a rental whose gear row `move_unit()` split** (two live reservations) answers `not_assignable`.
+- **The sweep leaves a run-out order `new`** until an order function touches it; the close job is migration 9's (plan §3.6).
+- **A cancel voids the order's open charges.** Payments and the credit they leave arrive with the ledger (migration 4).
+- **The hold tests set `orders.hold_expires_at` and the reservations' by hand** to run a hold out: `confirm_order` judges the order's, the sweep and `coupon_uses()` the reservations'. The functions always write both together.
+- N3 and N6 above.
+
+**Before this goes to staging** (the owner's word; it deletes data): staging must be at 71 of 71 with `main`'s bodies (the guard checks the five functions and stops with nothing changed if one differs). Count reservations with no rental before (staging's seed made 5 after migration 2, so expect 5 cleared with their blocks; no order exists yet, so every coupon redemption goes too); after: 0, downtime blocks unchanged, `reservations.rental_id` not null, `platform.reserve` gone; then `npm run seed:staging`, which now books through `create_order`. **On live the count must be 0 before the push.**
+
+**Local set-up.** This worktree (`.claude/worktrees/phase-3-stage-2b`) has its own stack, `Bike_Booking_phase3_s2b`, on ports 638xx (API 63821, database 63822, shadow 63820, Studio 63823, mail 63824, analytics 63827, pooler 63829, inspector 63883), started with CI's service list (the full list failed its health check on analytics and Studio); `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. No other stack was touched.
+
+**Next:** stage 3, the payments ledger (migration 4).
+
 ## Phase 3, stage 2a: orders: tables, RLS, customers, settings (branch `platform/phase-3-stage-2a-orders`, 24 Nov 2026)
 
 The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 row 2, §3.9, §3.10, §9.1, §8 stage 2a). From `main` at `4901c0d` (PR 70 merged; 70 migrations). **One migration, `20261124000100_platform_orders.sql`, local only.** Nothing on staging or live was touched. **It deletes rows** (below), so its staging push is a separate step on the owner's word.
