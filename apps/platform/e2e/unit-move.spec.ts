@@ -61,11 +61,12 @@ test("a booked vehicle moved to another product: the form says how many bookings
   const unitId = unit.data!.id as string;
 
   const book = async (n: number) => {
-    const { data, error } = await db.rpc("reserve", {
+    const { data, error } = await db.rpc("create_order", {
       p_tenant_id: tenantId,
-      p_request: {
+      p_order: {
         channel: "walk_in",
         mode: "staff",
+        action: "reserve",
         lines: [
           {
             product_id: fromId,
@@ -79,7 +80,7 @@ test("a booked vehicle moved to another product: the form says how many bookings
     });
     expect(error).toBeNull();
     expect(data).toMatchObject({ ok: true });
-    return (data as { booking_id: string }).booking_id;
+    return (data as { order_id: string }).order_id;
   };
   const bookedOn = async () => {
     const { data } = await db
@@ -157,9 +158,9 @@ test("a booked vehicle moved to another product: the form says how many bookings
     expect(askedAgain).toBe(false);
   } finally {
     for (const booking of bookings) {
-      await db.rpc("cancel_reservation", {
+      await db.rpc("cancel_order", {
         p_tenant_id: tenantId,
-        p_booking_id: booking,
+        p_order_id: booking,
       });
     }
     await db.from("units").delete().eq("id", unitId);

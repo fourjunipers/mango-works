@@ -689,9 +689,12 @@ revoke all on function platform_private.store_charges(uuid, uuid, text, jsonb, u
 --   not_allowed, not_found, unavailable, unit_taken, not_listed,
 --   cap_reached, coupon_not_valid, coupon_used_up, try_again as reserve()
 --   answered them, and
---   unit_twice       one unit named on two lines whose times overlap or
---                    touch (the owner, 25 Nov 2026: a bike is never on an
---                    order twice at the same time; another period is fine);
+--   unit_twice       one unit named on two lines whose rental times overlap
+--                    or touch (the owner, 25 Nov 2026: a bike is never on
+--                    an order twice at the same time; another period of
+--                    the same bike is fine, and the pick follows the same
+--                    rule). "Touch": one line starts the moment the other
+--                    ends, which is one rental written twice;
 --   customer_needed  a coupon with a limit per customer, on an order with
 --                    no customer (plan §5.1);
 --   not_draft        the order there is can't be held or reserved now.
@@ -1042,14 +1045,15 @@ begin
       ) then
         raise exception 'unit_not_found' using errcode = 'P0001';
       end if;
-      -- The same unit on an earlier line whose time overlaps or touches
-      -- this one's: a bike is never on an order twice at the same time.
-      -- Another period of the same unit is fine.
+      -- The same unit on an earlier line whose rental time overlaps or
+      -- touches this one's: a bike is never on an order twice at the same
+      -- time. Another period of the same unit is fine.
       if exists (
         select 1
         from unnest(v_named_unit, v_named_line) t(u, line)
         where t.u = any (v_units)
-          and (v_periods[t.line] && v_periods[v_i] or v_periods[t.line] -|- v_periods[v_i])
+          and tstzrange(v_starts[t.line], v_ends[t.line], '[]')
+            && tstzrange(v_starts[v_i], v_ends[v_i], '[]')
       ) then
         return jsonb_build_object('ok', false, 'reason', 'unit_twice', 'line', v_i - 1);
       end if;
@@ -1199,7 +1203,8 @@ begin
       -- this window; then the one whose next block starts soonest after;
       -- then the lower lock key. A unit with no earlier block sorts last,
       -- so long gaps stay whole. A unit this order already takes for a
-      -- time that overlaps or touches this line's is not picked again.
+      -- rental time that overlaps or touches this line's is not picked
+      -- again.
       for v_i in 1..v_count loop
         exit when v_draft;
         continue when v_types[v_i] = 'service' or v_i = any (v_named_line);
@@ -1210,8 +1215,11 @@ begin
           v_product_ids[v_i], v_location_ids[v_i], v_periods[v_i]) f(id)
         where f.id <> all (v_exclude)
           and not exists (
-            select 1 from unnest(v_pick_unit, v_pick_period) t(u, period)
-            where t.u = f.id and (t.period && v_periods[v_i] or t.period -|- v_periods[v_i])
+            select 1 from unnest(v_pick_unit, v_pick_period, v_pick_line) t(u, period, line)
+            where t.u = f.id and (
+              t.period && v_periods[v_i]
+              or tstzrange(v_starts[t.line], v_ends[t.line], '[]')
+                && tstzrange(v_starts[v_i], v_ends[v_i], '[]'))
           );
         v_demand := platform_private.shortage_demand(
             v_product_ids[v_i], v_location_ids[v_i], v_periods[v_i])
@@ -1240,8 +1248,11 @@ begin
           ) after on true
           where f.id <> all (v_exclude)
             and not exists (
-              select 1 from unnest(v_pick_unit, v_pick_period) t(u, period)
-              where t.u = f.id and (t.period && v_periods[v_i] or t.period -|- v_periods[v_i])
+              select 1 from unnest(v_pick_unit, v_pick_period, v_pick_line) t(u, period, line)
+              where t.u = f.id and (
+                t.period && v_periods[v_i]
+                or tstzrange(v_starts[t.line], v_ends[t.line], '[]')
+                  && tstzrange(v_starts[v_i], v_ends[v_i], '[]'))
             )
           order by before.ends desc nulls last, after.starts asc nulls last,
             hashtext(f.id::text), f.id
@@ -2033,9 +2044,9 @@ alter function platform_private.cancel_reservation(uuid, uuid, uuid, text, text)
 -- taken in each attempt after that attempt's unit locks, and:
 --   hold_expired  the order's hold had run out: it is settled now, and
 --                 stays so;
---   unit_twice    a named unit is already on this order for a time that
---                 overlaps or touches this reservation's (the owner, 25 Nov
---                 2026). A fill never picks such a unit.
+--   unit_twice    a named unit is already on this order for a rental
+--                 time that overlaps or touches this reservation's (the
+--                 owner, 25 Nov 2026). A fill never picks such a unit.
 create function platform_private.assign_units(
   p_tenant_id uuid,
   p_order_id uuid,
@@ -2155,7 +2166,8 @@ begin
               from platform.unit_blocks b
               join platform.reservations o on o.id = b.reservation_id
               where b.unit_id = f.id and o.booking_id = v_r.booking_id and o.id <> v_r.id
-                and b.period -|- v_r.block_period
+                and tstzrange(o.starts_at, o.ends_at, '[]')
+                  && tstzrange(v_r.starts_at, v_r.ends_at, '[]')
             )
           order by before.ends desc nulls last, after.starts asc nulls last,
             hashtext(f.id::text), f.id
@@ -2187,7 +2199,8 @@ begin
           from platform.unit_blocks b
           join platform.reservations o on o.id = b.reservation_id
           where b.unit_id = any (v_add) and o.booking_id = v_r.booking_id and o.id <> v_r.id
-            and (b.period && v_r.block_period or b.period -|- v_r.block_period)
+            and tstzrange(o.starts_at, o.ends_at, '[]')
+              && tstzrange(v_r.starts_at, v_r.ends_at, '[]')
         ) then
           return jsonb_build_object('ok', false, 'reason', 'unit_twice');
         end if;
