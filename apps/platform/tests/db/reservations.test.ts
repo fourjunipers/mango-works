@@ -521,7 +521,11 @@ describe("who may book", () => {
     const before = await written();
     for (const channel of ["booking_page", "marketplace", "api"]) {
       // A signed-in member, even the owner, can't book as an online channel.
-      const member = await createOrder(db("owner"), shop.id, request(shop, channel, "instant", [line]).p_request);
+      const member = await createOrder(
+        db("owner"),
+        shop.id,
+        request(shop, channel, "instant", [line]).p_request,
+      );
       expect(member.data, channel).toEqual({
         ok: false,
         reason: "not_allowed",
@@ -529,7 +533,11 @@ describe("who may book", () => {
       });
     }
     for (const channel of ["walk_in", "phone"]) {
-      const server = await createOrder(service, shop.id, request(shop, channel, "staff", [line]).p_request);
+      const server = await createOrder(
+        service,
+        shop.id,
+        request(shop, channel, "staff", [line]).p_request,
+      );
       expect(server.data, channel).toEqual({
         ok: false,
         reason: "not_allowed",
@@ -571,7 +579,11 @@ describe("who may book", () => {
       { product_id: bike.id, starts_at: at(0), ends_at: at(1) },
     ]);
     const before = await written();
-    const stranger = await createOrder(outsider.db, args.p_tenant_id, args.p_request);
+    const stranger = await createOrder(
+      outsider.db,
+      args.p_tenant_id,
+      args.p_request,
+    );
     expect(stranger.data).toEqual({
       ok: false,
       reason: "not_allowed",
@@ -1068,7 +1080,11 @@ describe("reserve(): what a booking writes", () => {
       ],
     ];
     for (const [what, p_request] of bad) {
-      const { data, error } = await createOrder(db("owner"), shop.id, p_request as never);
+      const { data, error } = await createOrder(
+        db("owner"),
+        shop.id,
+        p_request as never,
+      );
       expect(data, what).toBeNull();
       expect(error?.message, what).toBe("invalid_request");
     }

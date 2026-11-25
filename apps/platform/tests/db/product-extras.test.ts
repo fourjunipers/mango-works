@@ -10,8 +10,9 @@
  * in place and as a race, with no deadlock); and the lock timeout on
  * confirm_order(), cancel_order(), assign_order_units() and move_unit()
  * (Phase 2's confirm_hold(), cancel_reservation() and assign_units(); every
- * booking is an order since Phase 3 stage 2b), through the API. The race runs in three shops: Bangkok (THB), New York
- * (USD, daylight saving) and Saigon (VND).
+ * booking is an order since Phase 3 stage 2b), through the API. The race
+ * runs in three shops: Bangkok (THB), New York (USD, daylight saving) and
+ * Saigon (VND).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { quote } from "@mango/core/quote";

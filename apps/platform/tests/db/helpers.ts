@@ -1092,7 +1092,10 @@ export function cancelReservationCore(
         '00000000-0000-0000-0000-000000000000'),
       '${reservationId}', 'shop', 'shop_request')::text;`);
   if (failed) return { data: null, error: { message: failed } };
-  return { data: withBookingId(JSON.parse(out.split("\n").pop()!)), error: null };
+  return {
+    data: withBookingId(JSON.parse(out.split("\n").pop()!)),
+    error: null,
+  };
 }
 
 /**
