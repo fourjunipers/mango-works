@@ -2111,10 +2111,9 @@ describe("both booking paths, on real rows: decideDiscounts → quote() → rese
 
   it("a coupon archived, switched off or used up between the quote and reserve(): the rules passed, and reserve() refuses under the lock with nothing written", async () => {
     const owner = db("owner", tenant);
-    // The call that books: reserve() while lib/ still calls it,
-    // create_order() once it does.
-    const booking = (fn: string) => fn === "reserve" || fn === "create_order";
-    /** A member's client that does something else just before reserve(). */
+    // The call that books: create_order(), which was reserve().
+    const booking = (fn: string) => fn === "create_order";
+    /** A member's client that does something else just before it. */
     const then = (between: () => Promise<unknown>): StaffDb => ({
       rpc(fn, args) {
         const call = () => staff().rpc(fn, args);
@@ -3713,11 +3712,14 @@ describe("the migration's guard", () => {
     // one of them (review of PR 48, finding 1).
     expect(guard!.match(/'[0-9a-f]{32}'/g)).toHaveLength(8);
     expect(guard).toContain("'platform.confirm_hold(uuid, uuid)'");
-    // Today's bodies are the migration's own, not the ones it replaced: the
-    // guard run again refuses, naming the first function that differs, and
-    // changes nothing (it is one statement, and it only reads).
+    // Today's database is not the one the guard expects: run again it
+    // refuses and changes nothing (it is one statement, and it only reads).
+    // Since Phase 3 stage 2b (20261125000100) the first function it looks
+    // at, reserve(), is gone, so it stops there, where it used to stop on a
+    // body that differs.
+    const gone = /function "platform\.reserve\(uuid, jsonb\)" does not exist/;
     const again = sql(guard!);
-    expect(again.failed).toMatch(/is not the body main has \(md5 [0-9a-f]{32}/);
+    expect(again.failed).toMatch(gone);
     // On a database that has the bodies it expects, it passes: each
     // function is put back as main had it, inside a transaction that is
     // undone, with the guard's own MD5 for it checked first.
@@ -3735,7 +3737,8 @@ describe("the migration's guard", () => {
       ${guard}
       rollback;
     `);
-    expect(drifted.failed).toMatch(/is not the body main has/);
+    // The same stop, for the same reason, and the transaction is undone.
+    expect(drifted.failed).toMatch(gone);
   });
 
   it("stage 10's migration has the same guard for the three functions it re-creates, and its check of stored codes passes on today's coupons", () => {

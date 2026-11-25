@@ -1398,9 +1398,9 @@ describe("assign_units()", () => {
     const shortIds = (await reservationsOf(bike.id))
       .filter((r) => r.shortage > 0)
       .map((r) => r.id);
-    expect((await assign(db("staff", saigon), saigon, shortIds[0])).data).toEqual(
-      { ok: false, reason: "unavailable" },
-    );
+    expect(
+      (await assign(db("staff", saigon), saigon, shortIds[0])).data,
+    ).toEqual({ ok: false, reason: "unavailable" });
     await addUnits(bike.id, 2, saigon);
     // Two units for three short rentals: two are filled, the third stays short.
     const parts = [];
@@ -1408,7 +1408,8 @@ describe("assign_units()", () => {
       parts.push(await assign(db("staff", saigon), saigon, id));
     expect(parts.map((p) => outcome(p))).toEqual(["ok", "ok", "unavailable"]);
     expect(
-      parts.flatMap((p) => (p.data!.added as string[] | undefined) ?? []).length,
+      parts.flatMap((p) => (p.data!.added as string[] | undefined) ?? [])
+        .length,
     ).toBe(2);
     expect(await shortageOf(bike.id)).toBe(1);
   });
