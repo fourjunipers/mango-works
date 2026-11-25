@@ -96,10 +96,13 @@ The third build stage of Phase 3 (`docs/phase-3-plan.md` §2, §3.3, §3.8 row 3
 
 - `npm run typecheck`, `npm run lint`: clean in every workspace.
 - `npm test`: marketplace 370, platform 693, `@mango/booking` 39, `@mango/core` 720, `@mango/db` 11.
-- Platform database suite, once, on a fresh `supabase db reset` (72 migrations): see "The full suite" below.
+- **Platform database suite, once, on its own, on a fresh `supabase db reset` (72 migrations): 824 of 825 passed, 28 files, 37 minutes; the database's deadlock counter 0 before and 0 after.** No other database suite was running on the machine. The one failure was `order-core.test.ts`' 200-line order: sent through the API on a machine busy with the suite, it ran past the API's 8-second statement limit and was ended (`57014`, nothing written). That is a finding, not a flake (next item). The test now runs the call in the database as the staff member, without the API's limit, and records the time without bounding it; run alone afterwards it passed (5 runs). **The full suite was not run a second time locally after that change: CI's run on the PR is the full suite on the final commit.**
+- **The 200-line order, timed** (200 lines of one gear product with 300 units, the worst case for the pick: every line reads the same 300 free units again): **about 2.7 s inside the database on an idle machine; 5.3 s through the API in CI; over 8 s through the API on this machine in the middle of the full suite.** So a 200-line order of one product can be ended by the API's 8-second limit on a loaded server; the caller is then answered `try_again` with nothing written. A real group order (40 vehicles of a few models, with extras) is lighter, but this was not measured.
+- An earlier run of the suite the same afternoon is void: the computer went to sleep in the middle of it (single tests report 11 and 87 minutes). It ended 819 of 825, all six failures in the two files that were running across the sleep.
 
 **Known issues and follow-ups**
 
+- **A 200-line order is slow** (above): the pick reads a product's free units once per line and compares them with what the call has already picked, so the work grows with lines × units. **For the owner to decide:** leave it (a 200-line order of one product is rare and a retry is safe), lower the cap, or have `reserve_core` pick all the lines of one product, place and window in one read (a change to the pick, best made with stage 5's `add_to_order`, which reuses it).
 - **An online or priced staff line for N bikes is one billed line** naming the first of its N rentals. Per-vehicle revenue (Phase 1b) wants a line per bike: the screens of stage 9 should send one line per bike, and Phase 8's booking page too.
 - **`create_order` does not make a customer.** A caller saves the customer first.
 - **`assign_order_units` on a rental whose gear row `move_unit()` split** (two live reservations) answers `not_assignable`.
