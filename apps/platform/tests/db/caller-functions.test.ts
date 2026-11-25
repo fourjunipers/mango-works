@@ -132,6 +132,60 @@ describe("direct auth.uid() and auth.role() uses are pinned; the count only goes
   });
 });
 
+describe("stage 2a (20261124000100_platform_orders): nothing new reads auth.*, and nothing points at auth.users", () => {
+  it("what it created or re-created reads the caller through app_uid() and app_role()", () => {
+    for (const [name, helper] of [
+      ["platform.move_unit", "platform_private.app_role()"],
+      ["platform_private.customers_audit", "platform_private.app_uid()"],
+      ["platform_private.staff_may", "platform_private.app_uid()"],
+    ] as const) {
+      const body = sql(`select pg_get_functiondef('${name}'::regproc);`).out;
+      expect(body, name).toContain(helper);
+      expect(body, name).not.toMatch(/auth\./);
+    }
+    for (const name of [
+      "platform.save_customer",
+      "platform.save_staff_permissions",
+      "platform_private.tenants_add_order_counter",
+      "platform_private.booking_roles",
+    ])
+      expect(
+        sql(`select pg_get_functiondef('${name}'::regproc);`).out,
+        name,
+      ).not.toMatch(/auth\./);
+  });
+
+  it("the two created_by defaults are app_uid(); no column of the six tables has a key to auth.users", () => {
+    const defaults = sql(`
+      select c.relname || '.' || a.attname || ' ' || pg_get_expr(d.adbin, d.adrelid)
+      from pg_attrdef d
+      join pg_class c on c.oid = d.adrelid
+      join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+      where c.oid in ('platform.customers'::regclass, 'platform.orders'::regclass)
+        and a.attname = 'created_by'
+      order by 1;
+    `);
+    expect(defaults.failed).toBe("");
+    expect(defaults.out.split("\n")).toEqual([
+      "customers.created_by platform_private.app_uid()",
+      "orders.created_by platform_private.app_uid()",
+    ]);
+    const keys = sql(`
+      select count(*)
+      from pg_constraint k
+      join pg_class f on f.oid = k.confrelid
+      where k.contype = 'f'
+        and f.relnamespace = 'auth'::regnamespace
+        and k.conrelid in (
+          'platform.customers'::regclass, 'platform.orders'::regclass,
+          'platform.rentals'::regclass, 'platform.order_charges'::regclass,
+          'platform.order_lines'::regclass, 'platform.order_counters'::regclass);
+    `);
+    expect(keys.failed).toBe("");
+    expect(keys.out).toBe("0");
+  });
+});
+
 describe("app_uid() and app_role()", () => {
   let shop: TestTenant;
   beforeAll(async () => {

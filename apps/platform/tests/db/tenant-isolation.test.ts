@@ -44,6 +44,11 @@ type Fixture = TestTenant & {
   couponId: string;
   /** A service, offered with every vehicle (Phase 2, stage 5). */
   serviceId: string;
+  /** Orders (Phase 3, stage 2a): a customer, an order, its rental and charge. */
+  customerId: string;
+  orderId: string;
+  rentalId: string;
+  chargeId: string;
 };
 
 let a: Fixture;
@@ -60,6 +65,12 @@ let tables: {
 const from = (db: Db, table: string) => db.from(table as "units");
 const tenantColumn = (table: string) =>
   table === "tenants" ? "id" : "tenant_id";
+
+/**
+ * Tables that nobody signed in is granted at all (the order counter): a
+ * member's read is refused outright, which shows them nothing.
+ */
+const closedToMembers = new Set(["order_counters"]);
 
 /** One fixture row in every tenant-scoped table, for one tenant. */
 async function addFixtures(tenant: TestTenant): Promise<Fixture> {
@@ -330,6 +341,87 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
       amount: 100,
     }),
   );
+  // Orders (Phase 3, stage 2a): a customer, a draft order with one rental,
+  // its charge and the charge's line. order_counters got its row when the
+  // shop was made.
+  const customer = ok(
+    await exactlyOne(
+      service
+        .from("customers")
+        .insert({
+          tenant_id: tenant.id,
+          full_name: "Fixture Customer",
+          phone: "+66810000000",
+          email: "fixture@example.test",
+        })
+        .select("id"),
+    ),
+  )!;
+  const order = ok(
+    await exactlyOne(
+      service
+        .from("orders")
+        .insert({
+          tenant_id: tenant.id,
+          code: "FXTRA2",
+          customer_id: customer.id,
+          status: "draft",
+          channel: "walk_in",
+          mode: "staff",
+          currency: tenant.currency,
+        })
+        .select("id"),
+    ),
+  )!;
+  const rental = ok(
+    await exactlyOne(
+      service
+        .from("rentals")
+        .insert({
+          tenant_id: tenant.id,
+          order_id: order.id,
+          product_id: model.id,
+          product_type: "vehicle",
+          location_id: tenant.locationId,
+          quantity: 1,
+          starts_at: "2027-05-01T03:00:00Z",
+          ends_at: "2027-05-03T03:00:00Z",
+          status: "draft",
+        })
+        .select("id"),
+    ),
+  )!;
+  const charge = ok(
+    await exactlyOne(
+      service
+        .from("order_charges")
+        .insert({
+          tenant_id: tenant.id,
+          order_id: order.id,
+          kind: "booking",
+          currency: tenant.currency,
+          priced_at: "2027-04-01T03:00:00Z",
+          total: 2000,
+          tax_total: 0,
+          snapshot: {},
+        })
+        .select("id"),
+    ),
+  )!;
+  ok(
+    await service.from("order_lines").insert({
+      tenant_id: tenant.id,
+      order_id: order.id,
+      charge_id: charge.id,
+      rental_id: rental.id,
+      kind: "period",
+      product_id: model.id,
+      product_type: "vehicle",
+      amount: 2000,
+      currency: tenant.currency,
+      position: 0,
+    }),
+  );
   // audit_events: written by the triggers on the rows above.
   return {
     ...tenant,
@@ -342,6 +434,10 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
     ruleId: rule.id,
     couponId: coupon.id,
     serviceId: extra.id,
+    customerId: customer.id,
+    orderId: order.id,
+    rentalId: rental.id,
+    chargeId: charge.id,
   };
 }
 
@@ -512,6 +608,46 @@ const payloads: Record<string, (t: Fixture, userId: string) => Row> = {
     booking_id: "00000000-0000-4000-8000-0000000000c2",
     amount: 1,
   }),
+  customers: (t) => ({ tenant_id: t.id, full_name: "Forged Customer" }),
+  orders: (t) => ({
+    tenant_id: t.id,
+    code: "FRGD22",
+    status: "draft",
+    channel: "walk_in",
+    mode: "staff",
+    currency: t.currency,
+  }),
+  rentals: (t) => ({
+    tenant_id: t.id,
+    order_id: t.orderId,
+    product_id: t.modelId,
+    product_type: "vehicle",
+    location_id: t.locationId,
+    quantity: 1,
+    starts_at: "2027-06-01T03:00:00Z",
+    ends_at: "2027-06-02T03:00:00Z",
+    status: "draft",
+  }),
+  order_charges: (t) => ({
+    tenant_id: t.id,
+    order_id: t.orderId,
+    kind: "difference",
+    currency: t.currency,
+    priced_at: "2027-04-02T03:00:00Z",
+    total: -2000,
+    tax_total: 0,
+    snapshot: {},
+  }),
+  order_lines: (t) => ({
+    tenant_id: t.id,
+    order_id: t.orderId,
+    charge_id: t.chargeId,
+    kind: "credit",
+    amount: -2000,
+    currency: t.currency,
+    position: 1,
+  }),
+  order_counters: (t) => ({ tenant_id: t.id, next_number: 99 }),
   audit_events: (t) => ({
     tenant_id: t.id,
     entity: "units",
@@ -549,6 +685,12 @@ const changes: Record<string, Row> = {
   coupons: { percent_bp: 10000 },
   coupon_products: { coupon_id: "00000000-0000-4000-8000-000000000000" },
   coupon_redemptions: { released_at: "2027-01-01T00:00:00Z" },
+  customers: { full_name: "Hijacked" },
+  orders: { status: "canceled" },
+  rentals: { status: "canceled" },
+  order_charges: { status: "void" },
+  order_lines: { amount: 0 },
+  order_counters: { next_number: 999 },
   audit_events: { action: "hijacked" },
 };
 
@@ -571,6 +713,8 @@ async function snapshot(tenant: TestTenant): Promise<Record<string, Row[]>> {
 async function visibleTenantIds(db: Db, table: string): Promise<string[]> {
   const column = tenantColumn(table);
   const { data, error } = await from(db, table).select(column);
+  // Not granted at all: refused, so nothing is seen.
+  if (error && closedToMembers.has(table) && error.code === "42501") return [];
   if (error) throw new Error(`${table}: ${error.message}`);
   return (data as unknown as Row[]).map((row) => String(row[column]));
 }
@@ -601,11 +745,16 @@ describe("every tenant table", () => {
       "coupon_products",
       "coupon_redemptions",
       "coupons",
+      "customers",
       "location_closures",
       "location_hours",
       "locations",
       "memberships",
       "notification_outbox",
+      "order_charges",
+      "order_counters",
+      "order_lines",
+      "orders",
       "price_rule_products",
       "price_rules",
       "price_template_days",
@@ -616,6 +765,7 @@ describe("every tenant table", () => {
       "product_pricing",
       "product_year_bands",
       "products",
+      "rentals",
       "reservations",
       "stock_movements",
       "tax_profiles",
@@ -733,7 +883,18 @@ describe("reading", () => {
     expect(await visibleTenantIds(db, "tenants")).toEqual([a.id]);
     const team = await visibleTenantIds(db, "memberships");
     expect(team).toHaveLength(roles.length);
-    for (const table of ["locations", "products", "units", "unit_blocks"]) {
+    for (const table of [
+      "locations",
+      "products",
+      "units",
+      "unit_blocks",
+      // Staff read orders, rentals, customers, and the money on them.
+      "customers",
+      "orders",
+      "rentals",
+      "order_charges",
+      "order_lines",
+    ]) {
       // Rows of this tenant only (products has two fixture rows since the
       // stock ledger needed an item for sale).
       expect([...new Set(await visibleTenantIds(db, table))], table).toEqual([
@@ -909,6 +1070,105 @@ describe("a row can't point at another tenant's parent (service role, so this is
       product_type: "sale_item",
       currency: "USD",
     });
+  });
+
+  it("orders: order → customer; rental → order, product and place; charge → order; line → a charge and a rental of its own order; reservation → rental; all money → the shop's currency", async () => {
+    const order = {
+      tenant_id: a.id,
+      status: "draft",
+      channel: "walk_in",
+      mode: "staff",
+      currency: a.currency,
+    };
+    await refused("orders", {
+      ...order,
+      code: "CRSS22",
+      customer_id: b.customerId,
+    });
+    await refused("orders", { ...order, code: "CRSS23", currency: "USD" });
+    const rental = {
+      tenant_id: a.id,
+      order_id: a.orderId,
+      product_id: a.modelId,
+      product_type: "vehicle",
+      location_id: a.locationId,
+      quantity: 1,
+      starts_at: "2027-07-01T03:00:00Z",
+      ends_at: "2027-07-02T03:00:00Z",
+      status: "draft",
+    };
+    await refused("rentals", { ...rental, order_id: b.orderId });
+    await refused("rentals", { ...rental, product_id: b.modelId });
+    await refused("rentals", { ...rental, location_id: b.locationId });
+    // A rental can't claim a type its product doesn't have.
+    await refused("rentals", { ...rental, product_type: "gear" });
+    const charge = {
+      tenant_id: a.id,
+      order_id: a.orderId,
+      kind: "difference",
+      currency: a.currency,
+      priced_at: "2027-04-03T03:00:00Z",
+      total: 1,
+      tax_total: 0,
+      snapshot: {},
+    };
+    await refused("order_charges", { ...charge, order_id: b.orderId });
+    await refused("order_charges", { ...charge, currency: "USD" });
+    const line = {
+      tenant_id: a.id,
+      order_id: a.orderId,
+      charge_id: a.chargeId,
+      kind: "credit",
+      amount: -1,
+      currency: a.currency,
+      position: 9,
+    };
+    await refused("order_lines", { ...line, order_id: b.orderId });
+    await refused("order_lines", { ...line, charge_id: b.chargeId });
+    await refused("order_lines", { ...line, rental_id: b.rentalId });
+    await refused("order_lines", { ...line, currency: "USD" });
+    await refused("order_lines", {
+      ...line,
+      product_id: b.modelId,
+      product_type: "vehicle",
+    });
+    await refused("reservations", {
+      ...payloads.reservations!(a, a.members.owner.id),
+      rental_id: b.rentalId,
+    });
+    // Within one shop: a line's charge and rental are its own order's.
+    const service = serviceClient();
+    const other = await exactlyOne(
+      service
+        .from("orders")
+        .insert({ ...order, code: "THR222" })
+        .select("id"),
+    );
+    expect(other.error).toBeNull();
+    const otherId = other.data!.id;
+    await refused("order_lines", { ...line, order_id: otherId });
+    // A rental of the other order: a line of this order can't name it.
+    const otherRental = await exactlyOne(
+      service
+        .from("rentals")
+        .insert({ ...rental, order_id: otherId })
+        .select("id"),
+    );
+    expect(otherRental.error).toBeNull();
+    await refused("order_lines", { ...line, rental_id: otherRental.data!.id });
+    await service
+      .from("rentals")
+      .delete()
+      .eq("id", otherRental.data!.id)
+      .throwOnError();
+    await refused("rentals", {
+      ...rental,
+      order_id: otherId,
+      product_id: a.serviceId,
+      product_type: "service",
+      parent_rental_id: a.rentalId,
+    });
+    await service.from("orders").delete().eq("id", otherId).throwOnError();
   });
 
   it("pricing → the shop's own price list, tax profile, season and products", async () => {
