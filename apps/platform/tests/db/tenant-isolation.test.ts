@@ -1147,6 +1147,20 @@ describe("a row can't point at another tenant's parent (service role, so this is
     expect(other.error).toBeNull();
     const otherId = other.data!.id;
     await refused("order_lines", { ...line, order_id: otherId });
+    // A rental of the other order: a line of this order can't name it.
+    const otherRental = await exactlyOne(
+      service
+        .from("rentals")
+        .insert({ ...rental, order_id: otherId })
+        .select("id"),
+    );
+    expect(otherRental.error).toBeNull();
+    await refused("order_lines", { ...line, rental_id: otherRental.data!.id });
+    await service
+      .from("rentals")
+      .delete()
+      .eq("id", otherRental.data!.id)
+      .throwOnError();
     await refused("rentals", {
       ...rental,
       order_id: otherId,

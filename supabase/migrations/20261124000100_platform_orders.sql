@@ -4,6 +4,7 @@
 -- Builds on 20261123000100_platform_unit_lock_rules. No earlier migration is
 -- touched.
 --
+--  0. The three booking tables are locked first, with a 10-second limit.
 --  1. The functions re-created here are as main left them (guard).
 --  2. Phase 2's bookings are cleared: every reservation, its allocation and
 --     hold blocks, and every coupon redemption (S7, decision 24). THIS
@@ -32,6 +33,31 @@
 -- order's foreign key to it never waits); save_staff_permissions() takes the
 -- shop's row. move_unit() takes what it took. The order rows' place in the
 -- order (plan §4.2) starts with migration 3, which adds their first writer.
+
+-- 0. The booking tables, locked first -----------------------------------------------------------
+-- Before anything else, in a booking's own order (reservations, then
+-- blocks, then coupon uses), so this migration and a booking in flight can
+-- only take turns: it waits for bookings that are writing, and bookings
+-- that come after wait for it. It waits 10 seconds at most; if it can't
+-- have the three tables by then it fails (55P03) with nothing written, and
+-- is sent again. Pushing while nobody is booking is still the advice.
+--
+-- The CLI sends a migration as one transaction without a BEGIN of its own
+-- (checked, CLI 2.121.0: a failing statement undoes the whole file).
+-- Postgres refuses a top-level LOCK TABLE there ("can only be used in
+-- transaction blocks"), so the lock is taken inside a DO block, where it is
+-- allowed, and the timeout is set in the same block for the transaction
+-- (set_config(..., true)) rather than by a top-level SET LOCAL. Both last
+-- until the migration's transaction ends (checked: the timeout reads 10s in
+-- the statements that follow, and the locks are still held there).
+
+do $$
+begin
+  perform set_config('lock_timeout', '10s', true);
+  lock table platform.reservations, platform.unit_blocks, platform.coupon_redemptions
+    in access exclusive mode;
+end
+$$;
 
 -- 1. The functions are as main left them -------------------------------------------------------
 
@@ -66,12 +92,11 @@ $guard$;
 -- touched. Each deleted reservation and coupon use leaves its audit event,
 -- as any delete does (a booking's blocks are not audited row by row).
 --
--- The foreign keys set the order: blocks before the reservations they name.
--- That is the opposite of a booking's own order (reservations, then blocks),
--- and the `alter table` in 6 takes reservations whole anyway: a booking in
--- flight at that moment can cross this migration, and Postgres then breaks
--- one of the two with nothing written (a booking answers try_again; the
--- migration is sent again). Push it while nobody is booking.
+-- The foreign keys set the order of the deletes: blocks before the
+-- reservations they name. That is the opposite of a booking's own order
+-- (reservations, then blocks), which is why the three tables are locked
+-- whole in 0, in the booking's order, before any row is touched: no booking
+-- holds a row of them by the time the first delete runs.
 --
 -- The block between the two markers is run again by
 -- apps/platform/tests/db/orders.test.ts, inside a transaction it rolls back.
@@ -1029,7 +1054,11 @@ grant execute on function platform_private.staff_may(uuid, text) to authenticate
 --   "id":          an existing customer's, to change it; absent to add one
 --   "full_name":   1..200 characters (needed for a new customer)
 --   "phone":       free-form, 40 at most; stored as E.164 when it reads as
---                  an international number ("+66 81 234 5678", "0066…")
+--                  an international number ("+66 81 234 5678", "0066…").
+--                  A "(0)" straight after the country code is dropped
+--                  first ("+66 (0)81 234 5678" is +66812345678). A zero
+--                  written without brackets is kept: whether it is a trunk
+--                  zero depends on the country, which this does not know.
 --   "email", "line_id", "notes"
 --   "nationality": two letters (ISO 3166-1)
 --   "language":    BCP 47
@@ -1063,6 +1092,7 @@ declare
   v_nationality text;
   v_language text;
   v_notes text;
+  v_expected timestamptz;
   v_created boolean := false;
 begin
   if not platform_private.has_role(p_tenant_id, platform_private.booking_roles('orders')) then
@@ -1108,8 +1138,12 @@ begin
 
   v_text := nullif(btrim(p_customer ->> 'phone'), '');
   if v_text is not null then
+    -- "+66 (0)81 …": the bracketed zero is the one dialled inside the
+    -- country, never after the country code.
+    v_squeezed := regexp_replace(
+      v_text, '^((\+|00)[[:space:]]*[1-9][0-9]{0,2})[[:space:]]*\(0\)', '\1');
     -- Spaces, brackets, dots and dashes are how people write a number.
-    v_squeezed := regexp_replace(v_text, '[[:space:]().-]', '', 'g');
+    v_squeezed := regexp_replace(v_squeezed, '[[:space:]().-]', '', 'g');
     if v_squeezed ~ '^00[1-9][0-9]{6,14}$' then
       v_squeezed := '+' || substr(v_squeezed, 3);
     end if;
@@ -1151,6 +1185,17 @@ begin
     raise exception 'invalid_customer' using errcode = '22023';
   end if;
 
+  -- The form's copy of updated_at: a moment, or the call is refused like
+  -- any other field that can't be read.
+  if p_customer ? 'expected_updated_at' then
+    begin
+      v_expected := (p_customer ->> 'expected_updated_at')::timestamptz;
+    exception
+      when data_exception then
+        raise exception 'invalid_customer' using errcode = '22023';
+    end;
+  end if;
+
   if v_id is null then
     insert into platform.customers (
       tenant_id, full_name, phone, email, line_id, nationality, language, notes,
@@ -1172,9 +1217,7 @@ begin
     if not found then
       raise exception 'customer_not_found' using errcode = 'P0001';
     end if;
-    if p_customer ? 'expected_updated_at'
-      and v_row.updated_at <> (p_customer ->> 'expected_updated_at')::timestamptz
-    then
+    if v_expected is not null and v_row.updated_at <> v_expected then
       return jsonb_build_object('ok', false, 'reason', 'stale');
     end if;
     update platform.customers c

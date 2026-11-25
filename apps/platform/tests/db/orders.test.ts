@@ -507,6 +507,13 @@ describe("save_customer(): owners, managers and staff", () => {
     const db = a.members.staff.db;
     for (const [typed, stored] of [
       ["+66 81 234 5678", "+66812345678"],
+      // A bracketed zero after the country code is dropped: the same number.
+      ["+66 (0)81 234 5678", "+66812345678"],
+      ["0066 (0) 81-234-5678", "+66812345678"],
+      // A zero without brackets is kept: whether it is a trunk zero depends
+      // on the country. The digits are as typed; only the spaces go, as for
+      // any number written with its country code.
+      ["+66 081 234 5678", "+660812345678"],
       ["0066-81-234-5678", "+66812345678"],
       ["+1 (212) 555-0100", "+12125550100"],
       ["  +84.90.123.4567 ", "+84901234567"],
@@ -572,6 +579,13 @@ describe("save_customer(): owners, managers and staff", () => {
       { full_name: "Ok", phone: "x".repeat(41) },
       { full_name: "Ok", notes: "x".repeat(4001) },
       { id: "not-a-uuid", full_name: "Ok" },
+      // The form's copy of updated_at must be a moment, on a new customer
+      // and on a change alike.
+      { full_name: "Ok", expected_updated_at: "not a time" },
+      { full_name: "Ok", expected_updated_at: "2026-13-45T25:00:00Z" },
+      { full_name: "Ok", expected_updated_at: "" },
+      { id: a.customerId, notes: "x", expected_updated_at: "yesterday-ish" },
+      { id: a.customerId, notes: "x", expected_updated_at: 1764000000 },
       { id: null, full_name: "Ok" },
     ]) {
       const refused = await save(db, a, bad);
