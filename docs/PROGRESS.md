@@ -198,7 +198,7 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 - **The Moto Mangos tab's "waiting" line is corrected** (`Fleet.motoMangos.waiting`, the owner, 23 Nov 2026): it said the model "goes live once approved"; it now says that once it is approved the shop switches its listing on itself. English final; the Thai is provisional and on `docs/platform/thai-review-products.md` ("Phase 3, stage 1") with the old and new English, for Korn's check.
 - `platform.moving_unit` and `platform.unit_status_change` are lock-order rules, not permissions: a session that can run SQL of its own (a console) can set them. Nothing reachable through the API can.
 - `review_catalog_request()` can now answer `try_again` (a product linked to the entry between its two steps); the admin screen shows its usual "failed" line and the reviewer presses again.
-- One `pg_sleep` is left in `tests/db`: `security-audit.test.ts` (from PR 57), not this stage's.
+- One `pg_sleep` is left in `tests/db`: `security-audit.test.ts` (from PR 57), not this stage's. **Removed 25 Nov 2026:** see "Test reliability: security-audit `pg_sleep`, file-lock under load".
 - The stuck `product-extras.test.ts` process from 17 Nov 2026 was not running on this machine today.
 - The Thai line above needs Korn's check.
 
@@ -207,6 +207,21 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 **Local set-up.** This worktree (`.claude/worktrees/phase-3-stage-1`) has its own stack, `Bike_Booking_phase3_s1`, on ports 634xx (API 63421, database 63422, shadow 63420, Studio 63423, mail 63424, analytics 63427, pooler 63429, inspector 63483), started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Another project's stack (on the default ports) was left alone; no older Mango Works stack was running.
 
 **Next:** stage 2a, orders: tables, RLS, customers, settings (migration 2).
+
+## Test reliability: security-audit `pg_sleep`, file-lock under load (branch `test/flake-fixes`, 25 Nov 2026)
+
+Test code only: no migration, no app or SQL change.
+
+**Follow-ups closed**
+
+- **The last `pg_sleep` in `tests/db` is gone** (`security-audit.test.ts`, "a caller who will be refused takes no lock first", from PR 57). The holder kept a row `for update` for 3 seconds with `pg_sleep(3)`, the test slept 700 ms for it to start and timed the call: a refused call under 1.5 s, the owner's let-through call over 1.5 s. The holder now waits at a gate (`closedGate()`, `holding()` in `helpers.ts`, as in the ten files moved in stage 10) and the test looks instead of timing: a refused call has answered while the holder is still at its gate (`stillHolding()`); the owner's `delete_price_template()` is seen waiting for a lock (`seenWaitingForLock()`), has not answered while the gate is closed, and goes through once it is opened. Same 25 tests, same claims; the file sets `GATE_TIMEOUTS`. On this stack: 25 of 25, 48.7 s before, 24 to 25 s after (five runs in a row on a fresh reset, all green).
+- **`tests/file-lock.test.ts` holds under load** (it failed once under load in PR 34). With a busy loop on every core it failed two ways:
+  - "waits out a fresh lock … for the stale time and no longer" read 225 ms for a 300 ms stale time: the stopwatch started after the file was written, and the process was paused in between. It now measures from the file's own mtime, as the lock does.
+  - "a holder that was taken over …" ran out of the 5-second default timeout: the worker was starved (a takeover that needs 300 ms took up to 1.3 s; no file-system error was seen in 200 tries). The file sets a 30-second test timeout.
+  - The two "a live holder keeps it" tests use a 1-second stale time (heartbeat still 50 ms), so a stall of the shared event loop can't let the waiter take a live lock; the holder still outlives three stale times. `e2e/file-lock.ts` is unchanged.
+  - **Runs** (`npx vitest run tests/file-lock.test.ts`, one at a time; "load" is one `node -e "for(;;){}"` per core, 8): before, 20 of 20 idle and 29 of 30 under load (one failure, the 225 ms one); after, 20 of 20 idle and 30 of 30 under load. The original fails rarely, so the counts alone prove little; both failures seen have a cause and a fix. The file now takes about 4 s, up from 2 s (the liveness test waits 3 s instead of 0.9 s).
+
+**Local set-up.** Worktree `.claude/worktrees/test-flakes`, stack `Bike_Booking_test_flakes` on ports 639xx (API 63921, database 63922, shadow 63920, Studio 63923, mail 63924, analytics 63927, pooler 63929, inspector 63983), CI's service list; `supabase/config.toml` local only (`--skip-worktree`). The full database suite was not run here (CI runs it).
 
 ## Faster `wrappers.test.ts` sweep (branch `core/wrappers-test-speed`, 24 Nov 2026)
 
