@@ -15,7 +15,23 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 
 ## Phase 3, stage 2a: orders: tables, RLS, customers, settings (branch `platform/phase-3-stage-2a-orders`, 24 Nov 2026)
 
-The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 row 2, §3.9, §3.10, §9.1, §8 stage 2a). From `main` at `4901c0d` (PR 70 merged; 70 migrations). **One migration, `20261124000100_platform_orders.sql`, local only.** Nothing on staging or live was touched. **It deletes rows** (below), so its staging push is a separate step on the owner's word.
+The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 row 2, §3.9, §3.10, §9.1, §8 stage 2a). From `main` at `4901c0d` (PR 70 merged; 70 migrations). **One migration, `20261124000100_platform_orders.sql`.** **Migration on staging since 25 Nov 2026, 71/71** (see "On staging" below); **not on live.** **It deletes rows** (below), so its staging push was a separate step on the owner's word.
+
+**On staging since 25 Nov 2026; not on live.** Migration 20261124000100 pushed to staging, 71/71. It was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 18:20 UTC on 25 Nov 2026 (01:20 on 26 Nov in Bangkok, 13:20 on 25 Nov Eastern), on the owner's word ("push to staging", this migration only), from `main` at `e2cf33d` (PR 77 squash-merged), with `supabase db push --db-url` (CLI 2.121.0; never `--linked`); the connection string was checked to name the staging project, and not live's, before each use. Live (`mfaqydyoweerlqsgwnay`) was not touched. The demo seed was not re-run; no test suite was run.
+
+- **Checks before** (`docs/runbook/pr77-staging-checks.sql`, read-only session, 18:17 UTC):
+  1. 70 migrations on record, newest `20261123000100`, this one not among them. The dry run listed exactly this one.
+  2. The md5 guard "ok" on both functions (`move_unit` `e443cea8…`, `booking_roles` `51a20ff2…`). None of the six tables, `reservations.rental_id`, `tenants.time_step_minutes`, `staff_may()`, `save_customer()` or `save_staff_permissions()` existed.
+  3. Nothing in the way: no other session held a lock on `reservations`, `unit_blocks`, `coupon_redemptions`, `tenants` or `units`; no advisory lock; no other session in a transaction.
+  4. Bookings: **reservations 5**, all BSR's (reserved 4, expired 1); **unit blocks 26**: allocation 5 (BSR, each naming a reservation), downtime 21 (BSR 20, big-fleet 1), no hold, no transfer; **coupon redemptions 0**. So the clearing was to write **5 audit events** (one per reservation; no redemption; no audited block names a reservation).
+  5. Baseline: tenants 3 (big-fleet, bsr, saigon-scooters); members 10 (1, 6, 3); locations 4; products 34; units 215; product pricing 15, price templates 5 (150 days), price rules 0; coupons 2, coupon products 0; **audit events 3,458** (big-fleet 270, bsr 3,143, saigon-scooters 45), highest id 3458, newest 20 Nov.
+- **Push:** the first attempt (18:19 UTC) could not connect to the pooler ("Connection terminated unexpectedly"), so nothing ran; a read-only check showed staging still at 70 with 5 reservations; the second attempt (18:20 UTC) applied the migration. No lock timeout (`55P03`).
+- **Checks after** (the same file with `-v post=1`, 18:20 UTC): the before-and-after diff held only the file's expected differences.
+  1. 71 on record, newest `20261124000100`. `move_unit()` (`e92b87b9…`) and `booking_roles()` (`5ef63872…`) re-created; every object in check 2 now exists.
+  2. **Reservations 0, allocation and hold blocks 0, no block names a reservation, coupon redemptions 0.** Downtime 21 (BSR 20, big-fleet 1), as before.
+  3. Tenants, members, locations, products, units, prices and coupons: every count unchanged. **Audit events 3,463 (+5, all BSR: 3,148)**, the five new rows all `reservations` `delete`, at 18:20:21 UTC. Their ids are 3972–3976: the id sequence had moved past 3458 in transactions that were rolled back since 20 Nov (sequence values are not given back); the count rose by exactly 5.
+  4. The six new tables: RLS on, one policy each, no grant to `anon` or `PUBLIC` (`authenticated` select on all but `order_counters`; `service_role` select, insert, update, delete); none holds a row except `order_counters`: **3 rows, one per shop, each at 1**.
+- **Not checked here:** nothing in a browser against staging; `save_customer()`, `save_staff_permissions()` and `move_unit()` were not called (each would write).
 
 **What the migration does** (re-created functions behind an MD5 guard: `move_unit()`, `booking_roles()`)
 
