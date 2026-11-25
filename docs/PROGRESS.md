@@ -32,12 +32,28 @@ The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 ro
 - **No key to `auth.users`.** `created_by`, `picked_up_by`, `returned_by` and `override_by` are plain ids: root `CLAUDE.md` forbids a new key to the `auth` schema. They get a key when the platform has its own users table (Neon plan, open point).
 - **The LINE id is kept out of the audit too**, with phone and email (the plan named two). A customer's name, nationality, language and notes are recorded as any column is.
 - **`order_lines.currency`** also has the no-cascade key to the shop's currency; a line's charge and rental, and an extra's parent rental, are keyed to the same order.
-- **`request_status`, `cancelled_by`, `cancel_reason` have no value lists yet.** Neither the plan nor the spec names the values; each list is fixed by the stage that first writes the column (migration 3; 3M).
+- **`request_status`, `cancelled_by`, `cancel_reason` have no value lists yet.** Neither the plan nor the spec names the values. `cancelled_by` and `cancel_reason` get theirs in migration 3, where `cancel_order` first writes them; `request_status` at 3M.
 - **`order_counters`** gets its row from a trigger on `tenants`, and is not audited.
 - **`citext`** is a new extension, for `customers.email`. Checked on Neon's list (24 Nov 2026): supported on Postgres 14 to 18.
 - **A phone is stored as E.164 only when it arrives as an international number** (`+…` or `00…`); otherwise as typed. Reading a national number needs the country and a phone library, which is the form's part (stage 9).
 
-**Open point for the owner: who writes the time step.** The column is stored and read from now on. No function changes it: plan §3.8 row 2 lists only `save_customer` and `save_staff_permissions`, stage 10 (Settings › Orders, where a shop changes it) has no migration, and no earlier row names its writer. It needs one in a migration before stage 10 (migration 9 adds the other order settings, so it could go there).
+**Who writes the time step: decided (the owner, 24 Nov 2026).** The column is stored and read from now on; no function changes it yet. **Its writer goes in migration 9 (stage 8), with the other order settings, before stage 10** (Settings › Orders, which has no migration of its own). Plan §3.8 row 9.
+
+**After the independent review of PR 77** ("merge", no must-fix, four should-fix; 24 Nov 2026; the migration was still local only, so it was edited in place)
+
+1. **The migration locks the three booking tables first** (`reservations`, `unit_blocks`, `coupon_redemptions`, `access exclusive`, in a booking's own order), 10 seconds at most, before the guard. It waits for bookings in flight, and fails cleanly (`55P03`) with nothing written if it can't have the tables. **Both the timeout and the lock are inside one `DO` block** (`set_config('lock_timeout', '10s', true)`, then `lock table`), not top-level statements (the owner, 25 Nov 2026). Why: the CLI (2.121.0) sends a migration as one transaction without a `BEGIN` of its own. It is atomic (a failing statement rolled the whole file back with nothing recorded), but Postgres refuses a top-level `LOCK TABLE` there (`25P01`: `supabase db reset` stopped on it with nothing applied). **Proved on this stack:** (a) a temporary line straight after the block reported `lock_timeout` as `10s` during `supabase db reset` (raised as a warning and read from the database's log, because the CLI prints no notices; removed again); (b) with a second session holding one `reservations` row `for update`, `supabase migration up` failed with `55P03` after about 10 seconds (14 s on the clock, of which about 3 are the CLI's own), history still 70 of 70, no `customers` table, no `rental_id` column, the 5 reservations untouched; with the row released it applied in 3 seconds and the counts went to 0.
+2. **A bracketed trunk zero is dropped:** `+66 (0)81 234 5678` is stored as `+66812345678`, as `+66 81 234 5678` is. A zero without brackets is kept (`+66 081 234 5678` is stored `+660812345678`: its digits as typed, the spaces gone as for any number with a country code), because whether it is a trunk zero depends on the country.
+3. **`save_customer()` reads `expected_updated_at` with the other fields:** a value that is not a moment is `invalid_customer` (it was a raw `22007`).
+4. **`tenant-isolation.test.ts`:** a line can't name a rental of another order of the same shop (`23503`). **Shown to bite:** with `order_lines_rental_fkey` weakened by hand to `(tenant_id, rental_id)` the test failed on that line; the key was put back by the reset that followed.
+
+**Results after the review's fixes** (25 Nov 2026, this stack, a fresh `supabase db reset`): `orders.test.ts`, `tenant-isolation.test.ts` and `unit-lock-rules.test.ts` run together, **83 of 83** (30, 29, 24), deadlock counter 0; typecheck and lint clean; unit tests 370, 714, 720 and `@mango/db` 11. The full database suite was not run again locally: CI runs it. An earlier run of the three files that day had one race test in `unit-lock-rules.test.ts` time out because the computer went to sleep in the middle of it (it reported 5.4 hours); rerun, it passed.
+
+**For stage 2b (migration 3), from the review and the owner's decisions**
+
+- **`cancelled_by` and `cancel_reason` get their value lists in migration 3**, where `cancel_order` first writes them. `request_status` gets its list at 3M.
+- **`currency_locked()` and the Settings action must know about orders in the same PR that adds `create_order`** (below).
+- **"A specific unit can be on an order only once"** (the owner's decision, 19 Nov 2026) **gets its constraint in migration 3**, when rentals gain a unit.
+- **The time step's writer is migration 9's** (above), not stage 2b's.
 
 **Tests** (`apps/platform/tests/db`; every accept test of plan §8 stage 2a passes)
 
@@ -57,13 +73,13 @@ The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 ro
 
 **Known issues and follow-ups**
 
-- **The currency lock's read does not know about orders yet.** `platform.currency_locked()` (what Settings shows) and `settings/actions.ts` (which maps the trigger's `currency_locked` message) are unchanged; a shop with an order is refused by the foreign key (`23503`) instead. No order can exist before migration 3, so stage 2b should add orders to the read and map `23503` in the action.
+- **The currency lock's read does not know about orders yet.** `platform.currency_locked()` (what Settings shows) and `settings/actions.ts` (which maps the trigger's `currency_locked` message) are unchanged; a shop with an order is refused by the foreign key (`23503`) instead. No order can exist before migration 3, so **the PR that adds `create_order` (stage 2b) must add orders to the read and map `23503` in the action**.
 - **One-row reads.** PR 72 (`exactlyOne()`/`atMostOne()`) merged while this PR was open; `main` is merged in and the new one-row reads use `exactlyOne()` (19 in `orders.test.ts` through its `only()`, 5 in `tenant-isolation.test.ts`). No `.single()` or `.maybeSingle()` was added.
 - **A customer's name and notes are in the audit** as plain values. The plan asks only for the contacts to be kept out; retention of personal data in audit rows is Phase 4.
-- **The clearing takes blocks before reservations** (the foreign key forces it), the opposite of a booking's order, and the `alter table` takes `reservations` whole. Push it while nobody is booking; a booking in flight would be broken as a deadlock and answer `try_again`, or the migration would fail with nothing changed and be sent again.
+- **The clearing takes blocks before reservations** (the foreign key forces it), the opposite of a booking's order. Since the review the migration locks the three tables whole first, in the booking's order, so the two can only take turns (item 1 above).
 - **`staff_may()` runs as its owner and is granted to signed-in people only**; the service role has no call (the cores never ask it). `default-grants.test.ts` pins that.
 
-**Before this goes to staging** (the owner's word; it deletes data): staging at 70 of 70 with `main`'s bodies (the guard checks `move_unit()` and `booking_roles()`); count reservations, blocks with a reservation and redemptions before, expect 0 of each after, downtime blocks unchanged; then `npm run seed:staging`. **On live** the three counts must be 0 before the push, or the push stops.
+**Before this goes to staging** (the owner's word; it deletes data): **the migration now waits up to 10 seconds for bookings in flight and fails cleanly with nothing written if it can't get its locks; pushing while nobody is booking is still the advice** (if it fails on the locks, send it again). Staging at 70 of 70 with `main`'s bodies (the guard checks `move_unit()` and `booking_roles()`); count reservations, blocks with a reservation and redemptions before, expect 0 of each after, downtime blocks unchanged; then `npm run seed:staging`. **On live** the three counts must be 0 before the push, or the push stops.
 
 **Local set-up.** This worktree (`.claude/worktrees/phase-3-stage-2a`) has its own stack, `Bike_Booking_phase3_s2a`, on ports 636xx (API 63621, database 63622, shadow 63620, Studio 63623, mail 63624, analytics 63627, pooler 63629, inspector 63683), started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Every other stack was left alone.
 
