@@ -74,9 +74,9 @@ describe("orderLinesOf(): the lines create_order() takes", () => {
       first: [0],
       count: [1],
     });
-    expect(
-      orderLinesOf([asked({ quantity: 3 })], () => false).lines,
-    ).toEqual([sentLine({ quantity: 3 })]);
+    expect(orderLinesOf([asked({ quantity: 3 })], () => false).lines).toEqual([
+      sentLine({ quantity: 3 }),
+    ]);
   });
 
   it("an extra's parent is remapped to its vehicle line's first bike", () => {

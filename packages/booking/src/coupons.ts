@@ -1,15 +1,15 @@
 /**
- * From the database to decideDiscounts() and on to reserve()
+ * From the database to decideDiscounts() and on to create_order()
  * (docs/phase-2-plan.md §2.4, §5.3).
  *
  * platform.coupon_inputs() returns what is known about one code as rows:
  * the coupon it finds, its product ids and its uses so far. This file turns
  * those rows into decideDiscounts()'s input, hands quote() the discounts it
  * decided, and reads back from the quote what the coupon took, for
- * reserve() to store with the booking. It works no price out: every amount
+ * create_order() to store with the order. It works no price out: every amount
  * here is one quote() gave, added up and nothing else.
  *
- * The one feed for both booking paths (lib/book-online.ts and
+ * The one feed for both booking paths (./book-online.ts and
  * lib/staff-booking.ts) and, from stage 9, "Check a price". Pure functions
  * but for readCoupon(), whose database call is the caller's client.
  */
@@ -86,7 +86,7 @@ export function codeGiven(code: string | null | undefined): code is string {
 /**
  * What the database knows about a code. `bookingId`: a held booking being
  * priced again, whose own use is then left out of the count. `customerId`:
- * whose uses to count beside the total (nobody's until Phase 3).
+ * whose uses to count beside the total (the order's customer).
  *
  * A code that could not have been saved (anything but A to Z and 0 to 9
  * once normalised) is no coupon's, so it is not sent at all: the answer is
@@ -210,7 +210,7 @@ export type DiscountsAsked = {
   code?: string | null;
   /** What readCoupon() answered for that code. */
   coupon?: CouponInputs | null;
-  /** Rentals this customer has completed here. Nobody's until Phase 3. */
+  /** Rentals this customer has completed here. Worked out from real orders in stage 7; an input until then. */
   completedRentals?: number;
 };
 

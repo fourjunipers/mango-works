@@ -515,8 +515,8 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
     ]);
     expect(answer.quote.totals.total).toBe(BigInt(10_000));
     // reserve() is still sent all three helmets: the free ones hold stock too.
-    const sent = withHelmets.calls.find((call) => call.fn === "create_order")!.args
-      .p_order as { lines: { quantity: number; parent?: number }[] };
+    const sent = withHelmets.calls.find((call) => call.fn === "create_order")!
+      .args.p_order as { lines: { quantity: number; parent?: number }[] };
     expect(sent.lines.map((line) => [line.quantity, line.parent])).toEqual([
       [1, undefined],
       [3, 0],
@@ -992,9 +992,7 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
       "pricing_inputs",
     ]);
     expect(s.called().at(-1)).toBe("create_order");
-    expect(
-      s.calls.find((call) => call.fn === "coupon_inputs")!.args,
-    ).toEqual({
+    expect(s.calls.find((call) => call.fn === "coupon_inputs")!.args).toEqual({
       p_tenant_id: TENANT,
       p_code: " summer 10 ",
       p_booking_id: null,
@@ -1084,7 +1082,12 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
           now: () => now,
         }),
         what,
-      ).toEqual({ ok: false, reason: "coupon_refused", line: null, coupon: reason });
+      ).toEqual({
+        ok: false,
+        reason: "coupon_refused",
+        line: null,
+        coupon: reason,
+      });
       expect(s.reserved(), what).toBe(false);
     }
   });
@@ -1348,7 +1351,9 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
           `export const book = (db, r) => db.rpc("create_order", r);`,
         ),
       ),
-    ).toEqual(["packages/db/src/booking.ts: a shared package calls create_order()"]);
+    ).toEqual([
+      "packages/db/src/booking.ts: a shared package calls create_order()",
+    ]);
     // The service role's client handed to a file that calls create_order().
     const handed = withFile(
       "apps/platform/lib/staff-book.ts",
