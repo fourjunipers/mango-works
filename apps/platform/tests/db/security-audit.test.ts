@@ -3,21 +3,29 @@
  * (20261120000200_platform_security_audit.sql). Each test here failed on the
  * schema as it stood before that migration, except the ones marked "still".
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Role } from "@/lib/roles";
 import {
+  closedGate,
   createTenant,
   createUser,
   deleteTenant,
   deleteUser,
+  GATE_TIMEOUTS,
+  holding,
+  seenWaitingForLock,
   serviceClient,
   sql,
   sqlAs,
   sqlBackground,
+  stillHolding,
   type Db,
   type TestTenant,
   type TestUser,
 } from "./helpers";
+
+// Gate tests: sized for a busy machine (helpers.ts, GATE_TIMEOUTS).
+vi.setConfig(GATE_TIMEOUTS);
 
 let shop: TestTenant;
 let other: TestTenant;
@@ -242,32 +250,80 @@ describe("a caller who will be refused takes no lock first", () => {
     outsider = other.members.owner;
   });
 
+  type Answer = { error: { code?: string } | null };
+
   /**
-   * Holds the row's lock for three seconds in another session, and times the
-   * call made meanwhile. A call that asks for the lock before it checks the
-   * caller waits those three seconds; one that checks first answers at once.
+   * Holds the row's lock in another session, at a gate (no clock), and
+   * makes the call meanwhile. A call that asks for the lock before it
+   * checks the caller would wait at the row while the gate is closed; one
+   * that checks first answers with the holder still holding. `heldThrough`
+   * says it answered before the holder let go.
    */
   async function refusedWhileLocked(
     table: "products" | "price_templates",
     id: string,
-    call: () => PromiseLike<{ error: { code?: string } | null }>,
+    call: () => PromiseLike<Answer>,
   ) {
+    const gate = await closedGate();
+    const marker = `audit holder ${table} ${id}`;
     const holder = sqlBackground(`
       begin;
       select 1 from platform.${table} where id = '${id}' for update;
-      select pg_sleep(3);
+      ${gate.wait(marker)}
       commit;
     `);
-    // Give the holder time to take the lock.
-    await new Promise((done) => setTimeout(done, 700));
-    const started = Date.now();
+    await holding(marker, holder);
     const { error } = await call();
-    const took = Date.now() - started;
-    await holder;
-    return { code: error?.code, took };
+    let heldThrough = true;
+    try {
+      await stillHolding(marker);
+    } catch {
+      heldThrough = false;
+    }
+    await gate.open();
+    expect((await holder).failed).toBe("");
+    return { code: error?.code, heldThrough };
   }
 
-  const cases: [string, () => PromiseLike<{ error: { code?: string } | null }>][] =
+  /**
+   * The same holder, for a call that is let through: it is seen waiting for
+   * a lock, has not answered while the gate is closed, and answers once the
+   * gate is opened. `waited` says all three were so.
+   */
+  async function waitsWhileLocked(
+    table: "products" | "price_templates",
+    id: string,
+    fn: string,
+    call: () => PromiseLike<Answer>,
+  ) {
+    const gate = await closedGate();
+    const marker = `audit holder ${table} ${id}`;
+    const holder = sqlBackground(`
+      begin;
+      select 1 from platform.${table} where id = '${id}' for update;
+      ${gate.wait(marker)}
+      commit;
+    `);
+    await holding(marker, holder);
+    let answered = false;
+    const running = Promise.resolve(call()).then((result) => {
+      answered = true;
+      return result;
+    });
+    let seen = true;
+    try {
+      await seenWaitingForLock(fn);
+    } catch {
+      seen = false;
+    }
+    const waited = seen && !answered;
+    await gate.open();
+    const { error } = await running;
+    expect((await holder).failed).toBe("");
+    return { code: error?.code, waited };
+  }
+
+  const cases: [string, () => PromiseLike<Answer>][] =
     [
       [
         "save_listing(), someone from another shop",
@@ -324,7 +380,7 @@ describe("a caller who will be refused takes no lock first", () => {
   it.each(cases)("%s", async (_name, call) => {
     const answer = await refusedWhileLocked("products", product, call);
     expect(answer.code).toBe("42501");
-    expect(answer.took).toBeLessThan(1500);
+    expect(answer.heldThrough).toBe(true);
   });
 
   it.each([
@@ -335,15 +391,19 @@ describe("a caller who will be refused takes no lock first", () => {
       client().rpc("delete_price_template", { p_template_id: template }),
     );
     expect(answer.code).toBe("42501");
-    expect(answer.took).toBeLessThan(1500);
+    expect(answer.heldThrough).toBe(true);
   });
 
   it("still: an owner's save waits for the row and then goes through", async () => {
-    const answer = await refusedWhileLocked("price_templates", template, () =>
-      db("owner").rpc("delete_price_template", { p_template_id: template }),
+    const answer = await waitsWhileLocked(
+      "price_templates",
+      template,
+      "delete_price_template",
+      () =>
+        db("owner").rpc("delete_price_template", { p_template_id: template }),
     );
     expect(answer.code).toBeUndefined();
-    expect(answer.took).toBeGreaterThan(1500);
+    expect(answer.waited).toBe(true);
   });
 });
 
