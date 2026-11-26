@@ -123,7 +123,23 @@ The third build stage of Phase 3 (`docs/phase-3-plan.md` §2, §3.3, §3.8 row 3
 
 ## Phase 3, stage 2a: orders: tables, RLS, customers, settings (branch `platform/phase-3-stage-2a-orders`, 24 Nov 2026)
 
-The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 row 2, §3.9, §3.10, §9.1, §8 stage 2a). From `main` at `4901c0d` (PR 70 merged; 70 migrations). **One migration, `20261124000100_platform_orders.sql`, local only.** Nothing on staging or live was touched. **It deletes rows** (below), so its staging push is a separate step on the owner's word.
+The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 row 2, §3.9, §3.10, §9.1, §8 stage 2a). From `main` at `4901c0d` (PR 70 merged; 70 migrations). **One migration, `20261124000100_platform_orders.sql`.** **Migration on staging since 25 Nov 2026, 71/71** (see "On staging" below); **not on live.** **It deletes rows** (below), so its staging push was a separate step on the owner's word.
+
+**On staging since 25 Nov 2026; not on live.** Migration 20261124000100 pushed to staging, 71/71. It was pushed to staging (`mango-works-staging`, `qafhmdxsodeqkeznafaq`) at 18:20 UTC on 25 Nov 2026 (01:20 on 26 Nov in Bangkok, 13:20 on 25 Nov Eastern), on the owner's word ("push to staging", this migration only), from `main` at `e2cf33d` (PR 77 squash-merged), with `supabase db push --db-url` (CLI 2.121.0; never `--linked`); the connection string was checked to name the staging project, and not live's, before each use. Live (`mfaqydyoweerlqsgwnay`) was not touched. The demo seed was not re-run; no test suite was run.
+
+- **Checks before** (`docs/runbook/pr77-staging-checks.sql`, read-only session, 18:17 UTC):
+  1. 70 migrations on record, newest `20261123000100`, this one not among them. The dry run listed exactly this one.
+  2. The md5 guard "ok" on both functions (`move_unit` `e443cea8…`, `booking_roles` `51a20ff2…`). None of the six tables, `reservations.rental_id`, `tenants.time_step_minutes`, `staff_may()`, `save_customer()` or `save_staff_permissions()` existed.
+  3. Nothing in the way: no other session held a lock on `reservations`, `unit_blocks`, `coupon_redemptions`, `tenants` or `units`; no advisory lock; no other session in a transaction.
+  4. Bookings: **reservations 5**, all BSR's (reserved 4, expired 1); **unit blocks 26**: allocation 5 (BSR, each naming a reservation), downtime 21 (BSR 20, big-fleet 1), no hold, no transfer; **coupon redemptions 0**. So the clearing was to write **5 audit events** (one per reservation; no redemption; no audited block names a reservation).
+  5. Baseline: tenants 3 (big-fleet, bsr, saigon-scooters); members 10 (1, 6, 3); locations 4; products 34; units 215; product pricing 15, price templates 5 (150 days), price rules 0; coupons 2, coupon products 0; **audit events 3,458** (big-fleet 270, bsr 3,143, saigon-scooters 45), highest id 3458, newest 20 Nov.
+- **Push:** the first attempt (18:19 UTC) could not connect to the pooler ("Connection terminated unexpectedly"), so nothing ran; a read-only check showed staging still at 70 with 5 reservations; the second attempt (18:20 UTC) applied the migration. No lock timeout (`55P03`).
+- **Checks after** (the same file with `-v post=1`, 18:20 UTC): the before-and-after diff held only the file's expected differences.
+  1. 71 on record, newest `20261124000100`. `move_unit()` (`e92b87b9…`) and `booking_roles()` (`5ef63872…`) re-created; every object in check 2 now exists.
+  2. **Reservations 0, allocation and hold blocks 0, no block names a reservation, coupon redemptions 0.** Downtime 21 (BSR 20, big-fleet 1), as before.
+  3. Tenants, members, locations, products, units, prices and coupons: every count unchanged. **Audit events 3,463 (+5, all BSR: 3,148)**, the five new rows all `reservations` `delete`, at 18:20:21 UTC. Their ids are 3972–3976: the id sequence had moved past 3458 in transactions that were rolled back since 20 Nov (sequence values are not given back); the count rose by exactly 5.
+  4. The six new tables: RLS on, one policy each, no grant to `anon` or `PUBLIC` (`authenticated` select on all but `order_counters`; `service_role` select, insert, update, delete); none holds a row except `order_counters`: **3 rows, one per shop, each at 1**.
+- **Not checked here:** nothing in a browser against staging; `save_customer()`, `save_staff_permissions()` and `move_unit()` were not called (each would write).
 
 **What the migration does** (re-created functions behind an MD5 guard: `move_unit()`, `booking_roles()`)
 
@@ -290,7 +306,7 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 - **The Moto Mangos tab's "waiting" line is corrected** (`Fleet.motoMangos.waiting`, the owner, 23 Nov 2026): it said the model "goes live once approved"; it now says that once it is approved the shop switches its listing on itself. English final; the Thai is provisional and on `docs/platform/thai-review-products.md` ("Phase 3, stage 1") with the old and new English, for Korn's check.
 - `platform.moving_unit` and `platform.unit_status_change` are lock-order rules, not permissions: a session that can run SQL of its own (a console) can set them. Nothing reachable through the API can.
 - `review_catalog_request()` can now answer `try_again` (a product linked to the entry between its two steps); the admin screen shows its usual "failed" line and the reviewer presses again.
-- One `pg_sleep` is left in `tests/db`: `security-audit.test.ts` (from PR 57), not this stage's.
+- One `pg_sleep` is left in `tests/db`: `security-audit.test.ts` (from PR 57), not this stage's. **Removed 25 Nov 2026:** see "Test reliability: security-audit `pg_sleep`, file-lock under load".
 - The stuck `product-extras.test.ts` process from 17 Nov 2026 was not running on this machine today.
 - The Thai line above needs Korn's check.
 
@@ -299,6 +315,21 @@ The first build stage of Phase 3 (`docs/phase-3-plan.md` §3.8 row 1, §3.11, §
 **Local set-up.** This worktree (`.claude/worktrees/phase-3-stage-1`) has its own stack, `Bike_Booking_phase3_s1`, on ports 634xx (API 63421, database 63422, shadow 63420, Studio 63423, mail 63424, analytics 63427, pooler 63429, inspector 63483), started with CI's service list; `supabase/config.toml`'s change is local only (`git update-index --skip-worktree`), and `apps/platform/.env.local` names the same stack. Another project's stack (on the default ports) was left alone; no older Mango Works stack was running.
 
 **Next:** stage 2a, orders: tables, RLS, customers, settings (migration 2).
+
+## Test reliability: security-audit `pg_sleep`, file-lock under load (branch `test/flake-fixes`, 25 Nov 2026)
+
+Test code only: no migration, no app or SQL change.
+
+**Follow-ups closed**
+
+- **The last `pg_sleep` in `tests/db` is gone** (`security-audit.test.ts`, "a caller who will be refused takes no lock first", from PR 57). The holder kept a row `for update` for 3 seconds with `pg_sleep(3)`, the test slept 700 ms for it to start and timed the call: a refused call under 1.5 s, the owner's let-through call over 1.5 s. The holder now waits at a gate (`closedGate()`, `holding()` in `helpers.ts`, as in the ten files moved in stage 10) and the test looks instead of timing: a refused call has answered while the holder is still at its gate (`stillHolding()`); the owner's `delete_price_template()` is seen waiting for a lock (`seenWaitingForLock()`), has not answered while the gate is closed, and goes through once it is opened. Same 25 tests, same claims; the file sets `GATE_TIMEOUTS`. On this stack: 25 of 25, 48.7 s before, 24 to 25 s after (five runs in a row on a fresh reset, all green).
+- **`tests/file-lock.test.ts` holds under load** (it failed once under load in PR 34). With a busy loop on every core it failed two ways:
+  - "waits out a fresh lock … for the stale time and no longer" read 225 ms for a 300 ms stale time: the stopwatch started after the file was written, and the process was paused in between. It now measures from the file's own mtime, as the lock does.
+  - "a holder that was taken over …" ran out of the 5-second default timeout: the worker was starved (a takeover that needs 300 ms took up to 1.3 s; no file-system error was seen in 200 tries). The file sets a 30-second test timeout.
+  - The two "a live holder keeps it" tests use a 1-second stale time (heartbeat still 50 ms), so a stall of the shared event loop can't let the waiter take a live lock; the holder still outlives three stale times. `e2e/file-lock.ts` is unchanged.
+  - **Runs** (`npx vitest run tests/file-lock.test.ts`, one at a time; "load" is one `node -e "for(;;){}"` per core, 8): before, 20 of 20 idle and 29 of 30 under load (one failure, the 225 ms one); after, 20 of 20 idle and 30 of 30 under load. The original fails rarely, so the counts alone prove little; both failures seen have a cause and a fix. The file now takes about 4 s, up from 2 s (the liveness test waits 3 s instead of 0.9 s).
+
+**Local set-up.** Worktree `.claude/worktrees/test-flakes`, stack `Bike_Booking_test_flakes` on ports 639xx (API 63921, database 63922, shadow 63920, Studio 63923, mail 63924, analytics 63927, pooler 63929, inspector 63983), CI's service list; `supabase/config.toml` local only (`--skip-worktree`). The full database suite was not run here (CI runs it).
 
 ## Faster `wrappers.test.ts` sweep (branch `core/wrappers-test-speed`, 24 Nov 2026)
 

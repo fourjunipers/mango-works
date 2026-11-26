@@ -1,7 +1,14 @@
-import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { acquireFileLock } from "../e2e/file-lock";
 
 /**
@@ -20,12 +27,27 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const fast = { staleMs: 300, heartbeatMs: 50, pollMs: 20 };
+/**
+ * For the tests that a live holder keeps its lock. The holder's heartbeat
+ * and the waiter share this process, so a busy machine that stalls it for
+ * longer than `staleMs` minus `heartbeatMs` would let the waiter take a live
+ * lock. A stale time well beyond any such stall; the heartbeat as before.
+ */
+const live = { staleMs: 1_000, heartbeatMs: 50, pollMs: 20 };
+
+/**
+ * Each test takes well under a second on an idle machine (the liveness test
+ * three). On a busy one this process can be starved for seconds (a takeover
+ * that needs 300 ms took 1.3 s with every core busy): a timeout sized for
+ * that, not the 5-second default.
+ */
+vi.setConfig({ testTimeout: 30_000 });
 
 describe("the browser tests' lock file", () => {
   it("is held by one at a time, and handed on at release", async () => {
-    const release = await acquireFileLock(path, fast);
+    const release = await acquireFileLock(path, live);
     let second = false;
-    const waiting = acquireFileLock(path, fast).then((r) => {
+    const waiting = acquireFileLock(path, live).then((r) => {
       second = true;
       return r;
     });
@@ -39,14 +61,14 @@ describe("the browser tests' lock file", () => {
   });
 
   it("is not taken from a holder that outlives the stale time", async () => {
-    const release = await acquireFileLock(path, fast);
+    const release = await acquireFileLock(path, live);
     let second = false;
-    const waiting = acquireFileLock(path, fast).then((r) => {
+    const waiting = acquireFileLock(path, live).then((r) => {
       second = true;
       return r;
     });
     // Three times the stale time: the heartbeat keeps it alive.
-    await sleep(900);
+    await sleep(3 * live.staleMs);
     expect(second).toBe(false);
     release();
     (await waiting)();
@@ -66,9 +88,12 @@ describe("the browser tests' lock file", () => {
 
   it("waits out a fresh lock nobody touches, for the stale time and no longer", async () => {
     writeFileSync(path, "999999 dead");
-    const started = Date.now();
+    // Measured from the file's own time, as the lock measures it: a clock
+    // read after the write starts late whenever the process is paused in
+    // between (once 75 ms late on a busy machine).
+    const touched = statSync(path).mtimeMs;
     const release = await acquireFileLock(path, fast);
-    const waited = Date.now() - started;
+    const waited = Date.now() - touched;
     expect(waited).toBeGreaterThanOrEqual(250);
     expect(waited).toBeLessThan(2_000);
     release();
