@@ -30,7 +30,7 @@ Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decis
 - **Time-zone message** only for the owner-only refusal (code `42501` and its own words); any other error mentioning a time zone gets the general message.
 - **Settings › Extras for staff:** the menu now leads there. Staff's sidebar (and Me on a phone) has **Shop settings**, opening Settings › Extras (`menuAreasFor()` in `lib/settings-access.ts`). Chosen over hiding the vehicle Extras tab's link because the owner's brief has staff reading that page; the change is one helper and two call sites, and no other Settings page opens for staff.
 - **Skipped: a History line for connecting a Moto Mangos model.** History rows are written by the database (the audit trigger on `platform.products`); connecting is an update of `catalog_id` from empty, which is also what "send to Moto Mangos for review" writes (`submit_product_to_catalog`), so the screen can't tell them apart from the row. It needs an explicit audit action (e.g. `listing_connect`) written by a migration.
-- **Known overlap:** PR 84 (`docs/help-phase-1-2`, open) rewrites the same help articles; whichever merges second resolves the conflicts in `docs/help/en`.
+- **Merged with PR 84** (help articles, `9574287`): its corrected articles and `roles` front matter are the base; only this branch's wording is applied on top (new messages, "Coming in a later update", the tab count, Shop settings for staff, the coupon channel and season direction defaults, the digest note). `en/team/what-each-role-can-do.md` now says staff have Shop settings.
 - A unit test (`lib/coupon-screens.test.ts`) banned "in a later update" anywhere in `en.json`; it now checks Settings › Pricing and tax only, which is what its comment and the matching e2e check meant.
 
 ## Phase 3, stage 2a: orders: tables, RLS, customers, settings (branch `platform/phase-3-stage-2a-orders`, 24 Nov 2026)
@@ -445,6 +445,16 @@ Fixes for the findings of the security audit of `main` at `d458717`. Two migrati
 - **Open:** 13 questions for Korn (§11.2), 11 for Stripe (§11.3).
 - **For Phase 6:** the rental agreement template must carry the clause that allows a later charge to the saved card; tax invoice, credit note and deposit receipt layouts for both deposit VAT modes. The Revenue Department's order Por.73/2541 reads as taxing a rental security deposit when it is received; Korn's answer to K3 may lock the setting to one mode.
 - Doc edits the design will need are listed in its §12 and not made here (among them: `apps/marketplace/CLAUDE.md` still says the fee is a Connect application fee).
+
+## Help articles: Phase 1-2 audit (branch `docs/help-phase-1-2`, 26 Nov 2026)
+
+**Docs only: no code, migration or test changed.** From `main` at `c559186`.
+
+- All 60 articles in `docs/help/en` checked against today's screens and `en.json` (after PRs 51, 57, 62, 63, 65, 70, 72) and corrected where they had drifted; each now has `updated: 2026-11-26`.
+- **New front-matter field `roles`** (optional; owner, manager, staff, mechanic, driver, platform-admin), on every article, agreeing with its "Who can do this". Nothing in the code reads the front matter yet (no parser, schema or test), so nothing else changed; the README documents the field.
+- **Two new articles:** `en/team/what-each-role-can-do.md`, `en/fleet/scan-a-qr-sticker.md`. `PENDING.md` emptied (the PR 62 quantity range message is now in all three articles).
+- Notable fixes: approving a Moto Mangos request no longer switches the listing on (the shop does, since `20261123000100`); Free is for services only; Show all days is phone-only; staff, mechanics and drivers see different Price check content; deleting or moving a vehicle with bookings (unit lock rules).
+- **App inconsistencies found, for the owner** (not fixed; listed in the PR): no way to retire a product though messages still mention it; long-stay breakdown text ignores a capped remainder; Replacement value 0 says "choose Free"; phase numbers in UI text; "four tabs" help for three-tab roles; Settings › Extras try-again message names "this vehicle"; an unknown coupon save error shows an error page; retired products offered in a vehicle's Product dropdown; new seasons start on Decrease; new coupons start with no channel ticked.
 
 ## Help articles for built screens (branch `docs/help-articles-built-screens`, 19 Nov 2026)
 

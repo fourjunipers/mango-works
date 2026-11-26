@@ -1,14 +1,15 @@
 ---
 title: Read a product's History
 summary: See who changed what on a product and its vehicles or gear units, newest first, including prices, extras, Moto Mangos and stock.
+roles: [owner, manager]
 keywords: [history, audit, who changed, changes log, log, product history, activity, ประวัติ, ใครแก้ไข, บันทึกการเปลี่ยนแปลง]
 screens: [/[tenant]/products/[id]]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Read a product's History
 
-The **History** tab of a product answers "who changed this, and when?". It lists changes newest first, each with who made it and the date and time in your shop's time zone. It covers the product itself and its vehicles (named by plate) or its gear units (named by label).
+The **History** tab of a product answers "who changed this, and when?". It lists changes newest first, each with who made it and the date and time in your shop's time zone. It covers the product itself and its vehicles (named by plate) or, for gear tracked unit by unit, its gear units (named by label).
 
 Who can see it: owners and managers. The tab doesn't appear for other roles.
 
@@ -21,14 +22,14 @@ Who can see it: owners and managers. The tab doesn't appear for other roles.
 ## What it shows
 
 - **Details:** a line for each save, with what changed ("Name: old → new"), and when a vehicle or gear unit is added, changed or deleted. A vehicle shows its plate, or "No plate" until it has one, and an unlabelled gear unit "without a label".
-- **Prices:** setting or changing the price method, the prices by rental length, deposit, tax, a flat fee, the long-stay rate, and a shared price list the product is on. Seasons that cover the product are shown too, and so is a change to a shared price list that also affects other products.
+- **Prices:** setting or changing the price method, the prices by rental length, deposit, replacement value, tax, a flat fee or fixed price, the long-stay rate, and a shared price list the product is on. Amounts show in your shop's currency, for example "Mark changed the daily price from THB 250 to THB 300". Seasons that cover the product are shown too, and so is a change to a shared price list that also affects other products.
 - **Extras:** one line each time the extras offered with a vehicle are saved, plus changes to the list offered with every vehicle.
-- **Moto Mangos:** switching the listing on or off, changing the lead time, changing the model and disconnecting.
+- **Moto Mangos:** switching the listing on or off, changing **Instant units**, **Request units** and **Walk-ins**, changing the lead time, changing the model and disconnecting.
 - **Stock:** quantity changes (rental gear and items for sale), units marked in repair, lost, back in use or found, and units removed from stock, with the date it happened, the expected-back date and the notes you typed. See [Report a problem with rental gear](report-a-gear-problem.md).
 
 A change made by a database job shows as "The system", and one by someone who has since left the team as "Someone no longer in the team".
 
-The list shows the latest 100 changes. When there are more, it says so under the list.
+The list shows the latest 100 changes. When there are more, it says "Showing the latest 100 changes." under the list.
 
 ## Common problems
 

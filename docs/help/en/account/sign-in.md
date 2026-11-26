@@ -1,14 +1,19 @@
 ---
 title: Sign in to your shop
 summary: Sign in with LINE, Google, an email and password, or a sign-in link sent to your email.
+roles: [owner, manager, staff, mechanic, driver]
 keywords: [sign in, log in, login, password, sign-in link, magic link, forgot password, LINE, Google, เข้าสู่ระบบ, รหัสผ่าน, ล็อกอิน]
 screens: [/login, /]
-updated: 2026-11-19
+updated: 2026-11-26
 ---
 
 # Sign in to your shop
 
-The sign-in page offers four ways in. Use whichever your shop set you up with.
+The sign-in page offers up to four ways in. Use whichever your shop set you up with.
+
+## Who can do this
+
+Everyone in a shop's team: owners, managers, staff, mechanics and drivers.
 
 ## Steps
 
@@ -17,9 +22,11 @@ The sign-in page offers four ways in. Use whichever your shop set you up with.
    - **Continue with LINE**, or
    - **Continue with Google**, or
    - under "or with your email", type your **Email** and **Password** and press **Sign in**.
+
+   The LINE and Google buttons show only when they are switched on for the platform. If you don't see them, use your email.
 3. No password? Press **Email me a sign-in link instead**, type your email and press **Email me a link**. Open the email and tap the link in the same browser on the same device you asked from. It works for one hour and only once.
 4. To go back to the password form, press **Sign in with a password instead**.
-5. If you work in more than one shop, you see **Choose a shop**. Pick the shop you want to work in now. See [Switch shop and set up this device](switch-shop-and-device.md).
+5. If you work in one shop, it opens straight away on your first tab (**Maintenance** for mechanics, **Dashboard** for everyone else). If you work in more than one shop, you see **Choose a shop** ("You work in more than one shop. Which one now?"). Pick the shop you want to work in now. See [Switch shop and set up this device](switch-shop-and-device.md).
 
 ## Common problems
 
@@ -28,4 +35,4 @@ The sign-in page offers four ways in. Use whichever your shop set you up with.
 - **"We couldn't send the link. Try again in a minute."** Wait a minute and press **Email me a link** again.
 - **"Sign-in didn't finish. Please try again."** The LINE or Google sign-in was interrupted. Start again from the sign-in page.
 - **"That link has expired or was already used. Ask for a new one."** Sign-in links last one hour, work once, and only work in the browser that asked for them (opening the email on another phone or in another browser shows this too). Ask for a new link from the browser you want to use, and open it there.
-- **"You're not in a shop yet"** You signed in, but no shop has added you to its team. Ask the shop owner to add you, then sign in again. Until invites arrive, the owner asks Mango Works to add people (see [Change a team member's role](../team/change-a-role.md)).
+- **"You're not in a shop yet"** You signed in, but no shop has added you to its team. Ask the shop owner to add you, then sign in again. Inviting people arrives in a later update; until then, the owner asks Mango Works to add people (see [Change a team member's role](../team/change-a-role.md)). Press **Sign out** on that page to try another account.

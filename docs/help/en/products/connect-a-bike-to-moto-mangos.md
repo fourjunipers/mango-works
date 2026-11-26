@@ -1,6 +1,7 @@
 ---
 title: Connect a motorbike to Moto Mangos
 summary: Pick your bike's make and model from the Moto Mangos list, or send its details for review if it isn't there, so it can be listed.
+roles: [owner, manager]
 keywords: [Moto Mangos, marketplace, list a bike, make and model, catalog, send for review, request, approved, rejected, connect, ขึ้นรายการ, มอเตอร์ไซค์, ส่งตรวจสอบ]
 screens: [/[tenant]/products/[id]]
 updated: 2026-11-26
@@ -12,7 +13,7 @@ Moto Mangos is the online marketplace where renters find bikes. Before a bike pr
 
 The tab only appears on motorbike products. Cars, boats and other vehicle kinds don't have it, and nor do rental gear, items for sale and services. Moto Mangos lists motorbikes only, for now.
 
-Who can do this: owners and managers.
+Who can do this: owners and managers. Other roles don't see the **Moto Mangos** tab.
 
 ## Steps: your bike is on the list
 
@@ -23,18 +24,18 @@ Who can do this: owners and managers.
 
 ## Steps: your bike isn't on the list
 
-1. First choose a category for the product on the **Details** tab and save. Until then the tab only says to choose a category first.
+1. First choose a category for the product on the **Details** tab and save. Until then the tab says "Choose a category for this product on the Details tab, save, and then you can send it to Moto Mangos."
 2. On the **Moto Mangos** tab, open **Don’t see your bike above? Send us the details and we’ll get it added**.
-3. Fill in **Make**, **Model**, **Engine size (cc)**, **Transmission** and **Year of your bike**. All five are needed. The year is one year, like 2023. The make and model start filled in from the product's name where possible.
-4. Optional: add a **Note for the reviewer**.
+3. Fill in **Make**, **Model**, **Engine size (cc)**, **Transmission** and **Year of your bike**. All five are needed. The year is one year, like 2023. The make and model start filled in from the product's name where possible: for example, a product called "Honda Click 125" starts with Make "Honda" and Model "Click 125".
+4. Optional: add a **Note for the reviewer** (up to 500 characters).
 5. Press **Send for review**.
-6. The tab says the request is waiting for review. You can keep using the product meanwhile. When Moto Mangos approves it, the tab says when the model was added. The product is then connected, but not listed yet: switch the listing on from the **Moto Mangos** tab, as for any connected bike ([Switch a bike on or off Moto Mangos](moto-mangos-listing.md)).
+6. The tab says the request is waiting for review. You can keep using the product meanwhile. When Moto Mangos approves it, the tab says "Moto Mangos added this model to its list on" and the date, for two weeks. The product is then connected, but not listed yet: switch the listing on from the **Moto Mangos** tab, as for any connected bike ([Switch a bike on or off Moto Mangos](moto-mangos-listing.md)).
 
 ## If Moto Mangos turns the request down
 
-The tab shows the date it was reviewed and the reviewer's note (or says no note was left). Under "What to do next" you can:
+The tab says "Moto Mangos reviewed this model on" the date "and didn't add it.", with the reviewer's note (or "The reviewer left no note. You can change the details and send it again."). Under **What to do next** you can:
 
-- press **Edit and send again**, fix the details and press **Send for review again**; or
+- press **Edit and send again**: the form opens with what you sent before. Fix the details and press **Send for review again**; or
 - press **Choose a model from the list instead**.
 
 ## Common problems
@@ -47,6 +48,8 @@ The tab shows the date it was reviewed and the reviewer's note (or says no note 
 - **"You already have a product with this make and model."** Another product in your shop has the same make and model. Use that one, or change one of them.
 - **"Enter an engine size from 1 to 20000 cc."** Correct the engine size.
 - **"Enter a year, such as 2024."** The year must be between 1950 and 2100.
+- **"Required."** under a field: fill it in. All five details are needed.
+- **"Too long."** The make can be 40 characters at most, the model 60.
 - **"Give the make, model, engine size, transmission and year first."** One of the five details is missing.
 - **"This product is retired. Restore it first."** A retired product can't be connected: see [Delete or restore a product](delete-or-restore-a-product.md).
 - **"Only an owner or manager can change that."** or **"You can't make that change."** Ask an owner or manager.

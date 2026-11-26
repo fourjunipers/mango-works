@@ -1,9 +1,10 @@
 ---
 title: Typing amounts, percentages and other numbers
 summary: How to type a price, a percentage, hours, an odometer reading or a count so the platform reads it the way you meant, and what to do when it is refused.
+roles: [owner, manager, staff, mechanic, driver]
 keywords: [number, amount, price, decimal, decimal point, comma, thousands separator, space, "12,5", "0,5", invalid amount, enter an amount, enter a percentage, ตัวเลข, จุดทศนิยม, ลูกน้ำ, ใส่จำนวนเงิน]
 screens: [/[tenant]/products, /[tenant]/settings/pricing, /[tenant]/settings/coupons, /[tenant]/fleet]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Typing amounts, percentages and other numbers
@@ -11,6 +12,10 @@ updated: 2026-11-20
 Every box that takes a number follows one rule, on every screen: prices and deposits, percentages and tax rates, multipliers, buffer hours, odometer readings, whole numbers such as a quantity or a number of days, and years.
 
 The rule is the same whatever country or language the shop uses, so the same text can never mean two different amounts on two screens.
+
+## Who can do this
+
+Everyone. Which number boxes you see depends on your role: for example, mechanics type odometer readings, and only owners and managers type prices.
 
 ## The rule
 
