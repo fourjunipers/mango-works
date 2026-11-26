@@ -2346,9 +2346,11 @@ drop function platform.assign_units(uuid, uuid, uuid[]);
 -- Who may call what (plan §3.9). Making, holding, reserving and confirming
 -- follow the channel, as Phase 2 did: the service role for booking_page,
 -- marketplace and api orders only; a signed-in owner, manager or staff
--- member for walk_in and phone orders only. Cancelling is the server's and
--- a member's for any order of the shop, as Phase 2's cancel was: the shop
--- cancels a web booking at the counter. Naming units is a member's. Each
+-- member for walk_in and phone orders only. Cancelling is the server's for
+-- any order, and a member's for any order of the shop except a Moto Mangos
+-- one (channel 'marketplace'), whose cancellation rules come at 3M (the
+-- owner, 25 Nov 2026): the shop cancels a booking-page booking at the
+-- counter, but not a marketplace one. Naming units is a member's. Each
 -- has the 6-second lock timeout; its caller answers try_again for 55P03,
 -- 57014 and 40P01 (packages/booking/src/try-again.ts).
 
@@ -2521,7 +2523,9 @@ alter function platform.reserve_order(uuid, uuid, jsonb) set lock_timeout = '6s'
 -- Whether the caller may work on this order. p_rule:
 --   'channel'  the server for an online order, a member with the action's
 --              role for a counter or phone order (confirm);
---   'any'      the server, or a member with the action's role (cancel);
+--   'cancel'   the server for any order; a member with the action's role
+--              for any order but a Moto Mangos one (channel 'marketplace'),
+--              which only the server cancels until 3M;
 --   'members'  a member with the action's role only (assign).
 -- 'not_found' for no such order or another shop's, but only once the caller
 -- is known to be someone who may ask.
@@ -2555,6 +2559,13 @@ begin
   where o.id = p_order_id and o.tenant_id = p_tenant_id;
   if not found then
     return 'not_found';
+  end if;
+  if p_rule = 'cancel' then
+    -- A Moto Mangos order is not the shop's to cancel yet (3M).
+    if v_channel = 'marketplace' and not v_service then
+      return 'not_allowed';
+    end if;
+    return 'ok';
   end if;
   if p_rule <> 'channel' then
     return 'ok';
@@ -2592,7 +2603,8 @@ grant execute on function platform.confirm_order(uuid, uuid) to authenticated, s
 alter function platform.confirm_order(uuid, uuid) set lock_timeout = '6s';
 
 -- cancel_order(): a new, draft or booked order with nothing out becomes
--- canceled. Who cancelled and why: for a member 'shop' and 'shop_request'
+-- canceled. The server's for any order; a member's for any order of the
+-- shop but a Moto Mangos one (not_allowed). Who cancelled and why: for a member 'shop' and 'shop_request'
 -- unless said; for the server 'customer' and 'customer_request' unless
 -- said. 'system' and 'expired' are the database's own (a hold that ran
 -- out), and can't be sent.
@@ -2608,7 +2620,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_caller text := platform_private.order_caller(p_tenant_id, p_order_id, 'cancel', 'any');
+  v_caller text := platform_private.order_caller(p_tenant_id, p_order_id, 'cancel', 'cancel');
   v_by text;
   v_reason text;
 begin

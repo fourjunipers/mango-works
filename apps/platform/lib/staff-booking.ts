@@ -464,7 +464,9 @@ export async function confirmHold(
 }
 
 /**
- * A whole order, with who cancelled and why (the shop, unless said). One
+ * A whole order, with who cancelled and why (the shop, unless said). Not a
+ * Moto Mangos order: a member is answered `not_allowed` for those until 3M
+ * (the owner, 25 Nov 2026). One
  * rental of an order is cancel_rental()'s (Phase 3 stage 5).
  */
 export async function cancelReservation(

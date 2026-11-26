@@ -1472,6 +1472,75 @@ describe("cancel_order()", () => {
       cancel_reason: "other",
     });
   });
+
+  it("a Moto Mangos order is the server's to cancel, not a member's (the owner, 25 Nov 2026); a member cancels a counter, phone, booking-page or api order of the shop", async () => {
+    for (const tenant of [shop, newYork, saigon]) {
+      const helmet = await gear(40, tenant);
+      const make = async (channel: string) => {
+        const online = !["walk_in", "phone"].includes(channel);
+        const made = await order(online ? service : staff(tenant), tenant, {
+          channel,
+          mode: online ? "instant" : "staff",
+          action: "reserve",
+          lines: [line(tenant, helmet, at(1), at(2))],
+        });
+        expect(made.data?.ok, `${channel}: ${made.data?.reason}`).toBe(true);
+        return made.data!.order_id!;
+      };
+      const cancel = (db: Db, id: string) =>
+        db.rpc("cancel_order", { p_tenant_id: tenant.id, p_order_id: id });
+
+      // Moto Mangos: no member, whatever the role; nothing changes.
+      const marketplace = await make("marketplace");
+      const before = await written(tenant);
+      for (const role of ["owner", "manager", "staff"] as const) {
+        const refused = await cancel(tenant.members[role].db, marketplace);
+        expect(refused.error, `${tenant.slug} ${role}`).toBeNull();
+        expect(refused.data, `${tenant.slug} ${role}`).toEqual({
+          ok: false,
+          reason: "not_allowed",
+        });
+      }
+      expect(await written(tenant)).toEqual(before);
+      expect((await orderRow(marketplace)).status).toBe("booked");
+      // The server cancels it.
+      const byServer = await cancel(service, marketplace);
+      expect(byServer.data, tenant.slug).toMatchObject({
+        ok: true,
+        order_id: marketplace,
+      });
+      expect(await orderRow(marketplace)).toMatchObject({
+        status: "canceled",
+        cancelled_by: "customer",
+      });
+
+      // Every other channel: a member of the shop cancels it.
+      for (const [channel, role] of [
+        ["walk_in", "staff"],
+        ["phone", "manager"],
+        ["booking_page", "staff"],
+        ["api", "owner"],
+      ] as const) {
+        const id = await make(channel);
+        const done = await cancel(tenant.members[role].db, id);
+        expect(done.data, `${tenant.slug} ${channel}`).toMatchObject({
+          ok: true,
+          order_id: id,
+        });
+        expect(await orderRow(id), `${tenant.slug} ${channel}`).toMatchObject({
+          status: "canceled",
+          cancelled_by: "shop",
+        });
+      }
+      // And the server cancels any of them too.
+      for (const channel of ["walk_in", "booking_page"]) {
+        const id = await make(channel);
+        expect((await cancel(service, id)).data, channel).toMatchObject({
+          ok: true,
+        });
+      }
+    }
+  });
 });
 
 describe("charges", () => {
