@@ -16,6 +16,7 @@ const low: SeasonDraft = {
   name: " Low season ",
   startsOn: "2027-04-01",
   endsOn: "2027-09-30",
+  direction: "decrease",
   percent: "20",
 };
 
@@ -43,6 +44,13 @@ describe("parsePercentBp", () => {
 });
 
 describe("seasonPayload", () => {
+  it("a new season has no direction until one is chosen", () => {
+    expect(emptySeasonDraft().direction).toBeNull();
+    expect(seasonPayload({ ...low, direction: null })).toEqual({
+      ok: false,
+      errors: { direction: "seasonDirection" },
+    });
+  });
   it("sends a decrease as negative basis points, name trimmed", () => {
     const result = seasonPayload(low);
     expect(result).toEqual({

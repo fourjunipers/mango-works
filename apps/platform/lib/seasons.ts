@@ -18,7 +18,8 @@ export type SeasonDraft = {
   startsOn: string;
   endsOn: string;
   repeatsYearly: boolean;
-  direction: Direction;
+  /** Null on a new season until staff choose: nothing is preselected. */
+  direction: Direction | null;
   percent: string;
   allProducts: boolean;
   productIds: string[];
@@ -112,7 +113,8 @@ export function seasonPayload(
   if (bp === null) errors.percent = "required";
   else if (bp === "invalid") errors.percent = "invalidPercent";
   else if (bp === 0) errors.percent = "percentZero";
-  else {
+  if (draft.direction === null) errors.direction = "seasonDirection";
+  else if (typeof bp === "number" && bp !== 0) {
     adjust = draft.direction === "decrease" ? -bp : bp;
     if (adjust < MIN_ADJUST_BP) errors.percent = "decreaseTooLarge";
     else if (adjust > MAX_ADJUST_BP) errors.percent = "increaseTooLarge";
@@ -158,7 +160,7 @@ export const emptySeasonDraft = (): SeasonDraft => ({
   startsOn: "",
   endsOn: "",
   repeatsYearly: true,
-  direction: "decrease",
+  direction: null,
   percent: "",
   allProducts: true,
   productIds: [],

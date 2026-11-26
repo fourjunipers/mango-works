@@ -43,8 +43,10 @@ export async function saveSeason(
   const { slug, tenant, allowed, supabase } = await context(formData);
   if (!allowed) return notAllowed;
   const id = field(formData, "id");
-  const direction: Direction =
-    field(formData, "direction") === "increase" ? "increase" : "decrease";
+  // Nothing is preselected on a new season: no choice is refused below.
+  const typed = field(formData, "direction");
+  const direction: Direction | null =
+    typed === "increase" || typed === "decrease" ? typed : null;
   const result = seasonPayload(
     {
       name: field(formData, "name"),
