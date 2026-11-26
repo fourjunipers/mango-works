@@ -198,7 +198,13 @@ export default async function UnitPage({
                 distanceUnit={tenant.distanceUnit}
                 upcomingBookings={upcomingBookings}
                 addModelHref={`/${slug}/products/new`}
-                models={inventoryModelOptions(fleet)}
+                // As on Add vehicle, a retired product takes no vehicles:
+                // it is left out, except the one this vehicle is under now.
+                models={inventoryModelOptions(
+                  fleet.filter(
+                    (m) => m.retired_at === null || m.id === unit.product_id,
+                  ),
+                )}
                 locations={locations.map((l) => ({
                   value: l.id,
                   label: l.name,
