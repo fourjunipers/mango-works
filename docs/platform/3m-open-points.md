@@ -2,6 +2,8 @@
 
 **Written 26 Nov 2026, from `main` at `466adb6` (PR 82 merged; 71 migrations), with PR 79 (Phase 3 stage 2b, open, head of `refs/pull/79/head` as fetched) read for what it changes. Docs only: nothing was run, built or tested, and no database, provider or console was opened.** This prepares the design review of 3M. **Nothing here is decided.** Every decision already in `docs/platform/SPEC.md`, `docs/phase-3-plan.md`, `docs/platform/payments-design.md`, `docs/INTEGRATION.md` and `docs/platform/neon-move-plan.md` stands as written; each point below is a proposal for Mark.
 
+**Updated 26 Nov 2026 with Mark's answers on PR 85:** points 3 (the no-show rule), 5 and 11 are **decided by Mark**, each marked so where it stands. Everything else is still a proposal.
+
 **Read for this:** `docs/phase-3-plan.md` §1.2 (its 3M row; §8 has no 3M row, because 3M gets its own plan, §7), §2.3, §3.2, §7 and §11; `docs/platform/SPEC.md` (Product scope item 4, Built for any country › Moto Mangos, ranking and vendor billing, Data model › orders, Online booking, Review decisions › 3M and "When the renter pays"); `docs/platform/payments-design.md` §4 and §11.1; `docs/INTEGRATION.md`; `docs/marketplace/SPEC.md` (booking modes, payments and cancellation, vendor terms, referral program); `docs/platform/MAPPING.md`; `docs/platform/neon-move-plan.md` §7 and §8a; `apps/marketplace` (`lib/data/*`, `lib/fees.ts`, `lib/fee-lifecycle.ts`, `lib/flags.ts`, `lib/hidden-areas.ts`, the customer, account and admin routes); every migration that names `marketplace`, `product_listings`, `request` or the legacy `public` tables; PR 79's description and its migration `20261125000100_platform_order_core.sql`.
 
 **Facts and inferences.** A statement with a file reference is documented fact. **Anything marked *(inference)* is my reading** and has not been checked. "PR 79" means the open stage 2b branch: its behaviour is not on `main` yet.
@@ -14,15 +16,15 @@
 | --- | --- | --- | --- |
 | 1 | Request-to-book: statuses, accept, decline, timeouts | (a) `request_status` pending → accepted / declined / expired; expiry fixed at creation; accept runs `reserve_core` on the `requested` order | Medium |
 | 2 | Do pending requests count against the cap and the dates? | (a) A `requested` reservation with no block, counted by `marketplace_peaks()` only | Medium |
-| 3 | Who may cancel a Moto Mangos order, and when | (b) Customer through Moto Mangos; shop with a reason from a list, always counted as the shop's; no-show by the shop after pickup time; system for unpaid fee, expiry | Medium |
+| 3 | Who may cancel a Moto Mangos order, and when | (b) Customer through Moto Mangos; shop with a reason from a list, always counted as the shop's; system for unpaid fee, expiry. **No-show only after the pickup time (plus grace): decided by Mark, 26 Nov 2026** | Medium (no-show: decided) |
 | 4 | The fee on each kind of cancellation | (a) `fee-lifecycle.ts` as it stands, driven by `cancelled_by` + `cancel_reason`; two reasons added | High |
-| 5 | How the fee amount reaches the order's negative line | (c) The shared booking package works out base and fee from one quote, on the server; the database checks the fee against the rule it is given | Medium |
+| 5 | How the fee amount reaches the order's negative line | **Decided by Mark, 26 Nov 2026:** the server works out base and fee from one quote with the shared package; never from the browser or chosen by the caller; the database checks the line against the fee rule | Decided |
 | 6 **[added]** | The fee record and the order in one transaction | (a) `create_booking` writes the fee record in the same transaction | Medium |
 | 7 | How Moto Mangos orders show in the shop's order list | (b) Channel badge, Requests tab with a countdown, fee status pushed to the order | Medium |
 | 8 **[added]** | The status the renter sees (`get_booking`) | (a) One SQL mapping function, tested against every row of INTEGRATION §5 | High |
 | 9 **[added]** | Shop edits to a Moto Mangos order after booking | (a) Allowed, fee untouched; date changes and price overrides upward refused before pickup | Low |
 | 10 | Rate parity | (a) One price for every channel, by construction; upward overrides on Moto Mangos orders refused | Medium |
-| 11 | The per-shop booking link | Ask Mark what is meant; lean (a) a stable Moto Mangos shop link, fee applies | Low |
+| 11 | The per-shop booking link | **Decided by Mark, 18 and 26 Nov 2026:** each shop gets a stable link to its own Moto Mangos shop page, for its Google Business Profile "make a booking" button; every Moto Mangos booking pays the fee, through that link too | Decided |
 | 12 | Featured placement and ranking hooks | (a) Hooks only: signals from orders, a marketplace-owned boost table; billing later | High |
 | 13 | Referral: Thailand only, per-country switch | (a) A switch on `markets`, passed down; attribution kept on the fee record, not on the order | Medium |
 | 14 | Country, currency and market per shop | (a) A shop is listed only where its currency equals its market's | High |
@@ -103,11 +105,13 @@
 | (b) | **Customer through `cancel_booking` until pickup; a shop member (cancel role) through `cancel_order` until pickup, with a reason from a list, always recorded `cancelled_by = shop`; no-show marked by the shop only after the pickup time; system for an unpaid fee, an expired hold or request.** A customer who phones the shop to cancel is sent to My bookings, or the shop's cancel is still counted as the shop's | Matches the SPEC; one rule per actor; the shop can't turn its own cancel into the customer's (which would keep the fee) by picking a reason. Shops may complain that a customer's phone cancel counts against them *(inference)* |
 | (c) | As (b), but a shop may record **"at the customer's request"**, which the customer confirms in Moto Mangos within a time limit; unconfirmed, it counts as the shop's | Fair to shops; one more flow, a message and a timer |
 
-**Recommendation: (b)**, with (c) as a later addition if shops ask. Also: **no-show only from the pickup time plus the shop's late-return grace** (decision 21's 60 minutes) *(inference: the docs give no no-show grace)*; a shop cancel and a decline both send `booking.cancelled` / `.declined` with `by = shop`.
+**Recommendation: (b)**, with (c) as a later addition if shops ask. A shop cancel and a decline both send `booking.cancelled` / `.declined` with `by = shop`.
+
+**No-show: decided by Mark, 26 Nov 2026.** On a Moto Mangos order a no-show can be marked **only after the pickup time has passed**: from the pickup time plus the shop's late-return grace (decision 21's 60 minutes by default), as recommended here. **This differs on purpose from the management platform**, where staff may mark a no-show on their own orders at any time (order screen prototype, answer 9). The difference exists because a Moto Mangos no-show keeps the renter's fee (point 4), so it must not be markable before the renter could have arrived. So the no-show check in the order functions depends on the channel: refused before pickup plus grace for `marketplace`, allowed at any time for every other channel.
 
 **Neon.** No change.
 
-**Prove before deciding.** A member's cancel of a Moto Mangos order succeeds only with a listed reason and records `shop`; a no-show before the pickup time is refused; `cancel_booking` by another account's id refused; the customer's cancel and the shop's pick-up at the same instant (one wins, `try_again` or clean).
+**Prove before deciding.** A member's cancel of a Moto Mangos order succeeds only with a listed reason and records `shop`; a no-show on a Moto Mangos order one minute before pickup plus grace is refused and one minute after is accepted, while on a `walk_in` or `booking_page` order it is accepted at any time (the decided rule); `cancel_booking` by another account's id refused; the customer's cancel and the shop's pick-up at the same instant (one wins, `try_again` or clean).
 
 ## 4. The fee on each kind of cancellation
 
@@ -131,7 +135,7 @@
 | (a) | **Keep `feeWhenEnded` as it is; the platform reports, the marketplace decides.** The order records `cancelled_by` and `cancel_reason`; `booking.cancelled` carries both and the cancel time. Add two reasons to PR 79's list: **`fee_unpaid`** (system, the `cancelled_unpaid` case) and **`declined`** (shop, a request) *(inference: `shop_request` reads as "the shop asked", and a decline is not a cancel of a confirmed booking)* | Uses tested code; one place decides money. The 72-hour test is the cancel time against the pickup, so the event must carry the platform's cancel time, not the time the marketplace received it |
 | (b) | The platform works out the fee outcome and sends it | Moves a marketplace rule into the platform (SPEC Product scope item 4: fee rules stay marketplace-only) |
 
-**Recommendation: (a).** One nuance to settle: on a **no-show** the order is `canceled` with `no_show = true` (§3.2), and its booking charge with the negative line is voided; the fee is kept on the marketplace side. Nothing is owed to the shop, which is right for a no-show *(inference)*.
+**Recommendation: (a).** **No-show:** the fee is kept, as in the table. Since a Moto Mangos no-show can be marked only after the pickup time (point 3, decided by Mark, 26 Nov 2026), it is always past the cut-off, so "kept" is the only outcome. One nuance to settle: on a **no-show** the order is `canceled` with `no_show = true` (§3.2), and its booking charge with the negative line is voided; the fee is kept on the marketplace side. Nothing is owed to the shop, which is right for a no-show *(inference)*.
 
 **Neon.** No change.
 
@@ -151,11 +155,11 @@
 | (b) | **The platform works the fee out in SQL** from the base and a market rule it reads | One call. But the fee rule and the market minimum are marketplace-owned (INTEGRATION §1), and a second copy of the rule in SQL is what the SPEC retires at 3M for pricing (Review decisions › Pricing) |
 | (c) | **One call; the fee worked out on the server by the shared package from the same quote, never from the browser.** `bookOnline()` for `channel = marketplace` builds the booking charge, works out the base, calls `bookingFee()` (moved from `apps/marketplace/lib/fees.ts` into `@mango/core` or `@mango/booking`) with the market's rule, adds the negative line, and passes the charge and the rule (`rate_bp`, `minimum`, `currency`) to `create_booking`. The database checks, by addition and comparison only, that the line equals the rule applied to the base. `create_booking` returns base and fee | One transaction, one rule in one place, and the check stops a wrong fee reaching the shop's order. It reads §3.12's "not passed in" as "not from the browser and not chosen by the caller", which **Mark must confirm** |
 
-**Recommendation: (c)**, and correct INTEGRATION §3.12's wording to match if Mark agrees. *(Inference: §3.12 was written when the marketplace called the platform across an API; with one database and one shared server package the intent, "the platform's base, the marketplace's rule, nothing from the browser", is kept.)*
+**Decided by Mark, 26 Nov 2026: (c).** The fee is never taken from the browser or chosen by the caller. The server works out the base and the fee from one quote with the shared package, and the database checks the line against the fee rule. INTEGRATION §3.12's "the fee is not passed in" is to be reworded to say this (in 3M's first PR, with point 21). (Background: §3.12 was written when the marketplace was to call the platform across an API. With one database and one shared server package, its intent still holds: the platform's base, the marketplace's rule, nothing from the browser.)
 
 **Neon.** No change: the package runs in the marketplace's Netlify functions and calls through the service path (neon-move-plan §8a point 7).
 
-**Prove before deciding.** The fee as a pure function: 100% coupon (base 0, fee 0), base under ฿500 (minimum ฿50, but never above the base), a 90-day rental (all booked months in), VAT inclusive and on top, a JPY shop (exponent 0); `create_booking` refuses a line that does not match the rule; the booking charge total equals what the shop collects.
+**Prove when built** (the decision is made): the fee as a pure function: 100% coupon (base 0, fee 0), base under ฿500 (minimum ฿50, but never above the base), a 90-day rental (all booked months in), VAT inclusive and on top, a JPY shop (exponent 0); `create_booking` refuses a line that does not match the rule; the booking charge total equals what the shop collects.
 
 ## 6. The fee record and the order in one transaction [added]
 
@@ -253,23 +257,25 @@
 
 ## 11. The per-shop booking link
 
-**Question.** What is "the per-shop booking link"?
+**Decided by Mark, 18 and 26 Nov 2026.**
 
-**Already settled.** **I found no definition in the docs or code** (git grep for "booking link", "shop link", "share link" and similar). Related facts: the platform's own hosted booking page per shop, commission-free, is Phase 8 (SPEC › Online booking; Product scope item 4 "direct bookings stay commission-free"); Moto Mangos shop pages are `/shops/[slug]` today and become `/bangkok/…`-style paths with markets (SPEC › Built for any country: "one domain with paths"); slugs must stay stable (INTEGRATION §2; MAPPING: a tenant keeps the shop's slug).
+- **Every booking made through Moto Mangos pays the Moto Mangos fee, with no exceptions**, including bookings that arrive through a shop's own Moto Mangos link. The fee rule (decision 23) does not change.
+- **Each shop gets a stable link to its own Moto Mangos shop page** (one shop's page, not the list of all shops). The shop uses it as the "make a booking" button on its Google Business Profile.
+- **A shop that takes bookings through its own system from another provider (Booqable, for example) is outside Moto Mangos**, so no fee arises on those bookings. Only bookings made on Moto Mangos carry the fee.
 
-**Options** *(each is my reading of what the term could mean)*.
+**Already settled around it.** Moto Mangos shop pages are `/shops/[slug]` today (`apps/marketplace/app/(customer)/[locale]/shops/[slug]/page.tsx`) and become market paths such as `/bangkok/…` (SPEC › Built for any country: "one domain with paths"; language stays the URL prefix). Slugs are stable, and changing one breaks links (INTEGRATION §2); a tenant keeps the legacy shop's slug (MAPPING §1). `getShopBySlug` returns `null` for a shop that is not listed and approved (INTEGRATION §3.4). The shop's own commission-free booking page on the platform is Phase 8 (SPEC › Online booking) and is a separate thing from this link.
 
-| | Option | Cost and risk |
-| --- | --- | --- |
-| (a) | **A stable Moto Mangos link for each shop** (`/<market>/shops/<slug>`, with redirects from today's `/shops/<slug>`) that the shop can share or print as a QR; bookings through it are ordinary Moto Mangos bookings and pay the fee | Little to build; links survive the market paths |
-| (b) | The same link, but **bookings arriving through it pay no fee** (the shop brought the renter) | Rewards shops for bringing renters; needs attribution that can't be gamed (a cookie, the `ref` parameter) and a fee rule exception |
-| (c) | The link **sends the renter to the shop's own booking page** (Phase 8) | Commission-free, but that is the booking page's own link, not Moto Mangos'; not available until Phase 8 |
+**What 3M must build for the link.**
 
-**Recommendation: ask Mark which is meant.** If the answer is (a), it is small and belongs in 3M; (b) changes the fee rule and needs a decision like decision 23.
+1. **One permanent address per shop that never changes when markets arrive:** `/shops/<slug>`, kept as a redirect to the shop's market path (`/<market>/shops/<slug>`) once markets exist. The page keeps the visitor's language as the site already does (prefix, else the default). *(Inference: `/shops/<slug>` is the obvious stable form because it is what exists today; a shorter `/s/<slug>` would need Mark's say.)*
+2. **The link shown to the shop on the platform**, on the Moto Mangos settings for owners and managers (the roles that switch Moto Mangos, products-redesign decision 12), with a copy button and a line saying where it goes ("Use this as the booking button on your Google Business Profile"). It is shown only once the shop is listed and approved.
+3. **Slug changes are guarded.** Once a shop is listed, its slug either cannot change, or a change keeps the old slug redirecting to the new one *(to settle in the 3M plan; the redirect needs a small marketplace-owned table of old slugs)*.
+4. **A link that leads somewhere when the shop is off Moto Mangos.** A shop that is switched off, suspended or not yet approved answers a plain "this shop isn't taking Moto Mangos bookings right now" page with a link to search, not a bare 404, so the button on Google never looks broken *(inference: the docs don't say; today `getShopBySlug` gives `null`)*.
+5. **No fee exception and no attribution logic.** A booking through the link is an ordinary Moto Mangos booking (`channel = marketplace`). An optional source tag on the link (for example `?src=gbp`) may be recorded for analytics only and never changes the fee.
 
 **Neon.** No change.
 
-**Prove before deciding.** Nothing until the meaning is settled; for (a), old shop paths redirect to the market path.
+**Prove when built.** `/shops/<slug>` answers the shop page today and redirects to the market path once markets exist, in every language prefix; a booking through the link carries the same fee as one through search; a shop that is not listed shows the "not taking bookings" page; the link is shown only to owners and managers of a listed, approved shop; a slug change on a listed shop is refused or redirects (as the 3M plan settles).
 
 ## 12. Featured placement and ranking hooks
 
