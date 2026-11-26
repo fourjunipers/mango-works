@@ -133,16 +133,34 @@ label.f { display: block; font-size: 0.75rem; color: var(--muted-foreground); ma
 
 /* ---------- order layout (invoice style, §9.1) ---------- */
 .ohead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.ohead > div:first-child { flex: 1 1 380px; min-width: 0; }
 .ohead .crumb { font-size: 0.8rem; color: var(--muted-foreground); margin-bottom: 2px; }
 .ohead .title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ohead .acts { display: flex; flex-wrap: wrap; gap: 8px; position: relative; }
 .ogrid {
   display: grid; gap: 16px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 19rem;
-  grid-template-areas: "cust where side" "lines lines side" "gap totals side";
+  grid-template-areas: "cust cust side" "lines lines side" "gap totals side";
   align-items: start;
 }
-.a-cust { grid-area: cust; } .a-where { grid-area: where; } .a-lines { grid-area: lines; }
+.a-cust { grid-area: cust; } .a-lines { grid-area: lines; }
+/* Dates first (Mark, 26 Nov 2026): pickup and return are the strongest thing on a line and in the header. */
+.when { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.when-l { display: block; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-foreground); }
+.when-v { font-size: 1.08rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; white-space: nowrap; }
+.when-s { font-size: 0.75rem; color: var(--muted-foreground); }
+.hdates { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 22px; margin-top: 10px; }
+.hdates .when-v { font-size: 1.35rem; }
+.hdates .to { color: var(--muted-foreground); font-size: 1.1rem; padding-bottom: 2px; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; margin-top: 8px; font-size: 0.78rem; color: var(--muted-foreground); }
+.meta > * { display: inline-flex; align-items: center; gap: 4px; }
+.meta > * + *::before { content: "·"; margin: 0 8px; }
+.meta select { height: 24px; padding: 0 2px; border-color: transparent; background: transparent; color: var(--muted-foreground); font-size: 0.78rem; }
+.meta select:hover, .meta select:focus { border-color: var(--input); }
+.ldates .dt input, .ldates .dt select { height: 40px; font-size: 1rem; font-weight: 600; }
+.ldates .dt input[type=date] { width: 150px; }
+.ldates .dt select { width: 86px; }
+.deprow { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--highlight-border); display: flex; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: var(--muted-foreground); }
 .a-totals { grid-area: totals; } .a-side { grid-area: side; display: flex; flex-direction: column; gap: 16px; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
 .card > h2 { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -157,19 +175,21 @@ label.f { display: block; font-size: 0.75rem; color: var(--muted-foreground); ma
 .results { position: absolute; z-index: 15; left: 0; right: 0; top: 42px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); max-height: 340px; overflow: auto; }
 .results button { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%; text-align: left; background: none; border: 0; padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .results button:hover, .results button:focus-visible { background: var(--highlight); }
-.lhead, .line { display: grid; grid-template-columns: 18px minmax(0, 1.3fr) minmax(232px, 2fr) minmax(0, 1.1fr) 6.5rem 30px; gap: 10px; align-items: start; }
-.lhead { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-foreground); padding: 0 4px 6px; border-bottom: 1px solid var(--border); }
-.line { padding: 12px 4px; border-bottom: 1px solid var(--border); }
+.lhead, .line { display: grid; grid-template-columns: 18px minmax(250px, 1.7fr) minmax(0, 1.3fr) minmax(0, 1.1fr) 6.5rem 30px; grid-template-areas: "h dates prod price total x"; gap: 12px; align-items: start; }
+.line > .handle { grid-area: h; } .line > .lprod { grid-area: prod; } .line > .ldates { grid-area: dates; }
+.line > .lprice { grid-area: price; } .line > .ltotal { grid-area: total; } .line > .lx { grid-area: x; }
+.lhead { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-foreground); padding: 0 4px 6px; border-bottom: 1px solid var(--border); }
+.line { padding: 14px 4px 10px; border-bottom: 1px solid var(--border); }
 .rental { border-bottom: 1px solid var(--border); }
 .rental > .line { border-bottom: 0; }
 .handle { color: var(--input); cursor: grab; user-select: none; padding-top: 6px; letter-spacing: -2px; }
 .pname { font-weight: 600; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .lmeta { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.ldates { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.ldates { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .lprice { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .ltotal { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; padding-top: 6px; }
 .lx { padding-top: 3px; }
-.sub { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto 7.5rem 30px; gap: 10px; align-items: center; padding: 6px 4px; font-size: 0.85rem; }
+.sub { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto 7.5rem 30px; gap: 10px; align-items: center; padding: 5px 4px; font-size: 0.82rem; }
 .sub .lbl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-left: 14px; border-left: 2px solid var(--border); }
 .sub .amt { text-align: right; font-variant-numeric: tabular-nums; }
 .sub.closed { color: var(--muted-foreground); }
@@ -243,7 +263,7 @@ label.f { display: block; font-size: 0.75rem; color: var(--muted-foreground); ma
 
 /* ---------- narrow: the same sections stack (§9.1 difference 6) ---------- */
 @container app (max-width: 1080px) {
-  .ogrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cust where" "lines lines" "totals totals" "side side"; }
+  .ogrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cust cust" "lines lines" "gap totals" "side side"; }
 }
 @container app (max-width: 760px) {
   .app { grid-template-columns: minmax(0, 1fr); display: flex; flex-direction: column; }
@@ -255,7 +275,10 @@ label.f { display: block; font-size: 0.75rem; color: var(--muted-foreground); ma
   .ohead { align-items: stretch; }
   .ohead .acts { width: 100%; }
   .ohead .acts .btn.main { flex: 1; }
-  .ogrid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "cust" "where" "lines" "totals" "side"; gap: 12px; }
+  .ogrid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "cust" "lines" "totals" "side"; gap: 12px; }
+  .hdates .when-v { font-size: 1.2rem; }
+  .meta { gap: 2px 12px; }
+  .meta > * + *::before { content: none; }
   .card { padding: 14px 12px; }
   .results { max-height: 300px; }
 }
@@ -263,13 +286,13 @@ label.f { display: block; font-size: 0.75rem; color: var(--muted-foreground); ma
 .a-lines { container-type: inline-size; container-name: lines; }
 @container lines (max-width: 700px) {
   .lhead { display: none; }
-  .line { grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "h prod x" "h dates dates" "h price total"; gap: 8px; }
-  .line > .handle { grid-area: h; } .line > .lprod { grid-area: prod; } .line > .ldates { grid-area: dates; }
-  .line > .lprice { grid-area: price; } .line > .ltotal { grid-area: total; align-self: end; } .line > .lx { grid-area: x; }
+  .line { grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "h dates x" "h prod prod" "h price total"; gap: 8px; }
+  .line > .ltotal { align-self: end; }
+  .ldates { gap: 8px 14px; }
   .sub { grid-template-columns: 0 minmax(0, 1fr) auto auto; grid-template-areas: "h lbl amt x" "h ctl ctl ctl"; gap: 4px 8px; }
   .sub > .handle { display: none; }
   .sub > .lbl { grid-area: lbl; } .sub > .ctl { grid-area: ctl; padding-left: 16px; } .sub > .amt { grid-area: amt; } .sub > .lx { grid-area: x; }
-  .ldates .dt input[type=date] { width: 128px; }
+  .ldates .dt input[type=date] { width: 140px; }
 }
 </style>
 </head>
@@ -650,10 +673,14 @@ function renderNew(frame) {
   const linesHtml = q.rows.map((r) => (r.line.type === "vehicle" ? draftVehicleRow(r, vehicles[0] === r.line && vehicles.length > 1, frame) : draftOtherRow(r))).join("");
   const sched = q.gs.length > 1;
   const dueNow = q.gs[0] ? q.gs[0].total : 0;
+  const span = vehicles.length ? [vehicles.reduce((a, l) => (P(l.start) < P(a) ? l.start : a), vehicles[0].start), vehicles.reduce((a, l) => (P(l.end) > P(a) ? l.end : a), vehicles[0].end)] : null;
+  const placeSel = (k) => `<select data-ch="place" data-k="${k}" aria-label="${k === "place" ? "Pickup at" : "Return to"}">${PLACES.map((p) => `<option${p === d[k] ? " selected" : ""}>${p}</option>`).join("")}</select>`;
   return `
   <div class="ohead">
     <div><div class="crumb">Orders ›</div>
-      <div class="title"><h1>New order</h1><span class="chip">Not saved</span><span class="chip" title="Staff orders are counter orders; read-only">Counter</span></div></div>
+      <div class="title"><h1>New order</h1><span class="chip">Not saved</span></div>
+      ${span ? headerDates(span[0], span[1], vehicles.length > 1) : ""}
+      <div class="meta"><span title="Staff orders are counter orders; read-only">Counter</span><span>Pickup at ${placeSel("place")}</span><span>Return to ${placeSel("returnPlace")}</span><span>Times in ${S.settings.timeStep}-minute steps</span><span>Delivery and billing address: Phases 8 and 6</span></div></div>
     <div class="acts">
       <button class="btn outline" data-act="draft-save">Save as draft</button>
       <button class="btn outline" data-act="draft-hold">Hold ${HOLD_MINUTES} min</button>
@@ -662,18 +689,9 @@ function renderNew(frame) {
   </div>
   <div class="ogrid">
     <section class="card a-cust" aria-label="Customer"><h2>Customer</h2>${custHtml}</section>
-    <section class="card a-where" aria-label="Pickup and return">
-      <h2>Pickup and return</h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div><label class="f">Pickup at</label><select data-ch="place" data-k="place" style="width:100%">${PLACES.map((p) => `<option${p === d.place ? " selected" : ""}>${p}</option>`).join("")}</select></div>
-        <div><label class="f">Return to</label><select data-ch="place" data-k="returnPlace" style="width:100%">${PLACES.map((p) => `<option${p === d.returnPlace ? " selected" : ""}>${p}</option>`).join("")}</select></div>
-      </div>
-      <p class="small muted" style="margin:10px 0 0">Dates are on each vehicle line. A new line starts with the first line's dates. Times in ${S.settings.timeStep}-minute steps (Settings › Orders).</p>
-      <p class="small later" style="margin:6px 0 0">Delivery address <span class="planned">Phase 8</span> · Billing address <span class="planned">Phase 6</span></p>
-    </section>
     <section class="card a-lines" aria-label="Lines">
       ${searchBox(frame)}
-      <div class="lhead"><span></span><span>Product</span><span>Pickup and return</span><span>Price</span><span class="right">Total</span><span></span></div>
+      <div class="lhead"><span></span><span>Pickup and return</span><span>Product</span><span>Price</span><span class="right">Total</span><span></span></div>
       ${linesHtml || `<p class="muted" style="padding:16px 4px">No lines yet. Search above to add a vehicle, an extra or an item.</p>`}
       <div class="addrow"><button class="btn sm outline" data-act="add-custom">+ Add custom line</button></div>
     </section>
@@ -684,7 +702,7 @@ function renderNew(frame) {
       <section class="card"><h2>Payment</h2>
         <div class="bal"><span>Due at booking</span><span class="right big">${money(dueNow)}</span>
         ${sched ? `<span class="muted">Later charges</span><span class="right muted">${money(q.total - dueNow)}</span>` : ""}</div>
-        <p class="small muted" style="margin:0 0 10px">Payments are recorded on the order once it is reserved. Each payment gets its own tax invoice (Phase 6).</p>
+        <p class="small muted" style="margin:0 0 10px">Recorded once the order is reserved.</p>
         <button class="btn" style="width:100%" data-act="draft-reserve" data-pay="1">Reserve and take payment</button>
       </section>
       <section class="card"><h2>Security deposit</h2>${draftDeposit(q)}</section>
@@ -694,6 +712,10 @@ function renderNew(frame) {
   </div>`;
 }
 
+/** The order's dates in the header: the strongest thing after the title. With several vehicles, the first pickup and the last return. */
+function headerDates(start, end, several) {
+  return `<div class="hdates"><div class="when"><span class="when-l">${several ? "First pickup" : "Pickup"}</span><span class="when-v">${fDT(start)}</span></div><span class="to" aria-hidden="true">→</span><div class="when"><span class="when-l">${several ? "Last return" : "Return"}</span><span class="when-v">${fDT(end)}</span></div></div>`;
+}
 function renderCustomerPicker(frame, c) {
   const d = S.draft;
   if (c) {
@@ -773,9 +795,9 @@ function draftVehicleRow(r, isFirstOfMany) {
         <div class="lmeta"><select data-ch="unit" data-line="${l.id}" style="height:28px;font-size:0.8rem" aria-label="Unit">${unitOpts.join("")}</select>
         <span class="free ${free.length ? "" : "low"}" title="${esc(busyTitle)}">${free.length} of ${p.units.length} free</span></div></div>
       <div class="ldates">
-        <div><label class="f">Pickup</label>${dtPicker(l.start, `data-line="${l.id}" data-k="start"`)}</div>
-        <div><label class="f">Return</label>${dtPicker(l.end, `data-line="${l.id}" data-k="end"`)}</div>
-        <div class="small muted" style="flex-basis:100%">${n} day${n === 1 ? "" : "s"}${multi ? ` · over 30 days: a line and a charge per month` : ""}${isFirstOfMany ? ` · <button class="link small" data-act="apply-all" data-line="${l.id}">Apply these dates to all lines</button>` : ""}</div>
+        <div class="when"><label class="when-l">Pickup</label>${dtPicker(l.start, `data-line="${l.id}" data-k="start"`)}</div>
+        <div class="when"><label class="when-l">Return</label>${dtPicker(l.end, `data-line="${l.id}" data-k="end"`)}</div>
+        <div class="when-s" style="flex-basis:100%">${n} day${n === 1 ? "" : "s"}${multi ? ` · over 30 days: a line and a charge per month` : ""}${isFirstOfMany ? ` · <button class="link small" data-act="apply-all" data-line="${l.id}">Apply these dates to all lines</button>` : ""}</div>
       </div>
       ${multi ? `<div class="lprice"><span class="small muted">${r.periods.length} periods, priced below</span></div>` : priceCell(l.id, 0, p0.list, p0.charged, p0.reason)}
       <div class="ltotal">${money(r.total)}</div>
@@ -817,8 +839,7 @@ function draftTotals(q, sched) {
     <span class="muted">VAT ${VAT_RATE}% (included)</span><span class="r muted">${money(q.vat)}</span>
   </div>
   ${sched ? `<div class="sched"><h2 style="margin-bottom:6px">Charges</h2>${q.gs.map((g, i) => `<div class="row"><span>${i === 0 ? "At booking" : fDY(g.due)}<br><span class="small muted">VAT on this payment ${money(g.vat)}</span></span><span class="tnum">${money(g.total)}</span></div>`).join("")}</div>` : ""}
-  <div class="deposit"><div style="display:flex;justify-content:space-between;gap:8px"><span>Security deposit</span><b class="tnum">${money(q.deposit)}</b></div>
-    <div class="small">Not part of the total and never owed. ${S.settings.depositMode === "hold" ? "Held on the customer's card at pickup" : "Charged at pickup and given back at return"}, once per vehicle.</div></div>`;
+  <div class="deprow"><span>Security deposit, not in the total<br>${S.settings.depositMode === "hold" ? "Held on the customer's card at pickup" : "Charged at pickup and given back at return"}, once per vehicle</span><span class="tnum">${money(q.deposit)}</span></div>`;
 }
 function draftDeposit(q) {
   const veh = q.rows.filter((r) => r.line.type === "vehicle");
@@ -856,7 +877,9 @@ function renderOrder(frame, o) {
   return `
   <div class="ohead">
     <div><div class="crumb">Orders ›</div>
-      <div class="title"><h1>Order #${o.number}</h1><span class="chip ${st.tone}">${st.text}</span><span class="chip" title="Read-only">${esc(o.channel)}</span></div></div>
+      <div class="title"><h1>Order #${o.number}</h1><span class="chip ${st.tone}">${st.text}</span></div>
+      ${headerDates(range[0], range[1], o.rentals.length > 1)}
+      <div class="meta"><span>${esc(o.place)}</span><span>Made ${fDT(o.created)} by ${STAFF}</span><span title="Read-only">${esc(o.channel)}</span><span>Delivery: Phase 8</span></div></div>
     <div class="acts">${main}<button class="btn outline icon" data-act="menu" data-o="${o.key}" aria-label="More actions" aria-expanded="${o.menu}">…</button>${menu}</div>
   </div>
   ${o.canceled ? `<div class="callout bad" style="margin:-6px 0 16px">Canceled ${fDT(o.canceled.at)} by ${esc(o.canceled.by || "the customer")} (recorded by ${STAFF}): ${esc(o.canceled.reason)}${o.canceled.text ? " (" + esc(o.canceled.text) + ")" : ""}. ${m.credit ? `${money(m.credit)} paid stays on the order as credit.` : ""}</div>` : ""}
@@ -865,11 +888,8 @@ function renderOrder(frame, o) {
       <div class="custcard"><div class="name">${esc(c.name)}</div>
       <dl class="kv small" style="margin:6px 0 10px"><dt>Phone</dt><dd>${esc(c.phone)}</dd><dt>Email</dt><dd>${esc(c.email)}</dd><dt>Country</dt><dd>${esc(c.nat)}</dd></dl>
       <span class="chip">${c.orders} earlier orders</span> ${c.note ? `<span class="chip">${esc(c.note)}</span>` : ""}</div></section>
-    <section class="card a-where" aria-label="Pickup and return"><h2>Pickup and return</h2>
-      <dl class="kv"><dt>Place</dt><dd>${esc(o.place)}</dd><dt>First pickup</dt><dd>${fDT(range[0])}</dd><dt>Last return</dt><dd>${fDT(range[1])}</dd><dt>Made</dt><dd>${fDT(o.created)} by ${STAFF}</dd></dl>
-      <p class="small later" style="margin:8px 0 0">Delivery <span class="planned">Phase 8</span></p></section>
     <section class="card a-lines" aria-label="Lines">
-      <div class="lhead"><span></span><span>Vehicle</span><span>Pickup and return</span><span>Actions</span><span class="right">Total</span><span></span></div>
+      <div class="lhead"><span></span><span>Pickup and return</span><span>Vehicle</span><span>Actions</span><span class="right">Total</span><span></span></div>
       ${rentalsHtml}${looseHtml}
     </section>
     <section class="card a-totals" aria-label="Totals">
@@ -881,14 +901,8 @@ function renderOrder(frame, o) {
         <span class="big">Total</span><span class="r big">${money(m.total)}</span>
         <span class="muted">Net</span><span class="r muted">${money(m.net)}</span>
         <span class="muted">VAT ${VAT_RATE}% (included)</span><span class="r muted">${money(m.vat)}</span>
-        <span class="sep"></span>
-        <span>Paid</span><span class="r">${money(m.paid)}</span>
-        <span><b>Due now</b></span><span class="r"><b>${money(m.dueNow)}</b></span>
-        ${m.later ? `<span class="muted">Due later</span><span class="r muted">${money(m.later)}</span>` : ""}
-        ${m.credit ? `<span style="color:var(--leaf)">Credit</span><span class="r" style="color:var(--leaf)">${money(m.credit)}</span>` : ""}
       </div>
-      <div class="deposit"><div style="display:flex;justify-content:space-between;gap:8px"><span>Security deposit</span><b class="tnum">${money(o.rentals.filter((r) => r.stage !== "canceled").reduce((t, r) => t + r.deposit.amount, 0))}</b></div>
-        <div class="small">Its own status, below. Never part of the total or what is due.</div></div>
+      <div class="deprow"><span>Security deposit, not in the total or what is due</span><span class="tnum">${money(o.rentals.filter((r) => r.stage !== "canceled").reduce((t, r) => t + r.deposit.amount, 0))}</span></div>
     </section>
     <aside class="a-side">
       ${orderPayments(o, m)}
@@ -918,7 +932,7 @@ function orderRental(o, r) {
     if (l.kind === "period") {
       const closed = l.closedAt ? ` <span class="chip">Closed ${fDT(l.closedAt)}: ${esc(l.closedWhy)}</span>` : "";
       return `<div class="sub ${l.closedAt || l.void ? "closed" : ""}"><span class="handle"></span>
-        <span class="lbl"><b>${esc(l.label)}</b> ${fDT(l.start)} → ${fDT(l.end)} · ${esc(prod(l.pid).name)} <span class="chip plate">${esc(l.unit)}</span> ${chip}${closed}</span>
+        <span class="lbl"><b>${esc(l.label)}</b> ${fDT(l.start)} → ${fDT(l.end)}${l.pid !== r.pid || l.unit !== r.unit ? ` · ${esc(prod(l.pid).name)} <span class="chip plate">${esc(l.unit)}</span>` : ""} ${chip}${closed}</span>
         <span class="ctl small muted">${l.amount !== l.list ? `List <span class="strike">${money(l.list)}</span>${l.reason ? " · " + esc(l.reason) : ""}` : ""}</span>
         <span class="amt">${money(l.amount)}</span><span></span></div>`;
     }
@@ -929,9 +943,13 @@ function orderRental(o, r) {
       <span class="handle">⋮⋮</span>
       <div class="lprod"><div class="pname">${esc(p.name)} <span class="chip ${stage[1]}">${stage[0]}</span>${overdue ? ' <span class="chip bad">Overdue</span>' : ""}</div>
         <div class="lmeta"><span class="chip plate">${esc(r.unit)}</span>${r.repairNote ? `<span class="small muted">${esc(r.repairNote)}</span>` : ""}</div></div>
-      <div class="ldates small"><div><span class="muted">Pickup</span> ${fDT(r.start)}${r.pickedUp ? ` <span class="muted">(out ${fDT(r.pickedUp)})</span>` : ""}<br><span class="muted">Return</span> ${fDT(r.end)}${r.returned ? ` <span class="muted">(back ${fDT(r.returned)})</span>` : ""}<br><span class="muted">${days(r.start, r.end)} days</span></div></div>
+      <div class="ldates">
+        <div class="when"><span class="when-l">Pickup</span><span class="when-v">${fDT(r.start)}</span>${r.pickedUp ? `<span class="when-s">out ${fDT(r.pickedUp)}</span>` : ""}</div>
+        <div class="when"><span class="when-l">Return</span><span class="when-v">${fDT(r.end)}</span>${r.returned ? `<span class="when-s">back ${fDT(r.returned)}</span>` : ""}</div>
+        <div class="when-s" style="flex-basis:100%">${days(r.start, r.end)} days</div>
+      </div>
       <div class="lprice"><div class="ractions" style="margin:0">${acts.join("")}</div></div>
-      <div class="ltotal">${money(total)}</div><span></span>
+      <div class="ltotal">${money(total)}</div><span class="lx"></span>
     </div>
     <div class="subwrap">${rows}</div>
   </div>`;
@@ -944,13 +962,13 @@ function orderPayments(o, m) {
   return `<section class="card"><h2>Payments</h2>
     <div class="bal"><span>Due now</span><span class="right big">${money(m.dueNow)}</span>
       ${m.later ? `<span class="muted">Due later</span><span class="right muted">${money(m.later)}</span>` : ""}
-      ${m.credit ? `<span style="color:var(--leaf)">Credit</span><span class="right" style="color:var(--leaf)">${money(m.credit)}</span>` : ""}</div>
+      ${m.credit ? `<span style="color:var(--leaf)">Credit</span><span class="right" style="color:var(--leaf)">${money(m.credit)}</span>` : ""}
+      <span class="muted">Paid</span><span class="right muted">${money(m.paid)}</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <button class="btn" style="flex:1" data-act="pay" data-o="${o.key}" ${o.canceled || m.balance <= 0 ? "disabled" : ""}>Take payment</button>
       ${m.credit ? `<button class="btn outline" data-act="refund" data-o="${o.key}">Refund</button>` : ""}
     </div>
     ${rows || `<p class="small muted" style="margin:0">No payments yet.</p>`}
-    <p class="small muted" style="margin:8px 0 0">Each payment gets its own tax invoice, VAT worked out once on its total (Phase 6 prints it).</p>
   </section>`;
 }
 function orderCharges(o) {

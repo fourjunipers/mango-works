@@ -17,6 +17,14 @@ The swap on tab b reproduces Mark's example from §9.19 to the baht: ฿250 keep
 
 Not prototyped: return early and late returns (the dialogs say so), unit timeline, the hover card's other orders (a tooltip on the free count stands in), add to order on a saved order, Thai labels.
 
+### Layout change: dates first (Mark, 26 Nov 2026)
+
+Hierarchy and layout only; behaviour and the data shown are unchanged.
+
+- **Pickup and return are the strongest thing on each vehicle line and in the header**, on every tab. Each has a clear "Pickup" or "Return" label over a larger, bold date and time. They are the first column of the line table and, at phone width, the first thing on each line, side by side. The header shows the order's pickup and return (with several vehicles, the first pickup and the last return).
+- **Location, who made the order and the channel are one quiet metadata line** under the header dates, in smaller, lighter text. On New order the pickup and return places are chosen in that line. The separate "Pickup and return" card is gone.
+- **Less repeated:** the order page's totals show the total, net and VAT only; paid, due now, due later and credit are in Payments, now with "Paid" too. The deposit in the totals is one quiet line (its status stays in the Security deposit card). A period line names the bike and plate only when they differ from the rental's (after a swap). Long footnotes are shortened or removed.
+
 ### Mark's answers (26 Nov 2026)
 
 The plan did not settle these; Mark answered them on the prototype. Where an answer changes the Phase 3 plan, the plan needs the edit before stage 9 (the owner keeps the plan).
