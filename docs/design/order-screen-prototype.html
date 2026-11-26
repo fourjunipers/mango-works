@@ -473,15 +473,28 @@ resetAll();
    ===================================================================== */
 const liveLines = (o) => o.lines.filter((l) => !l.void);
 const chargeTotal = (o, c) => liveLines(o).filter((l) => l.charge === c.id).reduce((t, l) => t + l.amount, 0);
-const chargePaid = (o, c) => o.payments.filter((p) => p.kind === "payment").reduce((t, p) => t + p.alloc.filter((a) => a.charge === c.id).reduce((s, a) => s + a.amount, 0), 0);
+/** Credit is used automatically (Mark, 26 Nov 2026): everything paid, less refunds, plus any charge that is
+    a credit, pays the open charges oldest due first. So credit left by a canceled rental or a swap comes off
+    the next charge by itself. */
+function paidMap(o) {
+  const m = new Map();
+  let pool = o.payments.reduce((t, p) => t + (p.kind === "payment" ? p.amount : p.kind === "refund" ? -p.amount : 0), 0);
+  const cs = o.charges.map((c) => ({ c, t: chargeTotal(o, c) }));
+  cs.forEach((x) => { if (x.t < 0) pool += -x.t; });
+  cs.filter((x) => x.t > 0).sort((a, b) => P(a.c.due) - P(b.c.due)).forEach((x) => { const take = Math.max(0, Math.min(pool, x.t)); m.set(x.c.id, take); pool -= take; });
+  return m;
+}
+const chargePaid = (o, c) => paidMap(o).get(c.id) || 0;
 function chargeState(o, c) {
   const total = chargeTotal(o, c); const paid = chargePaid(o, c);
   if (!liveLines(o).some((l) => l.charge === c.id)) return { tone: "", text: "Canceled", total, paid, open: 0 };
   if (total <= 0) return { tone: "ok", text: total < 0 ? "Credit" : "Nothing to pay", total, paid, open: 0 };
   const open = total - paid;
-  if (open <= 0) { const last = o.payments.filter((p) => p.alloc.some((a) => a.charge === c.id)).pop(); return { tone: "ok", text: "Paid " + (last ? fD(last.at) : ""), total, paid, open: 0 }; }
-  if (P(c.due) <= P(NOW)) return { tone: "bad", text: paid ? `Due now (${money(open)} left)` : (c.due.slice(0, 10) === NOW.slice(0, 10) ? "Due today" : "Due since " + fD(c.due)), total, paid, open };
-  return { tone: "info", text: "Due " + fD(c.due), total, paid, open };
+  const own = o.payments.filter((p) => p.kind === "payment" && p.alloc.some((a) => a.charge === c.id)).pop();
+  if (open <= 0) return { tone: "ok", text: own ? "Paid " + fD(own.at) : "Paid from credit", total, paid, open: 0 };
+  const left = paid ? ` (${money(open)} left)` : "";
+  if (P(c.due) <= P(NOW)) return { tone: "bad", text: (c.due.slice(0, 10) === NOW.slice(0, 10) ? "Due today" : "Due since " + fD(c.due)) + left, total, paid, open };
+  return { tone: "info", text: "Due " + fD(c.due) + left, total, paid, open };
 }
 function orderCalc(o) {
   const lines = liveLines(o);
@@ -735,7 +748,7 @@ function priceCell(lineId, i, list, charged, reason) {
   const changed = charged !== list;
   return `<div class="lprice"><input class="money" inputmode="decimal" value="${(charged / 100).toFixed(2)}" data-ch="charged" data-line="${lineId}" data-i="${i}" aria-label="Price charged">
     ${changed ? `<span class="small muted">List <span class="strike">${money(list)}</span> · <button class="link small" data-act="reset-price" data-line="${lineId}" data-i="${i}">reset</button></span>
-      <span class="reason"><select data-ch="reason" data-line="${lineId}" data-i="${i}" aria-label="Reason for the price change">${PRICE_REASONS.map((x) => `<option${x === reason ? " selected" : ""}>${x}</option>`).join("")}</select></span>` : `<span class="small muted">List price</span>`}</div>`;
+      <span class="reason"><select data-ch="reason" data-line="${lineId}" data-i="${i}" aria-label="Reason for the price change (optional)"><option value="">No reason (optional)</option>${PRICE_REASONS.map((x) => `<option${x === reason ? " selected" : ""}>${x}</option>`).join("")}</select></span>` : `<span class="small muted">List price</span>`}</div>`;
 }
 function draftVehicleRow(r, isFirstOfMany) {
   const l = r.line; const p = r.p; const n = days(l.start, l.end);
@@ -1043,7 +1056,10 @@ function swapCalc(o, r, md) {
   const Ap = per.list; const Aused = Math.min(listPrice(A, used), Ap);
   const Bp = isMonth ? B.m * 100 : listPrice(B, Math.min(pdays, 30)); const Bused = Math.min(listPrice(B, used), Bp);
   const Brem = Bp - Bused; const share = (Ap - Aused) / Ap;
-  const paid = linePaid(o, per); const paidRem = rhu(paid * share);
+  // Mark, 26 Nov 2026: a swap is allowed on a period not paid yet; the customer owes for the time used on the
+  // old bike and the rest of the period on the new one. So the old period's unused part is taken off as a
+  // credit whether or not it was paid: paid, it is money back toward the new bike; unpaid, it cuts what is owed.
+  const paid = linePaid(o, per); const paidRem = rhu(per.amount * share);
   const ratio = per.list ? per.amount / per.list : 1; const BremKeep = rhu(Brem * ratio);
   const amounts = {
     remainder: (md.keep ? BremKeep : Brem) - paidRem,
@@ -1053,7 +1069,7 @@ function swapCalc(o, r, md) {
   };
   const amount = amounts[md.opt];
   return { per, A, B, pdays, used, rem, Ap, Aused, Bp, Bused, Brem, BremKeep, paid, paidRem, ratio, amounts, amount, depDiff: (B.dep - A.dep) * 100,
-    math: `B's remainder  = ${money(Bp)} − ${money(Bused)} (${used} days) = ${money(Brem)}\nunused share A = (${money(Ap)} − ${money(Aused)}) ÷ ${money(Ap)} = ${(share * 100).toFixed(1)}%\npaid remainder = ${money(paid)} × ${(share * 100).toFixed(1)}% = ${money(paidRem)}\nextra to pay   = ${money(md.keep ? BremKeep : Brem)}${md.keep && ratio < 1 ? " (kept discount ×" + (ratio * 100).toFixed(1) + "%)" : ""} − ${money(paidRem)} = ${money(amounts.remainder)}` };
+    math: `B's remainder  = ${money(Bp)} − ${money(Bused)} (${used} days) = ${money(Brem)}\nunused share A = (${money(Ap)} − ${money(Aused)}) ÷ ${money(Ap)} = ${(share * 100).toFixed(1)}%\nunused part A  = ${money(per.amount)} charged × ${(share * 100).toFixed(1)}% = ${money(paidRem)}${paid < per.amount ? " (" + money(paid) + " of it paid)" : ""}\nextra to pay   = ${money(md.keep ? BremKeep : Brem)}${md.keep && ratio < 1 ? " (kept discount ×" + (ratio * 100).toFixed(1) + "%)" : ""} − ${money(paidRem)} = ${money(amounts.remainder)}` };
 }
 function dlgSwap(o, r, md) {
   const st = S.settings; const x = swapCalc(o, r, md);
@@ -1073,6 +1089,7 @@ function dlgSwap(o, r, md) {
     ${optRow("none", "No charge", "Nothing to pay", money(0))}
     ${st.swap.manual ? `<label class="opt ${md.opt === "manual" ? "on" : ""}"><input type="radio" name="so" value="manual" data-ch="md-opt" ${md.opt === "manual" ? "checked" : ""}><span style="flex:1">Manual amount<br>${md.opt === "manual" ? `<span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px"><input class="money" value="${((md.manual ?? 0) / 100).toFixed(2)}" data-ch="md-manual"><input type="text" placeholder="Reason (kept in History)" value="${esc(md.mreason || "")}" data-ch="md-mreason" style="flex:1;min-width:140px"></span>` : '<span class="small muted">Staff type it, with a reason</span>'}</span></label>` : ""}
     ${md.opt === "remainder" ? `<div class="math">${esc(x.math)}</div>` : ""}
+    ${x.paid < x.per.amount ? `<div class="callout hl">${esc(x.per.label)} is not ${x.paid ? "fully " : ""}paid yet. The swap is still allowed: its unused part (${money(x.paidRem)}) comes off what is owed, so the customer pays for ${x.used} day${x.used === 1 ? "" : "s"} on the ${esc(x.A.name)} and the rest of the period on the new bike, the same total as if they had paid first.</div>` : ""}
     ${neg ? `<div class="callout hl">The new bike is cheaper: ${money(-x.amount)} back to the customer as
       <span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${[["credit", "Credit on the rental"], ["refund", "Refund"], ["none", "No charge"]].filter(([k]) => st.cheaper[k]).map(([k, l]) => `<label class="chip ${md.cheaper === k ? "hl" : ""}" style="cursor:pointer"><input type="radio" name="ch" value="${k}" data-ch="md-cheaper" ${md.cheaper === k ? "checked" : ""}> ${l}</label>`).join("")}</span></div>` : ""}
     ${x.depDiff ? `<div class="callout">Deposit: ${x.B.name} needs ${money(x.B.dep * 100)}, ${money(Math.abs(x.depDiff))} ${x.depDiff > 0 ? "more. It shows as a top-up to take" : "less. It shows as a part to release"}; nothing is moved now.</div>` : `<div class="callout">Deposit: the same for both, it stays as it is.</div>`}
@@ -1235,7 +1252,7 @@ const ACT = {
     if (md.opt === "remainder") newPeriod = md.keep ? x.BremKeep : x.Brem; else newPeriod = x.paidRem + amount;
     if (amount < 0 && md.cheaper === "none") { newPeriod = x.paidRem; amount = 0; }
     o.lines.push({ id: uid("l"), charge: cid, rental: r.id, kind: "period", label: "After swap", start: NOW, end: x.per.end, pid: x.B.id, unit, list: md.opt === "remainder" ? x.Brem : newPeriod, amount: newPeriod, reason: md.opt === "remainder" && md.keep && x.ratio < 1 ? "Kept the customer's discount" : { prorated: "Prorated difference", none: "No charge", manual: "Manual: " + (md.mreason || "") }[md.opt] || null });
-    if (x.paidRem) o.lines.push({ id: uid("l"), charge: cid, rental: r.id, kind: "credit", label: `Credit from ${x.A.name}, ${x.rem} unused days`, sub: "paid remainder", list: credit, amount: credit });
+    if (x.paidRem) o.lines.push({ id: uid("l"), charge: cid, rental: r.id, kind: "credit", label: `Credit from ${x.A.name}, ${x.rem} unused days`, sub: x.paid >= x.per.amount ? "paid remainder" : "unused part, taken off what is owed", list: credit, amount: credit });
     if (amount < 0 && md.cheaper === "refund") o.payments.push({ id: uid("P"), kind: "refund", at: NOW, method: "Cash", amount: -amount, alloc: [], by: STAFF });
     if (x.depDiff > 0) r.deposit.events.push({ type: "topup", at: NOW, amount: x.depDiff });
     if (x.depDiff) r.deposit.amount = x.B.dep * 100;
@@ -1280,8 +1297,8 @@ const CH = {
   },
   place(t) { S.draft[t.dataset.k] = t.value; },
   unit(t) { findLine(t.dataset.line).unit = t.value; },
-  charged(t) { const l = findLine(t.dataset.line); const q = draftCalc(S.draft); const row = q.rows.find((r) => r.line === l); const list = row.periods[t.dataset.i].list; const v = baht(t.value); if (v <= 0) { toast("No zero price: use a coupon or Free on an extra."); return; } if (v === list) delete l.over[t.dataset.i]; else l.over[t.dataset.i] = { charged: v, reason: (l.over[t.dataset.i] || {}).reason || PRICE_REASONS[0] }; },
-  reason(t) { findLine(t.dataset.line).over[t.dataset.i].reason = t.value; },
+  charged(t) { const l = findLine(t.dataset.line); const q = draftCalc(S.draft); const row = q.rows.find((r) => r.line === l); const list = row.periods[t.dataset.i].list; const v = baht(t.value); if (v <= 0) { toast("No zero price: use a coupon or Free on an extra."); return; } if (v === list) delete l.over[t.dataset.i]; else l.over[t.dataset.i] = { charged: v, reason: (l.over[t.dataset.i] || {}).reason || null }; },
+  reason(t) { findLine(t.dataset.line).over[t.dataset.i].reason = t.value || null; },
   "add-extra"(t) { if (t.value) findLine(t.dataset.line).extras.push({ id: uid("E"), pid: t.value, qty: 1 }); },
   qty(t) { findLine(t.dataset.line).qty = Math.max(1, parseInt(t.value, 10) || 1); },
   "custom-text"(t) { findLine(t.dataset.line).text = t.value; },
