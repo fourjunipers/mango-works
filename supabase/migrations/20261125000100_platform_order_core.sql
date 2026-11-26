@@ -2682,6 +2682,23 @@ begin
   from platform.reservations r
   where r.tenant_id = p_tenant_id and r.booking_id = p_order_id and r.rental_id = p_rental_id
     and r.state in ('held', 'reserved', 'out');
+  -- A hold that ran out, and the sweep got to its reservations first: the
+  -- order is still 'new', with nothing live. The rental's last expired row
+  -- is handed to the core, which takes the order's row, settles the order
+  -- and answers hold_expired, as it does when it gets there before the
+  -- sweep.
+  if cardinality(v_ids) = 0 then
+    select coalesce(array_agg(x.id), '{}') into v_ids
+    from (
+      select r.id
+      from platform.reservations r
+      join platform.orders o on o.id = r.booking_id
+      where r.tenant_id = p_tenant_id and r.booking_id = p_order_id
+        and r.rental_id = p_rental_id and r.state = 'expired' and o.status = 'new'
+      order by r.created_at desc, r.id
+      limit 1
+    ) x;
+  end if;
   if cardinality(v_ids) <> 1 then
     return jsonb_build_object('ok', false, 'reason', 'not_assignable');
   end if;

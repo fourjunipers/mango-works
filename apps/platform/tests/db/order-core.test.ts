@@ -1337,6 +1337,22 @@ describe("a draft held again, and a hold that has run out", () => {
     expect(sql(`select platform.release_expired_holds();`).failed).toBe("");
     expect(await statesOf(second.order_id!)).toEqual(["expired"]);
     expect((await orderRow(second.order_id!)).status).toBe("new");
+    // An assign after the sweep: the same answer, and it settles the order.
+    // (The sweep runs every minute, so this order of events is an everyday
+    // one.)
+    const third = await make();
+    runOut(third.order_id!);
+    expect(sql(`select platform.release_expired_holds();`).failed).toBe("");
+    expect(await statesOf(third.order_id!)).toEqual(["expired"]);
+    expect((await assign(third)).data).toEqual({
+      ok: false,
+      reason: "hold_expired",
+    });
+    expect((await orderRow(third.order_id!)).status).toBe("draft");
+    expect((await assign(third)).data).toEqual({
+      ok: false,
+      reason: "not_assignable",
+    });
     const confirmed = await staff().rpc("confirm_order", {
       p_tenant_id: shop.id,
       p_order_id: second.order_id!,
