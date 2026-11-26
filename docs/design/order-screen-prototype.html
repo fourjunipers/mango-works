@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order screen prototype</title>
+<!--
+  Design prototype for docs/phase-3-plan.md §9 and §9.1 (Phase 3 stage 9).
+  One self-contained file: no external requests, no framework, nothing saved.
+  Sample data is made up (customers, plates); prices are in Thai baht, VAT 7% included.
+  Open questions it raises: docs/design/README.md.
+-->
+<style>
+:root {
+  /* Tokens copied from apps/platform/app/globals.css (light). */
+  --background: #f4f4f5; --foreground: #18181b;
+  --card: #ffffff; --muted: #f4f4f5; --muted-foreground: #52525b;
+  --primary: #c2410c; --primary-foreground: #ffffff; --primary-text: #c2410c;
+  --highlight: #fff7ed; --highlight-foreground: #9a3412; --highlight-border: #fdba74;
+  --destructive: #dc2626; --destructive-soft: #fef2f2;
+  --border: #e4e4e7; --input: #d4d4d8; --ring: #c2410c;
+  --leaf: #336600; --leaf-soft: #f0f7e6;
+  --info: #1d4ed8; --info-soft: #eff6ff;
+  --group-alt: #ececee;
+  --radius: 0.625rem;
+  --shadow: 0 10px 30px rgb(0 0 0 / 0.18);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #141416; --foreground: #f4f4f5;
+    --card: #1e1e21; --muted: #2a2a2e; --muted-foreground: #a1a1aa;
+    --primary: #c2410c; --primary-foreground: #ffffff; --primary-text: #fb923c;
+    --highlight: #3b2516; --highlight-foreground: #fdba74; --highlight-border: #9a3412;
+    --destructive: #f87171; --destructive-soft: #3a1a1a;
+    --border: #303035; --input: #3f3f46; --ring: #fb923c;
+    --leaf: #a3d977; --leaf-soft: #1f2d12;
+    --info: #93c5fd; --info-soft: #172338;
+    --group-alt: #2b2b30;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--background); color: var(--foreground);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+h1, h2, h3 { margin: 0; }
+h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 0.95rem; font-weight: 600; }
+.muted { color: var(--muted-foreground); }
+.small { font-size: 0.8rem; }
+.tnum { font-variant-numeric: tabular-nums; }
+.strike { text-decoration: line-through; }
+.right { text-align: right; }
+.nowrap { white-space: nowrap; }
+
+/* ---------- prototype bar ---------- */
+.proto {
+  position: sticky; top: 0; z-index: 50; background: #18181b; color: #f4f4f5;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 16px;
+}
+.proto b { font-weight: 600; }
+.proto .tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.proto .tabs button {
+  border: 1px solid #3f3f46; background: transparent; color: #e4e4e7; border-radius: 999px;
+  padding: 4px 12px; cursor: pointer;
+}
+.proto .tabs button[aria-selected="true"] { background: #c2410c; border-color: #c2410c; color: #fff; }
+.proto .spacer { flex: 1; }
+.proto .note { font-size: 0.78rem; color: #a1a1aa; }
+.proto .reset { border: 1px solid #52525b; background: transparent; color: #e4e4e7; border-radius: 8px; padding: 3px 10px; cursor: pointer; }
+
+/* ---------- buttons, chips, inputs ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 12px; border-radius: 8px; border: 1px solid transparent;
+  background: var(--primary); color: var(--primary-foreground); font-weight: 500; cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { filter: brightness(0.92); }
+.btn.outline { background: var(--card); color: var(--foreground); border-color: var(--border); }
+.btn.outline:hover { background: var(--muted); filter: none; }
+.btn.ghost { background: transparent; color: var(--foreground); }
+.btn.ghost:hover { background: var(--muted); filter: none; }
+.btn.danger { background: var(--destructive-soft); color: var(--destructive); }
+.btn.sm { height: 28px; padding: 0 9px; font-size: 0.8rem; border-radius: 7px; }
+.btn.icon { width: 34px; padding: 0; }
+.btn.sm.icon { width: 28px; }
+.btn[disabled] { opacity: 0.5; pointer-events: none; }
+.link { background: none; border: 0; padding: 0; color: var(--primary-text); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 1px 8px;
+  font-size: 0.75rem; font-weight: 500; background: var(--muted); color: var(--muted-foreground);
+  border: 1px solid var(--border); white-space: nowrap;
+}
+.chip.hl { background: var(--highlight); color: var(--highlight-foreground); border-color: var(--highlight-border); }
+.chip.ok { background: var(--leaf-soft); color: var(--leaf); border-color: transparent; }
+.chip.bad { background: var(--destructive-soft); color: var(--destructive); border-color: transparent; }
+.chip.info { background: var(--info-soft); color: var(--info); border-color: transparent; }
+.chip.plate { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--card); color: var(--foreground); }
+input[type=text], input[type=date], input[type=number], input[type=search], select, textarea {
+  height: 34px; border: 1px solid var(--input); border-radius: 8px; background: var(--card); padding: 0 8px; min-width: 0;
+}
+textarea { height: auto; padding: 8px; width: 100%; resize: vertical; }
+input.money { width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
+.dt { display: inline-flex; gap: 4px; }
+.dt input[type=date] { width: 136px; }
+.dt select { width: 80px; }
+label.f { display: block; font-size: 0.75rem; color: var(--muted-foreground); margin-bottom: 2px; }
+
+/* ---------- app shell (same structure as apps/platform/app/[tenant]/layout.tsx) ---------- */
+.appwrap { container-type: inline-size; container-name: app; position: relative; }
+.app { display: grid; grid-template-columns: 15rem minmax(0, 1fr); min-height: calc(100vh - 46px); }
+.side { position: sticky; top: 46px; align-self: start; height: calc(100vh - 46px); background: var(--card); border-right: 1px solid var(--border); padding: 20px 12px; display: flex; flex-direction: column; gap: 22px; }
+.side .shop { padding: 0 10px; font-size: 1.05rem; font-weight: 600; }
+.side .grp { display: flex; flex-direction: column; gap: 2px; }
+.side .grp p { margin: 0 0 4px; padding: 0 10px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-foreground); font-weight: 500; }
+.nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; color: var(--foreground); text-decoration: none; }
+.nav svg { width: 18px; height: 18px; color: var(--muted-foreground); }
+.nav.on { background: var(--highlight); color: var(--highlight-foreground); font-weight: 500; }
+.nav.on svg { color: var(--primary-text); }
+@media (max-width: 700px) { .proto { position: static; } .proto .note { display: none; } }
+.mhead { display: none; position: relative; z-index: 20; height: 52px; align-items: center; justify-content: space-between; padding: 0 16px; background: var(--card); border-bottom: 1px solid var(--border); font-weight: 600; }
+.tabbar { display: none; position: sticky; bottom: 0; z-index: 20; background: var(--card); border-top: 1px solid var(--border); padding: 4px 4px 6px; }
+.tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 0.7rem; color: var(--muted-foreground); text-decoration: none; padding: 4px 0; }
+.tabbar a svg { width: 22px; height: 22px; }
+.tabbar a.on { color: var(--primary-text); font-weight: 600; }
+.content { padding: 24px; min-width: 0; }
+
+/* ---------- order layout (invoice style, §9.1) ---------- */
+.ohead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.ohead .crumb { font-size: 0.8rem; color: var(--muted-foreground); margin-bottom: 2px; }
+.ohead .title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ohead .acts { display: flex; flex-wrap: wrap; gap: 8px; position: relative; }
+.ogrid {
+  display: grid; gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 19rem;
+  grid-template-areas: "cust where side" "lines lines side" "gap totals side";
+  align-items: start;
+}
+.a-cust { grid-area: cust; } .a-where { grid-area: where; } .a-lines { grid-area: lines; }
+.a-totals { grid-area: totals; } .a-side { grid-area: side; display: flex; flex-direction: column; gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.card > h2 { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+.kv dt { color: var(--muted-foreground); }
+.kv dd { margin: 0; }
+
+/* lines */
+.search { position: relative; margin-bottom: 12px; }
+.search input { width: 100%; padding-left: 32px; height: 38px; }
+.search svg { position: absolute; left: 10px; top: 11px; width: 16px; height: 16px; color: var(--muted-foreground); }
+.results { position: absolute; z-index: 15; left: 0; right: 0; top: 42px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); max-height: 340px; overflow: auto; }
+.results button { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%; text-align: left; background: none; border: 0; padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.results button:hover, .results button:focus-visible { background: var(--highlight); }
+.lhead, .line { display: grid; grid-template-columns: 18px minmax(0, 1.3fr) minmax(232px, 2fr) minmax(0, 1.1fr) 6.5rem 30px; gap: 10px; align-items: start; }
+.lhead { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-foreground); padding: 0 4px 6px; border-bottom: 1px solid var(--border); }
+.line { padding: 12px 4px; border-bottom: 1px solid var(--border); }
+.rental { border-bottom: 1px solid var(--border); }
+.rental > .line { border-bottom: 0; }
+.handle { color: var(--input); cursor: grab; user-select: none; padding-top: 6px; letter-spacing: -2px; }
+.pname { font-weight: 600; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lmeta { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ldates { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.lprice { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.ltotal { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; padding-top: 6px; }
+.lx { padding-top: 3px; }
+.sub { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto 7.5rem 30px; gap: 10px; align-items: center; padding: 6px 4px; font-size: 0.85rem; }
+.sub .lbl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-left: 14px; border-left: 2px solid var(--border); }
+.sub .amt { text-align: right; font-variant-numeric: tabular-nums; }
+.sub.closed { color: var(--muted-foreground); }
+.sub.credit .amt { color: var(--leaf); }
+.subwrap { padding-bottom: 8px; }
+.ractions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.addrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 4px 0; }
+.free { font-size: 0.75rem; }
+.free.low { color: var(--destructive); }
+.reason select { height: 28px; font-size: 0.78rem; }
+
+/* totals */
+.tot { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-variant-numeric: tabular-nums; }
+.tot .r { text-align: right; }
+.tot .sep { grid-column: 1 / -1; border-top: 1px solid var(--border); margin: 4px 0; }
+.tot .big { font-size: 1.15rem; font-weight: 700; }
+.deposit { margin-top: 14px; border: 1px dashed var(--highlight-border); background: var(--highlight); color: var(--highlight-foreground); border-radius: 10px; padding: 10px 12px; }
+.deposit b { color: var(--foreground); }
+.sched { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.sched .row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
+
+/* sidebar */
+.pay { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); }
+.pay:first-of-type { border-top: 0; }
+.bal { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+.bal .big { font-size: 1.35rem; font-weight: 700; }
+.hist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 0.82rem; }
+.hist li { display: grid; grid-template-columns: 5.2rem 1fr; gap: 8px; }
+.dep { padding: 8px 0; border-top: 1px solid var(--border); }
+.dep:first-of-type { border-top: 0; padding-top: 0; }
+.steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
+.steps .arrow { color: var(--muted-foreground); font-size: 0.8rem; }
+.custcard .name { font-size: 1.05rem; font-weight: 600; }
+.custpick { position: relative; }
+.custpick input { width: 100%; }
+.later { opacity: 0.7; }
+.planned { font-size: 0.72rem; border-radius: 999px; padding: 1px 8px; background: var(--muted); color: var(--muted-foreground); }
+
+/* menus, modals, toast */
+.menu { position: absolute; right: 0; top: 40px; z-index: 30; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); min-width: 220px; padding: 4px; }
+.menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 7px; cursor: pointer; }
+.menu button:hover { background: var(--muted); }
+.menu button[disabled] { color: var(--muted-foreground); cursor: not-allowed; }
+.menu .why { display: block; font-size: 0.72rem; color: var(--muted-foreground); }
+.overlay { position: fixed; inset: 0; z-index: 60; background: rgb(0 0 0 / 0.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.phoneframe .overlay { position: absolute; align-items: flex-end; padding: 0; }
+.dialog { background: var(--card); border-radius: 14px; box-shadow: var(--shadow); width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 20px; }
+.phoneframe .dialog { border-radius: 16px 16px 0 0; max-height: 88%; }
+.dialog h2 { font-size: 1.1rem; margin-bottom: 4px; }
+.dialog .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; cursor: pointer; }
+.opt.on { border-color: var(--primary); background: var(--highlight); }
+.opt input { margin-top: 3px; }
+.opt .amt { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.callout { border-radius: 10px; padding: 10px 12px; background: var(--muted); font-size: 0.85rem; margin-top: 12px; }
+.callout.hl { background: var(--highlight); color: var(--highlight-foreground); }
+.callout.ok { background: var(--leaf-soft); color: var(--leaf); }
+.callout.bad { background: var(--destructive-soft); color: var(--destructive); }
+.proto-ctl { margin-top: 12px; border: 1px dashed var(--input); border-radius: 10px; padding: 8px 10px; font-size: 0.8rem; }
+.proto-ctl summary { cursor: pointer; color: var(--muted-foreground); }
+.math { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; white-space: pre-wrap; color: var(--muted-foreground); margin-top: 6px; }
+#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 90; background: #18181b; color: #fff; padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow); max-width: calc(100vw - 32px); display: none; }
+
+/* ---------- phone tab ---------- */
+.phones { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; padding: 24px 16px 40px; }
+.phonecol { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.phoneframe { width: 395px; max-width: 100%; height: 760px; border: 10px solid #27272a; border-radius: 36px; overflow: hidden; position: relative; background: var(--background); }
+.phonescroll { height: 100%; overflow: auto; scrollbar-width: none; }
+.phonescroll::-webkit-scrollbar { display: none; }
+.phoneframe .app { min-height: 100%; }
+
+/* ---------- narrow: the same sections stack (§9.1 difference 6) ---------- */
+@container app (max-width: 1080px) {
+  .ogrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cust where" "lines lines" "totals totals" "side side"; }
+}
+@container app (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); display: flex; flex-direction: column; }
+  .side { display: none; }
+  .mhead { display: flex; }
+  .tabbar { display: flex; }
+  .content { padding: 14px 12px 20px; flex: 1; }
+  h1 { font-size: 1.25rem; }
+  .ohead { align-items: stretch; }
+  .ohead .acts { width: 100%; }
+  .ohead .acts .btn.main { flex: 1; }
+  .ogrid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "cust" "where" "lines" "totals" "side"; gap: 12px; }
+  .card { padding: 14px 12px; }
+  .results { max-height: 300px; }
+}
+/* the line table restacks on the lines card's own width */
+.a-lines { container-type: inline-size; container-name: lines; }
+@container lines (max-width: 700px) {
+  .lhead { display: none; }
+  .line { grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "h prod x" "h dates dates" "h price total"; gap: 8px; }
+  .line > .handle { grid-area: h; } .line > .lprod { grid-area: prod; } .line > .ldates { grid-area: dates; }
+  .line > .lprice { grid-area: price; } .line > .ltotal { grid-area: total; align-self: end; } .line > .lx { grid-area: x; }
+  .sub { grid-template-columns: 0 minmax(0, 1fr) auto auto; grid-template-areas: "h lbl amt x" "h ctl ctl ctl"; gap: 4px 8px; }
+  .sub > .handle { display: none; }
+  .sub > .lbl { grid-area: lbl; } .sub > .ctl { grid-area: ctl; padding-left: 16px; } .sub > .amt { grid-area: amt; } .sub > .lx { grid-area: x; }
+  .ldates .dt input[type=date] { width: 128px; }
+}
+</style>
+</head>
+<body>
+<div class="proto" role="banner">
+  <b>Order screen prototype</b>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <span class="spacer"></span>
+  <span class="note">Sample data, made up. Nothing is saved. Shop clock fixed at 26 Nov 2026 10:00.</span>
+  <button class="reset" data-act="reset" type="button">Reset</button>
+</div>
+<div id="root"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   Sample data (made up). Money is integer satang (THB x 100).
+   ===================================================================== */
+const NOW = "2026-11-26T10:00";
+const VAT_RATE = 7;               // BSR prices include VAT
+const HOLD_MINUTES = 15;
+const STAFF = "Ploy";
+const PLACES = ["Shop 1 · Old Town", "Shop 2 · Beach Road"];
+const PRICE_REASONS = ["Returning customer", "Long stay", "Price match", "Vehicle has a fault", "Other"];
+const CANCEL_REASONS = [
+  ["customer", "Customer request"],
+  ["shop", "Shop request"],
+  ["no_show", "No-show"],
+  ["other", "Other"],
+];
+const PRODUCTS = [
+  // price points (baht): 1 day, 3 days, 7 days, 14 days, 30 days; extra = each day after a point, capped at the next
+  { id: "click", name: "Honda Click 125i", kind: "vehicle", d1: 250, d3: 600, w: 1000, tw: 1500, m: 3000, extra: 150, long: 100, dep: 3000, units: ["1กข 4821", "1กข 4822", "1กข 4830"] },
+  { id: "scoopy", name: "Honda Scoopy", kind: "vehicle", d1: 200, d3: 500, w: 800, tw: 1200, m: 2500, extra: 120, long: 85, dep: 2000, units: ["2กค 3317", "2กค 3318"] },
+  { id: "nmax", name: "Yamaha NMAX 155", kind: "vehicle", d1: 300, d3: 800, w: 1200, tw: 1600, m: 3300, extra: 180, long: 110, dep: 3000, units: ["2ขค 1093", "2ขค 1094"] },
+  { id: "adv", name: "Honda ADV 160", kind: "vehicle", d1: 350, d3: 900, w: 1300, tw: 1700, m: 3500, extra: 200, long: 120, dep: 5000, units: ["3คง 5502", "3คง 5503"] },
+  { id: "pcx", name: "Honda PCX 160", kind: "vehicle", d1: 350, d3: 900, w: 1300, tw: 1700, m: 3500, extra: 200, long: 120, dep: 5000, units: ["3คง 7710", "3คง 7711"] },
+  { id: "forza", name: "Honda Forza 350", kind: "vehicle", d1: 900, d3: 2400, w: 4500, tw: 7000, m: 12000, extra: 500, long: 400, dep: 10000, units: ["4งจ 0081"] },
+  { id: "helmet", name: "Second helmet", kind: "extra", perDay: 20, cap: 300 },
+  { id: "holder", name: "Phone holder", kind: "extra", flat: 100 },
+  { id: "poncho", name: "Rain poncho", kind: "sale", price: 80 },
+  { id: "delivery", name: "Delivery and collection", kind: "service", flat: 300 },
+];
+const CUSTOMERS = [
+  { id: "c1", name: "Lukas Brenner", phone: "+49 151 2345 6789", email: "lukas.b@example.com", nat: "Germany", orders: 3, note: "Prefers automatics" },
+  { id: "c2", name: "Siriporn Chaiyasit", phone: "+66 81 234 5678", email: "siriporn@example.com", nat: "Thailand", orders: 1 },
+  { id: "c3", name: "James O'Hara", phone: "+44 7700 900123", email: "jamesoh@example.com", nat: "United Kingdom", orders: 0 },
+  { id: "c4", name: "Mei Tanaka", phone: "+81 90 1234 5678", email: "mei.t@example.com", nat: "Japan", orders: 2, depositWaived: true },
+  { id: "c5", name: "Daniel Moreau", phone: "+33 6 12 34 56 78", email: "d.moreau@example.com", nat: "France", orders: 5 },
+];
+const COUPONS = {
+  LOYAL10: { pct: 10, label: "10% off rentals" },
+  MONTH500: { fixed: 50000, label: "฿500 off the first charge" },
+};
+
+/* =====================================================================
+   Small helpers
+   ===================================================================== */
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const fmt = new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" });
+const money = (n) => (n < 0 ? "−" : "") + fmt.format(Math.abs(n) / 100);
+const rhu = (x) => Math.sign(x) * Math.floor(Math.abs(x) + 0.5);       // half up, to one satang
+const vatOf = (gross) => rhu((gross * VAT_RATE) / (100 + VAT_RATE));     // VAT inside a VAT-inclusive amount
+const prod = (id) => PRODUCTS.find((p) => p.id === id);
+const cust = (id) => CUSTOMERS.find((c) => c.id === id);
+let uidN = 1000;
+const uid = (p) => p + ++uidN;
+
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function P(s) { const [d, t = "00:00"] = s.split("T"); const [y, m, dd] = d.split("-").map(Number); const [h, mi] = t.split(":").map(Number); return Date.UTC(y, m - 1, dd, h, mi); }
+function iso(ms) { return new Date(ms).toISOString().slice(0, 16); }
+function fD(s) { const d = new Date(P(s)); return d.getUTCDate() + " " + MON[d.getUTCMonth()]; }
+function fDY(s) { const d = new Date(P(s)); return fD(s) + " " + d.getUTCFullYear(); }
+function fDT(s) { return fD(s) + " " + s.slice(11, 16); }
+function addDays(s, n) { return iso(P(s) + n * 864e5); }
+function addMonths(s, k) {
+  // date to date, anchored on the original pickup; a month without that date uses its last day
+  const d = new Date(P(s)); let y = d.getUTCFullYear(); let m = d.getUTCMonth() + k;
+  y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+  const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return iso(Date.UTC(y, m, Math.min(d.getUTCDate(), last), d.getUTCHours(), d.getUTCMinutes()));
+}
+function days(a, b) { return Math.max(1, Math.ceil((P(b) - P(a)) / 864e5)); }
+function overlaps(a1, a2, b1, b2) { return P(a1) < P(b2) && P(b1) < P(a2); }
+
+/* =====================================================================
+   Pricing (stand-in for @mango/core quote(), extensionPrice, swapAmounts)
+   ===================================================================== */
+function listPrice(p, n) { // 30 days or fewer, in satang
+  const pts = [[1, p.d1], [3, p.d3], [7, p.w], [14, p.tw], [30, p.m]];
+  let prev = pts[0];
+  for (const pt of pts) {
+    if (n === pt[0]) return pt[1] * 100;
+    if (n < pt[0]) return Math.min(prev[1] + (n - prev[0]) * p.extra, pt[1]) * 100;
+    prev = pt;
+  }
+  return p.m * 100;
+}
+/** A rental split into billed periods: 30 days or fewer is one; longer runs date to date by month, then leftover days at the long-stay rate. */
+function periods(p, start, end) {
+  const n = days(start, end);
+  if (n <= 30) return [{ start, end, list: listPrice(p, n), days: n }];
+  const out = []; let a = start; let k = 1;
+  for (;;) { const b = addMonths(start, k); if (P(b) > P(end)) break; out.push({ start: a, end: b, list: p.m * 100, days: days(a, b), month: k }); a = b; k++; }
+  if (P(a) < P(end)) { const dd = days(a, end); out.push({ start: a, end, list: Math.min(dd * p.long, p.m) * 100, days: dd, leftover: true }); }
+  return out;
+}
+const rentalPrice = (p, s, e) => periods(p, s, e).reduce((t, x) => t + x.list, 0);
+function extraAmount(ep, per, qty, first) {
+  if (ep.flat != null) return first ? ep.flat * 100 * qty : 0;   // flat-fee extras: first charge only (decision 30)
+  return Math.min(per.days * ep.perDay, ep.cap) * 100 * qty;      // time-priced extras follow each period
+}
+function priceSummary(p) {
+  if (p.kind === "vehicle") return `${money(p.d1 * 100)} a day · ${money(p.tw * 100)} 2 weeks · ${money(p.m * 100)} a month`;
+  if (p.perDay) return `${money(p.perDay * 100)} a day, at most ${money(p.cap * 100)} a period`;
+  if (p.flat != null) return `${money(p.flat * 100)} flat`;
+  return `${money(p.price * 100)} each`;
+}
+
+/* =====================================================================
+   State
+   ===================================================================== */
+const SETTINGS_DEFAULT = () => ({
+  depositMode: "hold",                                  // shop: hold on card, or charge (never converted)
+  swap: { remainder: true, prorated: true, none: true, manual: true }, swapDefault: "remainder",
+  keepDiscount: true,
+  cheaper: { credit: true, refund: true, none: true }, cheaperDefault: "credit",
+  timeStep: 15,
+});
+
+function newDraft() {
+  return {
+    customer: null, custQ: "", custOpen: false, newCust: null,
+    place: PLACES[0], returnPlace: PLACES[0],
+    lines: [{ id: "L1", type: "vehicle", pid: "click", unit: "auto", start: "2026-11-27T10:00", end: "2026-12-04T10:00", over: {}, extras: [{ id: "E1", pid: "helmet", qty: 1 }] }],
+    coupon: null, couponIn: "", couponErr: "", search: "", searchOpen: false, note: "",
+  };
+}
+
+/** Order #1042: two vehicles, one out (Mark's swap example), one reserved for a friend. */
+function sampleB() {
+  return {
+    key: "b", number: 1042, channel: "Counter", customer: "c1", place: PLACES[0], created: "2026-11-10T15:30", canceled: null, menu: false, note: "Friend picks up the NMAX on the 28th.",
+    rentals: [
+      { id: "R1", pid: "click", unit: "1กข 4821", start: "2026-11-12T10:00", end: "2026-12-12T10:00", stage: "out", pickedUp: "2026-11-12T10:20",
+        deposit: { amount: 300000, mode: "charge", events: [{ type: "charged", at: "2026-11-12T10:20", amount: 300000, method: "Cash" }] } },
+      { id: "R2", pid: "nmax", unit: "2ขค 1093", start: "2026-11-28T09:00", end: "2026-12-05T09:00", stage: "reserved",
+        deposit: { amount: 300000, mode: "hold", events: [] } },
+    ],
+    charges: [{ id: "C1", kind: "booking", label: "Booking", due: "2026-11-10T15:30" }],
+    lines: [
+      { id: "l1", charge: "C1", rental: "R1", kind: "period", label: "Period 1", start: "2026-11-12T10:00", end: "2026-12-12T10:00", pid: "click", unit: "1กข 4821", list: 300000, amount: 250000, reason: "Returning customer" },
+      { id: "l2", charge: "C1", rental: "R1", kind: "extra", label: "Second helmet", pid: "helmet", list: 30000, amount: 30000 },
+      { id: "l3", charge: "C1", rental: "R2", kind: "period", label: "Period 1", start: "2026-11-28T09:00", end: "2026-12-05T09:00", pid: "nmax", unit: "2ขค 1093", list: 120000, amount: 120000 },
+    ],
+    payments: [{ id: "P1", kind: "payment", at: "2026-11-10T15:34", method: "Transfer", amount: 400000, alloc: [{ charge: "C1", amount: 400000 }], by: STAFF }],
+    history: [
+      ["2026-11-10T15:30", `Order made at the counter by ${STAFF}`],
+      ["2026-11-10T15:34", "Payment ฿4,000.00 by transfer"],
+      ["2026-11-12T10:20", "Honda Click 125i 1กข 4821 picked up; deposit ฿3,000.00 charged in cash"],
+    ],
+  };
+}
+
+/** Order #1031: a monthly rental, month 1 paid, month 2 due today. */
+function sampleC() {
+  return {
+    key: "c", number: 1031, channel: "Counter", customer: "c5", place: PLACES[1], created: "2026-10-26T09:40", canceled: null, menu: false, note: "Long stay, renews monthly. Pays cash at the shop.",
+    rentals: [
+      { id: "R1", pid: "pcx", unit: "3คง 7710", start: "2026-10-26T10:00", end: "2026-12-26T10:00", stage: "out", pickedUp: "2026-10-26T10:05",
+        deposit: { amount: 500000, mode: "charge", events: [{ type: "charged", at: "2026-10-26T10:05", amount: 500000, method: "Cash" }] } },
+    ],
+    charges: [
+      { id: "C1", kind: "booking", label: "Month 1", due: "2026-10-26T10:00" },
+      { id: "C2", kind: "period", label: "Month 2", due: "2026-11-26T10:00" },
+    ],
+    lines: [
+      { id: "l1", charge: "C1", rental: "R1", kind: "period", label: "Month 1", start: "2026-10-26T10:00", end: "2026-11-26T10:00", pid: "pcx", unit: "3คง 7710", list: 350000, amount: 350000 },
+      { id: "l2", charge: "C1", rental: "R1", kind: "extra", label: "Second helmet", pid: "helmet", list: 30000, amount: 30000 },
+      { id: "l3", charge: "C1", rental: "R1", kind: "extra", label: "Phone holder", pid: "holder", list: 10000, amount: 10000 },
+      { id: "l4", charge: "C2", rental: "R1", kind: "period", label: "Month 2", start: "2026-11-26T10:00", end: "2026-12-26T10:00", pid: "pcx", unit: "3คง 7710", list: 350000, amount: 350000 },
+      { id: "l5", charge: "C2", rental: "R1", kind: "extra", label: "Second helmet", pid: "helmet", list: 30000, amount: 30000 },
+    ],
+    payments: [{ id: "P1", kind: "payment", at: "2026-10-26T10:05", method: "Cash", amount: 390000, alloc: [{ charge: "C1", amount: 390000 }], by: STAFF }],
+    history: [
+      ["2026-10-26T09:40", `Order made at the counter by ${STAFF}: 2 months, a charge per month`],
+      ["2026-10-26T10:05", "Picked up; Month 1 ฿3,900.00 paid in cash; deposit ฿5,000.00 charged in cash"],
+    ],
+  };
+}
+
+let S;
+function resetAll() {
+  S = { tab: S?.tab || "a", modal: null, settings: SETTINGS_DEFAULT(), draft: newDraft(), orders: { b: sampleB(), c: sampleC() }, nextNumber: 1043 };
+}
+resetAll();
+
+/* =====================================================================
+   Order maths (stand-in for the ledger: §6.4)
+   ===================================================================== */
+const liveLines = (o) => o.lines.filter((l) => !l.void);
+const chargeTotal = (o, c) => liveLines(o).filter((l) => l.charge === c.id).reduce((t, l) => t + l.amount, 0);
+const chargePaid = (o, c) => o.payments.filter((p) => p.kind === "payment").reduce((t, p) => t + p.alloc.filter((a) => a.charge === c.id).reduce((s, a) => s + a.amount, 0), 0);
+function chargeState(o, c) {
+  const total = chargeTotal(o, c); const paid = chargePaid(o, c);
+  if (!liveLines(o).some((l) => l.charge === c.id)) return { tone: "", text: "Canceled", total, paid, open: 0 };
+  if (total <= 0) return { tone: "ok", text: total < 0 ? "Credit" : "Nothing to pay", total, paid, open: 0 };
+  const open = total - paid;
+  if (open <= 0) { const last = o.payments.filter((p) => p.alloc.some((a) => a.charge === c.id)).pop(); return { tone: "ok", text: "Paid " + (last ? fD(last.at) : ""), total, paid, open: 0 }; }
+  if (P(c.due) <= P(NOW)) return { tone: "bad", text: paid ? `Due now (${money(open)} left)` : (c.due.slice(0, 10) === NOW.slice(0, 10) ? "Due today" : "Due since " + fD(c.due)), total, paid, open };
+  return { tone: "info", text: "Due " + fD(c.due), total, paid, open };
+}
+function orderCalc(o) {
+  const lines = liveLines(o);
+  const total = lines.reduce((t, l) => t + l.amount, 0);
+  const listTotal = lines.reduce((t, l) => t + (l.list ?? l.amount), 0);
+  const staff = lines.filter((l) => l.kind !== "coupon" && l.kind !== "credit").reduce((t, l) => t + ((l.list ?? l.amount) - l.amount), 0);
+  const coupon = lines.filter((l) => l.kind === "coupon").reduce((t, l) => t + l.amount, 0);
+  const credits = lines.filter((l) => l.kind === "credit").reduce((t, l) => t + l.amount, 0);
+  const paid = o.payments.reduce((t, p) => t + (p.kind === "payment" ? p.amount : p.kind === "refund" ? -p.amount : 0), 0);
+  const balance = total - paid;
+  let dueOpen = 0;
+  o.charges.forEach((c) => { const st = chargeState(o, c); if (st.open > 0 && P(c.due) <= P(NOW)) dueOpen += st.open; });
+  const dueNow = Math.max(0, Math.min(balance, dueOpen));
+  const vat = vatOf(total);
+  return { total, listTotal, staff, coupon, credits, paid, balance, dueNow, later: Math.max(0, balance - dueNow), credit: Math.max(0, -balance), vat, net: total - vat };
+}
+function allocate(o, amount) {
+  const alloc = []; let left = amount;
+  [...o.charges].sort((a, b) => P(a.due) - P(b.due)).forEach((c) => {
+    const st = chargeState(o, c); if (left <= 0 || st.open <= 0) return;
+    const take = Math.min(left, st.open); alloc.push({ charge: c.id, amount: take }); left -= take;
+  });
+  return alloc;
+}
+function linePaid(o, l) { // what was actually paid toward one line: its share of what its charge received
+  const c = o.charges.find((x) => x.id === l.charge); const st = chargeState(o, c);
+  if (st.total <= 0) return 0;
+  return rhu((l.amount * Math.min(st.paid, st.total)) / st.total);
+}
+function orderStatus(o) {
+  if (o.canceled) return { text: "Canceled", tone: "bad" };
+  const st = o.rentals.filter((r) => r.stage !== "canceled").map((r) => r.stage);
+  const n = (s) => st.filter((x) => x === s).length;
+  if (!st.length) return { text: "Canceled", tone: "bad" };
+  if (n("reserved") === st.length) return { text: "Reserved", tone: "info" };
+  if (n("out") === st.length) return { text: "Picked up", tone: "hl" };
+  if (n("returned") === st.length) return { text: "Returned", tone: "ok" };
+  const parts = [["out", "out"], ["reserved", "reserved"], ["returned", "returned"]].filter(([s]) => n(s)).map(([s, w]) => `${n(s)} ${w}`);
+  return { text: "Mixed: " + parts.join(", "), tone: "hl" };
+}
+function depositState(r) {
+  const d = r.deposit; const ev = d.events;
+  if (!d.amount) return { text: "Not needed", tone: "", steps: [] };
+  const steps = ev.map((e) => ({ held: "Held", released: "Released", expired: "Expired", charged: "Charged", refunded: "Refunded", kept: "Kept", topup: "Top-up needed" }[e.type] + " " + fD(e.at) + (e.amount && e.amount !== d.amount ? " · " + money(e.amount) : "")));
+  const last = ev.filter((e) => e.type !== "topup").pop();
+  const top = ev.filter((e) => e.type === "topup" && !e.done).pop();
+  if (!last) return { text: r.stage === "reserved" ? "Required at pickup" : "Required, not taken", tone: r.stage === "reserved" ? "info" : "bad", steps, top };
+  const map = { held: ["Held on card", "hl"], charged: ["Charged, with the shop", "hl"], released: ["Released", "ok"], expired: ["Hold expired", ""], refunded: ["Refunded", "ok"], kept: ["Kept", ""] };
+  return { text: map[last.type][0], tone: map[last.type][1], steps, top };
+}
+function busyFor(unit, start, end, skip) {
+  const hits = [];
+  Object.values(S.orders).forEach((o) => {
+    if (o.canceled) return;
+    o.rentals.forEach((r) => { if (r.stage === "canceled" || r.stage === "returned" || (skip && skip === o.key + r.id)) return; if (r.unit === unit && overlaps(r.start, r.end, start, end)) hits.push(`#${o.number} ${fD(r.start)} → ${fD(r.end)}`); });
+  });
+  S.draft.lines.forEach((l) => { if (l.type === "vehicle" && l.unit === unit && skip !== "draft" + l.id && overlaps(l.start, l.end, start, end)) hits.push("this order"); });
+  return hits;
+}
+function freeUnits(p, start, end, skip) { return p.units.filter((u) => busyFor(u, start, end, skip).length === 0); }
+
+/* =====================================================================
+   Draft maths (the New order screen)
+   ===================================================================== */
+function draftCalc(d) {
+  const groups = new Map();
+  const add = (due, it) => { if (!groups.has(due)) groups.set(due, { due, items: [] }); groups.get(due).items.push(it); };
+  const rows = []; let deposit = 0;
+  const custObj = d.customer && (cust(d.customer) || d.newCust);
+  for (const l of d.lines) {
+    const p = prod(l.pid);
+    if (l.type === "vehicle") {
+      const ps = periods(p, l.start, l.end); const r = { line: l, p, periods: [], total: 0 };
+      ps.forEach((per, i) => {
+        const o = l.over[i]; const charged = o ? o.charged : per.list; const due = i === 0 ? "booking" : per.start;
+        const ex = l.extras.map((e) => { const ep = prod(e.pid); return { e, ep, amount: extraAmount(ep, per, e.qty, i === 0) }; }).filter((x) => x.amount > 0);
+        r.periods.push({ per, i, charged, list: per.list, due, reason: o && o.reason, ex });
+        add(due, { amount: charged, list: per.list, coup: true, what: `${p.name} ${ps.length > 1 ? "month " + (i + 1) : ""}` });
+        ex.forEach((x) => add(due, { amount: x.amount, list: x.amount, coup: true, what: x.ep.name }));
+        r.total += charged + ex.reduce((t, x) => t + x.amount, 0);
+      });
+      if (!(custObj && custObj.depositWaived)) deposit += p.dep * 100;
+      rows.push(r);
+    } else {
+      const amt = l.type === "custom" ? l.amount : (p.price ?? p.flat) * 100 * l.qty;
+      rows.push({ line: l, p, total: amt });
+      add("booking", { amount: amt, list: amt, coup: false, what: l.type === "custom" ? l.text : p.name });
+    }
+  }
+  const c = d.coupon && COUPONS[d.coupon];
+  const gs = [...groups.values()].sort((a, b) => (a.due === "booking" ? -1 : b.due === "booking" ? 1 : P(a.due) - P(b.due)));
+  gs.forEach((g, gi) => {
+    g.sub = g.items.reduce((t, x) => t + x.amount, 0); g.list = g.items.reduce((t, x) => t + x.list, 0);
+    const base = g.items.filter((x) => x.coup).reduce((t, x) => t + x.amount, 0);
+    g.coupon = 0;
+    if (c) { if (c.pct) g.coupon = rhu((base * c.pct) / 100); else if (gi === 0) g.coupon = Math.min(c.fixed, base); } // % on every period, fixed on the first (decision 17)
+    g.total = g.sub - g.coupon; g.vat = vatOf(g.total);
+  });
+  const sum = (k) => gs.reduce((t, g) => t + g[k], 0);
+  const total = sum("total"); const vat = vatOf(total);
+  return { rows, gs, list: sum("list"), sub: sum("sub"), staff: sum("list") - sum("sub"), coupon: sum("coupon"), total, vat, net: total - vat, deposit, custObj };
+}
+
+/* =====================================================================
+   Icons (lucide shapes, inline)
+   ===================================================================== */
+const ICON = {
+  dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>',
+  orders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></svg>',
+  new: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>',
+  maint: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+  products: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>',
+  fleet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  user: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.66V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.66"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+};
+
+/* =====================================================================
+   Rendering: shell
+   ===================================================================== */
+const TABS = [["a", "a. New order"], ["b", "b. Saved order"], ["c", "c. Long rental"], ["d", "d. Phone (375 px)"]];
+function shell(frame, view, inner) {
+  const on = (v) => (v === view ? " on" : "");
+  const staffTabs = [["dashboard", "Dashboard", ""], ["orders", "Orders", "order"], ["new", "New order", "new"], ["maint", "Maintenance", ""]];
+  return `<div class="appwrap" data-frame="${frame}"><div class="app">
+    <aside class="side" aria-label="Sidebar">
+      <div class="shop">BSR</div>
+      <div class="grp"><p>Staff app</p>${staffTabs.map(([k, l, v]) => `<a class="nav${on(v)}" href="#" data-act="navnote">${ICON[k]}${l}</a>`).join("")}</div>
+      <div class="grp"><p>Shop admin</p>${[["products", "Products"], ["fleet", "Fleet"], ["settings", "Shop settings"]].map(([k, l]) => `<a class="nav" href="#" data-act="navnote">${ICON[k]}${l}</a>`).join("")}</div>
+    </aside>
+    <div style="display:flex;flex-direction:column;min-width:0">
+      <header class="mhead"><span>BSR</span><span class="muted" aria-hidden="true">${ICON.user}</span></header>
+      <main class="content">${inner}</main>
+      <nav class="tabbar" aria-label="Staff app">${staffTabs.map(([k, l, v]) => `<a href="#" class="${on(v).trim()}" data-act="navnote">${ICON[k]}<span>${l}</span></a>`).join("")}</nav>
+    </div>
+  </div>${S.modal && S.modal.frame === frame ? renderModal() : ""}</div>`;
+}
+
+function dtPicker(value, data) {
+  const step = S.settings.timeStep; const opts = [];
+  for (let m = 0; m < 1440; m += step) { const t = String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); opts.push(`<option${t === value.slice(11, 16) ? " selected" : ""}>${t}</option>`); }
+  return `<span class="dt"><input type="date" value="${value.slice(0, 10)}" data-ch="dt" data-part="date" ${data} aria-label="Date"><select data-ch="dt" data-part="time" ${data} aria-label="Time">${opts.join("")}</select></span>`;
+}
+
+/* =====================================================================
+   a. New order
+   ===================================================================== */
+function renderNew(frame) {
+  const d = S.draft; const q = draftCalc(d);
+  const custHtml = renderCustomerPicker(frame, q.custObj);
+  const vehicles = d.lines.filter((l) => l.type === "vehicle");
+  const linesHtml = q.rows.map((r) => (r.line.type === "vehicle" ? draftVehicleRow(r, vehicles[0] === r.line && vehicles.length > 1, frame) : draftOtherRow(r))).join("");
+  const sched = q.gs.length > 1;
+  const dueNow = q.gs[0] ? q.gs[0].total : 0;
+  return `
+  <div class="ohead">
+    <div><div class="crumb">Orders ›</div>
+      <div class="title"><h1>New order</h1><span class="chip">Not saved</span><span class="chip" title="Staff orders are counter orders; read-only">Counter</span></div></div>
+    <div class="acts">
+      <button class="btn outline" data-act="draft-save">Save as draft</button>
+      <button class="btn outline" data-act="draft-hold">Hold ${HOLD_MINUTES} min</button>
+      <button class="btn main" data-act="draft-reserve">Reserve</button>
+    </div>
+  </div>
+  <div class="ogrid">
+    <section class="card a-cust" aria-label="Customer"><h2>Customer</h2>${custHtml}</section>
+    <section class="card a-where" aria-label="Pickup and return">
+      <h2>Pickup and return</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="f">Pickup at</label><select data-ch="place" data-k="place" style="width:100%">${PLACES.map((p) => `<option${p === d.place ? " selected" : ""}>${p}</option>`).join("")}</select></div>
+        <div><label class="f">Return to</label><select data-ch="place" data-k="returnPlace" style="width:100%">${PLACES.map((p) => `<option${p === d.returnPlace ? " selected" : ""}>${p}</option>`).join("")}</select></div>
+      </div>
+      <p class="small muted" style="margin:10px 0 0">Dates are on each vehicle line. A new line starts with the first line's dates. Times in ${S.settings.timeStep}-minute steps (Settings › Orders).</p>
+      <p class="small later" style="margin:6px 0 0">Delivery address <span class="planned">Phase 8</span> · Billing address <span class="planned">Phase 6</span></p>
+    </section>
+    <section class="card a-lines" aria-label="Lines">
+      ${searchBox(frame)}
+      <div class="lhead"><span></span><span>Product</span><span>Pickup and return</span><span>Price</span><span class="right">Total</span><span></span></div>
+      ${linesHtml || `<p class="muted" style="padding:16px 4px">No lines yet. Search above to add a vehicle, an extra or an item.</p>`}
+      <div class="addrow"><button class="btn sm outline" data-act="add-custom">+ Add custom line</button></div>
+    </section>
+    <section class="card a-totals" aria-label="Totals">
+      ${draftTotals(q, sched)}
+    </section>
+    <aside class="a-side">
+      <section class="card"><h2>Payment</h2>
+        <div class="bal"><span>Due at booking</span><span class="right big">${money(dueNow)}</span>
+        ${sched ? `<span class="muted">Later charges</span><span class="right muted">${money(q.total - dueNow)}</span>` : ""}</div>
+        <p class="small muted" style="margin:0 0 10px">Payments are recorded on the order once it is reserved. Each payment gets its own tax invoice (Phase 6).</p>
+        <button class="btn" style="width:100%" data-act="draft-reserve" data-pay="1">Reserve and take payment</button>
+      </section>
+      <section class="card"><h2>Security deposit</h2>${draftDeposit(q)}</section>
+      <section class="card"><h2>Notes</h2><textarea rows="3" data-ch="draft-note" placeholder="Seen by staff only">${esc(d.note)}</textarea></section>
+      <section class="card"><h2>History</h2><p class="small muted" style="margin:0">Starts when the order is saved.</p></section>
+    </aside>
+  </div>`;
+}
+
+function renderCustomerPicker(frame, c) {
+  const d = S.draft;
+  if (c) {
+    return `<div class="custcard"><div class="name">${esc(c.name)}</div>
+      <dl class="kv small" style="margin:6px 0 10px"><dt>Phone</dt><dd>${esc(c.phone || "—")}</dd><dt>Email</dt><dd>${esc(c.email || "—")}</dd><dt>Country</dt><dd>${esc(c.nat || "—")}</dd></dl>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        ${c.orders != null ? `<span class="chip">${c.orders} earlier order${c.orders === 1 ? "" : "s"}</span>` : `<span class="chip hl">New customer</span>`}
+        ${c.depositWaived ? `<span class="chip ok">Deposit waived</span>` : ""}
+        ${c.note ? `<span class="chip">${esc(c.note)}</span>` : ""}
+        <button class="link small" data-act="cust-clear" style="margin-left:auto">Change</button>
+      </div></div>`;
+  }
+  if (d.newCust) {
+    const n = d.newCust;
+    return `<div style="display:grid;gap:8px">
+      <div><label class="f">Name</label><input type="text" style="width:100%" value="${esc(n.name)}" data-ch="newcust" data-k="name"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label class="f">Phone (international)</label><input type="text" style="width:100%" value="${esc(n.phone)}" placeholder="+66 …" data-ch="newcust" data-k="phone"></div>
+        <div><label class="f">Email</label><input type="text" style="width:100%" value="${esc(n.email)}" data-ch="newcust" data-k="email"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn sm ghost" data-act="cust-cancelnew">Cancel</button><button class="btn sm" data-act="cust-savenew">Add customer</button></div>
+    </div>`;
+  }
+  return `<div class="custpick search" style="margin:0">${ICON.search}<input type="search" placeholder="Search by name, phone or email" value="${esc(d.custQ)}" data-in="cust-q" data-focus="cust" aria-label="Search customers">
+    <div class="results" data-res="cust" ${d.custOpen ? "" : "hidden"}>${custResults()}</div></div>
+    <p class="small muted" style="margin:8px 0 0">or <button class="link" data-act="cust-new">add a new customer</button></p>`;
+}
+function custResults() {
+  const q = S.draft.custQ.trim().toLowerCase();
+  const list = CUSTOMERS.filter((c) => !q || (c.name + c.phone + c.email).toLowerCase().includes(q));
+  return list.map((c) => `<button data-act="cust-pick" data-id="${c.id}"><span><b>${esc(c.name)}</b><br><span class="small muted">${esc(c.phone)} · ${esc(c.email)}</span></span><span class="small muted">${c.orders} orders</span></button>`).join("") || `<div style="padding:10px 12px" class="muted small">No match. <button class="link" data-act="cust-new">Add “${esc(S.draft.custQ)}” as a new customer</button></div>`;
+}
+
+function searchBox() {
+  const d = S.draft;
+  return `<div class="search">${ICON.search}<input type="search" placeholder="Search to add products" value="${esc(d.search)}" data-in="prod-q" data-focus="prod" aria-label="Search to add products">
+    <div class="results" data-res="prod" ${d.searchOpen ? "" : "hidden"}>${prodResults()}</div></div>`;
+}
+function prodResults() {
+  const d = S.draft; const q = d.search.trim().toLowerCase();
+  const first = d.lines.find((l) => l.type === "vehicle");
+  const s = first ? first.start : "2026-11-27T10:00"; const e = first ? first.end : "2026-11-28T10:00";
+  const kinds = { vehicle: "Vehicle", extra: "Extra", sale: "For sale", service: "Service" };
+  return PRODUCTS.filter((p) => !q || (p.name + " " + p.kind).toLowerCase().includes(q)).map((p) => {
+    let right = "";
+    if (p.kind === "vehicle") { const f = freeUnits(p, s, e).length; right = `<span class="free ${f ? "" : "low"}">${f} of ${p.units.length} free</span>`; }
+    return `<button data-act="add-prod" data-id="${p.id}"><span><b>${esc(p.name)}</b> <span class="chip">${kinds[p.kind]}</span><br><span class="small muted">${priceSummary(p)}</span></span>${right}</button>`;
+  }).join("") || `<div style="padding:10px 12px" class="muted small">No product matches.</div>`;
+}
+
+function priceCell(lineId, i, list, charged, reason) {
+  const changed = charged !== list;
+  return `<div class="lprice"><input class="money" inputmode="decimal" value="${(charged / 100).toFixed(2)}" data-ch="charged" data-line="${lineId}" data-i="${i}" aria-label="Price charged">
+    ${changed ? `<span class="small muted">List <span class="strike">${money(list)}</span> · <button class="link small" data-act="reset-price" data-line="${lineId}" data-i="${i}">reset</button></span>
+      <span class="reason"><select data-ch="reason" data-line="${lineId}" data-i="${i}" aria-label="Reason for the price change">${PRICE_REASONS.map((x) => `<option${x === reason ? " selected" : ""}>${x}</option>`).join("")}</select></span>` : `<span class="small muted">List price</span>`}</div>`;
+}
+function draftVehicleRow(r, isFirstOfMany) {
+  const l = r.line; const p = r.p; const n = days(l.start, l.end);
+  const free = freeUnits(p, l.start, l.end, "draft" + l.id);
+  const multi = r.periods.length > 1;
+  const unitOpts = [`<option value="auto"${l.unit === "auto" ? " selected" : ""}>Unit: best fit</option>`].concat(p.units.map((u) => {
+    const busy = busyFor(u, l.start, l.end, "draft" + l.id);
+    return `<option value="${u}"${u === l.unit ? " selected" : ""}${busy.length ? " disabled" : ""}>${u}${busy.length ? " (booked)" : ""}</option>`;
+  }));
+  const busyTitle = p.units.map((u) => { const b = busyFor(u, l.start, l.end, "draft" + l.id); return `${u}: ${b.length ? b.join(", ") : "free"}`; }).join("\n");
+  const p0 = r.periods[0];
+  const extrasRows = (pp) => pp.ex.map((x) => `<div class="sub"><span class="handle"></span><span class="lbl">${esc(x.ep.name)}${x.e.qty > 1 ? " × " + x.e.qty : ""} <span class="small muted">${x.ep.flat != null ? "flat, first charge only" : `${pp.per.days} days`}</span></span>
+      <span class="ctl"></span><span class="amt">${money(x.amount)}</span><span class="lx">${pp.i === 0 ? `<button class="btn ghost sm icon" data-act="rm-extra" data-line="${l.id}" data-id="${x.e.id}" aria-label="Remove ${esc(x.ep.name)}">×</button>` : ""}</span></div>`).join("");
+  const periodRows = multi ? r.periods.map((pp) => `<div class="sub"><span class="handle"></span>
+      <span class="lbl"><b>${pp.per.leftover ? "Extra days" : "Month " + (pp.i + 1)}</b> ${fD(pp.per.start)} → ${fD(pp.per.end)} <span class="chip ${pp.i === 0 ? "hl" : "info"}">${pp.i === 0 ? "Due at booking" : "Due " + fD(pp.per.start)}</span></span>
+      <span class="ctl">${priceCell(l.id, pp.i, pp.list, pp.charged, pp.reason)}</span><span class="amt">${money(pp.charged)}</span><span></span></div>${extrasRows(pp)}`).join("") : extrasRows(p0);
+  const extraChoices = PRODUCTS.filter((x) => x.kind === "extra" && !l.extras.some((e) => e.pid === x.id));
+  return `<div class="rental">
+    <div class="line">
+      <span class="handle" title="Drag to reorder">⋮⋮</span>
+      <div class="lprod"><div class="pname">${esc(p.name)}</div>
+        <div class="lmeta"><select data-ch="unit" data-line="${l.id}" style="height:28px;font-size:0.8rem" aria-label="Unit">${unitOpts.join("")}</select>
+        <span class="free ${free.length ? "" : "low"}" title="${esc(busyTitle)}">${free.length} of ${p.units.length} free</span></div></div>
+      <div class="ldates">
+        <div><label class="f">Pickup</label>${dtPicker(l.start, `data-line="${l.id}" data-k="start"`)}</div>
+        <div><label class="f">Return</label>${dtPicker(l.end, `data-line="${l.id}" data-k="end"`)}</div>
+        <div class="small muted" style="flex-basis:100%">${n} day${n === 1 ? "" : "s"}${multi ? ` · over 30 days: a line and a charge per month` : ""}${isFirstOfMany ? ` · <button class="link small" data-act="apply-all" data-line="${l.id}">Apply these dates to all lines</button>` : ""}</div>
+      </div>
+      ${multi ? `<div class="lprice"><span class="small muted">${r.periods.length} periods, priced below</span></div>` : priceCell(l.id, 0, p0.list, p0.charged, p0.reason)}
+      <div class="ltotal">${money(r.total)}</div>
+      <div class="lx"><button class="btn ghost sm icon" data-act="rm-line" data-line="${l.id}" aria-label="Remove ${esc(p.name)}">×</button></div>
+    </div>
+    <div class="subwrap">${periodRows}
+      ${extraChoices.length ? `<div class="sub"><span class="handle"></span><span class="lbl"><select data-ch="add-extra" data-line="${l.id}" style="height:28px;font-size:0.8rem" aria-label="Add an extra to this vehicle"><option value="">+ Add an extra with this vehicle</option>${extraChoices.map((x) => `<option value="${x.id}">${esc(x.name)} (${priceSummary(x)})</option>`).join("")}</select></span><span></span><span></span><span></span></div>` : ""}
+    </div>
+  </div>`;
+}
+function draftOtherRow(r) {
+  const l = r.line; const p = r.p;
+  if (l.type === "custom") {
+    return `<div class="line"><span class="handle">⋮⋮</span>
+      <div class="lprod"><input type="text" value="${esc(l.text)}" data-ch="custom-text" data-line="${l.id}" style="width:100%" aria-label="Line text"><div class="lmeta"><span class="chip">Custom line</span></div></div>
+      <div class="ldates small muted">—</div>
+      <div class="lprice"><input class="money" value="${(l.amount / 100).toFixed(2)}" data-ch="custom-amt" data-line="${l.id}" aria-label="Amount"></div>
+      <div class="ltotal">${money(r.total)}</div><div class="lx"><button class="btn ghost sm icon" data-act="rm-line" data-line="${l.id}" aria-label="Remove line">×</button></div></div>`;
+  }
+  const kind = { sale: "For sale", service: "Service" }[p.kind];
+  return `<div class="line"><span class="handle">⋮⋮</span>
+    <div class="lprod"><div class="pname">${esc(p.name)} <span class="chip">${kind}</span></div></div>
+    <div class="ldates small muted">${p.kind === "service" ? "With the order" : "Handed over at pickup"}</div>
+    <div class="lprice">${p.kind === "sale" ? `<span style="display:flex;gap:6px;align-items:center"><input type="number" min="1" value="${l.qty}" data-ch="qty" data-line="${l.id}" style="width:64px" aria-label="Quantity"> × ${money(p.price * 100)}</span>` : `<span>${money(p.flat * 100)}</span>`}</div>
+    <div class="ltotal">${money(r.total)}</div><div class="lx"><button class="btn ghost sm icon" data-act="rm-line" data-line="${l.id}" aria-label="Remove ${esc(p.name)}">×</button></div></div>`;
+}
+function draftTotals(q, sched) {
+  const d = S.draft;
+  const coupon = d.coupon
+    ? `<span>Coupon <span class="chip hl">${d.coupon}</span> <button class="link small" data-act="coupon-rm">remove</button><br><span class="small muted">${COUPONS[d.coupon].label}</span></span><span class="r">−${money(q.coupon)}</span>`
+    : `<span style="grid-column:1/-1;display:flex;gap:6px"><input type="text" placeholder="Coupon code" value="${esc(d.couponIn)}" data-ch="coupon-in" style="flex:1;text-transform:uppercase" aria-label="Coupon code"><button class="btn sm outline" data-act="coupon-apply">Apply</button></span>${d.couponErr ? `<span class="small" style="grid-column:1/-1;color:var(--destructive)">${esc(d.couponErr)}</span>` : `<span class="small muted" style="grid-column:1/-1">Try LOYAL10 or MONTH500</span>`}`;
+  return `<div class="tot">
+    <span>Subtotal (list prices)</span><span class="r">${money(q.list)}</span>
+    ${q.staff ? `<span>Price changes</span><span class="r">−${money(q.staff)}</span>` : ""}
+    ${coupon}
+    <span class="sep"></span>
+    <span class="big">Total</span><span class="r big">${money(q.total)}</span>
+    <span class="muted">Net</span><span class="r muted">${money(q.net)}</span>
+    <span class="muted">VAT ${VAT_RATE}% (included)</span><span class="r muted">${money(q.vat)}</span>
+  </div>
+  ${sched ? `<div class="sched"><h2 style="margin-bottom:6px">Charges</h2>${q.gs.map((g, i) => `<div class="row"><span>${i === 0 ? "At booking" : fDY(g.due)}<br><span class="small muted">VAT on this payment ${money(g.vat)}</span></span><span class="tnum">${money(g.total)}</span></div>`).join("")}</div>` : ""}
+  <div class="deposit"><div style="display:flex;justify-content:space-between;gap:8px"><span>Security deposit</span><b class="tnum">${money(q.deposit)}</b></div>
+    <div class="small">Not part of the total and never owed. ${S.settings.depositMode === "hold" ? "Held on the customer's card at pickup" : "Charged at pickup and given back at return"}, once per vehicle.</div></div>`;
+}
+function draftDeposit(q) {
+  const veh = q.rows.filter((r) => r.line.type === "vehicle");
+  if (q.custObj && q.custObj.depositWaived) return `<p class="small" style="margin:0"><span class="chip ok">Waived</span> This customer has no deposit to pay.</p>`;
+  return `${veh.map((r) => `<div class="dep"><div style="display:flex;justify-content:space-between"><span>${esc(r.p.name)}</span><span class="tnum">${money(r.p.dep * 100)}</span></div><div class="steps"><span class="chip info">Required at pickup</span></div></div>`).join("") || `<p class="small muted" style="margin:0">No vehicles yet.</p>`}
+  <details class="proto-ctl"><summary>Prototype control: the shop's deposit setting</summary>
+    <label style="display:block;margin-top:6px"><input type="radio" name="depmode" value="hold" data-ch="depmode" ${S.settings.depositMode === "hold" ? "checked" : ""}> Hold on card</label>
+    <label style="display:block"><input type="radio" name="depmode" value="charge" data-ch="depmode" ${S.settings.depositMode === "charge" ? "checked" : ""}> Charge (cash, transfer or card)</label>
+    <span class="muted">The platform never turns one into the other (decision 37).</span></details>`;
+}
+
+/* =====================================================================
+   b, c. The order page
+   ===================================================================== */
+function renderOrder(frame, o) {
+  const c = cust(o.customer); const st = orderStatus(o); const m = orderCalc(o);
+  const reserved = o.rentals.filter((r) => r.stage === "reserved"); const out = o.rentals.filter((r) => r.stage === "out");
+  let main = "";
+  if (o.canceled) main = `<button class="btn main outline" data-act="restore" data-o="${o.key}">Restore as draft</button>`;
+  else if (reserved.length) main = `<button class="btn main" data-act="pickup" data-o="${o.key}" data-r="${reserved[0].id}">Pick up${o.rentals.length > 1 ? " " + esc(prod(reserved[0].pid).name) : ""}</button>`;
+  else if (out.length) main = `<button class="btn main" data-act="return" data-o="${o.key}" data-r="${out[0].id}">Return${o.rentals.length > 1 ? " " + esc(prod(out[0].pid).name) : ""}</button>`;
+  else main = `<button class="btn main" data-act="toast" data-msg="Archived (prototype: nothing saved). The nightly job archives settled orders 7 days after return.">Archive</button>`;
+  const anyOut = out.length > 0;
+  const menu = o.menu ? `<div class="menu" role="menu">
+      <button data-act="pay" data-o="${o.key}" ${o.canceled ? "disabled" : ""}>Take payment</button>
+      <button data-act="refund" data-o="${o.key}" ${m.credit > 0 ? "" : "disabled"}>Refund credit${m.credit > 0 ? "" : '<span class="why">No credit on this order</span>'}</button>
+      <button data-act="toast" data-msg="Add to order: search and add lines as on New order (stage 5).">Add products</button>
+      <button data-act="toast" data-msg="Documents (quote, contract, tax invoices) arrive in Phase 6.">Print or send <span class="why">Phase 6</span></button>
+      <button data-act="cancel" data-o="${o.key}" ${anyOut || o.canceled ? "disabled" : ""}>Cancel order${anyOut ? '<span class="why">A vehicle is out: return it first</span>' : ""}</button>
+    </div>` : "";
+  const rentalsHtml = o.rentals.map((r) => orderRental(o, r)).join("");
+  const loose = liveLines(o).filter((l) => !l.rental);
+  const looseHtml = loose.map((l) => { const ch = o.charges.find((x) => x.id === l.charge); const cs = chargeState(o, ch); return `<div class="sub" style="padding:10px 4px;border-bottom:1px solid var(--border)"><span class="handle"></span><span class="lbl">${esc(l.label)} <span class="chip ${cs.tone}">${cs.text}</span></span><span class="ctl"></span><span class="amt">${money(l.amount)}</span><span></span></div>`; }).join("");
+  const range = o.rentals.reduce((a, r) => [a[0] && P(a[0]) < P(r.start) ? a[0] : r.start, a[1] && P(a[1]) > P(r.end) ? a[1] : r.end], [null, null]);
+  return `
+  <div class="ohead">
+    <div><div class="crumb">Orders ›</div>
+      <div class="title"><h1>Order #${o.number}</h1><span class="chip ${st.tone}">${st.text}</span><span class="chip" title="Read-only">${esc(o.channel)}</span></div></div>
+    <div class="acts">${main}<button class="btn outline icon" data-act="menu" data-o="${o.key}" aria-label="More actions" aria-expanded="${o.menu}">…</button>${menu}</div>
+  </div>
+  ${o.canceled ? `<div class="callout bad" style="margin:-6px 0 16px">Canceled ${fDT(o.canceled.at)} by ${STAFF}: ${esc(o.canceled.reason)}${o.canceled.text ? " (" + esc(o.canceled.text) + ")" : ""}. ${m.credit ? `${money(m.credit)} paid stays on the order as credit.` : ""}</div>` : ""}
+  <div class="ogrid">
+    <section class="card a-cust" aria-label="Customer"><h2>Customer</h2>
+      <div class="custcard"><div class="name">${esc(c.name)}</div>
+      <dl class="kv small" style="margin:6px 0 10px"><dt>Phone</dt><dd>${esc(c.phone)}</dd><dt>Email</dt><dd>${esc(c.email)}</dd><dt>Country</dt><dd>${esc(c.nat)}</dd></dl>
+      <span class="chip">${c.orders} earlier orders</span> ${c.note ? `<span class="chip">${esc(c.note)}</span>` : ""}</div></section>
+    <section class="card a-where" aria-label="Pickup and return"><h2>Pickup and return</h2>
+      <dl class="kv"><dt>Place</dt><dd>${esc(o.place)}</dd><dt>First pickup</dt><dd>${fDT(range[0])}</dd><dt>Last return</dt><dd>${fDT(range[1])}</dd><dt>Made</dt><dd>${fDT(o.created)} by ${STAFF}</dd></dl>
+      <p class="small later" style="margin:8px 0 0">Delivery <span class="planned">Phase 8</span></p></section>
+    <section class="card a-lines" aria-label="Lines">
+      <div class="lhead"><span></span><span>Vehicle</span><span>Pickup and return</span><span>Actions</span><span class="right">Total</span><span></span></div>
+      ${rentalsHtml}${looseHtml}
+    </section>
+    <section class="card a-totals" aria-label="Totals">
+      <div class="tot">
+        ${m.staff ? `<span>Subtotal (list prices)</span><span class="r">${money(m.listTotal - m.credits - m.coupon)}</span><span>Price changes</span><span class="r">−${money(m.staff)}</span>` : ""}
+        ${m.coupon ? `<span>Coupon</span><span class="r">${money(m.coupon)}</span>` : ""}
+        ${m.credits ? `<span>Credits from swaps and returns</span><span class="r">${money(m.credits)}</span>` : ""}
+        ${m.staff || m.coupon || m.credits ? `<span class="sep"></span>` : ""}
+        <span class="big">Total</span><span class="r big">${money(m.total)}</span>
+        <span class="muted">Net</span><span class="r muted">${money(m.net)}</span>
+        <span class="muted">VAT ${VAT_RATE}% (included)</span><span class="r muted">${money(m.vat)}</span>
+        <span class="sep"></span>
+        <span>Paid</span><span class="r">${money(m.paid)}</span>
+        <span><b>Due now</b></span><span class="r"><b>${money(m.dueNow)}</b></span>
+        ${m.later ? `<span class="muted">Due later</span><span class="r muted">${money(m.later)}</span>` : ""}
+        ${m.credit ? `<span style="color:var(--leaf)">Credit</span><span class="r" style="color:var(--leaf)">${money(m.credit)}</span>` : ""}
+      </div>
+      <div class="deposit"><div style="display:flex;justify-content:space-between;gap:8px"><span>Security deposit</span><b class="tnum">${money(o.rentals.filter((r) => r.stage !== "canceled").reduce((t, r) => t + r.deposit.amount, 0))}</b></div>
+        <div class="small">Its own status, below. Never part of the total or what is due.</div></div>
+    </section>
+    <aside class="a-side">
+      ${orderPayments(o, m)}
+      ${orderCharges(o)}
+      <section class="card"><h2>Security deposit</h2>${o.rentals.filter((r) => r.stage !== "canceled").map((r) => orderDeposit(o, r)).join("") || `<p class="small muted" style="margin:0">None.</p>`}</section>
+      <section class="card"><h2>Notes</h2><textarea rows="3" data-ch="order-note" data-o="${o.key}">${esc(o.note)}</textarea></section>
+      <section class="card"><h2>History</h2><ul class="hist">${[...o.history].reverse().map(([at, t]) => `<li><span class="muted">${fDT(at)}</span><span>${esc(t)}</span></li>`).join("")}</ul></section>
+    </aside>
+  </div>`;
+}
+function orderRental(o, r) {
+  const p = prod(r.pid); const ls = o.lines.filter((l) => l.rental === r.id);
+  const total = ls.filter((l) => !l.void).reduce((t, l) => t + l.amount, 0);
+  const stage = { reserved: ["Reserved", "info"], out: ["Out", "hl"], returned: ["Returned", "ok"], canceled: ["Canceled", "bad"] }[r.stage];
+  const overdue = r.stage === "out" && P(r.end) < P(NOW);
+  const acts = [];
+  if (!o.canceled) {
+    if (r.stage === "reserved") acts.push(`<button class="btn sm" data-act="pickup" data-o="${o.key}" data-r="${r.id}">Pick up</button>`);
+    if (r.stage === "out") acts.push(`<button class="btn sm outline" data-act="return" data-o="${o.key}" data-r="${r.id}">Return</button>`);
+    if (r.stage === "reserved" || r.stage === "out") acts.push(`<button class="btn sm outline" data-act="extend" data-o="${o.key}" data-r="${r.id}">Extend rental</button>`);
+    if (r.stage === "out") acts.push(`<button class="btn sm outline" data-act="swap" data-o="${o.key}" data-r="${r.id}" ${overdue ? 'disabled title="Overdue: return it first"' : ""}>Swap bike</button>`);
+    if (r.stage === "reserved") acts.push(`<button class="btn sm ghost" data-act="cancel" data-o="${o.key}" data-r="${r.id}">Cancel rental</button>`);
+  }
+  const rows = ls.map((l) => {
+    const ch = o.charges.find((x) => x.id === l.charge); const cs = chargeState(o, ch);
+    const chip = l.void ? `<span class="chip">Canceled</span>` : l.kind === "credit" ? `<span class="chip ok">Credit</span>` : `<span class="chip ${cs.tone}">${cs.text}</span>`;
+    if (l.kind === "period") {
+      const closed = l.closedAt ? ` <span class="chip">Closed ${fDT(l.closedAt)}: ${esc(l.closedWhy)}</span>` : "";
+      return `<div class="sub ${l.closedAt || l.void ? "closed" : ""}"><span class="handle"></span>
+        <span class="lbl"><b>${esc(l.label)}</b> ${fDT(l.start)} → ${fDT(l.end)} · ${esc(prod(l.pid).name)} <span class="chip plate">${esc(l.unit)}</span> ${chip}${closed}</span>
+        <span class="ctl small muted">${l.amount !== l.list ? `List <span class="strike">${money(l.list)}</span>${l.reason ? " · " + esc(l.reason) : ""}` : ""}</span>
+        <span class="amt">${money(l.amount)}</span><span></span></div>`;
+    }
+    return `<div class="sub ${l.kind === "credit" ? "credit" : ""} ${l.void ? "closed" : ""}"><span class="handle"></span><span class="lbl">${esc(l.label)} ${chip}</span><span class="ctl small muted">${esc(l.sub || "")}</span><span class="amt">${money(l.amount)}</span><span></span></div>`;
+  }).join("");
+  return `<div class="rental">
+    <div class="line">
+      <span class="handle">⋮⋮</span>
+      <div class="lprod"><div class="pname">${esc(p.name)} <span class="chip ${stage[1]}">${stage[0]}</span>${overdue ? ' <span class="chip bad">Overdue</span>' : ""}</div>
+        <div class="lmeta"><span class="chip plate">${esc(r.unit)}</span>${r.repairNote ? `<span class="small muted">${esc(r.repairNote)}</span>` : ""}</div></div>
+      <div class="ldates small"><div><span class="muted">Pickup</span> ${fDT(r.start)}${r.pickedUp ? ` <span class="muted">(out ${fDT(r.pickedUp)})</span>` : ""}<br><span class="muted">Return</span> ${fDT(r.end)}${r.returned ? ` <span class="muted">(back ${fDT(r.returned)})</span>` : ""}<br><span class="muted">${days(r.start, r.end)} days</span></div></div>
+      <div class="lprice"><div class="ractions" style="margin:0">${acts.join("")}</div></div>
+      <div class="ltotal">${money(total)}</div><span></span>
+    </div>
+    <div class="subwrap">${rows}</div>
+  </div>`;
+}
+function orderPayments(o, m) {
+  const rows = o.payments.map((p) => {
+    const isRefund = p.kind === "refund";
+    return `<div class="pay"><span><b>${isRefund ? "Refund" : "Payment"}</b> · ${esc(p.method)}<br><span class="small muted">${fDT(p.at)} · ${esc(p.by)}${isRefund ? "" : ` · VAT ${money(vatOf(p.amount))}`}</span></span><span class="tnum" ${isRefund ? 'style="color:var(--destructive)"' : ""}>${isRefund ? "−" : ""}${money(p.amount)}</span></div>`;
+  }).reverse().join("");
+  return `<section class="card"><h2>Payments</h2>
+    <div class="bal"><span>Due now</span><span class="right big">${money(m.dueNow)}</span>
+      ${m.later ? `<span class="muted">Due later</span><span class="right muted">${money(m.later)}</span>` : ""}
+      ${m.credit ? `<span style="color:var(--leaf)">Credit</span><span class="right" style="color:var(--leaf)">${money(m.credit)}</span>` : ""}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="btn" style="flex:1" data-act="pay" data-o="${o.key}" ${o.canceled || m.balance <= 0 ? "disabled" : ""}>Take payment</button>
+      ${m.credit ? `<button class="btn outline" data-act="refund" data-o="${o.key}">Refund</button>` : ""}
+    </div>
+    ${rows || `<p class="small muted" style="margin:0">No payments yet.</p>`}
+    <p class="small muted" style="margin:8px 0 0">Each payment gets its own tax invoice, VAT worked out once on its total (Phase 6 prints it).</p>
+  </section>`;
+}
+function orderCharges(o) {
+  return `<section class="card"><h2>Charges</h2>${o.charges.map((c) => { const cs = chargeState(o, c); return `<div class="pay"><span>${esc(c.label)}<br><span class="chip ${cs.tone}">${cs.text}</span></span><span class="tnum">${money(cs.total)}</span></div>`; }).join("")}</section>`;
+}
+function orderDeposit(o, r) {
+  const ds = depositState(r); const p = prod(r.pid);
+  const acts = [];
+  if (!o.canceled && r.stage !== "reserved" && !r.deposit.events.some((e) => e.type === "charged" || e.type === "held")) acts.push(`<button class="btn sm outline" data-act="dep-take" data-o="${o.key}" data-r="${r.id}">Take deposit</button>`);
+  if (ds.top && !o.canceled) acts.push(`<button class="btn sm outline" data-act="dep-topup" data-o="${o.key}" data-r="${r.id}">Take top-up ${money(ds.top.amount)}</button>`);
+  return `<div class="dep"><div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(p.name)} <span class="chip plate">${esc(r.unit)}</span></span><span class="tnum">${money(r.deposit.amount)}</span></div>
+    <div class="steps"><span class="chip ${ds.tone}">${ds.text}</span>${ds.steps.length ? `<span class="small muted">${ds.steps.map(esc).join(" → ")}</span>` : ""}</div>
+    ${o.charges.length > 1 && r.deposit.events.some((e) => e.type === "charged") ? `<p class="small muted" style="margin:4px 0 0">Taken once for this rental. Later months and extensions don't ask for it again.</p>` : ""}
+    ${ds.top ? `<p class="small" style="margin:4px 0 0;color:var(--highlight-foreground)">The new vehicle's deposit is ${money(ds.top.amount)} higher. Shown here, never charged on its own.</p>` : ""}
+    ${acts.length ? `<div class="ractions">${acts.join("")}</div>` : ""}</div>`;
+}
+
+/* =====================================================================
+   Dialogs
+   ===================================================================== */
+function renderModal() {
+  const md = S.modal; const o = md.o ? S.orders[md.o] : null; const r = o && md.r ? o.rentals.find((x) => x.id === md.r) : null;
+  let body = "";
+  if (md.type === "pay") body = dlgPay(o, md);
+  if (md.type === "refund") body = dlgRefund(o, md);
+  if (md.type === "cancel") body = dlgCancel(o, r, md);
+  if (md.type === "extend") body = dlgExtend(o, r, md);
+  if (md.type === "swap") body = dlgSwap(o, r, md);
+  if (md.type === "pickup") body = dlgPickup(o, r, md);
+  if (md.type === "return") body = dlgReturn(o, r, md);
+  if (md.type === "deptake") body = dlgDepTake(o, r, md);
+  return `<div class="overlay" data-act="modal-bg"><div class="dialog" role="dialog" aria-modal="true">${body}</div></div>`;
+}
+const foot = (okLabel, okAct, extra = "", cls = "btn") => `<div class="foot"><button class="btn ghost" data-act="modal-close">Back</button><button class="${cls}" data-act="${okAct}" ${extra}>${okLabel}</button></div>`;
+
+function dlgPay(o, md) {
+  const m = orderCalc(o); const amt = md.amount ?? (m.dueNow || m.balance);
+  const over = amt > m.balance; const vat = vatOf(amt);
+  return `<h2>Take payment</h2><p class="muted small" style="margin:0 0 12px">Order #${o.number} · due now ${money(m.dueNow)}${m.later ? ` · due later ${money(m.later)}` : ""}</p>
+    <label class="f">Amount</label><input class="money" style="width:140px" value="${(amt / 100).toFixed(2)}" data-ch="md-amount" aria-label="Amount">
+    <div style="margin-top:12px"><label class="f">Method</label>${["Cash", "Transfer", "Card", "PromptPay"].map((x) => `<label class="opt ${md.method === x ? "on" : ""}" style="display:inline-flex;margin:0 6px 6px 0;padding:6px 10px"><input type="radio" name="pm" value="${x}" data-ch="md-method" ${md.method === x ? "checked" : ""}> ${x}</label>`).join("")}</div>
+    ${md.method === "Card" || md.method === "PromptPay" ? `<div class="callout">Recorded by hand for now. Taking card and PromptPay through the app comes with Phase 7.</div>` : ""}
+    <div class="callout"><b>Tax invoice for this payment</b><div class="tot" style="margin-top:6px"><span>Total</span><span class="r">${money(amt)}</span><span class="muted">Net</span><span class="r muted">${money(amt - vat)}</span><span class="muted">VAT ${VAT_RATE}%</span><span class="r muted">${money(vat)}</span></div></div>
+    ${over ? `<div class="callout bad">More than the order's balance (${money(m.balance)}). Give change in cash instead.</div>` : ""}
+    ${foot("Record payment", "pay-ok", over || amt <= 0 ? "disabled" : "")}`;
+}
+function dlgRefund(o, md) {
+  const m = orderCalc(o); const amt = md.amount ?? m.credit; const pays = o.payments.filter((p) => p.kind === "payment");
+  return `<h2>Refund credit</h2><p class="muted small" style="margin:0 0 12px">Credit on the order: ${money(m.credit)}. A refund names the payment it refunds, and gets a credit note (Phase 6).</p>
+    <label class="f">Amount</label><input class="money" style="width:140px" value="${(amt / 100).toFixed(2)}" data-ch="md-amount">
+    <div style="margin-top:10px"><label class="f">Refunds the payment of</label><select data-ch="md-of" style="width:100%">${pays.map((p) => `<option value="${p.id}" ${md.of === p.id ? "selected" : ""}>${fDT(p.at)} · ${p.method} · ${money(p.amount)}</option>`).join("")}</select></div>
+    <div style="margin-top:10px"><label class="f">Paid back by</label><select data-ch="md-method" style="width:100%">${["Cash", "Transfer"].map((x) => `<option ${md.method === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+    ${foot("Record refund", "refund-ok", amt <= 0 || amt > m.credit ? "disabled" : "")}`;
+}
+function dlgCancel(o, r, md) {
+  const m = orderCalc(o);
+  const what = r ? `${prod(r.pid).name} ${r.unit}` : `order #${o.number}`;
+  const paidOn = r ? o.lines.filter((l) => l.rental === r.id && !l.void).reduce((t, l) => t + linePaid(o, l), 0) : m.paid;
+  return `<h2>Cancel ${esc(what)}</h2><p class="muted small" style="margin:0 0 8px">${r ? "Only this rental is canceled; the rest of the order stays." : "Every rental on the order is canceled and its vehicles are released."}</p>
+    <label class="f">Reason</label>
+    ${CANCEL_REASONS.map(([k, l]) => `<label class="opt ${md.reason === k ? "on" : ""}"><input type="radio" name="cr" value="${k}" data-ch="md-reason" ${md.reason === k ? "checked" : ""}><span>${l}${k === "no_show" ? '<br><span class="small muted">The customer did not come. Counted on the customer.</span>' : ""}</span></label>`).join("")}
+    ${md.reason === "other" ? `<input type="text" placeholder="What happened" style="width:100%;margin-top:8px" value="${esc(md.text || "")}" data-ch="md-text">` : ""}
+    ${paidOn > 0 ? `<div class="callout hl">${money(paidOn)} already paid ${r ? "toward this rental " : ""}stays on the order as credit. Refund it from Payments (needs the “refund” permission).</div>` : ""}
+    ${(r ? [r] : o.rentals).some((x) => x.deposit.events.some((e) => e.type === "held")) ? `<div class="callout">The card hold is released.</div>` : ""}
+    ${foot("Cancel " + (r ? "rental" : "order"), "cancel-ok", md.reason && (md.reason !== "other" || (md.text || "").trim()) ? "" : "disabled", "btn danger")}`;
+}
+function lastPeriod(o, r) { return o.lines.filter((l) => l.rental === r.id && l.kind === "period" && !l.void).sort((a, b) => P(a.end) - P(b.end)).pop(); }
+function extendCalc(o, r, md) {
+  const p = prod(r.pid);
+  let newEnd = md.end;
+  if (md.mode === "month") { let k = 1; while (P(addMonths(r.start, k)) <= P(r.end)) k++; newEnd = addMonths(r.start, k); }
+  if (!newEnd || P(newEnd) <= P(r.end)) return { err: "Pick an end after " + fDT(r.end) + "." };
+  const list = rentalPrice(p, r.start, newEnd) - rentalPrice(p, r.start, r.end);  // continuation: today's prices, clock from the original pickup
+  const lp = lastPeriod(o, r); const ratio = lp && lp.list ? lp.amount / lp.list : 1;
+  const kept = rhu(list * ratio);
+  const amount = md.amount ?? (md.keep ? kept : list);
+  const busy = busyFor(r.unit, r.end, newEnd, o.key + r.id);
+  return { p, newEnd, list, ratio, kept, amount, busy };
+}
+function dlgExtend(o, r, md) {
+  const x = extendCalc(o, r, md);
+  return `<h2>Extend rental</h2><p class="muted small" style="margin:0 0 8px">${esc(prod(r.pid).name)} <span class="chip plate">${esc(r.unit)}</span> · now ends ${fDT(r.end)}</p>
+    <label class="opt ${md.mode === "month" ? "on" : ""}"><input type="radio" name="em" value="month" data-ch="md-mode" ${md.mode === "month" ? "checked" : ""}><span>Another month<br><span class="small muted">Date to date from the pickup (${fD(r.start)})</span></span></label>
+    <label class="opt ${md.mode === "date" ? "on" : ""}"><input type="radio" name="em" value="date" data-ch="md-mode" ${md.mode === "date" ? "checked" : ""}><span>Until<br>${md.mode === "date" ? dtPicker(md.end || addDays(r.end, 7), 'data-k="md-end"') : ""}</span></label>
+    ${x.err ? `<div class="callout bad">${x.err}</div>` : `
+    <div class="callout"><div class="tot">
+      <span>New period</span><span class="r">${fDT(r.end)} → ${fDT(x.newEnd)}</span>
+      <span>List price</span><span class="r">${money(x.list)}</span>
+      <span class="small muted" style="grid-column:1/-1">Price of the whole rental to the new end, less the price to the current end, at today's prices.</span>
+    </div></div>
+    <label style="display:flex;gap:8px;margin-top:12px;align-items:center"><input type="checkbox" data-ch="md-keep" ${md.keep ? "checked" : ""}> Keep the last period's discount ${x.ratio < 1 ? `(${money(x.list)} × ${(x.ratio * 100).toFixed(1)}% = ${money(x.kept)})` : "(none to keep)"}</label>
+    <div style="margin-top:10px"><label class="f">Amount to charge</label><input class="money" style="width:140px" value="${(x.amount / 100).toFixed(2)}" data-ch="md-amount"></div>
+    ${x.busy.length ? `<div class="callout bad">${esc(r.unit)} is booked in that time (${esc(x.busy.join(", "))}). Refused: unit taken.</div>` : `<div class="callout ok">${esc(r.unit)} is free to the new end and its buffer.</div>`}
+    <p class="small muted" style="margin:10px 0 0">A new charge, due ${fD(r.end)} when the new period starts. No coupon on an extension. No new deposit.</p>`}
+    ${foot("Extend", "extend-ok", x.err || x.busy.length ? "disabled" : "")}`;
+}
+function currentPeriod(o, r) { return o.lines.filter((l) => l.rental === r.id && l.kind === "period" && !l.void && !l.closedAt && P(l.start) <= P(NOW) && P(NOW) < P(l.end)).pop(); }
+function swapCalc(o, r, md) {
+  const per = currentPeriod(o, r); if (!per) return { err: "No period is running now." };
+  const A = prod(per.pid); const B = prod(md.pid);
+  const pdays = days(per.start, per.end); const used = Math.min(days(per.start, NOW), pdays); const rem = pdays - used;
+  const isMonth = pdays > 27 && per.list === A.m * 100;
+  const Ap = per.list; const Aused = Math.min(listPrice(A, used), Ap);
+  const Bp = isMonth ? B.m * 100 : listPrice(B, Math.min(pdays, 30)); const Bused = Math.min(listPrice(B, used), Bp);
+  const Brem = Bp - Bused; const share = (Ap - Aused) / Ap;
+  const paid = linePaid(o, per); const paidRem = rhu(paid * share);
+  const ratio = per.list ? per.amount / per.list : 1; const BremKeep = rhu(Brem * ratio);
+  const amounts = {
+    remainder: (md.keep ? BremKeep : Brem) - paidRem,
+    prorated: rhu(((Bp - Ap) * rem) / pdays),
+    none: 0,
+    manual: md.manual ?? 0,
+  };
+  const amount = amounts[md.opt];
+  return { per, A, B, pdays, used, rem, Ap, Aused, Bp, Bused, Brem, BremKeep, paid, paidRem, ratio, amounts, amount, depDiff: (B.dep - A.dep) * 100,
+    math: `B's remainder  = ${money(Bp)} − ${money(Bused)} (${used} days) = ${money(Brem)}\nunused share A = (${money(Ap)} − ${money(Aused)}) ÷ ${money(Ap)} = ${(share * 100).toFixed(1)}%\npaid remainder = ${money(paid)} × ${(share * 100).toFixed(1)}% = ${money(paidRem)}\nextra to pay   = ${money(md.keep ? BremKeep : Brem)}${md.keep && ratio < 1 ? " (kept discount ×" + (ratio * 100).toFixed(1) + "%)" : ""} − ${money(paidRem)} = ${money(amounts.remainder)}` };
+}
+function dlgSwap(o, r, md) {
+  const st = S.settings; const x = swapCalc(o, r, md);
+  if (x.err) return `<h2>Swap bike</h2><div class="callout bad">${x.err}</div>${foot("Swap", "noop", "disabled")}`;
+  const units = x.B.units.filter((u) => u !== r.unit).map((u) => ({ u, busy: busyFor(u, NOW, x.per.end, o.key + r.id) }));
+  const pick = md.unit && units.find((z) => z.u === md.unit && !z.busy.length) ? md.unit : (units.find((z) => !z.busy.length) || {}).u;
+  const optRow = (k, label, help, amt) => st.swap[k] ? `<label class="opt ${md.opt === k ? "on" : ""}"><input type="radio" name="so" value="${k}" data-ch="md-opt" ${md.opt === k ? "checked" : ""}><span>${label}${k === st.swapDefault ? ' <span class="chip">Default</span>' : ""}<br><span class="small muted">${help}</span></span><span class="amt">${amt}</span></label>` : "";
+  const neg = x.amount < 0;
+  return `<h2>Swap bike</h2><p class="muted small" style="margin:0 0 10px">${esc(x.A.name)} <span class="chip plate">${esc(r.unit)}</span> · ${esc(x.per.label)} ${fD(x.per.start)} → ${fD(x.per.end)} · swap now, ${fDT(NOW)} (${x.used} of ${x.pdays} days used)</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div><label class="f">New vehicle</label><select data-ch="md-pid" style="width:100%">${PRODUCTS.filter((p) => p.kind === "vehicle").map((p) => `<option value="${p.id}" ${p.id === md.pid ? "selected" : ""}>${esc(p.name)} (${money(p.m * 100)}/mo)</option>`).join("")}</select></div>
+      <div><label class="f">Unit</label><select data-ch="md-unit" style="width:100%">${units.map((z) => `<option value="${z.u}" ${z.u === pick ? "selected" : ""} ${z.busy.length ? "disabled" : ""}>${z.u}${z.busy.length ? " (booked)" : ""}</option>`).join("") || "<option>None free</option>"}</select></div>
+    </div>
+    ${optRow("remainder", "Remainder of the period", "The new bike's remainder less what was paid toward the remainder on the old one", money(x.amounts.remainder))}
+    ${st.swap.remainder && md.opt === "remainder" && x.ratio < 1 ? `<label style="display:flex;gap:8px;margin:8px 0 0 10px;align-items:center" class="small"><input type="checkbox" data-ch="md-keep" ${md.keep ? "checked" : ""}> Keep the customer's discount (${money(rhu(x.BremKeep) - x.paidRem)} with, ${money(x.Brem - x.paidRem)} without)</label>` : ""}
+    ${optRow("prorated", "Prorated difference", `(New − old list price) × ${x.rem} of ${x.pdays} days left; no discount kept`, money(x.amounts.prorated))}
+    ${optRow("none", "No charge", "Nothing to pay", money(0))}
+    ${st.swap.manual ? `<label class="opt ${md.opt === "manual" ? "on" : ""}"><input type="radio" name="so" value="manual" data-ch="md-opt" ${md.opt === "manual" ? "checked" : ""}><span style="flex:1">Manual amount<br>${md.opt === "manual" ? `<span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px"><input class="money" value="${((md.manual ?? 0) / 100).toFixed(2)}" data-ch="md-manual"><input type="text" placeholder="Reason (kept in History)" value="${esc(md.mreason || "")}" data-ch="md-mreason" style="flex:1;min-width:140px"></span>` : '<span class="small muted">Staff type it, with a reason</span>'}</span></label>` : ""}
+    ${md.opt === "remainder" ? `<div class="math">${esc(x.math)}</div>` : ""}
+    ${neg ? `<div class="callout hl">The new bike is cheaper: ${money(-x.amount)} back to the customer as
+      <span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${[["credit", "Credit on the rental"], ["refund", "Refund"], ["none", "No charge"]].filter(([k]) => st.cheaper[k]).map(([k, l]) => `<label class="chip ${md.cheaper === k ? "hl" : ""}" style="cursor:pointer"><input type="radio" name="ch" value="${k}" data-ch="md-cheaper" ${md.cheaper === k ? "checked" : ""}> ${l}</label>`).join("")}</span></div>` : ""}
+    ${x.depDiff ? `<div class="callout">Deposit: ${x.B.name} needs ${money(x.B.dep * 100)}, ${money(Math.abs(x.depDiff))} ${x.depDiff > 0 ? "more. It shows as a top-up to take" : "less. It shows as a part to release"}; nothing is moved now.</div>` : `<div class="callout">Deposit: the same for both, it stays as it is.</div>`}
+    <label style="display:flex;gap:8px;margin-top:12px;align-items:center"><input type="checkbox" data-ch="md-repair" ${md.repair ? "checked" : ""}> Put ${esc(r.unit)} into repair (breakdown)</label>
+    <details class="proto-ctl"><summary>Prototype control: the shop's swap settings (Settings › Orders)</summary>
+      ${[["remainder", "Remainder of the period"], ["prorated", "Prorated difference"], ["none", "No charge"], ["manual", "Manual amount"]].map(([k, l]) => `<label style="display:block;margin-top:4px"><input type="checkbox" data-ch="set-swap" data-k="${k}" ${st.swap[k] ? "checked" : ""}> Offer “${l}”</label>`).join("")}
+      <div style="margin-top:6px">Cheaper bike: ${[["credit", "credit"], ["refund", "refund"], ["none", "no charge"]].map(([k, l]) => `<label><input type="checkbox" data-ch="set-cheaper" data-k="${k}" ${st.cheaper[k] ? "checked" : ""}> ${l}</label>`).join(" ")}</div>
+    </details>
+    ${foot("Swap now", "swap-ok", !pick || (md.opt === "manual" && !(md.mreason || "").trim()) ? "disabled" : `data-unit="${pick}"`)}`;
+}
+function dlgPickup(o, r, md) {
+  const ds = r.deposit;
+  return `<h2>Pick up</h2><p class="muted small" style="margin:0 0 8px">${esc(prod(r.pid).name)} <span class="chip plate">${esc(r.unit)}</span> · booked ${fDT(r.start)} → ${fDT(r.end)}</p>
+    <div class="callout">Phase 5 adds the checklist, photos and the signed agreement here.</div>
+    <h2 style="margin-top:14px;font-size:0.95rem">Security deposit ${money(ds.amount)}</h2>
+    <label class="opt ${md.dmode === "hold" ? "on" : ""}"><input type="radio" name="dm" value="hold" data-ch="md-dmode" ${md.dmode === "hold" ? "checked" : ""}><span>Hold on card<br><span class="small muted">Released at return; a card hold usually expires after about 7 days</span></span></label>
+    <label class="opt ${md.dmode === "charge" ? "on" : ""}"><input type="radio" name="dm" value="charge" data-ch="md-dmode" ${md.dmode === "charge" ? "checked" : ""}><span>Charge<br>${md.dmode === "charge" ? `<select data-ch="md-method">${["Cash", "Transfer", "Card", "PromptPay"].map((x) => `<option ${md.method === x ? "selected" : ""}>${x}</option>`).join("")}</select>` : '<span class="small muted">Given back at return</span>'}</span></label>
+    ${md.dmode === "hold" && days(r.start, r.end) > 7 ? `<div class="callout bad">This rental is ${days(r.start, r.end)} days: a card hold will likely expire before the return.</div>` : ""}
+    ${orderCalc(o).dueNow ? `<div class="callout hl">${money(orderCalc(o).dueNow)} is still due on this order.</div>` : ""}
+    ${foot("Hand over", "pickup-ok")}`;
+}
+function dlgReturn(o, r, md) {
+  const ds = r.deposit; const last = ds.events.filter((e) => e.type === "held" || e.type === "charged").pop();
+  const early = P(NOW) < P(r.end);
+  return `<h2>Return</h2><p class="muted small" style="margin:0 0 8px">${esc(prod(r.pid).name)} <span class="chip plate">${esc(r.unit)}</span> · due back ${fDT(r.end)}</p>
+    <dl class="kv"><dt>Returned at</dt><dd>${fDT(NOW)} (now)</dd></dl>
+    ${early ? `<div class="callout">${days(NOW, r.end)} days early. The unused part follows the shop's early-return setting (credit, refund or no charge); it is not worked out in this prototype.</div>` : ""}
+    <h2 style="margin-top:14px;font-size:0.95rem">Security deposit</h2>
+    ${!last ? `<p class="small muted">No deposit was taken.</p>` : last.type === "held" ? `<label class="opt on"><input type="radio" checked disabled><span>Release the card hold of ${money(last.amount)}</span></label>` :
+      `${["refund", "keep"].map((k) => `<label class="opt ${md.dep === k ? "on" : ""}"><input type="radio" name="rd" value="${k}" data-ch="md-dep" ${md.dep === k ? "checked" : ""}><span>${k === "refund" ? `Give back ${money(last.amount)}` : "Keep part of it (damage, fuel, fines)"}${k === "keep" && md.dep === "keep" ? `<br><input class="money" value="${((md.keep ?? 0) / 100).toFixed(2)}" data-ch="md-keepamt"> <span class="small muted">kept, becomes a payment with its own tax invoice</span>` : ""}</span></label>`).join("")}`}
+    ${foot("Record return", "return-ok")}`;
+}
+function dlgDepTake(o, r, md) {
+  const amt = md.topup ? md.topup.amount : r.deposit.amount;
+  return `<h2>${md.topup ? "Take deposit top-up" : "Take deposit"}</h2><p class="muted small" style="margin:0 0 8px">${esc(prod(r.pid).name)} <span class="chip plate">${esc(r.unit)}</span> · ${money(amt)}</p>
+    <select data-ch="md-method">${["Cash", "Transfer", "Card", "PromptPay"].map((x) => `<option ${md.method === x ? "selected" : ""}>${x}</option>`).join("")}</select>
+    <p class="small muted">Recorded as a deposit, outside the balance and the amount due.</p>${foot("Record", "dep-ok")}`;
+}
+
+/* =====================================================================
+   Actions
+   ===================================================================== */
+function hist(o, t) { o.history.push([NOW, t]); }
+function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = "none"), 3200); }
+function frameOf(el) { const w = el.closest("[data-frame]"); return w ? w.dataset.frame : null; }
+function findLine(id) { return S.draft.lines.find((l) => l.id === id); }
+function baht(v) { const n = parseFloat(String(v).replace(/[^\d.\-]/g, "")); return isNaN(n) ? 0 : Math.round(n * 100); }
+
+function reserveDraft(thenPay) {
+  const d = S.draft; const q = draftCalc(d);
+  if (!q.custObj) { toast("Add a customer first."); return; }
+  if (!d.lines.length) { toast("Add a line first."); return; }
+  const o = { key: "b", number: S.nextNumber++, channel: "Counter", customer: null, place: d.place, created: NOW, canceled: null, menu: false, note: d.note, rentals: [], charges: [], lines: [], payments: [], history: [[NOW, `Order made at the counter by ${STAFF}`]] };
+  if (cust(d.customer)) o.customer = d.customer; else { const id = uid("c"); CUSTOMERS.push({ ...d.newCust, id, orders: 0 }); o.customer = id; }
+  const chargeFor = new Map();
+  q.gs.forEach((g, i) => { const id = "C" + (i + 1); chargeFor.set(g.due, id); o.charges.push({ id, kind: i ? "period" : "booking", label: i ? "Month " + (i + 1) : (q.gs.length > 1 ? "Month 1 and booking" : "Booking"), due: g.due === "booking" ? NOW : g.due }); if (g.coupon) o.lines.push({ id: uid("l"), charge: id, kind: "coupon", label: `Coupon ${d.coupon}`, amount: -g.coupon }); });
+  q.rows.forEach((row) => {
+    const l = row.line;
+    if (l.type === "vehicle") {
+      const free = freeUnits(row.p, l.start, l.end, "draft" + l.id);
+      const unit = l.unit !== "auto" ? l.unit : free[0] || "Waiting for a unit";
+      const rid = uid("R");
+      o.rentals.push({ id: rid, pid: l.pid, unit, start: l.start, end: l.end, stage: "reserved", deposit: { amount: q.custObj.depositWaived ? 0 : row.p.dep * 100, mode: S.settings.depositMode, events: [] } });
+      row.periods.forEach((pp) => {
+        o.lines.push({ id: uid("l"), charge: chargeFor.get(pp.due), rental: rid, kind: "period", label: row.periods.length > 1 ? (pp.per.leftover ? "Extra days" : "Month " + (pp.i + 1)) : "Period 1", start: pp.per.start, end: pp.per.end, pid: l.pid, unit, list: pp.list, amount: pp.charged, reason: pp.reason });
+        pp.ex.forEach((x) => o.lines.push({ id: uid("l"), charge: chargeFor.get(pp.due), rental: rid, kind: "extra", label: x.ep.name + (x.e.qty > 1 ? " × " + x.e.qty : ""), list: x.amount, amount: x.amount }));
+      });
+    } else {
+      o.lines.push({ id: uid("l"), charge: chargeFor.get("booking"), kind: l.type, label: l.type === "custom" ? l.text : row.p.name + (l.qty > 1 ? " × " + l.qty : ""), list: row.total, amount: row.total });
+    }
+  });
+  S.orders.b = o; S.draft = newDraft();
+  const frame = S.tab === "d" ? "pb" : "b";
+  if (S.tab !== "d") S.tab = "b";
+  if (thenPay) S.modal = { frame, type: "pay", o: "b", method: "Cash" };
+  location.hash = S.tab;
+  toast(`Order #${o.number} reserved (prototype: not saved). It replaces the sample on tab b until you press Reset.`);
+}
+
+const ACT = {
+  reset() { resetAll(); toast("Back to the sample data."); },
+  tab(t) { S.tab = t.dataset.t; S.modal = null; location.hash = S.tab; },
+  navnote() { toast("The prototype covers New order and the order page only."); },
+  toast(t) { toast(t.dataset.msg); },
+  noop() {},
+  // customer
+  "cust-pick"(t) { S.draft.customer = t.dataset.id; S.draft.custOpen = false; S.draft.custQ = ""; },
+  "cust-clear"() { S.draft.customer = null; S.draft.newCust = null; },
+  "cust-new"() { S.draft.newCust = { name: S.draft.custQ, phone: "", email: "", nat: "" }; S.draft.custOpen = false; },
+  "cust-cancelnew"() { S.draft.newCust = null; },
+  "cust-savenew"() { if (!S.draft.newCust.name.trim()) return toast("Give the customer a name."); S.draft.customer = "new"; },
+  // lines
+  "add-prod"(t) {
+    const p = prod(t.dataset.id); const d = S.draft; d.search = ""; d.searchOpen = false;
+    const first = d.lines.find((l) => l.type === "vehicle");
+    if (p.kind === "vehicle") d.lines.push({ id: uid("L"), type: "vehicle", pid: p.id, unit: "auto", start: first ? first.start : "2026-11-27T10:00", end: first ? first.end : "2026-11-28T10:00", over: {}, extras: [] });
+    else if (p.kind === "extra") { const v = [...d.lines].reverse().find((l) => l.type === "vehicle"); if (!v) return toast("Add a vehicle first: an extra goes with a vehicle."); if (!v.extras.some((e) => e.pid === p.id)) v.extras.push({ id: uid("E"), pid: p.id, qty: 1 }); toast(`${p.name} added to ${prod(v.pid).name}.`); }
+    else d.lines.push({ id: uid("L"), type: p.kind, pid: p.id, qty: 1 });
+  },
+  "add-custom"() { S.draft.lines.push({ id: uid("L"), type: "custom", pid: "delivery", text: "Custom line", amount: 0, qty: 1 }); },
+  "rm-line"(t) { S.draft.lines = S.draft.lines.filter((l) => l.id !== t.dataset.line); },
+  "rm-extra"(t) { const l = findLine(t.dataset.line); l.extras = l.extras.filter((e) => e.id !== t.dataset.id); },
+  "reset-price"(t) { delete findLine(t.dataset.line).over[t.dataset.i]; },
+  "apply-all"(t) { const src = findLine(t.dataset.line); S.draft.lines.forEach((l) => { if (l.type === "vehicle") { l.start = src.start; l.end = src.end; l.over = {}; } }); toast("Dates applied to every vehicle line."); },
+  "coupon-apply"() { const d = S.draft; const c = d.couponIn.trim().toUpperCase(); if (COUPONS[c]) { d.coupon = c; d.couponErr = ""; } else d.couponErr = c ? `No coupon “${c}”.` : "Type a code."; },
+  "coupon-rm"() { S.draft.coupon = null; S.draft.couponIn = ""; },
+  "draft-save"() { toast("Saved as a draft (prototype: nothing saved). A draft holds no stock."); },
+  "draft-hold"() { toast(`Held until ${addDays(NOW, 0).slice(11, 13)}:${String(HOLD_MINUTES).padStart(2, "0")} (prototype). A held staff order goes back to draft when the hold runs out.`); },
+  "draft-reserve"(t) { reserveDraft(!!t.dataset.pay); },
+  // order page
+  menu(t) { const o = S.orders[t.dataset.o]; o.menu = !o.menu; },
+  pay(t, f) { S.orders[t.dataset.o].menu = false; S.modal = { frame: f, type: "pay", o: t.dataset.o, method: "Cash" }; },
+  refund(t, f) { const o = S.orders[t.dataset.o]; o.menu = false; S.modal = { frame: f, type: "refund", o: t.dataset.o, method: "Cash", of: (o.payments.filter((p) => p.kind === "payment").pop() || {}).id }; },
+  cancel(t, f) { S.orders[t.dataset.o].menu = false; S.modal = { frame: f, type: "cancel", o: t.dataset.o, r: t.dataset.r, reason: null }; },
+  extend(t, f) { S.modal = { frame: f, type: "extend", o: t.dataset.o, r: t.dataset.r, mode: "month", keep: S.settings.keepDiscount }; },
+  swap(t, f) { const o = S.orders[t.dataset.o]; const r = o.rentals.find((x) => x.id === t.dataset.r); S.modal = { frame: f, type: "swap", o: t.dataset.o, r: t.dataset.r, pid: r.pid === "adv" ? "pcx" : "adv", opt: S.settings.swapDefault, keep: S.settings.keepDiscount, cheaper: S.settings.cheaperDefault, repair: false }; },
+  pickup(t, f) { const o = S.orders[t.dataset.o]; const r = o.rentals.find((x) => x.id === t.dataset.r); S.modal = { frame: f, type: "pickup", o: t.dataset.o, r: t.dataset.r, dmode: r.deposit.mode, method: "Cash" }; },
+  return(t, f) { S.modal = { frame: f, type: "return", o: t.dataset.o, r: t.dataset.r, dep: "refund" }; },
+  "dep-take"(t, f) { S.modal = { frame: f, type: "deptake", o: t.dataset.o, r: t.dataset.r, method: "Cash" }; },
+  "dep-topup"(t, f) { const r = S.orders[t.dataset.o].rentals.find((x) => x.id === t.dataset.r); S.modal = { frame: f, type: "deptake", o: t.dataset.o, r: t.dataset.r, method: "Cash", topup: depositState(r).top }; },
+  restore(t) { const o = S.orders[t.dataset.o]; o.canceled = null; o.lines.forEach((l) => (l.void = false)); o.rentals.forEach((r) => (r.stage = "reserved")); hist(o, "Restored; reserve it again to take stock (prototype puts it straight back)"); },
+  "modal-close"() { S.modal = null; },
+  "modal-bg"(t, f, e) { if (e.target === t) S.modal = null; else return "skip"; },
+  // dialog confirms
+  "pay-ok"() {
+    const md = S.modal; const o = S.orders[md.o]; const m = orderCalc(o); const amt = md.amount ?? (m.dueNow || m.balance);
+    if (amt <= 0 || amt > m.balance) { toast(`Between ${money(1)} and the balance, ${money(m.balance)}.`); return; }
+    o.payments.push({ id: uid("P"), kind: "payment", at: NOW, method: md.method, amount: amt, alloc: allocate(o, amt), by: STAFF });
+    hist(o, `Payment ${money(amt)} by ${md.method.toLowerCase()}; tax invoice VAT ${money(vatOf(amt))}`); S.modal = null;
+  },
+  "refund-ok"() {
+    const md = S.modal; const o = S.orders[md.o]; const m = orderCalc(o); const amt = md.amount ?? m.credit;
+    o.payments.push({ id: uid("P"), kind: "refund", at: NOW, method: md.method, amount: amt, alloc: [], of: md.of, by: STAFF });
+    hist(o, `Refund ${money(amt)} by ${md.method.toLowerCase()} (refunds the payment of ${fD(o.payments.find((p) => p.id === md.of).at)}); credit note in Phase 6`); S.modal = null;
+  },
+  "cancel-ok"() {
+    const md = S.modal; const o = S.orders[md.o]; const label = CANCEL_REASONS.find(([k]) => k === md.reason)[1];
+    const targets = md.r ? o.rentals.filter((r) => r.id === md.r) : o.rentals;
+    targets.forEach((r) => { r.stage = "canceled"; o.lines.forEach((l) => { if (l.rental === r.id) l.void = true; }); if (r.deposit.events.some((e) => e.type === "held")) r.deposit.events.push({ type: "released", at: NOW, amount: r.deposit.amount }); });
+    if (!md.r || o.rentals.every((r) => r.stage === "canceled")) { o.canceled = { at: NOW, reason: label, text: md.text }; o.lines.forEach((l) => (l.void = true)); }
+    hist(o, `${md.r ? "Rental " + prod(targets[0].pid).name + " canceled" : "Order canceled"}: ${label}${md.text ? " (" + md.text + ")" : ""}`); S.modal = null;
+  },
+  "extend-ok"() {
+    const md = S.modal; const o = S.orders[md.o]; const r = o.rentals.find((x) => x.id === md.r); const x = extendCalc(o, r, md);
+    const cid = uid("C"); const n = o.charges.filter((c) => c.kind === "extension").length + 1;
+    const isMonthly = o.lines.some((l) => l.rental === r.id && /^Month/.test(l.label));
+    const label = isMonthly ? "Month " + (o.lines.filter((l) => l.rental === r.id && l.kind === "period" && /^Month/.test(l.label)).length + 1) : "Extension" + (n > 1 ? " " + n : "");
+    o.charges.push({ id: cid, kind: "extension", label, due: r.end });
+    o.lines.push({ id: uid("l"), charge: cid, rental: r.id, kind: "period", label, start: r.end, end: x.newEnd, pid: r.pid, unit: r.unit, list: x.list, amount: x.amount, reason: x.amount !== x.list ? (md.keep && x.amount === x.kept ? "Kept the last period's discount" : "Changed by staff") : null });
+    const helmet = o.lines.find((l) => l.rental === r.id && l.label === "Second helmet");
+    if (helmet) { const hp = prod("helmet"); const dd = days(r.end, x.newEnd); const a = Math.min(dd * hp.perDay, hp.cap) * 100; o.lines.push({ id: uid("l"), charge: cid, rental: r.id, kind: "extra", label: "Second helmet", list: a, amount: a }); }
+    hist(o, `Extended ${prod(r.pid).name} ${r.unit} from ${fDT(r.end)} to ${fDT(x.newEnd)}: ${money(x.amount)}, due ${fD(r.end)}`);
+    r.end = x.newEnd; S.modal = null;
+  },
+  "swap-ok"(t) {
+    const md = S.modal; const o = S.orders[md.o]; const r = o.rentals.find((x) => x.id === md.r); const x = swapCalc(o, r, md); const unit = t.dataset.unit;
+    const cid = uid("C"); o.charges.push({ id: cid, kind: "swap", label: "Swap " + fD(NOW), due: NOW });
+    x.per.closedAt = NOW; x.per.closedWhy = "swapped";
+    let amount = x.amount; let newPeriod; let credit = -x.paidRem;
+    if (md.opt === "remainder") newPeriod = md.keep ? x.BremKeep : x.Brem; else newPeriod = x.paidRem + amount;
+    if (amount < 0 && md.cheaper === "none") { newPeriod = x.paidRem; amount = 0; }
+    o.lines.push({ id: uid("l"), charge: cid, rental: r.id, kind: "period", label: "After swap", start: NOW, end: x.per.end, pid: x.B.id, unit, list: md.opt === "remainder" ? x.Brem : newPeriod, amount: newPeriod, reason: md.opt === "remainder" && md.keep && x.ratio < 1 ? "Kept the customer's discount" : { prorated: "Prorated difference", none: "No charge", manual: "Manual: " + (md.mreason || "") }[md.opt] || null });
+    if (x.paidRem) o.lines.push({ id: uid("l"), charge: cid, rental: r.id, kind: "credit", label: `Credit from ${x.A.name}, ${x.rem} unused days`, sub: "paid remainder", list: credit, amount: credit });
+    if (amount < 0 && md.cheaper === "refund") o.payments.push({ id: uid("P"), kind: "refund", at: NOW, method: "Cash", amount: -amount, alloc: [], by: STAFF });
+    if (x.depDiff > 0) r.deposit.events.push({ type: "topup", at: NOW, amount: x.depDiff });
+    if (x.depDiff) r.deposit.amount = x.B.dep * 100;
+    hist(o, `Swapped ${x.A.name} ${r.unit} for ${x.B.name} ${unit} (${{ remainder: "remainder of the period", prorated: "prorated difference", none: "no charge", manual: "manual: " + md.mreason }[md.opt]}): ${money(amount)}${amount < 0 ? " as " + md.cheaper : ""}${md.repair ? "; " + r.unit + " into repair" : ""}${x.depDiff ? `; deposit ${x.depDiff > 0 ? "top-up" : "release"} ${money(Math.abs(x.depDiff))} shown` : ""}`);
+    r.repairNote = md.repair ? `Was ${r.unit} (into repair)` : `Was ${r.unit}`;
+    r.pid = x.B.id; r.unit = unit; S.modal = null;
+  },
+  "pickup-ok"() {
+    const md = S.modal; const o = S.orders[md.o]; const r = o.rentals.find((x) => x.id === md.r);
+    r.stage = "out"; r.pickedUp = NOW; r.deposit.mode = md.dmode;
+    if (r.deposit.amount) r.deposit.events.push({ type: md.dmode === "hold" ? "held" : "charged", at: NOW, amount: r.deposit.amount, method: md.method });
+    hist(o, `${prod(r.pid).name} ${r.unit} picked up; deposit ${money(r.deposit.amount)} ${md.dmode === "hold" ? "held on card" : "charged by " + md.method.toLowerCase()}`); S.modal = null;
+  },
+  "return-ok"() {
+    const md = S.modal; const o = S.orders[md.o]; const r = o.rentals.find((x) => x.id === md.r);
+    r.stage = "returned"; r.returned = NOW;
+    const last = r.deposit.events.filter((e) => e.type === "held" || e.type === "charged").pop();
+    let dtext = "";
+    if (last && last.type === "held") { r.deposit.events.push({ type: "released", at: NOW, amount: last.amount }); dtext = "hold released"; }
+    if (last && last.type === "charged") {
+      if (md.dep === "keep" && md.keep > 0) { r.deposit.events.push({ type: "kept", at: NOW, amount: md.keep }); if (md.keep < last.amount) r.deposit.events.push({ type: "refunded", at: NOW, amount: last.amount - md.keep }); dtext = `kept ${money(md.keep)}, refunded ${money(last.amount - md.keep)}`; }
+      else { r.deposit.events.push({ type: "refunded", at: NOW, amount: last.amount }); dtext = "refunded"; }
+    }
+    hist(o, `${prod(r.pid).name} ${r.unit} returned${dtext ? "; deposit " + dtext : ""}`); S.modal = null;
+  },
+  "dep-ok"() {
+    const md = S.modal; const o = S.orders[md.o]; const r = o.rentals.find((x) => x.id === md.r);
+    if (md.topup) { md.topup.done = true; r.deposit.events.push({ type: "charged", at: NOW, amount: md.topup.amount, method: md.method }); hist(o, `Deposit top-up ${money(md.topup.amount)} by ${md.method.toLowerCase()}`); }
+    else { r.deposit.events.push({ type: "charged", at: NOW, amount: r.deposit.amount, method: md.method }); hist(o, `Deposit ${money(r.deposit.amount)} by ${md.method.toLowerCase()}`); }
+    S.modal = null;
+  },
+};
+
+const CH = {
+  dt(t) {
+    const set = (cur) => (t.dataset.part === "date" ? t.value + "T" + cur.slice(11, 16) : cur.slice(0, 11) + t.value);
+    if (t.dataset.k === "md-end") { const md = S.modal; md.end = set(md.end || addDays(S.orders[md.o].rentals.find((x) => x.id === md.r).end, 7)); md.amount = undefined; return; }
+    const l = findLine(t.dataset.line); if (!t.value) return;
+    l[t.dataset.k] = set(l[t.dataset.k]); l.over = {};
+    if (P(l.end) <= P(l.start)) { l.end = addDays(l.start, 1); toast("Return moved to a day after pickup."); }
+    if (l.unit !== "auto" && busyFor(l.unit, l.start, l.end, "draft" + l.id).length) { toast(`${l.unit} is booked then; set back to best fit.`); l.unit = "auto"; }
+  },
+  place(t) { S.draft[t.dataset.k] = t.value; },
+  unit(t) { findLine(t.dataset.line).unit = t.value; },
+  charged(t) { const l = findLine(t.dataset.line); const q = draftCalc(S.draft); const row = q.rows.find((r) => r.line === l); const list = row.periods[t.dataset.i].list; const v = baht(t.value); if (v <= 0) { toast("No zero price: use a coupon or Free on an extra."); return; } if (v === list) delete l.over[t.dataset.i]; else l.over[t.dataset.i] = { charged: v, reason: (l.over[t.dataset.i] || {}).reason || PRICE_REASONS[0] }; },
+  reason(t) { findLine(t.dataset.line).over[t.dataset.i].reason = t.value; },
+  "add-extra"(t) { if (t.value) findLine(t.dataset.line).extras.push({ id: uid("E"), pid: t.value, qty: 1 }); },
+  qty(t) { findLine(t.dataset.line).qty = Math.max(1, parseInt(t.value, 10) || 1); },
+  "custom-text"(t) { findLine(t.dataset.line).text = t.value; },
+  "custom-amt"(t) { findLine(t.dataset.line).amount = baht(t.value); },
+  "coupon-in"(t) { S.draft.couponIn = t.value; },
+  "draft-note"(t) { S.draft.note = t.value; return "skip"; },
+  "order-note"(t) { S.orders[t.dataset.o].note = t.value; return "skip"; },
+  newcust(t) { S.draft.newCust[t.dataset.k] = t.value; return "skip"; },
+  depmode(t) { S.settings.depositMode = t.value; },
+  "md-amount"(t) { S.modal.amount = baht(t.value); },
+  "md-method"(t) { S.modal.method = t.value; },
+  "md-of"(t) { S.modal.of = t.value; },
+  "md-reason"(t) { S.modal.reason = t.value; },
+  "md-text"(t) { S.modal.text = t.value; },
+  "md-mode"(t) { S.modal.mode = t.value; S.modal.amount = undefined; if (t.value === "date" && !S.modal.end) { const r = S.orders[S.modal.o].rentals.find((x) => x.id === S.modal.r); S.modal.end = addDays(r.end, 7); } },
+  "md-keep"(t) { S.modal.keep = t.checked; S.modal.amount = undefined; },
+  "md-pid"(t) { S.modal.pid = t.value; S.modal.unit = null; },
+  "md-unit"(t) { S.modal.unit = t.value; },
+  "md-opt"(t) { S.modal.opt = t.value; },
+  "md-manual"(t) { S.modal.manual = baht(t.value); },
+  "md-mreason"(t) { S.modal.mreason = t.value; },
+  "md-cheaper"(t) { S.modal.cheaper = t.value; },
+  "md-repair"(t) { S.modal.repair = t.checked; },
+  "md-dmode"(t) { S.modal.dmode = t.value; },
+  "md-dep"(t) { S.modal.dep = t.value; },
+  "md-keepamt"(t) { S.modal.keep = baht(t.value); },
+  "set-swap"(t) { S.settings.swap[t.dataset.k] = t.checked; if (!S.settings.swap[S.modal.opt]) S.modal.opt = Object.keys(S.settings.swap).find((k) => S.settings.swap[k]) || "none"; },
+  "set-cheaper"(t) { S.settings.cheaper[t.dataset.k] = t.checked; },
+};
+
+/* =====================================================================
+   Wiring
+   ===================================================================== */
+function render() {
+  document.getElementById("tabs").innerHTML = TABS.map(([k, l]) => `<button role="tab" type="button" aria-selected="${S.tab === k}" data-act="tab" data-t="${k}">${l}</button>`).join("");
+  const root = document.getElementById("root");
+  if (S.tab === "a") root.innerHTML = shell("a", "new", renderNew("a"));
+  if (S.tab === "b") root.innerHTML = shell("b", "order", renderOrder("b", S.orders.b));
+  if (S.tab === "c") root.innerHTML = shell("c", "order", renderOrder("c", S.orders.c));
+  if (S.tab === "d") root.innerHTML = `<div class="phones">
+      <div class="phonecol"><b>a. New order at 375 px</b><div class="phoneframe" data-pf="pa"><div class="phonescroll">${shell("pa", "new", renderNew("pa"))}</div></div></div>
+      <div class="phonecol"><b>b. Saved order at 375 px</b><div class="phoneframe" data-pf="pb"><div class="phonescroll">${shell("pb", "order", renderOrder("pb", S.orders.b))}</div></div></div>
+    </div>`;
+  // a dialog in a phone frame is drawn over the frame, not the page
+  if (S.modal && (S.modal.frame === "pa" || S.modal.frame === "pb")) {
+    const pf = root.querySelector(`[data-pf="${S.modal.frame}"]`); const ov = pf && pf.querySelector(".overlay"); if (ov) pf.appendChild(ov);
+  }
+}
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-act]");
+  // close open dropdowns when clicking elsewhere
+  if (!e.target.closest(".search")) {
+    let changed = false;
+    if (S.draft.searchOpen) { S.draft.searchOpen = false; changed = true; }
+    if (S.draft.custOpen) { S.draft.custOpen = false; changed = true; }
+    if (changed && !t) { document.querySelectorAll("[data-res]").forEach((r) => (r.hidden = true)); }
+  }
+  if (!t) return;
+  if (t.tagName === "A") e.preventDefault();
+  const fn = ACT[t.dataset.act]; if (!fn) return;
+  const f = frameOf(t) || (S.modal && S.modal.frame);
+  const res = fn(t, f, e);
+  if (res === "skip") return;
+  clearTimeout(pending); pending = null;
+  if (!/^menu$/.test(t.dataset.act)) Object.values(S.orders).forEach((o) => { if (t.dataset.act !== "menu") o.menu = false; });
+  render();
+});
+// A text field's change fires on blur, often from the mousedown of a button click; re-rendering at once
+// would replace that button before its click lands. So text fields re-render a moment later (or on the click).
+let pending = null;
+document.addEventListener("change", (e) => {
+  const t = e.target.closest("[data-ch]"); if (!t) return;
+  const fn = CH[t.dataset.ch]; if (!fn) return;
+  if (fn(t) === "skip") return;
+  const isText = t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !["radio", "checkbox", "date"].includes(t.type));
+  if (!isText) { render(); return; }
+  clearTimeout(pending); pending = setTimeout(() => { pending = null; render(); }, 300);
+});
+document.addEventListener("input", (e) => {
+  const t = e.target.closest("[data-in]"); if (!t) return;
+  const scope = t.closest("[data-frame]");
+  if (t.dataset.in === "prod-q") { S.draft.search = t.value; S.draft.searchOpen = true; const r = scope.querySelector('[data-res="prod"]'); r.innerHTML = prodResults(); r.hidden = false; }
+  if (t.dataset.in === "cust-q") { S.draft.custQ = t.value; S.draft.custOpen = true; const r = scope.querySelector('[data-res="cust"]'); r.innerHTML = custResults(); r.hidden = false; }
+});
+document.addEventListener("focusin", (e) => {
+  const t = e.target.closest("[data-focus]"); if (!t) return;
+  const scope = t.closest("[data-frame]");
+  if (t.dataset.focus === "prod") { S.draft.searchOpen = true; const r = scope.querySelector('[data-res="prod"]'); r.innerHTML = prodResults(); r.hidden = false; }
+  if (t.dataset.focus === "cust") { S.draft.custOpen = true; const r = scope.querySelector('[data-res="cust"]'); r.innerHTML = custResults(); r.hidden = false; }
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && S.modal) { S.modal = null; render(); } });
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (TABS.some(([k]) => k === h) && h !== S.tab) { S.tab = h; S.modal = null; render(); } });
+(function start() { const h = location.hash.slice(1); if (TABS.some(([k]) => k === h)) S.tab = h; render(); })();
+</script>
+</body>
+</html>
