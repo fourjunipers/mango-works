@@ -433,6 +433,14 @@ describe("what save_product_pricing is sent", () => {
     expect(profile).toMatchObject({
       payload: { taxable: true, tax_profile_id: "vat-7" },
     });
+    // A replacement value of 0 is refused with its own message: "choose
+    // Free" doesn't fit a replacement value.
+    expect(
+      pricingPayload(
+        draft({ method: "fixed", fixedAmount: "150", replacement: "0" }),
+        gear,
+      ),
+    ).toEqual({ ok: false, errors: { replacement: "replacementZero" } });
   });
 
   it("reads a saved tax choice", () => {
@@ -612,7 +620,7 @@ describe("a saved list reads as it is stored (filled days are not filled again)"
   });
 });
 
-describe("Check a price says \"saved or not\" only when the form differs from what is saved", () => {
+describe('Check a price says "saved or not" only when the form differs from what is saved', () => {
   const ctx: PricingContext = {
     type: "vehicle",
     currency: THB,
