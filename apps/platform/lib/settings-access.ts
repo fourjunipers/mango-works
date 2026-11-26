@@ -1,4 +1,4 @@
-import { canSeeArea, type Role } from "./roles";
+import { adminAreas, canSeeArea, type AdminArea, type Role } from "./roles";
 
 /**
  * Who opens which part of Settings.
@@ -32,6 +32,24 @@ export function canSeeExtrasSettings(role: Role): boolean {
 /** Whether a role gets into Settings at all. */
 export function canEnterSettings(role: Role): boolean {
   return canSeeArea(role, "settings") || canSeeExtrasSettings(role);
+}
+
+/**
+ * The shop areas in a role's menu (the sidebar, and Me on a phone), each
+ * with its path under the shop. Staff get "Shop settings" too, opening
+ * Settings › Extras, the one section they read: the Extras tab of a
+ * vehicle links there, so the menu leads there as well.
+ */
+export function menuAreasFor(
+  role: Role,
+): readonly { area: AdminArea; path: string }[] {
+  return adminAreas.flatMap((area): { area: AdminArea; path: string }[] =>
+    canSeeArea(role, area)
+      ? [{ area, path: area }]
+      : area === "settings" && canEnterSettings(role)
+        ? [{ area, path: "settings/extras" }]
+        : [],
+  );
 }
 
 /** The sections a role sees in Settings' own menu. */

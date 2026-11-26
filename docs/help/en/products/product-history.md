@@ -24,7 +24,7 @@ Who can see it: owners and managers. The tab doesn't appear for other roles.
 - **Details:** a line for each save, with what changed ("Name: old → new"), and when a vehicle or gear unit is added, changed or deleted. A vehicle shows its plate, or "No plate" until it has one, and an unlabelled gear unit "without a label".
 - **Prices:** setting or changing the price method, the prices by rental length, deposit, replacement value, tax, a flat fee or fixed price, the long-stay rate, and a shared price list the product is on. Amounts show in your shop's currency, for example "Mark changed the daily price from THB 250 to THB 300". Seasons that cover the product are shown too, and so is a change to a shared price list that also affects other products.
 - **Extras:** one line each time the extras offered with a vehicle are saved, plus changes to the list offered with every vehicle.
-- **Moto Mangos:** switching the listing on or off, changing **Instant units**, **Request units** and walk-ins ("Ready for walk-ins"), changing the lead time, changing the model and disconnecting.
+- **Moto Mangos:** switching the listing on or off, changing **Instant units**, **Request units** and **Walk-ins**, changing the lead time, changing the model and disconnecting.
 - **Stock:** quantity changes (rental gear and items for sale), units marked in repair, lost, back in use or found, and units removed from stock, with the date it happened, the expected-back date and the notes you typed. See [Report a problem with rental gear](report-a-gear-problem.md).
 
 A change made by a database job shows as "The system", and one by someone who has since left the team as "Someone no longer in the team".

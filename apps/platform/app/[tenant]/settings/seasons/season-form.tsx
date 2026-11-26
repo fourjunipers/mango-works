@@ -107,6 +107,7 @@ export function SeasonForm({
                     <span className="font-medium">{t(value)}</span>
                   </label>
                 ))}
+                <FieldMessage name="direction" />
               </fieldset>
               <TextInput
                 name="percent"
@@ -179,7 +180,7 @@ export function SeasonForm({
                   </li>
                 ))}
               </ul>
-              <ProductsError />
+              <FieldMessage name="products" />
             </div>
           </Panel>
 
@@ -207,10 +208,11 @@ export function SeasonForm({
   );
 }
 
-function ProductsError() {
-  const error = useFieldError("products");
+/** A field's error under a group of choices. */
+function FieldMessage({ name }: { name: "products" | "direction" }) {
+  const error = useFieldError(name);
   return error ? (
-    <p id="products-error" role="alert" className="text-sm text-destructive">
+    <p id={`${name}-error`} role="alert" className="text-sm text-destructive">
       {error}
     </p>
   ) : null;

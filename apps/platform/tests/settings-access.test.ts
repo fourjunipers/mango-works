@@ -16,6 +16,7 @@ import { roles } from "@/lib/roles";
 import {
   canEnterSettings,
   canSeeExtrasSettings,
+  menuAreasFor,
   settingsSections,
   settingsSectionsFor,
 } from "@/lib/settings-access";
@@ -125,5 +126,21 @@ describe("lib/settings-access.ts", () => {
         expected.includes("extras" as never),
       );
     }
+  });
+
+  it("the menu: owners and managers open Shop settings itself; staff open it at Extras; mechanics and drivers have none", () => {
+    const settings = (role: (typeof roles)[number]) =>
+      menuAreasFor(role).find((entry) => entry.area === "settings")?.path;
+    expect(settings("owner")).toBe("settings");
+    expect(settings("manager")).toBe("settings");
+    expect(settings("staff")).toBe("settings/extras");
+    expect(settings("mechanic")).toBeUndefined();
+    expect(settings("driver")).toBeUndefined();
+    // Nothing else in staff's menu changes.
+    expect(menuAreasFor("staff").map((entry) => entry.area)).toEqual([
+      "products",
+      "fleet",
+      "settings",
+    ]);
   });
 });

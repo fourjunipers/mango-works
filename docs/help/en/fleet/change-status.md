@@ -18,7 +18,7 @@ Each vehicle has one status: "One status per vehicle. Scheduled downtime is sepa
 | **Retired** | Out of the fleet for good. Can't be rented; its history is kept. |
 | **Sold** | Sold. Can't be rented. See [Mark a vehicle as sold](mark-as-sold.md). |
 
-Who can do this: staff and mechanics switch between **Active** and **Maintenance**. Owners and managers can also retire, restore and sell. Drivers see the status but can't change it.
+Who can do this: staff and mechanics switch between **Active** and **Maintenance**. Owners and managers can also retire, restore and sell. Drivers see the status but can't change it. On a sold or retired vehicle, staff and mechanics see every choice greyed out: only an owner or manager can change it.
 
 ## Steps
 

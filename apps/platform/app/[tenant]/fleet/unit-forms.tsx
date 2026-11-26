@@ -264,9 +264,16 @@ export function StatusForm({
   canRetireOrSell: boolean;
 }) {
   const t = useTranslations("Fleet");
+  // Staff and mechanics move a vehicle only between active and maintenance
+  // (units_guard, 20261123000100): one that is sold or retired is out of
+  // their hands, so none of its choices can be picked.
+  const outOfReach =
+    !canRetireOrSell && !(workStatuses as readonly string[]).includes(status);
   const allowed: readonly string[] = canRetireOrSell
     ? unitStatuses
-    : workStatuses;
+    : outOfReach
+      ? []
+      : workStatuses;
   return (
     <ActionForm
       action={setUnitStatus}
@@ -290,8 +297,14 @@ export function StatusForm({
         legend={t("unit.status")}
         defaultValue={status}
         options={unitStatuses
-          // Someone who can't retire or sell still sees it when that's what the bike is.
-          .filter((s) => allowed.includes(s) || s === status)
+          // Someone who can't retire or sell still sees it when that's what
+          // the bike is, and the choices they could pick otherwise.
+          .filter(
+            (s) =>
+              allowed.includes(s) ||
+              s === status ||
+              (workStatuses as readonly string[]).includes(s),
+          )
           .map((s) => ({
             value: s,
             label: t(`status.${s}`),

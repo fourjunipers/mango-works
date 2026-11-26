@@ -35,11 +35,11 @@ SONGKRAN10: 10% off motorbikes, for pickups from 10 to 20 April, for rentals of 
    - **Minimum days**: the rental must be at least this many days.
    - **Minimum spend**: counts only this coupon's own lines, after seasonal prices and before any discount.
    - **Total uses**: how many bookings can use it, in all. A cancelled booking gives its use back.
-8. Under **Where it can be used**, tick at least one (none is ticked at first): **By staff, at the counter or on the phone**, **On the shop’s booking page**, **On Moto Mangos**.
+8. Under **Where it can be used**, all three start ticked: **By staff, at the counter or on the phone**, **On the shop’s booking page**, **On Moto Mangos**. Untick any you don't want; at least one must stay ticked.
 9. Under **With other discounts**:
    - **Can be combined with the returning-customer discount** (unticked at first). Off: a returning customer gets whichever of the two takes more off. On: the returning-customer discount comes off first, then the coupon comes off what is left.
    - **Can be used on season discounts** (ticked at first). Off: the coupon takes nothing off a rental that a season has already made cheaper. A season that raised the price never stops a coupon.
-10. Press **Create coupon**. You see "Coupon created." The coupon starts **On**.
+10. Press **Create coupon**. You see "Coupon saved." The coupon starts **On**.
 
 For example, a returning customer with 10% off and SONGKRAN10 on a 900 baht rental:
 

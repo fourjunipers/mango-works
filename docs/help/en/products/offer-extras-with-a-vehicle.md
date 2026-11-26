@@ -43,7 +43,7 @@ When saving:
 - **"Check the extras and try again."** Reload the page and try again.
 - **"One of these extras no longer exists, or isn't rental gear or a service. Reload the page."**
 - **"This vehicle no longer exists. Reload the page."**
-- **"Someone is saving a booking for this vehicle right now, so nothing was saved. Please try again."** Wait a moment and save again.
+- **"Someone else is saving a booking or these extras right now, so nothing was saved. Please try again."** Wait a moment and save again.
 - **"Only an owner or a manager can change extras."**
 - **"Couldn't save. Please try again."** Reload the page and try again.
 

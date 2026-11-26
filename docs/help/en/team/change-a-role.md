@@ -29,7 +29,7 @@ To see what each role can see and do, read [What each role can do](what-each-rol
 
 ## Adding someone new
 
-"Inviting new people arrives in Phase 11. Until then, ask Mango Works to add them." Inviting people yourself comes in a later update.
+"Inviting new people comes in a later update. Until then, ask Mango Works to add them."
 
 ## Common problems
 

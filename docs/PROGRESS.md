@@ -13,6 +13,26 @@ What's done, open decisions and known issues, across both apps. Update this at t
 
 Build order after the 10 Nov 2026 review (docs/platform/SPEC.md › Review decisions): 0 → 1a → 2 → 3 → **Neon move** → 3M → 1b → 4 onward → **go-live preparation** (Netlify Pro, functions to Singapore). The Neon move was decided on 19 Nov 2026: spike first, live always on (next section).
 
+## Platform: UI polish from the help-docs audit (branch `platform/ui-polish-help-audit`, 26 Nov 2026)
+
+**UI only: no migration, no SQL, no change to booking, pricing or money logic.** From `main` at `466adb6`. Fixes the app inconsistencies the help-docs audit (PR 84) listed, plus the owner's follow-up list. Help articles in `docs/help/en` updated to match; new Thai lines are in `docs/platform/thai-review-products.md` for Korn.
+
+- **Wording.** `model_has_active_units` no longer talks of retiring a product (the screens can't). No build-phase names on any screen ("Coming in a later update"; `PlannedCard` takes no phase now; `lib/dashboard.ts` still records them). The plate-pending warning no longer promises a check-out warning. Settings › Extras' try-again message names no vehicle. Save messages: "Season saved.", "Price list saved.", "Coupon saved."; History says "Walk-ins" as the form does; one "choose a category first" text. Maintenance search: "Plate, frame or engine number" (what it matches). The monthly digest's help says it isn't sent yet.
+- **Check a price.** A long rental whose extra days are held to one more month now says so (`Pricing.basis.monthsCapped`) instead of "N days at X a day". Display only: `packages/core` is untouched, so the price tests prove the amount is the same.
+- **Gear replacement value 0:** its own message (`replacementZero`), not "choose Free".
+- **Tab bar help** counts the role's tabs (`tabsFor`): three for mechanics and drivers.
+- **Coupon save, unexpected error:** "Couldn't save" on the form (caught in `settings/coupons/actions.ts`, reported to Sentry), not the error page. `lib/coupon-save.ts` and `lib/coupons.ts` unchanged.
+- **A vehicle's Product dropdown** leaves out retired products, except the one the vehicle is under.
+- **New seasons** have no direction chosen; saving without one is refused with "Choose Increase or Decrease." (`lib/seasons.ts`).
+- **New coupons** start with all three channels ticked.
+- **Sold or retired vehicle, staff and mechanics:** every status choice is shown greyed out, as `units_guard` refuses any change out of sold or retired for them.
+- **Print stickers** shows only when a vehicle is in the fleet; the sheet with none says why.
+- **Time-zone message** only for the owner-only refusal (code `42501` and its own words); any other error mentioning a time zone gets the general message.
+- **Settings › Extras for staff:** the menu now leads there. Staff's sidebar (and Me on a phone) has **Shop settings**, opening Settings › Extras (`menuAreasFor()` in `lib/settings-access.ts`). Chosen over hiding the vehicle Extras tab's link because the owner's brief has staff reading that page; the change is one helper and two call sites, and no other Settings page opens for staff.
+- **Skipped: a History line for connecting a Moto Mangos model.** History rows are written by the database (the audit trigger on `platform.products`); connecting is an update of `catalog_id` from empty, which is also what "send to Moto Mangos for review" writes (`submit_product_to_catalog`), so the screen can't tell them apart from the row. It needs an explicit audit action (e.g. `listing_connect`) written by a migration.
+- **Merged with PR 84** (help articles, `9574287`): its corrected articles and `roles` front matter are the base; only this branch's wording is applied on top (new messages, "Coming in a later update", the tab count, Shop settings for staff, the coupon channel and season direction defaults, the digest note). `en/team/what-each-role-can-do.md` now says staff have Shop settings.
+- A unit test (`lib/coupon-screens.test.ts`) banned "in a later update" anywhere in `en.json`; it now checks Settings › Pricing and tax only, which is what its comment and the matching e2e check meant.
+
 ## Phase 3, stage 2a: orders: tables, RLS, customers, settings (branch `platform/phase-3-stage-2a-orders`, 24 Nov 2026)
 
 The second build stage of Phase 3 (`docs/phase-3-plan.md` §3.1, §3.2, §3.8 row 2, §3.9, §3.10, §9.1, §8 stage 2a). From `main` at `4901c0d` (PR 70 merged; 70 migrations). **One migration, `20261124000100_platform_orders.sql`.** **Migration on staging since 25 Nov 2026, 71/71** (see "On staging" below); **not on live.** **It deletes rows** (below), so its staging push was a separate step on the owner's word.

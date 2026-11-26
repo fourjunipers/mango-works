@@ -55,13 +55,13 @@ const draft = (change: Partial<CouponDraft> = {}): CouponDraft => ({
 });
 
 describe("the coupon form: what is checked before saving", () => {
-  it("a new coupon starts as the database does: percentage, all products, season discounts on, no stacking, no channel", () => {
+  it("a new coupon starts as the database does (percentage, all products, season discounts on, no stacking), with every channel ticked", () => {
     expect(emptyCouponDraft()).toMatchObject({
       kind: "percent",
       allProducts: true,
       withSeasonDiscount: true,
       withReturningDiscount: false,
-      channels: [],
+      channels: ["staff", "booking_page", "marketplace"],
     });
   });
 
@@ -582,7 +582,11 @@ describe("the words for every coupon answer", () => {
     // The "later update" line is gone from the coupons switch.
     expect(en.Settings.pricing.coupons).not.toHaveProperty("later");
     expect(th.Settings.pricing.coupons).not.toHaveProperty("later");
-    expect(JSON.stringify(en)).not.toContain("in a later update");
+    // Nor anywhere on Settings › Pricing and tax (other screens may still say
+    // that something comes in a later update).
+    expect(JSON.stringify(en.Settings.pricing)).not.toContain(
+      "in a later update",
+    );
     // "Uses per customer" is not promised anywhere yet.
     expect(JSON.stringify(en.Settings.coupons).toLowerCase()).not.toContain(
       "per customer",

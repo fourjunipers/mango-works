@@ -40,7 +40,7 @@ The tab says "Moto Mangos reviewed this model on" the date "and didn't add it.",
 
 ## Common problems
 
-- **"Choose a category for this model and save it first, then send it."** Set a category on the **Details** tab, save, then come back.
+- **"Choose a category for this product on the Details tab, save, and then you can send it to Moto Mangos."** Set a category on the **Details** tab, save, then come back.
 - **"Choose a catalog entry from the list."** Pick both a **Make** and a **Model** before pressing **Connect**.
 - **"This model is already on the Moto Mangos list, or waiting for review."** The product is already connected, or has a request open. Reload the page to see its state.
 - **"Only a model on the Moto Mangos list can be listed there."** The product isn't on an approved model yet. Wait for the review, or choose a model from the list.

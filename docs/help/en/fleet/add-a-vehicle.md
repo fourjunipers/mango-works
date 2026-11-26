@@ -20,7 +20,7 @@ Who can do this: owners and managers. Staff, mechanics and drivers don't see the
 3. Fill in what you know:
    - **Year**: the year of this vehicle, such as 2024.
    - **Odometer (km)**, or **Odometer (mi)** if your shop uses miles. It starts at 0: type the current reading.
-   - **Plate**, such as "1กข 1234 Chiang Mai". A new vehicle not registered yet: tick **Plate pending (not registered yet)** instead. Its page then says "This vehicle has no plate yet. Staff are warned before check-out." (Check-out comes in a later update.)
+   - **Plate**, such as "1กข 1234 Chiang Mai". A new vehicle not registered yet: tick **Plate pending (not registered yet)** instead. Its page then says "This vehicle has no plate yet."
    - **Colour**, **Frame (chassis) number**, **Engine number**.
    - **Location**: where the vehicle is kept. Your first location is chosen to start with.
    - **Notes**: anything else worth knowing.

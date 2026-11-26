@@ -30,7 +30,7 @@ The change is worked out on the list price, and rounded once to the smallest coi
 3. Type a **Name**, for example "High season".
 4. Choose the **First day** and **Last day**.
 5. **Every year** starts ticked: the season repeats on the same days each year. Untick it for one year only. When ticked, the year is ignored, and the season may run over the new year (for example 20 December to 15 January).
-6. Under **Price change**, choose the **Direction** (**Increase** or **Decrease**; it starts on **Decrease**) and type the **Percentage**, for example 20 or 12.5. A decrease is below 100%.
+6. Under **Price change**, choose the **Direction** (**Increase** or **Decrease**; neither is chosen for you) and type the **Percentage**, for example 20 or 12.5. A decrease is below 100%.
 7. Under **Products**, choose **All products** or **Chosen products**. For chosen products, use **Search products** and tick them.
 8. Leave **Season on** ticked.
 9. Press **Create season**. "Season saved." appears.
@@ -47,6 +47,7 @@ Each product's Pricing tab lists the seasons that affect it, and **Check a price
 - **"The last day is before the first. Tick "Every year" for a season over the new year."**
 - **"Enter a percentage such as 10 or 12.5. Use a dot for decimals, not a comma."**
 - **"Enter a percentage above 0."**
+- **"Choose Increase or Decrease."** Pick the **Direction** under **Price change**, then save again.
 - **"A decrease must be below 100%."**
 - **"At most 1,000%."**
 - **"Choose at least one product, or All products."**

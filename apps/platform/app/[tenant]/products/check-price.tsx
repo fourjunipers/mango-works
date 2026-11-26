@@ -738,11 +738,20 @@ function basisText(
     case "months":
       return basis.underOneMonth
         ? t("basis.underOneMonth")
-        : t("basis.months", {
-            months: basis.months,
-            days: basis.leftoverDays,
-            rate: money(basis.longStayDay),
-          });
+        : basis.leftoverCapped
+          ? // The extra days cost more than one more month, so they were
+            // held to the monthly price (packages/core): say so, not the
+            // daily rate the total doesn't use.
+            t("basis.monthsCapped", {
+              months: basis.months,
+              days: basis.leftoverDays,
+              monthly: money(basis.monthly),
+            })
+          : t("basis.months", {
+              months: basis.months,
+              days: basis.leftoverDays,
+              rate: money(basis.longStayDay),
+            });
     case "periods":
       return t(`basis.periods_${basis.period}`, { count: basis.count });
     case "fixed":

@@ -495,8 +495,13 @@ export function pricingPayload(
     payload.tax_profile_id =
       draft.tax === "none" || draft.tax === "default" ? null : draft.tax;
   }
-  if (ctx.type === "gear")
+  if (ctx.type === "gear") {
     payload.replacement_price = amount("replacement", draft.replacement, false);
+    // Free is a price method, not a replacement value: an item with none is
+    // left blank.
+    if (errors.replacement === "priceZero")
+      errors.replacement = "replacementZero";
+  }
 
   return Object.keys(errors).length > 0
     ? { ok: false, errors }

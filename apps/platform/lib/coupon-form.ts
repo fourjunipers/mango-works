@@ -111,9 +111,10 @@ export function parseCouponAmount(
 }
 
 /**
- * A new coupon. Nothing is preset but what the database itself starts
- * with: percentage, all products, "Can be used on season discounts" on, not
- * combined with the returning-customer discount, and no channel ticked.
+ * A new coupon: percentage, all products, "Can be used on season discounts"
+ * on, not combined with the returning-customer discount (as the database
+ * starts), and every channel ticked (the help-docs audit, 26 Nov 2026: staff
+ * untick what they don't want rather than having to find the boxes).
  */
 export function emptyCouponDraft(): CouponDraft {
   return {
@@ -131,7 +132,7 @@ export function emptyCouponDraft(): CouponDraft {
     minDays: "",
     minSpend: "",
     maxUses: "",
-    channels: [],
+    channels: [...couponChannels],
     withReturningDiscount: false,
     withSeasonDiscount: true,
   };

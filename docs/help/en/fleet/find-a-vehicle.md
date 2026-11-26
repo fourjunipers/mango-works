@@ -42,7 +42,7 @@ The search, filters and sort are kept in the page address, so you can bookmark a
 
 ## On a phone
 
-On the **Maintenance** tab, type a plate, frame or engine number in **Find a vehicle** and press **Search**, or press **Scan QR** to scan the vehicle's sticker: see [Scan a vehicle's QR sticker](scan-a-qr-sticker.md). With nothing typed, Maintenance lists the vehicles in **Maintenance** status. **See the whole fleet** opens **Fleet**.
+On the **Maintenance** tab, type a plate, frame or engine number in **Find a vehicle** (the box says "Plate, frame or engine number") and press **Search**, or press **Scan QR** to scan the vehicle's sticker: see [Scan a vehicle's QR sticker](scan-a-qr-sticker.md). With nothing typed, Maintenance lists the vehicles in **Maintenance** status. **See the whole fleet** opens **Fleet**.
 
 ## Common problems
 

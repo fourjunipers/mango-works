@@ -17,7 +17,7 @@ For a rental longer than 30 days:
 - Leftover days never cost more than one more month.
 - From 31 started days, a rental that is still short of its first calendar month (for example 1 January 10:00 to 31 January 12:00) costs the monthly price.
 
-**Check a price** shows the working, for example "1 month and 15 days at {rate} a day", or "31 days started: the monthly price".
+**Check a price** shows the working, for example "1 month and 15 days at {rate} a day", "2 months and 28 days: the extra days held to one more month at {monthly}" when the leftover days would cost more than a month, or "31 days started: the monthly price".
 
 Who can do this: owners and managers. Staff can see the rate but not change it.
 

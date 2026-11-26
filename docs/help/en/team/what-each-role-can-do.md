@@ -32,7 +32,7 @@ Everyone can read this page. Only owners and managers change roles.
 
 A mechanic opens the app on **Maintenance**; everyone else opens on **Dashboard**. The **Orders** tab is there, but the orders themselves arrive in a later update.
 
-Staff don't have **Shop settings** in the menu. They reach **Settings › Extras** from the link on a vehicle's **Extras** tab, and can read it but not change it.
+Staff have **Shop settings** in the menu (the sidebar, or **You and this device** on a phone): it opens **Settings › Extras**, which they can read but not change. The link on a vehicle's **Extras** tab leads there too.
 
 ## Fleet (vehicles)
 

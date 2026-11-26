@@ -454,7 +454,13 @@ export function dbErrorKey(
     "request_pending",
   ])
     if (message.includes(known)) return known;
-  if (message.includes("time zone")) return "timezoneOwnerOnly";
+  // Only the one refusal (locations_guard, 20261110000300): any other error
+  // that mentions a time zone gets the general message.
+  if (
+    error.code === "42501" &&
+    message.includes("Only an owner can change a location's time zone")
+  )
+    return "timezoneOwnerOnly";
   if (message.includes("default location")) return "keepDefaultLocation";
   if (error.code === "42501") return "notAllowed";
   return "saveFailed";

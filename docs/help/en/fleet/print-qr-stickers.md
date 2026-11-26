@@ -21,7 +21,7 @@ Who can do this: everyone in the shop (owners, managers, staff, mechanics and dr
 
 ## Print a sheet of stickers
 
-1. Open **Fleet** and press **Print stickers**. (The button appears once the shop has vehicles.)
+1. Open **Fleet** and press **Print stickers**. (The button appears once at least one vehicle is in the fleet: sold and retired vehicles get no sticker.)
 2. To narrow the list, choose a **Product** and a **Sort by** order (**Most recently added** or **Plate**), then press **Apply**. **Reset view** shows the whole list again.
 3. Tick the vehicles to print, or tick **Select all N listed** ("Select the 1 vehicle listed" when there is only one). "N selected" shows how many are ticked. Only the ticked stickers appear on paper.
 4. Press **Print**, and print from your browser's print window. Stickers print three across.
@@ -33,4 +33,5 @@ To use a sticker, see [Scan a vehicle's QR sticker](scan-a-qr-sticker.md).
 ## Common problems
 
 - **"No vehicles match these filters."** Press **Reset view**.
+- **"There are no vehicles in the fleet to print stickers for. Sold and retired vehicles get no sticker. Add a vehicle first."** Shown on the sticker sheet when no vehicle is in the fleet.
 - A product isn't in the **Product** list: retired products aren't offered.

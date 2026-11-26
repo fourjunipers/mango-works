@@ -11,7 +11,7 @@ updated: 2026-11-26
 
 **Settings › Extras** holds "The rental gear and services offered with every vehicle of the shop." For example, two helmets included free with every motorbike, and a phone holder offered at its own price. A vehicle can set its own, or switch one off with "Not offered for this vehicle", on its Extras tab: see [Offer extras with a vehicle](../products/offer-extras-with-a-vehicle.md).
 
-Who can do this: owners and managers. Staff can open **Settings › Extras** and see the list, with no edit controls ("Only an owner or a manager can change extras."). Mechanics and drivers see a vehicle's extras on its Extras tab.
+Who can do this: owners and managers. Staff can open **Settings › Extras** (**Shop settings** in their menu) and see the list, with no edit controls ("Only an owner or a manager can change extras."). Mechanics and drivers see a vehicle's extras on its Extras tab.
 
 ## Steps
 
@@ -32,6 +32,6 @@ Owners and managers see the changes under **History** on the same page.
 - **"Check the lines marked below."** / **"Check the extras and try again."**
 - **"The shop has no rental gear or services yet. Add them on the Products page."**
 - **"One of these extras no longer exists, or isn't rental gear or a service. Reload the page."**
-- **"Someone is saving a booking for this vehicle right now, so nothing was saved. Please try again."** Press **Save extras** again.
+- **"Someone else is saving a booking or these extras right now, so nothing was saved. Please try again."** Press **Save extras** again.
 - **"Only an owner or a manager can change extras."**
 - **"Couldn't save. Please try again."**

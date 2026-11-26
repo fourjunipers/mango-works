@@ -15,8 +15,9 @@ import {
   themeCookie,
   themes,
 } from "@/lib/preferences";
-import { adminAreas, canSeeArea } from "@/lib/roles";
+import { tabsFor } from "@/lib/roles";
 import { requireMembership } from "@/lib/session";
+import { menuAreasFor } from "@/lib/settings-access";
 import { cn } from "@/lib/utils";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -91,7 +92,7 @@ export default async function MePage({ params }: PageProps<"/[tenant]/me">) {
     ]);
   const theme = parseTheme(cookieStore.get(themeCookie)?.value);
   const tabBar = parseTabBar(cookieStore.get(tabBarCookie)?.value);
-  const areas = adminAreas.filter((a) => canSeeArea(membership.role, a));
+  const areas = menuAreasFor(membership.role);
 
   return (
     <>
@@ -110,10 +111,10 @@ export default async function MePage({ params }: PageProps<"/[tenant]/me">) {
             <div className="lg:hidden">
               <h3 className="mb-2 text-sm font-medium">{t("adminLinks")}</h3>
               <ul className="divide-y rounded-md border">
-                {areas.map((area) => (
+                {areas.map(({ area, path }) => (
                   <li key={area}>
                     <Link
-                      href={`/${slug}/${area}`}
+                      href={`/${slug}/${path}`}
                       className="flex min-h-12 items-center justify-between px-3 hover:bg-muted"
                     >
                       {tNav(area)}
@@ -157,7 +158,7 @@ export default async function MePage({ params }: PageProps<"/[tenant]/me">) {
             label={t("tabBar")}
             name="tabbar"
             current={tabBar}
-            help={t("tabBarHelp")}
+            help={t("tabBarHelp", { count: tabsFor(membership.role).length })}
             options={tabBarPositions.map((value) => ({
               value,
               label: t(value === "top" ? "tabBarTop" : "tabBarBottom"),

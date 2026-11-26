@@ -20,7 +20,7 @@ Owners and managers change the setting. Everyone who has the **Dashboard** tab s
 1. Open **Shop settings**.
 2. Under **Tax and insurance reminders**, type the **Days before expiry**: up to 10 numbers separated by commas, for example 45, 30, 14, 7. Leave it blank for no reminders.
    The largest number also decides when a renewal first shows on the dashboard.
-3. Choose a **Monthly digest**: **Off**, or **On day {day} of the month** (1 to 28), for one list of everything expiring that month.
+3. Choose a **Monthly digest**: **Off**, or **On day {day} of the month** (1 to 28), for one list of everything expiring that month. Its help says "Not sent yet: the setting is kept, and the digest comes in a later update."
 4. Press **Save**. This section has its own **Save** button, separate from the shop details above it.
 
 The expiry dates come from each vehicle's records: see [Record road tax, insurance or an inspection](../fleet/record-tax-and-insurance.md).

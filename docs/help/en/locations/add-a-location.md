@@ -24,7 +24,7 @@ Owners and managers. Whoever adds a location chooses its time zone; after that, 
 5. Press **Save**. The location's own page opens.
 6. Set the location's hours and days off: see [Set opening hours](set-opening-hours.md) and [Add a closure](add-a-closure.md).
 
-After saving, the location's page also shows **Moto Mangos market**: "Set when markets arrive (Phase 3M)." Nothing to do there yet.
+After saving, the location's page also shows **Moto Mangos market**: "Set in a later update." Nothing to do there yet.
 
 ## Delete a location
 

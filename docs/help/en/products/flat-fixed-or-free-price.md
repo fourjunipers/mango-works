@@ -39,7 +39,8 @@ Who can do this: owners and managers. Staff can see the prices but not change th
 ## Common problems
 
 - **"Required."** The amount or price is missing.
-- **"A price can't be 0. To charge nothing, choose Free."** An amount can't be 0. Only services can be **Free**; for rental gear, leave a **Replacement value** blank rather than 0.
+- **"A price can't be 0. To charge nothing, choose Free."** An amount can't be 0. Only services can be **Free**.
+- **"A replacement value can't be 0. Leave it blank if this item has none."** Rental gear only.
 - **"This kind of product can't be priced that way."** See the table above.
 - **"Enter an amount such as 200 or 1,234.50. Use a dot for decimals; a comma only between thousands (1,000). No spaces, and no more decimal places than the currency has."** Use a dot for decimals and no spaces.
 - **"You can't make that change."** Only owners and managers can change prices.

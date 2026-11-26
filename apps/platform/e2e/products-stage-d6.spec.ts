@@ -455,11 +455,22 @@ test("a season: made for one product, on its Pricing tab, in Check a price and i
       await page.getByLabel("Name", { exact: true }).fill(season);
       await page.getByLabel("First day").fill("2027-04-01");
       await page.getByLabel("Last day").fill("2027-09-30");
-      await page.getByRole("radio", { name: "Decrease" }).check();
       await page.getByLabel("Percentage").fill("20");
       await page.getByRole("radio", { name: "Chosen products" }).check();
       await page.getByRole("searchbox", { name: "Search products" }).fill(name);
       await page.getByRole("checkbox", { name }).check();
+      // Nothing is preselected: a season sent without a direction is refused.
+      await expect(
+        page.getByRole("radio", { name: "Decrease" }),
+      ).not.toBeChecked();
+      await expect(
+        page.getByRole("radio", { name: "Increase" }),
+      ).not.toBeChecked();
+      await page.getByRole("button", { name: "Create season" }).click();
+      await expect(
+        page.getByText("Choose Increase or Decrease."),
+      ).toBeVisible();
+      await page.getByRole("radio", { name: "Decrease" }).check();
       await page.getByRole("button", { name: "Create season" }).click();
       await expect(page.getByText("Season saved.")).toBeVisible();
       seasonAddress = page.url().split("?")[0];

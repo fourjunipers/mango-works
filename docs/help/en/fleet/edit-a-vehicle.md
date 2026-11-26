@@ -16,7 +16,7 @@ Who can do this: owners and managers. Staff and mechanics see the details but ch
 ## Steps
 
 1. Open the vehicle's page.
-2. Under **Details**, change what you need: **Product**, **Year**, **Odometer (km)** (or **Odometer (mi)**), **Plate**, **Plate pending (not registered yet)**, **Colour**, **Frame (chassis) number**, **Engine number**, **Location** or **Notes**.
+2. Under **Details**, change what you need: **Product**, **Year**, **Odometer (km)** (or **Odometer (mi)**), **Plate**, **Plate pending (not registered yet)**, **Colour**, **Frame (chassis) number**, **Engine number**, **Location** or **Notes**. **Product** offers the products in use: a retired product is not listed (as on Add vehicle), unless it is the one this vehicle is under now.
 3. Press **Save**. "Saved" shows next to the button.
 
 ## Moving a vehicle that has bookings

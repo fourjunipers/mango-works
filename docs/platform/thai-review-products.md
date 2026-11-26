@@ -1331,3 +1331,31 @@ One changed and one new Thai line on the branch `platform/phase-3-stage-1-unit-l
 | `FormErrors.one_unit_status_change` (new) | Only one vehicle or unit can be sold, retired or marked lost at a time. Please do them one at a time. | ขาย ปลดระวาง หรือแจ้งสูญหายได้ครั้งละหนึ่งคันหรือหนึ่งชิ้นเท่านั้น กรุณาทำทีละรายการ |
 
 The second line is new (24 Nov 2026): the database refuses a change of several vehicles or units to sold, retired or lost in one go (`one_unit_status_change`). The screens change one at a time, so a person should rarely see it. Words chosen: ปลดระวาง, สูญหาย (as the status names), ครั้งละหนึ่งคันหรือหนึ่งชิ้น (one vehicle or one piece of gear at a time). **Provisional; please check.**
+
+## UI polish from the help-docs audit (26 Nov 2026)
+
+New and changed Thai lines on the branch `platform/ui-polish-help-audit`. The English is final. **The Thai is Claude's provisional line; please check.** Words chosen: การอัปเดตครั้งต่อไป (a later update, for every line that used to name a build phase, เฟส), มูลค่าทดแทน (replacement value, as `Pricing.replacement.title`), เลขเครื่องยนต์ (engine number), ลูกค้าหน้าร้าน (walk-ins, now the same in the form and in History).
+
+| Key | English | Thai |
+| --- | --- | --- |
+| `Common.comingIn` | Coming in a later update | จะมาในการอัปเดตครั้งต่อไป |
+| `Orders.noResults` | Orders come in a later update. Your search and filter are kept in the address, so you can bookmark them. | ออเดอร์จะมาในการอัปเดตครั้งต่อไป คำค้นหาและตัวกรองจะอยู่ในที่อยู่หน้าเว็บ จึงบุ๊กมาร์กได้ |
+| `Maintenance.dueLater` | Service and renewal alerts come in a later update. | การแจ้งเตือนเซอร์วิสและต่ออายุจะมาในการอัปเดตครั้งต่อไป |
+| `Maintenance.searchPlaceholder` | Plate, frame or engine number | ทะเบียน เลขตัวถัง หรือเลขเครื่องยนต์ |
+| `Maintenance.searchHelp` | Type a plate, frame or engine number, or press the camera button to scan a vehicle's QR sticker. | พิมพ์ทะเบียน เลขตัวถัง หรือเลขเครื่องยนต์ หรือกดปุ่มกล้องเพื่อสแกนสติกเกอร์ QR ของรถ |
+| `Team.inviteLater` | Inviting new people comes in a later update. Until then, ask Mango Works to add them. | การเชิญคนใหม่จะมาในการอัปเดตครั้งต่อไป ระหว่างนี้โปรดให้ Mango Works เพิ่มให้ |
+| `Settings.reminders.digestHelp` | One list of everything expiring that month. Not sent yet: the setting is kept, and the digest comes in a later update. | รายการเดียวรวมทุกอย่างที่หมดอายุในเดือนนั้น ยังไม่ได้ส่งในตอนนี้: ระบบเก็บการตั้งค่าไว้ และสรุปจะมาในการอัปเดตครั้งต่อไป |
+| `Me.tabBarHelp` | Where your {count, plural, one {tab sits} other {# tabs sit}} on a phone or tablet. On a wide screen they're in the sidebar. | ตำแหน่งของแท็บ {count, plural, other {# แท็บ}}ของคุณบนโทรศัพท์หรือแท็บเล็ต บนจอกว้างแท็บจะอยู่ที่แถบด้านข้าง |
+| `Fleet.model.bufferHelp` | Decimals are fine: 0.5 is half an hour. Blank uses the shop default. | ใส่ทศนิยมได้ เช่น 0.5 คือครึ่งชั่วโมง เว้นว่างเพื่อใช้ค่าเริ่มต้นของร้าน |
+| `Fleet.unit.platePendingWarning` | This vehicle has no plate yet. | รถคันนี้ยังไม่มีทะเบียน |
+| `Fleet.bookings.intro` | The bookings this vehicle is set aside for. Times are {zone} time. Bookings are made and changed from orders, which come in a later update. | การจองที่กันรถคันนี้ไว้ เวลาเป็นเวลา {zone} การสร้างและแก้ไขการจองทำจากออเดอร์ ซึ่งจะมาในการอัปเดตครั้งต่อไป |
+| `Fleet.sticker.nothingToPrint` (new) | There are no vehicles in the fleet to print stickers for. Sold and retired vehicles get no sticker. Add a vehicle first. | ไม่มีรถในฟลีตให้พิมพ์สติกเกอร์ รถที่ขายหรือปลดระวางแล้วไม่มีสติกเกอร์ เพิ่มรถก่อน |
+| `Products.history.field.ready_now` | Walk-ins | ลูกค้าหน้าร้าน |
+| `Locations.marketLater` | Set in a later update. | ตั้งค่าในการอัปเดตครั้งต่อไป |
+| `FormErrors.model_has_active_units` | This product still has vehicles in the fleet. Sell or retire them first. | สินค้านี้ยังมีรถอยู่ในฟลีต ขายหรือปลดระวางรถเหล่านั้นก่อน |
+| `FormErrors.extrasTryAgain` | Someone else is saving a booking or these extras right now, so nothing was saved. Please try again. | มีคนอื่นกำลังบันทึกการจองหรือของเสริมเหล่านี้อยู่ จึงยังไม่ได้บันทึก โปรดลองอีกครั้ง |
+| `FormErrors.replacementZero` (new) | A replacement value can't be 0. Leave it blank if this item has none. | มูลค่าทดแทนเป็น 0 ไม่ได้ ถ้าสินค้านี้ไม่มี ให้เว้นว่างไว้ |
+| `FormErrors.seasonDirection` (new) | Choose Increase or Decrease. | เลือกเพิ่มหรือลด |
+| `FormErrors.categoryFirst` | Choose a category for this product on the Details tab, save, and then you can send it to Moto Mangos. | เลือกหมวดหมู่ของสินค้านี้ที่แท็บรายละเอียด บันทึก แล้วจึงส่งให้ Moto Mangos ได้ |
+| `Settings.coupons.added` | Coupon saved. | บันทึกคูปองแล้ว |
+| `Pricing.basis.monthsCapped` (new) | {months} months and {days} days: the extra days held to one more month at {monthly} | {months, plural, other {#}} เดือน และ {days, plural, other {#}} วัน: วันที่เกินคิดไม่เกินอีก 1 เดือน ราคา {monthly} |
