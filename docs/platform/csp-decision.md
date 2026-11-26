@@ -113,7 +113,7 @@ Both apps already do exactly that: `next.config.ts` passes `development: process
    - Platform: almost every route is already dynamic (`ƒ` in the build), and it has no `cacheComponents`, so nonces fit. The inline theme script in `app/layout.tsx` (`followSystemTheme`) must take the nonce.
    - Marketplace: it uses `cacheComponents` and partial prerendering; the Next.js guide says "Partial Prerendering (PPR) is incompatible with nonce-based CSP". The choices are giving up static/partial prerendering on the pages that need it, Next.js's experimental hash-based CSP (`experimental.sri`, App Router, build-time scripts only), or keeping `'unsafe-inline'` there. That is a separate decision.
    - With nonces, add `'strict-dynamic'` so a trusted script can load others; Google's guide says the Google domains then need not be listed in `script-src`.
-3. **zod `jitless`** in the platform's browser code (above).
+3. **zod `jitless`** in the platform's browser code (above). **Done:** `z.config({ jitless: true })` at the top of `apps/platform/instrumentation-client.ts`, which Next.js runs before the app's own code; `apps/platform/tests/instrumentation-client.test.ts` checks it.
 4. **The marketplace Maps check** with the real key (above).
 5. **Phase 4 adds Stripe**: its domains in `script-src`, `connect-src`, `frame-src` and `img-src` as Stripe lists them, in the same change that adds Stripe.js.
 6. **`style-src 'unsafe-inline'`** stays: Next.js and the UI library set inline styles, and Google Maps sets styles too. Far lower risk than inline scripts.
