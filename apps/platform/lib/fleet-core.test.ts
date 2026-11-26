@@ -255,6 +255,16 @@ describe("form rules", () => {
     expect(dbErrorKey({ code: "P0001", message: "location_not_found" })).toBe(
       "location_not_found",
     );
+    // The time-zone words for the owner-only refusal alone.
+    expect(
+      dbErrorKey({
+        code: "42501",
+        message: "Only an owner can change a location's time zone",
+      }),
+    ).toBe("timezoneOwnerOnly");
+    expect(
+      dbErrorKey({ code: "22023", message: "Unknown time zone: Mars/Base" }),
+    ).toBe("saveFailed");
     expect(dbErrorKey({ code: "42501", message: "row-level security" })).toBe(
       "notAllowed",
     );
