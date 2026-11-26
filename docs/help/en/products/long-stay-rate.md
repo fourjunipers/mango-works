@@ -3,7 +3,7 @@ title: Set a long-stay daily rate (rentals over a month)
 summary: Choose what each day after a whole month costs, for rentals of 31 days or more.
 keywords: [long stay, long-term rental, monthly rental, more than 30 days, 45 days, 2 months, extra days, monthly rate, ราคาต่อวันสำหรับเช่าระยะยาว, เช่ารายเดือน, เช่าระยะยาว, เกิน 30 วัน]
 screens: [/[tenant]/products/[id]]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Set a long-stay daily rate (rentals over a month)
@@ -16,7 +16,7 @@ For a rental longer than 30 days:
 - Leftover days never cost more than one more month.
 - From 31 started days, a rental that is still short of its first calendar month (for example 1 January 10:00 to 31 January 12:00) costs the monthly price.
 
-**Check a price** shows the working, for example "1 month and 15 days at {rate} a day", or "31 days started: the monthly price".
+**Check a price** shows the working, for example "1 month and 15 days at {rate} a day", "2 months and 28 days: the extra days held to one more month at {monthly}" when the leftover days would cost more than a month, or "31 days started: the monthly price".
 
 Who can do this: owners and managers.
 

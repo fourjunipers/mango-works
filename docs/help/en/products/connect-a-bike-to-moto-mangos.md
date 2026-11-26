@@ -3,7 +3,7 @@ title: Connect a motorbike to Moto Mangos
 summary: Pick your bike's make and model from the Moto Mangos list, or send its details for review if it isn't there, so it can be listed.
 keywords: [Moto Mangos, marketplace, list a bike, make and model, catalog, send for review, request, approved, rejected, connect, ขึ้นรายการ, มอเตอร์ไซค์, ส่งตรวจสอบ]
 screens: [/[tenant]/products/[id]]
-updated: 2026-11-23
+updated: 2026-11-26
 ---
 
 # Connect a motorbike to Moto Mangos
@@ -39,7 +39,7 @@ The tab shows the date it was reviewed and the reviewer's note (or says no note 
 
 ## Common problems
 
-- **"Choose a category for this model and save it first, then send it."** Set a category on the **Details** tab, save, then come back.
+- **"Choose a category for this product on the Details tab, save, and then you can send it to Moto Mangos."** Set a category on the **Details** tab, save, then come back.
 - **"Choose a catalog entry from the list."** Pick both a **Make** and a **Model** before pressing **Connect**.
 - **"This model is already on the Moto Mangos list, or waiting for review."** The product is already connected, or has a request open. Reload the page to see its state.
 - **"Only a model on the Moto Mangos list can be listed there."** The product isn't on an approved model yet. Wait for the review, or choose a model from the list.

@@ -3,7 +3,7 @@ title: Change a vehicle's details or move it to another location
 summary: Edit a vehicle's plate, year, colour, frame and engine numbers, notes, product or location.
 keywords: [edit vehicle, change plate, move vehicle, transfer location, change product, vehicle notes, accessories, แก้ไขรถ, เปลี่ยนทะเบียน, ย้ายสาขา, บันทึก]
 screens: [/[tenant]/fleet/units/[id]]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Change a vehicle's details or move it to another location
@@ -15,7 +15,7 @@ Who can do this: owners and managers. Staff and mechanics see the details but ch
 ## Steps
 
 1. Open the vehicle's page.
-2. Under **Details**, change what you need: **Product**, **Year**, **Odometer**, **Plate**, **Plate pending (not registered yet)**, **Colour**, **Frame (chassis) number**, **Engine number**, **Location** or **Notes**.
+2. Under **Details**, change what you need: **Product**, **Year**, **Odometer**, **Plate**, **Plate pending (not registered yet)**, **Colour**, **Frame (chassis) number**, **Engine number**, **Location** or **Notes**. **Product** offers the products in use: a retired product is not listed (as on Add vehicle), unless it is the one this vehicle is under now.
 3. Press **Save**.
 
 If the vehicle has upcoming bookings and you change its product or location, you are asked to confirm, for example "This vehicle has an upcoming booking. It will move with it to {destination}."

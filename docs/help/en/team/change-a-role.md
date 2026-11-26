@@ -3,7 +3,7 @@ title: Change a team member's role
 summary: Give someone in your team a different role (owner, manager, staff, mechanic or driver) on the Team page.
 keywords: [team, role, permissions, staff, manager, owner, mechanic, driver, add staff, invite, access, ทีมงาน, บทบาท, สิทธิ์, พนักงาน, ผู้จัดการ, เจ้าของ, ช่าง]
 screens: [/[tenant]/team]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Change a team member's role
@@ -25,13 +25,13 @@ Who can do this: owners and managers. Owners can give any role. Managers can onl
 | --- | --- |
 | Owner | Everything, including changing a location's time zone and making other owners |
 | Manager | Everything in shop admin except the owner-only items; can change staff, mechanics and drivers |
-| Staff | The four staff-app tabs. Updates odometers, vehicle status (Active or Maintenance), downtime and tax and insurance records. Sees products, fleet and prices but can't change product setup or prices |
+| Staff | The four staff-app tabs. Updates odometers, vehicle status (Active or Maintenance), downtime and tax and insurance records. Sees products, fleet and prices but can't change product setup or prices. Reads Settings › Extras (**Shop settings** in the menu) |
 | Mechanic | Dashboard, Price check (what is free, no prices) and Maintenance; updates odometers, vehicle status, downtime and tax and insurance records. Can't see prices |
 | Driver | Dashboard, Orders and Price check (what is free, no prices). Can see the fleet but can't change vehicles |
 
 ## Adding someone new
 
-Inviting new people arrives in Phase 11. Until then, ask Mango Works to add them.
+Inviting new people comes in a later update. Until then, ask Mango Works to add them.
 
 ## Common problems
 

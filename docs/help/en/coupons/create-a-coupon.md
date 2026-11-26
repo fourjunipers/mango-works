@@ -3,7 +3,7 @@ title: Create a coupon
 summary: Make a discount code with a percentage or fixed amount off, and optionally limit its products, dates, rental length, spend, uses and where it can be used.
 keywords: [coupon, discount code, promo code, voucher, promotion, percentage off, money off, flyer code, คูปอง, โค้ดส่วนลด, รหัสส่วนลด, โปรโมชั่น, ส่วนลด]
 screens: [/[tenant]/settings/coupons, /[tenant]/settings/coupons/new]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Create a coupon
@@ -30,11 +30,11 @@ Who can do this: owners and managers.
    - **Minimum days**: the rental must be at least this many days.
    - **Minimum spend**: counts only this coupon's own lines, after seasonal prices and before any discount.
    - **Total uses**: how many bookings can use it, in all. A cancelled booking gives its use back.
-8. Under **Where it can be used**, tick at least one: **By staff, at the counter or on the phone**, **On the shop’s booking page**, **On Moto Mangos**.
+8. Under **Where it can be used**, all three start ticked: **By staff, at the counter or on the phone**, **On the shop’s booking page**, **On Moto Mangos**. Untick any you don't want; at least one must stay ticked.
 9. Under **With other discounts**:
    - **Can be combined with the returning-customer discount**. Off: a returning customer gets whichever of the two takes more off.
    - **Can be used on season discounts**. Off: the coupon takes nothing off a rental that a season has already made cheaper.
-10. Press **Create coupon**. You see "Coupon created." The coupon starts **On**.
+10. Press **Create coupon**. You see "Coupon saved." The coupon starts **On**.
 
 For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).
 

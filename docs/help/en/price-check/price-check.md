@@ -3,14 +3,14 @@ title: Check what is free and what it costs (Price check)
 summary: Search for a vehicle, gear or service to see how many are free for your dates, why it can't be booked, and its price from the counter, your booking page or Moto Mangos. Nothing is booked.
 keywords: [price check, new order, availability, what is free, how many free, is it available, quote, price for dates, coupon, booking page, Moto Mangos, walk-in, notice, search, เช็กราคา, ว่างไหม, รถว่าง, ราคา, ออเดอร์ใหม่, คูปอง]
 screens: [/[tenant]/new-order]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Check what is free and what it costs (Price check)
 
 The **Price check** tab answers "is it free, and what does it cost?" on one card. Set the dates, search for a product, and see how many are free and its price, with your seasons, extras, a coupon and the returning-customer discount.
 
-It only checks. Nothing is booked or held, and trying a coupon does not count a use. Making orders comes with the New order screen in Phase 3.
+It only checks. Nothing is booked or held, and trying a coupon does not count a use. Making orders comes with the New order screen in a later update.
 
 **Who can do this**
 

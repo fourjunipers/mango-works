@@ -3,14 +3,14 @@ title: Offer extras with every vehicle
 summary: Set the rental gear and services the whole shop offers with every vehicle, such as helmets, in Settings › Extras.
 keywords: [extras, every vehicle, all bikes, shop-wide extras, helmet, included, ของเสริม, ทุกคัน, หมวกกันน็อค]
 screens: [/[tenant]/settings/extras]
-updated: 2026-11-19
+updated: 2026-11-26
 ---
 
 # Offer extras with every vehicle
 
 **Settings › Extras** holds "The rental gear and services offered with every vehicle of the shop." A vehicle can set its own, or switch one off with "Not offered for this vehicle", on its Extras tab: see [Offer extras with a vehicle](../products/offer-extras-with-a-vehicle.md).
 
-Who can do this: owners and managers.
+Who can do this: owners and managers. Staff can read it, with no controls: **Shop settings** in their menu opens it.
 
 ## Steps
 

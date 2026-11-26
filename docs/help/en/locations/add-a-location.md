@@ -3,7 +3,7 @@ title: Add a location
 summary: Add another branch or pickup point with its own name, time zone, address and contact details.
 keywords: [location, branch, shop address, second shop, pickup point, add location, delete location, map link, phone, WhatsApp, LINE ID, สาขา, เพิ่มสาขา, ที่อยู่, ที่ตั้ง, ลบสาขา]
 screens: [/[tenant]/locations, /[tenant]/locations/new, /[tenant]/locations/[id]]
-updated: 2026-11-19
+updated: 2026-11-26
 ---
 
 # Add a location
@@ -21,7 +21,7 @@ Who can do this: owners and managers.
 5. Press **Save**.
 6. Set the location's hours and days off: see [Set opening hours](set-opening-hours.md) and [Add a closure](add-a-closure.md).
 
-After saving, the location's page also shows **Moto Mangos market**: "Set when markets arrive (Phase 3M)." Nothing to do there yet.
+After saving, the location's page also shows **Moto Mangos market**: "Set in a later update." Nothing to do there yet.
 
 ## Delete a location
 

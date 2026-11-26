@@ -3,7 +3,7 @@ title: Set tax and insurance reminders
 summary: Choose how many days before a road tax or insurance expiry the dashboard reminds you, and switch on a monthly digest.
 keywords: [reminders, road tax, insurance, expiry, renewal reminder, monthly digest, alert, notification, การแจ้งเตือนภาษีและประกัน, ภาษีรถ, พ.ร.บ., ประกันหมดอายุ, แจ้งเตือน]
 screens: [/[tenant]/settings, /[tenant]/dashboard]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Set tax and insurance reminders
@@ -17,7 +17,7 @@ Who can do this: owners and managers.
 1. Open **Shop settings**.
 2. Under **Tax and insurance reminders**, type the **Days before expiry**: up to 10 numbers separated by commas, for example 45, 30, 14, 7. Leave it blank for no reminders.
    The largest number also decides when a renewal first shows on the dashboard.
-3. Choose a **Monthly digest**: **Off**, or a day of the month for one list of everything expiring that month.
+3. Choose a **Monthly digest**: **Off**, or a day of the month for one list of everything expiring that month. The digest is not sent yet: the setting is kept, and sending comes in a later update.
 4. Press **Save**.
 
 The expiry dates come from each vehicle's records: see [Record road tax, insurance or an inspection](../fleet/record-tax-and-insurance.md).

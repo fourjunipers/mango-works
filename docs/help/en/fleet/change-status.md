@@ -3,7 +3,7 @@ title: Take a vehicle off the road (maintenance or retire)
 summary: Set a vehicle to Active, Maintenance or Retired, and what each status does to bookings.
 keywords: [status, maintenance, repair, off road, out of service, retire, restore, unavailable, active, สถานะ, ซ่อมบำรุง, ปลดระวาง, งดให้เช่า, ซ่อม]
 screens: [/[tenant]/fleet/units/[id]]
-updated: 2026-11-19
+updated: 2026-11-26
 ---
 
 # Take a vehicle off the road (maintenance or retire)
@@ -17,7 +17,7 @@ Each vehicle has one status. Scheduled downtime for set dates is separate: see [
 | **Retired** | Out of the fleet for good. Can't be rented; its history is kept. |
 | **Sold** | Sold. Can't be rented. See [Mark a vehicle as sold](mark-as-sold.md). |
 
-Who can do this: staff and mechanics switch between **Active** and **Maintenance**. Owners and managers can also retire, restore and sell.
+Who can do this: staff and mechanics switch between **Active** and **Maintenance**. Owners and managers can also retire, restore and sell. On a sold or retired vehicle, staff and mechanics see the choices greyed out: only an owner or manager can change it.
 
 ## Steps
 

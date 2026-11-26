@@ -3,7 +3,7 @@ title: Add a vehicle to your fleet
 summary: Add one real vehicle, with its plate, frame number, year and location, under a product you already have.
 keywords: [add vehicle, add bike, add motorbike, new bike, inventory, plate, registration, frame number, chassis number, VIN, engine number, fleet, เพิ่มรถ, ทะเบียน, เลขตัวถัง, เลขเครื่อง, รถทั้งหมด, เพิ่มมอเตอร์ไซค์]
 screens: [/[tenant]/fleet, /[tenant]/fleet/units/new, /[tenant]/products/[id]]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Add a vehicle to your fleet
@@ -19,7 +19,7 @@ Who can do this: owners and managers.
 3. Fill in what you know:
    - **Year**: the year of this vehicle.
    - **Odometer (km)**, or **Odometer (mi)** if your shop uses miles.
-   - **Plate**. A new vehicle not registered yet: tick **Plate pending (not registered yet)** instead. Staff are warned before check-out.
+   - **Plate**. A new vehicle not registered yet: tick **Plate pending (not registered yet)** instead. The vehicle's page then says "This vehicle has no plate yet."
    - **Colour**, **Frame (chassis) number**, **Engine number**.
    - **Location**: where the vehicle is kept.
    - **Notes**: anything else worth knowing.

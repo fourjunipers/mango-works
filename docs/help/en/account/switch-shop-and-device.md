@@ -3,7 +3,7 @@ title: Switch shop and set up this device
 summary: Find your way around on a computer or a phone, change which shop you are working in, set the language, appearance and tab bar for this device, and sign out.
 keywords: [switch shop, change shop, choose a shop, sidebar, where is settings, shop admin, language, Thai, English, dark mode, light mode, tab bar, install app, add to home screen, sign out, log out, เปลี่ยนร้าน, ภาษา, โหมดมืด, ออกจากระบบ, ติดตั้งแอป, ตั้งค่าร้าน]
 screens: [/[tenant]/me, /]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Switch shop and set up this device
@@ -14,7 +14,7 @@ updated: 2026-11-20
 
 - At the top: the shop's name, with **Switch shop** under it when you belong to more than one shop.
 - **Staff app**: the tabs your role uses (**Dashboard**, **Orders**, **Price check**, **Maintenance**).
-- **Shop admin**: **Products**, **Fleet** and, for owners and managers, **Locations**, **Team** and **Shop settings**.
+- **Shop admin**: **Products**, **Fleet** and, for owners and managers, **Locations**, **Team** and **Shop settings**. Staff also have **Shop settings**, which opens **Extras** (read only).
 - At the bottom: **You and this device**, your email, and **Sign out**.
 
 **On a phone** (a narrow screen):
@@ -35,7 +35,7 @@ updated: 2026-11-20
 2. Under **This device**, choose:
    - **Language**: **English** or **ไทย** (Thai).
    - **Appearance**: **Match device**, **Light** or **Dark**.
-   - **Tab bar on phones**: **Bottom** or **Top**. On a wide screen the tabs are in the sidebar instead.
+   - **Tab bar on phones**: **Bottom** or **Top**. The help line counts your tabs (four for owners, managers and staff; three for mechanics and drivers). On a wide screen the tabs are in the sidebar instead.
 
 These choices are saved on this device only. Set them again on another phone or computer.
 
@@ -51,4 +51,4 @@ On a computer, press **Sign out** at the bottom of the sidebar. On a phone, open
 
 ## Which tabs you see
 
-Owners, managers and staff see all four staff-app tabs. Mechanics see **Dashboard**, **Price check** and **Maintenance**, and open straight to **Maintenance**. Drivers see **Dashboard**, **Orders** and **Price check**. For mechanics and drivers, **Price check** shows what is free, with no prices (see [Check what is free and what it costs](../price-check/price-check.md)). Everyone sees **Products** and **Fleet**; only owners and managers see **Locations**, **Team** and **Shop settings**.
+Owners, managers and staff see all four staff-app tabs. Mechanics see **Dashboard**, **Price check** and **Maintenance**, and open straight to **Maintenance**. Drivers see **Dashboard**, **Orders** and **Price check**. For mechanics and drivers, **Price check** shows what is free, with no prices (see [Check what is free and what it costs](../price-check/price-check.md)). Everyone sees **Products** and **Fleet**; only owners and managers see **Locations** and **Team**. **Shop settings** is for owners and managers, and staff, for whom it opens **Extras** only.

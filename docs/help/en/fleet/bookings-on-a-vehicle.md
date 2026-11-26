@@ -3,12 +3,12 @@ title: See a vehicle's bookings
 summary: On a vehicle's page, see the bookings it is set aside for, held, booked, out or returned, with their dates.
 keywords: [vehicle bookings, who has this bike, is this bike booked, when is it free, hold, held, booked, out, overdue, returned, reservation, การจอง, รถถูกจอง, จองแล้ว, คืนแล้ว, เลยกำหนด]
 screens: [/[tenant]/fleet/units/[id]]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # See a vehicle's bookings
 
-A vehicle's page has a **Bookings** section: the bookings this vehicle is set aside for, with their dates on the location's clock. It is read-only. Bookings are made and changed from orders, which come in Phase 3.
+A vehicle's page has a **Bookings** section: the bookings this vehicle is set aside for, with their dates on the location's clock. It is read-only. Bookings are made and changed from orders, which come in a later update.
 
 Who can do this: everyone in the shop. No prices are shown here.
 
@@ -31,4 +31,4 @@ Downtime has its own section under it: see [Block a vehicle for dates (downtime)
 ## Common problems
 
 - A hold reads "Hold ran out", then disappears: the customer didn't pay in time.
-- "Out" and "Returned" appear once pickup and return are recorded, from Phase 3.
+- "Out" and "Returned" appear once pickup and return are recorded, in a later update.

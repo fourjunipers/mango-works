@@ -3,7 +3,7 @@ title: Find a vehicle in your fleet
 summary: Search, filter, sort and reorder the Fleet list to find a vehicle by product, plate, frame or engine number.
 keywords: [find vehicle, search plate, fleet list, filter, sort, reorder, sold vehicles, retired vehicles, available, ค้นหารถ, รถทั้งหมด, ทะเบียน, เลขตัวถัง, กรอง, เรียงลำดับ]
 screens: [/[tenant]/fleet, /[tenant]/maintenance]
-updated: 2026-11-19
+updated: 2026-11-26
 ---
 
 # Find a vehicle in your fleet
@@ -33,7 +33,7 @@ The search, filters and sort are kept in the page address, so you can bookmark a
 
 ## On a phone
 
-On the **Maintenance** tab, type a plate or frame number in **Find a vehicle**, or press **Scan QR** to scan the vehicle's sticker.
+On the **Maintenance** tab, type a plate, frame or engine number in **Find a vehicle** (the box says "Plate, frame or engine number"), or press **Scan QR** to scan the vehicle's sticker.
 
 ## Common problems
 
