@@ -434,6 +434,227 @@ Decided on 19 Nov 2026: the seventeen rows under the Summary, Mark's answers to 
 
 Also to replace in the move: `public.shop_numbers_readable()` calls `auth.role()` directly (added by PR 57, `20261120000100_marketplace_security_audit.sql`), a Supabase-only dependency.
 
+## 8a. Open points: options and recommendations (prep for Fable design review)
+
+**Written 25 Nov 2026, from `main` at `25a82df` (PR 80 merged; 71 migrations). Docs only: nothing was run, built or tested, and no Neon, Supabase, Netlify or provider console was opened.** Its purpose is to give the Fable design review one place with each open decision, what we already know, and a recommendation. **Nothing here is decided.** §8 and the decisions under the Summary stand as written. Each point below is a proposal for Mark.
+
+**Where the points come from.** §8 lists five numbered rows (1 to 5) and one "also to replace" note. Mark asked for those five, then for every other decision the plan or the spike's 18 points leaves open, each marked as added. **Points 6 to 12 are added by this section** and are each marked **[added in §8a]**. Point 6 is §8's "also to replace" note. Points 7 to 12 are decisions that §7, the spike write-up or the code leave open without saying so. All 18 spike points were checked against §7.0: each has a stage that deals with it, and only points 3, 5, 10 and 17 still leave a choice open. Those four are in points 4, 5, 1 and 2 below. Twelve points in all.
+
+**Facts and inferences.** A statement with a file reference, a spike row or a spike point is documented fact. **Anything marked *(inference)* is my reading** and has not been checked. Prices are §5's, read 19 Nov 2026.
+
+**The limits every recommendation keeps to** (Mark's): one database for the platform and Moto Mangos; LINE and Google sign-in; private files only in each shop's Google Drive (decision 49); live (`mfaqydyoweerlqsgwnay`) untouched until the cutover; Netlify Personal until go-live (Pro and Singapore functions are stage 11); a slight cold start for the first user after a quiet spell is acceptable, and no other performance loss is; free tiers until the product proves itself.
+
+### Summary
+
+| # | Point | Recommended | Confidence | Must be proven before deciding |
+| --- | --- | --- | --- | --- |
+| 1 | Migration tool | (b) Our own small SQL-file runner, which also refreshes the schema cache | Medium | That Neon's API refresh can be called and checked from a script; whether the runner should replace the Supabase CLI locally now |
+| 2 | Staging after the move | (a) Neon Free; run the hold sweep by hand | High | Staging's first month stays under 100 CU-hours with real Playwright runs |
+| 3 | Neon plan for live later | (a) Launch, until a shop asks for an uptime promise in writing | High | Nothing before go-live; watch live's compute size in the first months |
+| 4 | Our own users table | (b) `public.users`, ours, with a nullable email; Better Auth's tables point at it by id | Medium | Better Auth writing to a table we own by id; a LINE user with no email end to end |
+| 5 | The `role: anon` token | (b) One long-lived anon token signed once by a script, kept server-side, rotated with the key | Medium | The Data API trusting one JWKS that holds two keys |
+| 6 **[added in §8a]** | `shop_numbers_readable()` and the rest of `public` | (b) Re-point in the baseline; extend the static test to `public` now | High | The count of direct `auth.*` uses left in `public` |
+| 7 **[added in §8a]** | The service path on Neon | (a) A short-lived `service_role` token signed on the server | Medium | A `service_role` call from a Netlify function through the Data API, same codes |
+| 8 **[added in §8a]** | Generated types after Supabase CLI v4 | (a) Pin the CLI version that still has `--db-url` | Medium | That the pinned CLI keeps running against plain Postgres |
+| 9 **[added in §8a]** | The local stack's database image | (a) Our own small image: Postgres 17 with PostGIS and pg_cron | Medium | Build time in CI; same extension versions as Neon |
+| 10 **[added in §8a]** | One Better Auth for two apps, or two | (b) One user table and one signing key, a Better Auth instance in each app | Medium | Better Auth's JWT plugin signing with a key we supply and share |
+| 11 **[added in §8a]** | Two schema histories while both stacks run | (a) Every new migration written once, run on both stacks; the baseline rebuilt at the end | Low | That every new migration loads on both; a CI check that compares the two schemas |
+| 12 **[added in §8a]** | The session check on every request | (a) Better Auth's cookie cache, so no database call per request | Medium | That a cookie-cached session plus a token costs no more than today's `getClaims()` |
+
+### 1. Migration tool (§8 row 1; decision 9)
+
+**Question.** What applies migrations to Neon (staging and live), the local stack and CI once Supabase's CLI no longer runs the database?
+
+**What we already know.**
+- On Neon every run must end with a Data API schema-cache refresh through Neon's API. `NOTIFY pgrst` does nothing there (spike point 10; stage 2 detail). The local PostgREST still needs `NOTIFY pgrst`.
+- The history today is `supabase_migrations.schema_migrations`, written by `supabase db push` (§1 row 13). The CLI is a root dev dependency (`package.json`: `"supabase": "^2.121.0"`).
+- The spike loaded all 67 migrations of the time with its own small loader, `spike/neon/scripts/load-schema.mjs`, which wrote its own history table (`spike.migrations`, `spike/neon/sql/bootstrap.sql` §8). It set the Data API's schemas through Neon's API (`spike/neon/scripts/data-api-settings.mjs`).
+- The baseline is built from the final schema, not by replay (spike point 14). Neon has no CLI of its own and points to Drizzle, Prisma, Flyway, dbmate and others (§2).
+- `supabase db push --db-url` is documented for self-hosted Supabase only, and `--db-url` goes away in CLI v4 (§2).
+
+**Options.**
+
+| | Option | Cost and risk |
+| --- | --- | --- |
+| (a) | **Supabase CLI pointed at Neon** (`db push --db-url`), plus a separate refresh step | No new dependency now. But it is used outside what it is documented for, it disappears in v4, and it keeps a Supabase tool in a stack meant to be free of Supabase. The refresh is a second command that can be forgotten, and a forgotten refresh makes a new function answer `PGRST202` (spike point 10). Free |
+| (b) | **Our own SQL-file runner** (a short Node script in the repo, using the `pg` driver already in the spike), with a history table, one transaction per file, a checksum per applied file (so an edited applied migration is refused: CLAUDE.md's rule), and the refresh as its last step, chosen per target (Neon API or `NOTIFY pgrst`) | About one PR inside stage 2. Needs Mark's yes for the `pg` driver if it is not already present (CLAUDE.md: ask before a dependency) *(inference: `pg` may already come in through Better Auth's Postgres adapter in stage 4)*. We own its bugs; a runner is small and the rules it must keep are few. Free. Needs a Neon API key per environment, kept as a secret (stage 2 detail) |
+| (c) | **An off-the-shelf runner** (dbmate, Flyway, or Drizzle's migrator) | A tested history table and locking. But a new dependency and a binary in CI, it does not know Neon's refresh (a wrapper is still needed), and Drizzle or Prisma bring a schema model we do not use. Free for the open-source editions |
+
+**Recommendation: (b).** The one step that matters most on Neon, the refresh, is the step no general tool does. A runner that does it every time, and refuses to report success without it, removes a failure the spike showed is easy to make. It is the plan's existing lean (§8 row 1).
+
+**To prove first.** On a Neon branch: the runner applies a migration that adds a function, refreshes, and the function answers through the Data API with no hand step (already stage 2's "done when"). The refresh call's own success is read back, not assumed. Running the same file twice writes once. An applied file changed by one byte is refused. **Also to decide in the review:** whether the runner replaces `supabase db push` for staging before the move, or only on the Neon side *(inference: Neon only is safer; the Supabase side keeps its current tool until stage 10)*.
+
+### 2. Staging once the move is done (§8 row 2)
+
+**Question.** Does staging stay a Neon Free project after stage 8, or become paid?
+
+**What we already know.** Decision 5: staging is a Neon Free project that may scale to zero. Measured (spike row 2, point 17): about 2.1 s on the first call after 10 idle minutes, occasionally 6 to 8 s. Staging runs no schedule (§7.3), because a minute job keeps a Free compute awake all month (182 CU-hours against 100; spike row 8). Staging's database is 31 MB; Free allows 0.5 or 1 GB (Neon's pages disagree, §5).
+
+**Options.**
+
+| | Option | Cost and risk |
+| --- | --- | --- |
+| (a) | **Stay on Neon Free** | $0. Cold starts in Playwright (inside its 15 s wait; one in 26 near the 8 s statement timeout). No scheduler, so staging shows run-out holds longer than live, and the sweep is run by hand. If CI or a long test session uses up the 100 CU-hours, Neon suspends the compute until the next month *(inference: a busy test month is the likeliest way to reach it)* |
+| (b) | **A paid project in the Launch organisation, scale-to-zero on** | Pay per compute-hour ($0.106; roughly $1 to $10 a month at staging's use *(inference)*). No 100-hour ceiling; same cold start |
+| (c) | **Paid, always on** | About $19 a month (§5). No cold start, and the scheduler could run. Pays for comfort, not for anything a user sees |
+
+**Recommendation: (a)**, as §8 says, with a written trigger for (b): the month's CU-hours pass 70, or a cold start fails a CI run twice in a week. Free tiers are preferred and nothing on staging reaches a customer.
+
+**To prove first.** Staging's first month after stage 8 under 100 CU-hours with real Playwright runs (stage 8's "done when"). A test that needs the sweep calls `platform.release_expired_holds()` itself.
+
+### 3. Neon plan for live later (§8 row 3)
+
+**Question.** Does live stay on Launch, or move to Scale for the 99.95% uptime promise?
+
+**What we already know.** Decision 4: Launch, always on, Singapore, about $19 a month at 0.25 CU. Scale is about twice the compute price ($0.222 against $0.106 a compute-hour) and is the only plan with an uptime promise (§2, §5). At 50 shops: Launch $50 to $90, Scale $90 to $170 a month (§5).
+
+**Options.** (a) **Stay on Launch**, until a shop asks for an uptime promise in writing. (b) **Scale from go-live**: double the compute bill, a promise no shop has asked for. (c) **Launch, with a size limit raised** as load grows *(inference: compute size is a setting on both plans, so growth alone does not force Scale)*.
+
+**Recommendation: (a)**, with (c) as the growth path. It is §8's recommendation and Mark's preference for cheap plans until the product proves itself. §6.2's reopening events still apply.
+
+**To prove first.** Nothing before go-live. In the first months, watch live's compute use against 0.25 CU (stage 11 measures latency from Singapore).
+
+### 4. Our own users table (§8 row 4; spike point 3)
+
+**Question.** What table do the 13 references to `auth.users` point at in the baseline, and how does it sit beside `profiles` and Better Auth's own tables, given that a LINE user may have no email?
+
+**What we already know.**
+- On Neon `auth.users` cannot exist: the `auth` schema belongs to Neon once the Data API is on (spike points 1 and 3). The references: `profiles.id`, `memberships.user_id` (two migrations), `audit_events.actor`, four `created_by`/`recorded_by` defaults with foreign keys, the review follow-up's `not exists (select 1 from auth.users …)`, two joins for the member list, and three triggers on `auth.users`/`auth.identities` that make a profile, copy an email change, and record `line_user_id` (`20261024000200_profiles.sql`; `20261109000200_platform_memberships.sql:10,99`; `20261110000100_platform_schema.sql:135,202`; `20261110000200_platform_audit.sql:18`; `20261110000500`, `20261111000200`, `20261113000300`, `20261116000100`, `20261119000100`). Phase 3 adds none: "the 'who' columns are plain ids" (`20261124000100_platform_orders.sql:28`).
+- **LINE gives no email today either.** Both apps' LINE providers ask for `openid profile` with `email_optional: true` (`apps/*/scripts/create-line-provider.mjs`). The spike's LINE token carried no email (row 6). The spike gave such a user a placeholder address that can never be real (`${sub}@line.spike.invalid`, `spike/neon/lib/auth.mjs`).
+- `profiles.email` is already nullable, but `profiles_notify_channels_has_email` requires `'email'` in `notify_channels` for every profile (`20261024000200_profiles.sql`). *(Inference: a LINE-only customer therefore has email as a notification channel and no address to send to, today as well. That is a product question beyond the move, and is noted here only because the users table makes it visible.)*
+- In the spike, Better Auth kept its own tables in its own schema under a restricted login role (no BYPASSRLS, no rights on our tables), with uuid ids so a user's id is the token's `sub`. A security-definer function linked a Better Auth user to the stand-in users table by the same id (`spike/neon/scripts/row6-setup.mjs`).
+- While both stacks run, the table must exist on Supabase too, fed from `auth.users` there (§8 row 4).
+
+**Options.**
+
+| | Option | Cost and risk |
+| --- | --- | --- |
+| (a) | **Better Auth's own `user` table is the users table**, moved into our schema; the 13 references point at it | One table fewer. But Better Auth's migrations then own a table that seven of our foreign keys and RLS depend on, and its required columns (`email` not null, unique, in Better Auth's default schema *(inference from the spike's placeholder)*) force placeholder emails into our data. An upgrade of Better Auth that alters its table touches our core. On Supabase, `auth.users` would have to feed a table shaped like Better Auth's |
+| (b) | **A table of ours, `public.users` (id uuid, email nullable, created_at)**, that our foreign keys point at; Better Auth's tables stay in their own schema under their own role, and its user's id equals ours. One security-definer function, called when Better Auth makes a user, writes our row and the profile (the spike's `link_better_auth_user` pattern). On Supabase until the cutover, the existing triggers on `auth.users` feed the same table | Our schema stays ours; Better Auth can be upgraded or replaced without touching a foreign key; a missing email is a null, not a fake address. Costs one more table and a link step that must never be skipped. Cutover step 3 loads the users into both. Free |
+| (c) | **`profiles` becomes the users table** (the 13 references point at `profiles`) | No new table. But `profiles` is a marketplace table with user-editable columns and its own policies, and the platform's membership and audit would depend on a marketplace table (INTEGRATION.md §1 ownership: *(inference: probably wrong owner)*) |
+
+**Recommendation: (b).** It keeps the foreign keys and RLS on a table only our migrations change, handles "no email" honestly, and matches what the spike proved (a restricted Better Auth role, uuid ids, a link function). Better Auth's own email column still needs a value for LINE-only users: keep the spike's unroutable placeholder **inside Better Auth's table only**, never copied into ours *(inference: whether Better Auth can run with a null email for a social account was not tested)*.
+
+**To prove first.** On the local stack: Better Auth (as configured for stage 4) creating a LINE user with no email, the link function writing `public.users` and `profiles` in the same request, a staff membership and an audit row referring to it, and a user deleted on one side cascading as today. On Supabase: the existing triggers feeding `public.users` from `auth.users`, so both stacks have the same table. Also settle, in the review, who owns `public.users` (platform or marketplace; INTEGRATION.md §1).
+
+### 5. Where the `role: anon` token is signed, and how long it lives (§8 row 5; spike point 5)
+
+**Question.** The Data API refuses a request with no token (401), so every signed-out call needs a signed `role: anon` token. Who signs it, with which key, and for how long?
+
+**What we already know.**
+- No token is 401; a token with no `role` claim runs as Neon's `anonymous`, which must never be issued; a token with `role: anon` runs as `anon` once `anon` is granted to `authenticator` (spike row 8). The 207 grants to `anon` stay.
+- The Data API checks tokens against one JWKS address, RS256 or ES256, with a `kid` (`spike/neon/scripts/make-key.mjs`). In the spike, rows 1 to 5 used a key of the spike's own (`spike/neon/lib/token.mjs`, JWKS served as a static file with a 60-second cache, `spike/neon/netlify.toml`), and row 6 used Better Auth's JWT plugin and its `/jwks` route (`spike/neon/lib/auth.mjs`). *(Inference: the Launch project's JWKS address was pointed at one or the other in turn. Whether the Data API accepts a JWKS with two keys, or two addresses, was not tested.)*
+- A one-hour token ran out mid-test and answered 401 `PGRST303` (spike row 2).
+- Today's anon key is a long-lived signed token, public in the browser, which is how Supabase works.
+
+**Options.**
+
+| | Option | Cost and risk |
+| --- | --- | --- |
+| (a) | **Signed on the server per request** (or cached in the function's memory for a few minutes), short-lived (15 minutes, like the user tokens) | Nothing long-lived exists to leak. Costs a signature per cold function (microseconds, *(inference)*) and needs the private signing key in both sites' environments, the same key that can sign `service_role` |
+| (b) | **One long-lived anon token** (for example a year), signed once by a script, kept in each site's environment and rotated with the key; it may be as public as today's anon key, which the browser client (`packages/db/src/client.ts`) carries | Like today's anon key: no signing at run time, so the signing key need not be in every function. If it leaks, it grants only what `anon` may do, which is already public by design, and the key's rotation ends it. A token that expires unnoticed breaks every signed-out page at once *(inference: an expiry check in the smoke suite and a calendar line in the runbook would cover it)* |
+| (c) | **Signed by Better Auth's JWT plugin** for a pseudo-user | Ties the public path to the sign-in service; an anon token with a `sub` is a confusing shape. Not recommended |
+
+**Recommendation: (b)**, provided point 10's single key set is adopted, so that the anon token, the service token and the user tokens are checked against one JWKS. It costs nothing at run time and keeps the signing key in as few places as possible. *(Inference: whether the browser still needs a data token after the move, or whether every call goes through our server, is for stage 5; either way the anon token grants only what is public by design.)*
+
+**To prove first.** On a Neon branch: one JWKS with two keys (Better Auth's and ours), each `kid` accepted; a forged or expired anon token refused; the anon token able to read exactly what `anon` reads today and nothing more (the public-read tests of the marketplace). If the Data API takes only one key, point 10 decides which side signs everything.
+
+### 6. `public.shop_numbers_readable()` and the rest of `public` [added in §8a]
+
+**Question.** §8's note says `shop_numbers_readable()` calls `auth.role()` directly. When is it re-pointed, and what else in `public` is like it?
+
+**What we already know.** `20261120000100_marketplace_security_audit.sql:71-72` reads `coalesce((select auth.role()), 'service_role') = 'service_role'`. Stage 2's baseline re-points all 58 `auth.uid()` and 16 `auth.role()` calls (stage 2 detail). **The static test that pins direct uses, `apps/platform/tests/db/caller-functions.test.ts`, reads only the `platform` and `platform_private` schemas** (lines 66, 75, 81), so it does not see `public` (the marketplace's functions and policies, `profiles` among them).
+
+**Options.** (a) **Re-point it now** in a small marketplace migration calling `platform_private.app_role()`: one more migration to staging, and a marketplace function would then depend on a platform schema *(inference: an ownership question under INTEGRATION.md §1)*. (b) **Leave it to the baseline, and extend the static test to `public` now**, pinning today's direct uses so the count can only go down there too. (c) Leave it and the test as they are: the baseline's "nothing names `auth.`" check finds it in stage 2 anyway.
+
+**Recommendation: (b).** The baseline already does the re-pointing, and a check that catches a new direct use in `public` before stage 2 costs one test change.
+
+**To prove first.** The extended test lists the current direct uses in `public` (a number, written into the test); nothing else.
+
+### 7. The service path on Neon [added in §8a]
+
+**Question.** How does server code that acts as `service_role` (online booking in `apps/platform/lib/book-online.ts`, the marketplace's admin pages and `lib/auth/sync-role.ts`, `lib/stations/refresh.ts`, the seed, `packages/db/src/admin.ts`) reach Neon? Stage 5 lists two ways and does not choose.
+
+**What we already know.** A `service_role` made in SQL with BYPASSRLS works, and a `role: service_role` token through the Data API sees what RLS hides (spike row 3). A direct pooled connection with `set local role service_role` inside a transaction works, and role and claims are gone after commit (spike row 8). That way cannot be used for `authenticated` (spike point 7). Session settings leak through the pooler (spike row 8). Booking functions check `app_role() = 'service_role'`, which reads the token's claims (phase-3-plan §3.11).
+
+**Options.**
+
+| | Option | Cost and risk |
+| --- | --- | --- |
+| (a) | **A short-lived `service_role` token signed on the server**, through the same Data API client as every other call | One data path for everything: the same codes, `.single()` wrapper, 8 s timeout and `try_again` handling as today (spike row 5 measured `reserve()` online this way). The signing key is as dangerous as today's service-role key and lives only in server environments |
+| (b) | **A direct pooled connection** with `set local role service_role` and claims set per transaction | A second data path with its own error shapes; `app_role()` must see claims set by hand on every transaction; a forgotten `set local` runs as the owner *(inference: the login role would have to be one without BYPASSRLS to make that harmless)*. A database password in every function that uses it |
+| (c) | **Both**: (a) for app code, (b) for scripts (seed, copy, cutover checks) | Scripts already connect directly (the spike's did); keeps the app on one path |
+
+**Recommendation: (a) for app code, with (c)'s direct connection for scripts only.** It is the shape today's code already has, so stage 5 changes the client factory and not the callers.
+
+**To prove first.** From a Netlify function, `reserve()` online with a `service_role` token: the same `55P03`, `57014` and `40P01` at the caller (spike row 5 did this from the spike's own function; repeat with the real factory). ESLint keeps the signing helper inside `packages/db`.
+
+### 8. Generated types after Supabase CLI v4 [added in §8a]
+
+**Question.** What writes `packages/db/src/database.types.ts` once `--db-url` leaves the CLI?
+
+**What we already know.** Today `supabase gen types typescript --local --schema public,graphql_public,platform` (`packages/db/package.json`). Against a Neon address, CLI 2.121.0 with `--db-url` gave the same text apart from `graphql_public`, with `channel_binding` removed from the address (spike row 8). `--db-url` goes away in v4 (§2). Against the local stack (plain Postgres) it was not tried *(inference: it should work the same, since it read Neon's plain Postgres)*.
+
+**Options.** (a) **Pin the CLI to the last version with `--db-url`** and run it against the local stack: no new tool, no change to the generated file; a pinned old tool for one job. (b) **Another generator** (for example a PostgREST-schema or `pg`-catalog generator): a new dependency, and a generated file whose shape differs, so every typed call site may need touching. (c) **Write our own small generator**: fits exactly, but it is code to own for little gain.
+
+**Recommendation: (a).** It keeps the typed call sites unchanged through the move. Reopen only if the pinned CLI stops working.
+
+**To prove first.** The pinned CLI against the local stack of point 9 gives the same file, text for text, as against Neon.
+
+### 9. The local stack's database image [added in §8a]
+
+**Question.** The Compose stack needs Postgres 17 with PostGIS and pg_cron, and "no stock image has both" (§4). Whose image?
+
+**What we already know.** Neon runs PostGIS 3.5.7, btree_gist 1.7, pgcrypto 1.3 and pg_cron 1.6 on Postgres 17.12 (spike row 8, §2). The race and gate tests use `docker exec … psql` into the database container (§1 row 14, §4).
+
+**Options.** (a) **Our own small Dockerfile** (the official PostGIS image plus the pg_cron package), built in CI and cached: we pin the versions to Neon's; a few minutes per CI build when the cache misses *(inference)*. (b) **A community image that has both**: no build, but an outside image in the test path (and CLAUDE.md's care with untrusted downloads applies). (c) **pg_cron off locally**, scheduling tested only on Neon: smallest image, but the local stack then cannot test the scheduling script of stage 7.
+
+**Recommendation: (a)**, with the Dockerfile in the repo and versions matching Neon's. It needs Mark's yes (a build step in CI).
+
+**To prove first.** The image builds in CI within today's job time; every database test file passes on it (stage 2's "done when").
+
+### 10. One Better Auth for two apps, or two [added in §8a]
+
+**Question.** Moto Mangos and the platform are two Netlify sites on one database. Do they share one user table and one signing key, and does each run its own Better Auth?
+
+**What we already know.** Decision 7: Better Auth "run in the apps". Today one Supabase project serves both, with one `auth.users`, and each app has its own LINE provider set-up (`apps/*/scripts/create-line-provider.mjs`) and its own sign-in emails (SPEC, Two brands). The Data API trusts one JWKS address (point 5). In the spike, one Better Auth served one site (`spike/neon/lib/auth.mjs`).
+
+**Options.**
+
+| | Option | Cost and risk |
+| --- | --- | --- |
+| (a) | **Two Better Auth instances, two key sets** | Each app fully separate. But the Data API trusts one JWKS address *(inference, see point 5)*, and the same person would be two users unless the tables are shared |
+| (b) | **One user table and one signing key; a Better Auth instance in each app**, each with its own cookies, providers' callback addresses and branded emails, both signing tokens with the same private key and the same `kid`, published at one JWKS address | One person is one user across both brands, as today. One JWKS for the Data API. The private key sits in both sites' environments *(inference: as the service-role key does today in the marketplace and the platform's two library files)*. Needs Better Auth's JWT plugin to sign with a key we give it, not one it generates in its own table *(inference: not checked)* |
+| (c) | **One sign-in service** (one Better Auth on one domain) used by both sites | One place for sessions, but cross-domain sessions for two brands, a third deployable thing, and a function call per sign-in on Netlify Personal's credits |
+
+**Recommendation: (b).** It keeps today's single user per person and gives the Data API one key set, which points 5 and 7 then use as well.
+
+**To prove first.** Both apps' Better Auth instances writing to one set of tables without conflict (two migrations runners must not both own Better Auth's schema *(inference)*); a token from each accepted by the Data API under the one JWKS; Better Auth's JWT plugin signing with a supplied key, or else our own signing helper used for all four token kinds.
+
+### 11. Two schema histories while both stacks run [added in §8a]
+
+**Question.** From stage 2 to the cutover, Supabase runs the 71 migrations plus new ones, and Neon runs a baseline built from the final schema. How does a migration written in that window reach both?
+
+**What we already know.** §7: `main` stays able to run on Supabase until the cutover, and CI runs the database tests on both stacks. Stage 2: one baseline made from the final schema, the applied migrations kept as history and unedited. Three migrations check function bodies by md5 (spike point 14). The plan does not say what happens to a migration written after the baseline is made *(this is the gap)*.
+
+**Options.** (a) **Write each new migration once, so that it loads on both**: it calls `app_uid()`/`app_role()` and names no `auth.` object (CLAUDE.md already requires this of new SQL), and both runners apply it; the baseline is rebuilt from Supabase's final schema just before stage 8, and a CI check compares the two schemas. Low risk if new migrations follow today's rules; the risk is a migration that re-creates an old function body still holding `auth.uid()`. (b) **Freeze schema changes from stage 2 to the cutover**: simplest, but Phase 3 follow-ups or 3M preparation would wait. (c) **Two copies of each migration**: drift waiting to happen.
+
+**Recommendation: (a)**, with the schema comparison in CI, because the build order (Phase 3, then the move, then 3M) leaves few schema changes in the window. **Low confidence**: this needs the reviewer's eye most.
+
+**To prove first.** A CI job that loads the baseline plus every newer migration on the local stack and compares the result (`pg_dump --schema-only`, with `auth.*` re-pointing normalised) to Supabase's schema; one real migration from the window through both.
+
+### 12. The session check on every request [added in §8a]
+
+**Question.** Today each request checks the session locally (`supabase.auth.getClaims()` in both `proxy.ts` files, `apps/platform/lib/session.ts`, `apps/marketplace/lib/auth/session.ts`): no network call. Will Better Auth add a database call per request?
+
+**What we already know.** In the spike, each call first asked Better Auth for the session (`auth.api.getSession`) and then for a token (`auth.api.getToken`) (`spike/neon/netlify/functions/row6.mts`). *(Inference: by default Better Auth's session check reads its session table, which from US East is a round trip to Singapore, about 200 ms on spike row 1's figures, on every page until stage 11.)* Mark accepts a cold start after a quiet spell and no other performance loss.
+
+**Options.** (a) **Better Auth's cookie cache** (a signed, short-lived copy of the session in a cookie, checked without the database), plus the 15-minute Data API token kept in an HttpOnly cookie and reused until it nears expiry: no extra round trip on most requests. A signed-out user's revoked session lives up to the cache's age *(as today: a Supabase token is good until it expires, §3.4 pitfall 8)*. (b) **The database lookup every request**: always current, but a round trip per page, a performance loss Mark has not accepted. (c) **Our own signed session cookie** in place of Better Auth's: more code of ours in the sign-in path.
+
+**Recommendation: (a)**, with the cache's age no longer than the token's 15 minutes.
+
+**To prove first.** In stage 4, page timings with the switch on and off from the same function region: a signed-in page no slower than on Supabase by more than decision 13's line (10% or 20 ms). A session revoked in Better Auth stops working within the cache's age.
+
 ## 9. Sources
 
 **The spike (23 to 24 Nov 2026):** [`neon-spike.md`](neon-spike.md); code and raw results at the git tag `archive/neon-spike-2026-11`, under `spike/neon/`. The spike found two Neon behaviours that Neon does not document: the Data API sets `request.jwt.claims`, and it does not apply a role's settings.
