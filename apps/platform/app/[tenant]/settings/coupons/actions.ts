@@ -1,5 +1,6 @@
 "use server";
 
+import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { FormState } from "@/components/action-form";
@@ -55,11 +56,20 @@ async function save(
   ctx: Awaited<ReturnType<typeof context>>,
   payload: CouponPayload,
 ): Promise<{ ok: true; id: string } | { ok: false; state: FormState }> {
-  const answer = await saveCoupon(
-    ctx.supabase as unknown as CouponSaveDb,
-    ctx.tenant.id,
-    payload,
-  );
+  let answer: Awaited<ReturnType<typeof saveCoupon>>;
+  try {
+    answer = await saveCoupon(
+      ctx.supabase as unknown as CouponSaveDb,
+      ctx.tenant.id,
+      payload,
+    );
+  } catch (error) {
+    // An error no refusal names (saveCoupon() throws it): "Couldn't save" on
+    // the form, not the error page. The save ran in one transaction, so
+    // nothing was written. Sentry still hears of it (a no-op when it is off).
+    Sentry.captureException(error);
+    return { ok: false, state: { errors: { form: "saveFailed" } } };
+  }
   if (answer.ok) return { ok: true, id: answer.coupon.id };
   const { field: where, key } = couponSaveError(answer.reason);
   if (answer.reason === "code_taken") {
