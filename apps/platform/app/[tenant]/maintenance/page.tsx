@@ -17,7 +17,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Maintenance tab (SPEC › Staff app 4): find a bike by plate or frame number,
+ * Maintenance tab (SPEC › Staff app 4): find a bike by plate, frame or engine number,
  * or scan its QR sticker with the camera button beside the search (or with
  * the phone's own camera app: the sticker is a link). The
  * bike page has the odometer, status and downtime. The due list arrives with
@@ -108,7 +108,7 @@ export default async function MaintenancePage({
           <h2 id="due-list" className="text-lg font-semibold">
             {t("due")}
           </h2>
-          <PlannedCard title={t("due")} phase={1}>
+          <PlannedCard title={t("due")}>
             <p className="mt-2 text-sm text-muted-foreground">
               {t("dueLater")}
             </p>

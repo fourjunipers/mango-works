@@ -94,7 +94,7 @@ export default async function OrdersPage({
           ))}
         </ul>
       </nav>
-      <PlannedCard title={t(filter)} phase={3} className="mt-6">
+      <PlannedCard title={t(filter)} className="mt-6">
         {q && (
           <p className="mt-2 text-sm font-medium">
             {t("searchingFor", { query: q })}

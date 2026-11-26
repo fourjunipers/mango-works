@@ -38,8 +38,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * Dashboard tab (SPEC › Staff app 1): Today, Tomorrow, Upcoming and Late, in
- * the shop's time zone. Phase 0 has no items; each section shows the phase
- * that fills it.
+ * the shop's time zone. A section not built yet says it comes in a later
+ * update (lib/dashboard.ts keeps which phase fills each).
  */
 export default async function DashboardPage({
   params,
@@ -126,7 +126,7 @@ export default async function DashboardPage({
         <>
           <p className="mb-3 text-sm text-muted-foreground">{when[key]}</p>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {sectionsByTab[key].map(({ section, phase }) => {
+            {sectionsByTab[key].map(({ section }) => {
               const list = sections[section] ?? [];
               const title = t(`sections.${section}`);
               // Renewals are built (Phase 1a follow-up): an empty list is
@@ -146,7 +146,7 @@ export default async function DashboardPage({
                   </section>
                 );
               return list.length === 0 ? (
-                <PlannedCard key={section} title={title} phase={phase} />
+                <PlannedCard key={section} title={title} />
               ) : (
                 <section
                   key={section}

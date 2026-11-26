@@ -23,15 +23,13 @@ export function PageHeader({
   );
 }
 
-/** A card for a section whose data arrives in a later phase. */
+/** A card for a section whose data comes in a later update. */
 export async function PlannedCard({
   title,
-  phase,
   className,
   children,
 }: {
   title: string;
-  phase: number;
   className?: string;
   children?: ReactNode;
 }) {
@@ -44,7 +42,7 @@ export async function PlannedCard({
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         <h3 className="min-w-0 font-medium">{title}</h3>
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-          {t("comingIn", { phase })}
+          {t("comingIn")}
         </span>
       </div>
       {children ?? (

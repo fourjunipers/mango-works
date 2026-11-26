@@ -399,9 +399,9 @@ async function DetailsTab({
         />
       </Panel>
 
-      {/* The very bottom of the page. Out of use: retire it (kept, hidden)
-          once none of its vehicles is in the fleet; delete it when it has no
-          vehicles at all. */}
+      {/* The very bottom of the page. A product retired before the screens
+          stopped offering it (kept, hidden) can be restored here; one with
+          no vehicles at all can be deleted. */}
       {model.retired_at && (
         <Panel title={t("retiredTitle")} className="max-w-3xl">
           <p className="mb-3 text-sm">

@@ -96,7 +96,7 @@ test("an owner creates, edits, switches off and on and archives a coupon; an arc
     await expect(page.getByText(`Saved as ${code}`)).toBeVisible();
     await page.getByLabel("Name (for the shop)").fill("E2E flyer");
     await page.getByRole("button", { name: "Create coupon" }).click();
-    await expect(page.getByText("Coupon created.")).toBeVisible();
+    await expect(page.getByText("Coupon saved.")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: code, level: 1 }),
     ).toBeVisible();
@@ -141,7 +141,7 @@ test("an owner creates, edits, switches off and on and archives a coupon; an arc
     await page.getByLabel("Percentage off").fill("5");
     await page.getByLabel(/^On the shop’s booking page/).check();
     await page.getByRole("button", { name: "Create coupon" }).click();
-    await expect(page.getByText("Coupon created.")).toBeVisible();
+    await expect(page.getByText("Coupon saved.")).toBeVisible();
 
     // A third with the same code: refused, naming the coupon that has it.
     await page.goto("/bsr/settings/coupons/new");

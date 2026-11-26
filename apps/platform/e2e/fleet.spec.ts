@@ -249,8 +249,10 @@ test("a mechanic: one status control, the odometer with a confirmation when lowe
   const plate = isPhone(info.project.name) ? "DEMO-002" : "DEMO-003";
   await signIn(page, demo.bsrMechanic);
   await expect(page).toHaveURL(/\/bsr\/maintenance$/);
-  await page.getByLabel("Plate number").fill(plate.toLowerCase());
-  await page.getByLabel("Plate number").press("Enter");
+  await page
+    .getByLabel("Plate, frame or engine number")
+    .fill(plate.toLowerCase());
+  await page.getByLabel("Plate, frame or engine number").press("Enter");
   await page.getByRole("link", { name: new RegExp(plate) }).click();
   await expect(
     page.getByRole("heading", { name: plate, level: 1 }),
@@ -675,11 +677,7 @@ test("a manager adds a product with a kind and a name, buffers in hours, a bike,
   await expect(
     page.getByRole("heading", { name: "No plate", level: 1 }),
   ).toBeVisible();
-  await expect(
-    page.getByText(
-      "This vehicle has no plate yet. Staff are warned before check-out.",
-    ),
-  ).toBeVisible();
+  await expect(page.getByText("This vehicle has no plate yet.")).toBeVisible();
 
   // An old form can't overwrite a newer save. The same bike is open in a
   // second tab and saved there; saving from this, now stale, tab is refused.

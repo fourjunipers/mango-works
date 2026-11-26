@@ -154,7 +154,7 @@ test("a browser with no camera access says so and points at the camera app", asy
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   // The plate search still works as before.
-  await page.getByLabel("Plate number").fill("demo-006");
-  await page.getByLabel("Plate number").press("Enter");
+  await page.getByLabel("Plate, frame or engine number").fill("demo-006");
+  await page.getByLabel("Plate, frame or engine number").press("Enter");
   await expect(page.getByRole("link", { name: /DEMO-006/ })).toBeVisible();
 });
