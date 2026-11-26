@@ -859,7 +859,7 @@ function renderOrder(frame, o) {
       <div class="title"><h1>Order #${o.number}</h1><span class="chip ${st.tone}">${st.text}</span><span class="chip" title="Read-only">${esc(o.channel)}</span></div></div>
     <div class="acts">${main}<button class="btn outline icon" data-act="menu" data-o="${o.key}" aria-label="More actions" aria-expanded="${o.menu}">…</button>${menu}</div>
   </div>
-  ${o.canceled ? `<div class="callout bad" style="margin:-6px 0 16px">Canceled ${fDT(o.canceled.at)} by ${STAFF}: ${esc(o.canceled.reason)}${o.canceled.text ? " (" + esc(o.canceled.text) + ")" : ""}. ${m.credit ? `${money(m.credit)} paid stays on the order as credit.` : ""}</div>` : ""}
+  ${o.canceled ? `<div class="callout bad" style="margin:-6px 0 16px">Canceled ${fDT(o.canceled.at)} by ${esc(o.canceled.by || "the customer")} (recorded by ${STAFF}): ${esc(o.canceled.reason)}${o.canceled.text ? " (" + esc(o.canceled.text) + ")" : ""}. ${m.credit ? `${money(m.credit)} paid stays on the order as credit.` : ""}</div>` : ""}
   <div class="ogrid">
     <section class="card a-cust" aria-label="Customer"><h2>Customer</h2>
       <div class="custcard"><div class="name">${esc(c.name)}</div>
@@ -1011,11 +1011,13 @@ function dlgCancel(o, r, md) {
   const paidOn = r ? o.lines.filter((l) => l.rental === r.id && !l.void).reduce((t, l) => t + linePaid(o, l), 0) : m.paid;
   return `<h2>Cancel ${esc(what)}</h2><p class="muted small" style="margin:0 0 8px">${r ? "Only this rental is canceled; the rest of the order stays." : "Every rental on the order is canceled and its vehicles are released."}</p>
     <label class="f">Reason</label>
-    ${CANCEL_REASONS.map(([k, l]) => `<label class="opt ${md.reason === k ? "on" : ""}"><input type="radio" name="cr" value="${k}" data-ch="md-reason" ${md.reason === k ? "checked" : ""}><span>${l}${k === "no_show" ? '<br><span class="small muted">The customer did not come. Counted on the customer.</span>' : ""}</span></label>`).join("")}
+    ${CANCEL_REASONS.map(([k, l]) => `<label class="opt ${md.reason === k ? "on" : ""}"><input type="radio" name="cr" value="${k}" data-ch="md-reason" ${md.reason === k ? "checked" : ""}><span>${l}${k === "no_show" ? '<br><span class="small muted">The customer is not coming, or did not come. Can be marked any time, also when they say so before the pickup time.</span>' : ""}</span></label>`).join("")}
     ${md.reason === "other" ? `<input type="text" placeholder="What happened" style="width:100%;margin-top:8px" value="${esc(md.text || "")}" data-ch="md-text">` : ""}
+    <label class="f" style="margin-top:12px">Cancelled by</label>
+    <span style="display:flex;gap:8px;flex-wrap:wrap">${[["customer", "Customer"], ["shop", "Shop"]].map(([k, l]) => `<label class="opt ${md.by === k ? "on" : ""}" style="margin:0;padding:6px 12px"><input type="radio" name="cb" value="${k}" data-ch="md-by" ${md.by === k ? "checked" : ""}> ${l}</label>`).join("")}</span>
     ${paidOn > 0 ? `<div class="callout hl">${money(paidOn)} already paid ${r ? "toward this rental " : ""}stays on the order as credit. Refund it from Payments (needs the “refund” permission).</div>` : ""}
     ${(r ? [r] : o.rentals).some((x) => x.deposit.events.some((e) => e.type === "held")) ? `<div class="callout">The card hold is released.</div>` : ""}
-    ${foot("Cancel " + (r ? "rental" : "order"), "cancel-ok", md.reason && (md.reason !== "other" || (md.text || "").trim()) ? "" : "disabled", "btn danger")}`;
+    ${foot("Cancel " + (r ? "rental" : "order"), "cancel-ok", md.reason && md.by && (md.reason !== "other" || (md.text || "").trim()) ? "" : "disabled", "btn danger")}`;
 }
 function lastPeriod(o, r) { return o.lines.filter((l) => l.rental === r.id && l.kind === "period" && !l.void).sort((a, b) => P(a.end) - P(b.end)).pop(); }
 function extendCalc(o, r, md) {
@@ -1229,8 +1231,9 @@ const ACT = {
     const md = S.modal; const o = S.orders[md.o]; const label = CANCEL_REASONS.find(([k]) => k === md.reason)[1];
     const targets = md.r ? o.rentals.filter((r) => r.id === md.r) : o.rentals;
     targets.forEach((r) => { r.stage = "canceled"; o.lines.forEach((l) => { if (l.rental === r.id) l.void = true; }); if (r.deposit.events.some((e) => e.type === "held")) r.deposit.events.push({ type: "released", at: NOW, amount: r.deposit.amount }); });
-    if (!md.r || o.rentals.every((r) => r.stage === "canceled")) { o.canceled = { at: NOW, reason: label, text: md.text }; o.lines.forEach((l) => (l.void = true)); }
-    hist(o, `${md.r ? "Rental " + prod(targets[0].pid).name + " canceled" : "Order canceled"}: ${label}${md.text ? " (" + md.text + ")" : ""}`); S.modal = null;
+    const by = md.by === "shop" ? "the shop" : "the customer";
+    if (!md.r || o.rentals.every((r) => r.stage === "canceled")) { o.canceled = { at: NOW, reason: label, text: md.text, by }; o.lines.forEach((l) => (l.void = true)); }
+    hist(o, `${md.r ? "Rental " + prod(targets[0].pid).name + " canceled" : "Order canceled"} by ${by}: ${label}${md.text ? " (" + md.text + ")" : ""}`); S.modal = null;
   },
   "extend-ok"() {
     const md = S.modal; const o = S.orders[md.o]; const r = o.rentals.find((x) => x.id === md.r); const x = extendCalc(o, r, md);
@@ -1312,6 +1315,7 @@ const CH = {
   "md-method"(t) { S.modal.method = t.value; },
   "md-of"(t) { S.modal.of = t.value; },
   "md-reason"(t) { S.modal.reason = t.value; },
+  "md-by"(t) { S.modal.by = t.value; },
   "md-text"(t) { S.modal.text = t.value; },
   "md-mode"(t) { S.modal.mode = t.value; S.modal.amount = undefined; if (t.value === "date" && !S.modal.end) { const r = S.orders[S.modal.o].rentals.find((x) => x.id === S.modal.r); S.modal.end = addDays(r.end, 7); } },
   "md-keep"(t) { S.modal.keep = t.checked; S.modal.amount = undefined; },

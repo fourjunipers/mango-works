@@ -31,10 +31,9 @@ The plan did not settle these; Mark answered them on the prototype. Where an ans
 | 6 | VAT on the order page | **The order's VAT**, once at the bottom | Already so |
 | 7 | Reserve without a customer | **A customer is required to reserve** | Already so |
 | 8 | Reason for a staff price change | **Optional, with a list to pick from** | Done: "No reason" by default, then the list |
+| 9 | Cancel: who cancelled, and when a no-show can be marked | **Staff choose who cancelled (customer or shop), apart from the reason. A no-show can be marked any time:** customers may say they aren't coming before the pickup time | Done: Cancel asks for the reason and "Cancelled by"; No-show at any time |
 | 10 | Header action with one bike out and one reserved | **"Pick up Yamaha NMAX 155"**, naming the bike | Already so |
 | 11 | Charge names (Booking, Month 2, Swap 26 Nov) | **Fine** | Already so |
 | 12 | English and Thai | **One language at a time, with a switch** | English only; the switch is not drawn |
 
-### Still open
-
-9. **Cancel reasons and who cancelled.** When an order is cancelled the database stores the reason and who cancelled it: the customer or the shop. The question: is "who cancelled" taken from the reason (Customer request → the customer, Shop request → the shop, No-show → the customer), or does staff pick it separately? And may staff mark a no-show before the booked pickup time has passed? *Prototype: who cancelled is not asked; no-show can be picked any time before pickup.*
+No questions left open from this prototype.
