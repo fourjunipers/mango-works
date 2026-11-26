@@ -678,6 +678,42 @@ Input for stage 9 (New order and the order page) and stage 10 (Settings › Orde
 - **Default 15 minutes**; each shop can change it (decided 20 Nov 2026).
 - **Stage 2a's migration adds it**, with the other shop order settings; no extra migration. So **stage 9's pickers read it from day one**; **Settings › Orders** (stage 10) is where a shop changes it; the **booking page** uses it in Phase 8.
 
+### 9.2 Order screen decisions from the prototype (Mark, 26 Nov 2026)
+
+**The reference for stage 9 is the clickable prototype, [`docs/design/order-screen-prototype.html`](design/order-screen-prototype.html)** (sample data, nothing saved; [`docs/design/README.md`](design/README.md) describes it). It follows §9.1 and the decisions below. Where it and §9.1 differ, it and this section win for stage 9. Mark is happy with the design for now (26 Nov 2026).
+
+#### Mark's answers to the prototype's questions
+
+One line each: the decision, then what the prototype does. **⚑** marks an answer that changes or extends an earlier decision (below).
+
+1. **⚑ Swap on a period not yet paid: allowed.** The customer owes for the time used on the old bike plus the rest of the period on the new one. *Prototype:* the old period's unused part is credited whether paid or not, and the dialog says so.
+2. **An extension is due when its added period starts;** the customer may pay early or late. *Prototype:* the `extension` charge's `due_at` is the old end ("due later" until then).
+3. **Deposit hold or charge:** the shop's setting is the default and **staff can change it at pickup** for that rental. Decision 37 still holds: the platform never converts one into the other. *Prototype:* a choice in the Pick up dialog, warning when a hold would outlast a card hold (about 7 days).
+4. **⚑ Credit stays on the account and comes off any future balance automatically.** *Prototype:* credit pays the oldest open charge first, shown as "Paid from credit".
+5. **Deposit top-up after a swap to a dearer bike:** staff take the difference, so the deposit reaches the new bike's amount (never charged silently, §6.2). *Prototype:* "Take top-up" on the deposit, blocking nothing.
+6. **VAT on the order page:** the order's VAT, once at the bottom (total, net, VAT). *Prototype:* as said; each payment's own VAT in the payments list.
+7. **A customer is required to reserve;** a draft or a hold needs none. *Prototype:* Reserve refuses without one.
+8. **The reason for a staff price change is optional,** with a list to pick from. *Prototype:* "No reason" by default, then Returning customer, Long stay, Price match, Vehicle has a fault, Other.
+9. **⚑ Cancel: staff choose who cancelled (customer or shop), apart from the reason; no-show can be picked at any time,** including before the pickup time (a customer may say they aren't coming). *Prototype:* Cancel needs a reason and "Cancelled by"; Cancel order is greyed out while a vehicle is out, Cancel rental stays on reserved lines.
+10. **Header action with one vehicle out and one reserved:** the main button names the vehicle ("Pick up Yamaha NMAX 155"); each line keeps its own buttons. *Prototype:* as said.
+11. **Charge names** ("Booking", "Month 2", "Swap 26 Nov", "Month 3" for an extension of a monthly rental) are fine, also on invoices. *Prototype:* as said.
+12. **English and Thai: one language at a time, with a switch,** not side by side. *Prototype:* English only; the switch is not drawn.
+
+#### Layout (decided 26 Nov 2026)
+
+- **Pickup and return are the most prominent thing on each vehicle line and in the header:** a clear "Pickup" or "Return" label over a larger, bold date and time; the first column of the line table and, at 375 px, the first thing on each line. The header shows the order's pickup and return (with several vehicles, the first pickup and the last return).
+- **Location, who made the order and the channel sit in one quiet metadata line** under the header dates (smaller, lighter). On New order the pickup and return places are chosen there. No separate "Pickup and return" card.
+- **Paid, due now, due later and credit are shown once, in Payments.** The totals show total, net and VAT only.
+- **The deposit is one line in the totals** (never added to them); **its status lives in the Security deposit card.**
+
+#### Answers that change or extend earlier decisions
+
+These sections are **not edited here**; each must be updated by the stage named.
+
+- **⚑ 1, swap on an unpaid period** (affects **§6.2** and the swap rule in [products-redesign.md](products-redesign.md) §9.19). Mark's rule: the old period's **unused part is the amount charged × the unused share of its list price, credited whether or not it was paid**, so the customer owes the time used on the old bike plus the new bike's remainder, the same total as if they had paid first (tab b: ฿2,750 either way). §9.19's "paid remainder = the amount actually paid × the unused share" counted only money received. **§6.2 (and the `swapAmounts` / `settleSwap` inputs in `@mango/core`) must be updated when stage 6 (rental changes) is built.** Early return (a swap to nothing) was not asked; stage 6 settles whether it follows the same rule.
+- **⚑ 4, credit used automatically** (changes **decision 14**, "credit stays until refunded or written off", and **§6.4**'s "Credits"). New rule: **credit on an order is applied to its next open charges, oldest due first, without staff action;** refund and write-off stay for credit nothing is due against. **§6.4 and decision 14 must be updated when stage 3 (payments ledger) is built.** **Money-rule change: flagged for the Fable design check at stage 3** (how an applied credit is recorded in the append-only ledger, which charges it settles, and the tax invoice of the charge it pays: per products-redesign decision 27, a credit reduces the VAT base of the new invoice).
+- **⚑ 9, who cancelled** (extends migration 3's value lists, **§3.8** row 3, **not edited here**). It fits the lists migration 3 fixes: `cancelled_by` **customer, shop, system**, where **system** is written only for an expired hold and **never picked by staff**; `cancel_reason` **expired, customer_request, shop_request, no_show, other**. Staff pick `cancelled_by` (customer or shop) separately from the reason; **`no_show` may be picked at any time, including before the pickup time.**
+
 ## 10. Tests with true concurrency
 
 On gates (never `pg_sleep`), in Bangkok THB, New York USD (DST) and Saigon VND, many rounds, exact outcomes, nothing half-written, deadlock count unchanged:
