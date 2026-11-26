@@ -1,24 +1,27 @@
 ---
 title: Update a vehicle's odometer
 summary: Type in the current odometer reading of a vehicle, in km or miles.
+roles: [owner, manager, staff, mechanic]
 keywords: [odometer, mileage, km, kilometres, miles, reading, meter, เลขไมล์, ระยะทาง, กิโลเมตร, อัปเดตเลขไมล์]
 screens: [/[tenant]/fleet/units/[id], /[tenant]/maintenance]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Update a vehicle's odometer
 
-Who can do this: everyone except drivers.
+Who can do this: owners, managers, staff and mechanics. Drivers see the reading but can't change it.
 
 ## Steps
 
-1. Find the vehicle: on **Fleet**, or on the **Maintenance** tab type the plate or frame number, or press **Scan QR** and point the camera at its sticker.
+1. Find the vehicle: on **Fleet**, or on the **Maintenance** tab type the plate or frame number, or press **Scan QR** and point the camera at its sticker (see [Scan a vehicle's QR sticker](scan-a-qr-sticker.md)).
 2. On the vehicle's page:
-   - Owners and managers: change **Odometer** under **Details** and press **Save**.
-   - Staff and mechanics: type the reading under **Odometer** and save it.
-3. If the new reading is lower than the current one, confirm "Are you sure? This is lower than the current reading ({current} {unit})." Everyone who can update the odometer can do this (not drivers); the change is recorded with who made it.
+   - Owners and managers: change **Odometer (km)** under **Details** and press **Save**.
+   - Staff and mechanics: type the reading in **Odometer (km)** under **Odometer** and press **Save**.
+3. If the new reading is lower than the current one, confirm "Are you sure? This is lower than the current reading ({current} {unit})." Everyone who can update the odometer can do this; the change is recorded with who made it.
 
-The reading is in the shop's distance unit (km or miles, set in **Shop settings**).
+The reading is in the shop's distance unit: km or miles, set under **Distances** in **Shop settings**. With miles, the box says **Odometer (mi)**.
+
+Staff and mechanics can't change the odometer of a vehicle that has been sold or retired: its page only shows the last reading.
 
 ## Common problems
 
@@ -28,3 +31,5 @@ The reading is in the shop's distance unit (km or miles, set in **Shop settings*
 - **"The camera is blocked for this site. Allow it in the browser's site settings, then try again."** Allow camera access for the platform in your browser.
 - **"This browser can't use the camera here. Use your phone's camera app instead: it opens the same sticker."** Open your phone's camera app and scan the sticker there.
 - **"The camera couldn't be opened. Close other apps using it and try again."**
+- **"This vehicle was changed by someone else while this form was open. Reload the page to see the latest, then make your change again."** Owners and managers: someone saved this vehicle after you opened it. Reload and type the reading again.
+- **"Couldn't save. Please try again."** Reload the page and try again.

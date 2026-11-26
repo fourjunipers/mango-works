@@ -1,12 +1,17 @@
 ---
 title: Switch shop and set up this device
 summary: Find your way around on a computer or a phone, change which shop you are working in, set the language, appearance and tab bar for this device, and sign out.
+roles: [owner, manager, staff, mechanic, driver]
 keywords: [switch shop, change shop, choose a shop, sidebar, where is settings, shop admin, language, Thai, English, dark mode, light mode, tab bar, install app, add to home screen, sign out, log out, เปลี่ยนร้าน, ภาษา, โหมดมืด, ออกจากระบบ, ติดตั้งแอป, ตั้งค่าร้าน]
 screens: [/[tenant]/me, /]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Switch shop and set up this device
+
+## Who can do this
+
+Everyone: owners, managers, staff, mechanics and drivers. What you see in the menus depends on your role (see [What each role can do](../team/what-each-role-can-do.md)).
 
 ## Finding your way around
 
@@ -27,7 +32,9 @@ updated: 2026-11-20
 ## Switch to another shop
 
 1. On a computer, press **Switch shop** under the shop's name in the sidebar. On a phone, press the **Switch shop** icon in the header.
-2. On **Choose a shop**, pick the shop.
+2. On **Choose a shop**, pick the shop. Your role in each shop is shown next to its name.
+
+The shop opens on your first tab: **Maintenance** for mechanics, **Dashboard** for everyone else.
 
 ## Set language, appearance and tab bar
 
@@ -51,4 +58,4 @@ On a computer, press **Sign out** at the bottom of the sidebar. On a phone, open
 
 ## Which tabs you see
 
-Owners, managers and staff see all four staff-app tabs. Mechanics see **Dashboard**, **Price check** and **Maintenance**, and open straight to **Maintenance**. Drivers see **Dashboard**, **Orders** and **Price check**. For mechanics and drivers, **Price check** shows what is free, with no prices (see [Check what is free and what it costs](../price-check/price-check.md)). Everyone sees **Products** and **Fleet**; only owners and managers see **Locations**, **Team** and **Shop settings**.
+Owners, managers and staff see all four staff-app tabs. Mechanics see **Dashboard**, **Price check** and **Maintenance**, and open straight to **Maintenance**. Drivers see **Dashboard**, **Orders** and **Price check**. For mechanics and drivers, **Price check** shows what is free, with no prices (see [Check what is free and what it costs](../price-check/price-check.md)). Everyone sees **Products** and **Fleet**; only owners and managers see **Locations**, **Team** and **Shop settings**. For the full list, see [What each role can do](../team/what-each-role-can-do.md).

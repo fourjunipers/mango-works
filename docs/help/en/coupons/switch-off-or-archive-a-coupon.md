@@ -1,9 +1,10 @@
 ---
 title: Change, switch off or archive a coupon
 summary: Edit a coupon, pause it with Switch off, retire it with Archive (which frees its code), or bring it back.
+roles: [owner, manager]
 keywords: [edit coupon, switch off coupon, pause coupon, archive coupon, delete coupon, bring back coupon, reuse code, คูปอง, ปิดคูปอง, เก็บคูปอง, แก้ไขคูปอง]
 screens: [/[tenant]/settings/coupons, /[tenant]/settings/coupons/[id]]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Change, switch off or archive a coupon
@@ -26,13 +27,13 @@ Who can do this: owners and managers.
 
 1. Open **Shop settings** › **Coupons** and press **Edit** on the coupon.
 2. Change what you need.
-3. Press **Save coupon**.
+3. Press **Save coupon**. **Saved** appears.
 
-The coupon's **History** lists every change and who made it.
+The coupon's page shows its **History**: every change and who made it, for example "Nok switched off SONGKRAN10". The **Coupons** page shows the history of all coupons.
 
 ## Switch it off or on
 
-Press **Switch off** (or **Switch on**) on the coupon's row or on its page.
+Press **Switch off** (or **Switch on**) on the coupon's row or on its page. For example, switch SONGKRAN10 off after the festival and on again next April.
 
 ## Archive it
 
@@ -46,8 +47,8 @@ Press **Switch off** (or **Switch on**) on the coupon's row or on its page.
 
 ## Common problems
 
-- **"Another coupon already uses the code {code}. Archive it first, or choose another code."** Another live coupon took this code meanwhile. Archive that one first, or change this coupon's code.
+- **"Another coupon already uses the code {code}. Archive it first, or choose another code."** Or **"The coupon “{name}” already uses the code {code}. Archive it first, or choose another code."** Another live coupon took this code meanwhile. Archive that one first, or change this coupon's code.
 - **"This coupon no longer exists. Reload the page."**
-- **"Someone is making a booking with this coupon right now, so nothing was saved. Please save again."**
+- **"Someone is making a booking with this coupon right now, so nothing was saved. Please save again."** Nothing was changed. Press the same button again.
 - **"Only an owner or a manager can change coupons."**
 - For the form's other messages, see [Create a coupon](create-a-coupon.md).

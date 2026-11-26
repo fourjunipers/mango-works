@@ -17,6 +17,7 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 
 ### Team (`en/team`)
 
+- [What each role can do](en/team/what-each-role-can-do.md)
 - [Change a team member's role](en/team/change-a-role.md)
 - [Remove someone from the team](en/team/remove-someone.md)
 
@@ -44,6 +45,7 @@ English only for now (`en/`). Thai (`th/`, same paths) comes after Korn's review
 - [Block a vehicle for dates (downtime)](en/fleet/block-with-downtime.md)
 - [Record road tax, insurance or an inspection](en/fleet/record-tax-and-insurance.md)
 - [Print QR stickers for your vehicles](en/fleet/print-qr-stickers.md)
+- [Scan a vehicle's QR sticker](en/fleet/scan-a-qr-sticker.md)
 - [Delete a vehicle](en/fleet/delete-a-vehicle.md)
 - [See a vehicle's bookings](en/fleet/bookings-on-a-vehicle.md)
 
@@ -120,11 +122,14 @@ One task per article, in `docs/help/<language>/<area>/<slug>.md`. Each starts wi
 ---
 title: Create a coupon                 # the task, as a shop would say it
 summary: One sentence saying what the article helps with.
+roles: [owner, manager]                # optional: who can do the task (owner, manager, staff, mechanic, driver, platform-admin)
 keywords: [coupon, discount code, คูปอง, โค้ดส่วนลด]   # likely search words, English and Thai script
 screens: [/[tenant]/settings/coupons]  # the route paths (apps/platform/app) it covers
 updated: 2026-11-19                    # the date the article was last checked against the screen
 ---
 ```
+
+`roles` is optional: nothing in the code reads the front matter yet, and an article without it is still valid. When present it lists the roles the code lets do the task, so the support assistant can filter answers by the asker's role; it must agree with the article's **Who can do this** section. `title`, `summary`, `keywords`, `screens` and `updated` are required.
 
 Then:
 

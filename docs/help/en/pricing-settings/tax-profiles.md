@@ -1,14 +1,15 @@
 ---
 title: Add, change or remove a tax profile
 summary: Create a named tax rate such as VAT 7%, change its name or rate, or remove it.
+roles: [owner, manager]
 keywords: [tax profile, VAT 7%, tax rate, add VAT, change VAT rate, remove tax, ประเภทภาษี, อัตราภาษี, เพิ่ม VAT, VAT 7%]
 screens: [/[tenant]/settings/pricing]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Add, change or remove a tax profile
 
-A tax profile is a name and a rate for each tax the shop charges, for example "VAT" at 7%. One profile is the shop's default.
+A tax profile is a name and a rate for each tax the shop charges, for example "VAT" at 7%. One profile is the shop's default, marked **Default**.
 
 Who can do this: owners and managers.
 
@@ -21,11 +22,13 @@ Who can do this: owners and managers.
 
 Each profile shows which products name it, for example "Named by 3 products: …", or "No product names this profile."
 
+To make a new profile the default, choose it in **Default tax profile** above and press **Save pricing settings**: see [Choose whether prices include tax](tax-inclusive-or-added.md).
+
 ## Change a name or rate
 
 1. Press **Change name or rate** on the profile.
 2. Change it and press **Save profile**.
-3. If products use it, confirm "This changes the tax on N products: …. Save?"
+3. If you changed the rate and products use it, confirm "This changes the tax on N products: …. Save?"
 
 ## Remove a profile
 
@@ -34,10 +37,13 @@ Each profile shows which products name it, for example "Named by 3 products: …
 
 ## Common problems
 
+- **"Required."** Type a name and a rate.
+- **"Too long."** Keep the name to 80 characters.
 - **"A tax profile with this name already exists."**
 - **"Enter a rate from 0 to 100."** Use a dot for decimals (7.5, not 7,5), with up to two decimal places and no spaces.
 - **"Still named by N products: …. Move them to another tax choice on their Pricing tab first."** Change each product's **Tax on this product** first: see [Choose the tax on a product](../products/product-tax.md).
 - **"This is the shop's default tax profile. Choose another default first."**
 - **"The profile was added but couldn't be made the default. Choose it above and save."**
+- **"Couldn't save. Please try again."**
 
 For how to type numbers, see [Typing amounts, percentages and other numbers](../general/typing-numbers.md).
