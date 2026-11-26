@@ -49,7 +49,13 @@ export async function saveSettings(
     .update(parsed.data)
     .eq("id", membership.tenant.id)
     .select("id");
-  if (error?.message === "currency_locked")
+  // The trigger's own refusal, or, for a shop with an order, the key that
+  // holds the order's currency to the shop's (orders_currency_fkey and its
+  // siblings on charges and lines: 23503). The same answer for both.
+  if (
+    error?.message === "currency_locked" ||
+    (error?.code === "23503" && /_currency_fkey"/.test(error.message))
+  )
     return { errors: { currency: "currencyLocked" } };
   if (error || data.length !== 1) return { errors: { form: "saveFailed" } };
 

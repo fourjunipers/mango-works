@@ -607,7 +607,7 @@ async function seedBsrRenewals(tenantId: string) {
  * Phase 2 stage 11: BSR's demo bookings, so New order's price check and a
  * unit's page show real figures. Everything goes through the database's
  * own functions as a signed-in member of the shop, never a direct write as
- * the service role (reserve() and save_coupon() refuse that, and they are
+ * the service role (create_order() and save_coupon() refuse that, and they are
  * what the screens use):
  *
  *   the owner   create_general_product (a helmet, a delivery), the prices
@@ -616,7 +616,7 @@ async function seedBsrRenewals(tenantId: string) {
  *               (save_pricing_settings), two coupons (save_coupon), and the
  *               booking rules: overbooking on, a 60-minute hold
  *               (save_booking_rules);
- *   staff       bookings at the counter (reserve(), walk-in): a scooter and
+ *   staff       bookings at the counter (create_order(), walk-in): a scooter and
  *               two helmets, every bike of the smallest model and one more
  *               (a shortage, since overbooking is on), and a hold.
  *
@@ -856,25 +856,34 @@ async function seedBsrBookings(tenantId: string, locationId: string) {
     lines: { product_id: string; quantity: number; from: number; to: number }[],
     hold = false,
   ) => {
+    // Every booking is an order (Phase 3). A vehicle line is one bike, so
+    // N scooters are N lines; gear keeps its quantity.
     const answer = must(
-      await staff.rpc("reserve", {
+      await staff.rpc("create_order", {
         p_tenant_id: tenantId,
-        p_request: {
+        p_order: {
           channel: "walk_in",
           mode: "staff",
-          ...(hold ? { hold: true } : {}),
-          lines: lines.map((l) => ({
-            product_id: l.product_id,
-            location_id: locationId,
-            quantity: l.quantity,
-            starts_at: dayFrom(l.from),
-            ends_at: dayFrom(l.to),
-          })),
+          action: hold ? "hold" : "reserve",
+          lines: lines.flatMap((l) => {
+            const line = {
+              product_id: l.product_id,
+              location_id: locationId,
+              starts_at: dayFrom(l.from),
+              ends_at: dayFrom(l.to),
+            };
+            return l.product_id === helmet
+              ? [{ ...line, quantity: l.quantity }]
+              : Array.from({ length: l.quantity }, () => ({
+                  ...line,
+                  quantity: 1,
+                }));
+          }),
         },
       }),
-      "reserve",
+      "create_order",
     ) as { ok: boolean; reason?: string };
-    if (!answer.ok) fail(`reserve: ${answer.reason}`);
+    if (!answer.ok) fail(`create_order: ${answer.reason}`);
   };
   const existing = must(
     await owner

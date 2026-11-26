@@ -34,15 +34,16 @@ import {
 } from "@/lib/coupons";
 import { quoteInputFor, type PricingInputs } from "@/lib/pricing-inputs";
 import { roles, type Role } from "@/lib/roles";
-import {
-  bookAsStaff,
-  cancelReservation,
-  confirmHold,
-  type StaffDb,
-} from "@/lib/staff-booking";
+import { bookAsStaff, type StaffDb } from "@/lib/staff-booking";
 import {
   anonClient,
+  type BookingAnswer,
+  type BookingResult,
+  cancelOrder,
+  cancelReservationCore,
   closedGate,
+  createCustomer,
+  createOrder,
   createTenant,
   createUser,
   type Db,
@@ -50,6 +51,7 @@ import {
   deleteUser,
   GATE_TIMEOUTS,
   holding,
+  orderSql,
   seenWaitingForLock,
   serviceClient,
   sql,
@@ -84,13 +86,14 @@ let deadlocksBefore: number;
 
 const db = (role: Role, tenant: TestTenant = shop): Db =>
   tenant.members[role].db;
-const staffDb = (role: Role, tenant: TestTenant = shop) =>
-  db(role, tenant) as unknown as StaffDb;
 const server = service as unknown as OnlineDb;
 
 const MADE_UP = "00000000-0000-4000-8000-00000000abcd";
-const CUSTOMER = "00000000-0000-4000-8000-0000000c0001";
-const OTHER_CUSTOMER = "00000000-0000-4000-8000-0000000c0002";
+// Two customers of the Bangkok shop, made in beforeAll: a coupon's use is
+// the order's customer's, who must be a real row of platform.customers
+// (Phase 3 stage 2b; Phase 2 took any uuid).
+let CUSTOMER: string;
+let OTHER_CUSTOMER: string;
 
 /** A moment far ahead: day `d` at `h` o'clock UTC. Every test has its own products. */
 const at = (d: number, h = 4) =>
@@ -202,13 +205,8 @@ type Line = {
   parent?: number;
 };
 type Use = { coupon_id: string; amount: string | number; customer_id?: string };
-type Booked = {
-  ok: true;
-  booking_id: string;
-  lines: { reservation_id: string; unit_ids: string[]; shortage: number }[];
-};
-type Answer = Booked | { ok: false; reason: string; line?: number | null };
-type Result = { data: Answer | null; error: Failure };
+type Booked = Extract<BookingAnswer, { ok: true }>;
+type Result = BookingResult;
 
 const request = (
   tenant: TestTenant,
@@ -242,23 +240,42 @@ const staffBook = (
     coupon?: unknown;
   } = {},
 ): Promise<Result> =>
-  Promise.resolve(
-    db(o.role ?? "staff", o.tenant ?? shop).rpc(
-      "reserve",
-      request(o.tenant ?? shop, "walk_in", "staff", lines, o) as never,
-    ),
-  ) as Promise<Result>;
+  createOrder(
+    db(o.role ?? "staff", o.tenant ?? shop),
+    (o.tenant ?? shop).id,
+    request(o.tenant ?? shop, "walk_in", "staff", lines, o).p_request,
+  );
 
 const pageBook = (
   lines: Line[],
   o: { tenant?: TestTenant; hold?: boolean; coupon?: unknown } = {},
 ): Promise<Result> =>
-  Promise.resolve(
-    service.rpc(
-      "reserve",
-      request(o.tenant ?? shop, "booking_page", "instant", lines, o) as never,
-    ),
-  ) as Promise<Result>;
+  createOrder(
+    service,
+    (o.tenant ?? shop).id,
+    request(o.tenant ?? shop, "booking_page", "instant", lines, o).p_request,
+  );
+
+/**
+ * confirm_order(), as whoever `client` is: Phase 2's confirm_hold(). Called
+ * straight, not through lib/staff-booking.ts, so that these tests are about
+ * the database.
+ */
+const confirm = async (client: Db, tenant: TestTenant, orderId: string) => {
+  const { data, error } = await client.rpc("confirm_order", {
+    p_tenant_id: tenant.id,
+    p_order_id: orderId,
+  });
+  expect(error, error?.message).toBeNull();
+  return data as { ok: boolean; reason?: string };
+};
+
+/** cancel_order(), as whoever `client` is: the whole booking. */
+const cancel = async (client: Db, tenant: TestTenant, orderId: string) => {
+  const result = await cancelOrder(client, tenant.id, orderId);
+  expect(result.error, result.error?.message).toBeNull();
+  return result.data!;
+};
 
 const booked = (result: Result): Booked => {
   expect(result.error, result.error?.message).toBeNull();
@@ -292,7 +309,8 @@ const written = (tenant: TestTenant) =>
       || (select coalesce(string_agg(state, ',' order by id), '') from platform.reservations where tenant_id = '${tenant.id}')
       || ' | ' || (select coalesce(string_agg(kind || ':' || unit_id, ',' order by id), '') from platform.unit_blocks where tenant_id = '${tenant.id}')
       || ' | ' || (select coalesce(string_agg(coupon_id || ':' || amount || ':' || (released_at is null), ',' order by id), '') from platform.coupon_redemptions where tenant_id = '${tenant.id}')
-      || ' | ' || (select count(*) from platform.audit_events where tenant_id = '${tenant.id}' and entity in ('bookings', 'coupon_redemptions'));
+      || ' | ' || (select count(*) from platform.audit_events where tenant_id = '${tenant.id}' and entity in ('bookings', 'coupon_redemptions'))
+      || ' | ' || (select count(*) from platform.orders where tenant_id = '${tenant.id}') || ' orders';
   `).out;
 
 const redemptions = async (couponId: string) =>
@@ -396,7 +414,11 @@ beforeAll(async () => {
     createTenant("coupons-sgn"),
     createUser("coupons-outsider"),
   ]);
-  // "Accept coupons" on in every shop: reserve() reads the switch again
+  [CUSTOMER, OTHER_CUSTOMER] = await Promise.all([
+    createCustomer(shop.id),
+    createCustomer(shop.id),
+  ]);
+  // "Accept coupons" on in every shop: create_order() reads the switch again
   // under the coupon's row (review of PR 48, finding 3).
   for (const tenant of [shop, rival, newYork, saigon]) {
     const { error } = await db("owner", tenant).rpc("save_pricing_settings", {
@@ -1211,7 +1233,13 @@ describe("coupon_inputs(): the one read decideDiscounts needs", () => {
     booked(
       await staffBook(days(a, 10), { coupon: taking(mine, 100, CUSTOMER) }),
     );
-    booked(await staffBook(days(a, 20), { coupon: taking(mine, 100) }));
+    // A coupon with a limit per customer needs a customer on the order
+    // (customer_needed, plan §5.1): a third one, so the counts stay as they were.
+    booked(
+      await staffBook(days(a, 20), {
+        coupon: taking(mine, 100, await createCustomer(shop.id)),
+      }),
+    );
     expect((await read(db("staff"), shop, mine.code)).uses).toEqual({
       total: 3,
       customer: 0,
@@ -1594,11 +1622,15 @@ describe("reserve() with a coupon: counted and written under the coupon's row", 
         await pageBook(lines(), { coupon: taking(each, 1, OTHER_CUSTOMER) }),
       ),
     ).toBe("ok");
-    // Nobody named: only the total is counted.
+    // Nobody named: refused. (Phase 2 booked it and counted only the total;
+    // an order with no customer can't take a coupon that has a limit per
+    // customer: customer_needed, plan §5.1.)
+    const anonymous = written(shop);
     expect(refusal(await staffBook(lines(), { coupon: taking(each, 1) }))).toBe(
-      "ok",
+      "customer_needed",
     );
-    expect(await live(each.id)).toHaveLength(3);
+    expect(written(shop)).toBe(anonymous);
+    expect(await live(each.id)).toHaveLength(2);
   }, 60_000);
 
   it("a coupon that could not be read is invalid_request, before anything is locked; a booking refused for stock uses no use", async () => {
@@ -1647,6 +1679,12 @@ describe("a use is given back by a cancel and by a hold that runs out", () => {
       update platform.reservations
       set hold_expires_at = clock_timestamp() - interval '1 second'
       where booking_id = '${bookingId}';
+      -- The order carries the hold's expiry too: confirm_order() judges by it.
+      update platform.orders o
+      set hold_expires_at = (
+        select min(r.hold_expires_at) from platform.reservations r
+        where r.booking_id = o.id)
+      where o.id = '${bookingId}';
     `);
     expect(failed).toBe("");
   };
@@ -1664,11 +1702,9 @@ describe("a use is given back by a cancel and by a hold that runs out", () => {
     expect(
       refusal(await pageBook(days(bike, 1), { coupon: taking(mine) })),
     ).toBe("coupon_used_up");
-    expect(
-      await cancelReservation(staffDb("staff"), shop.id, {
-        bookingId: first.booking_id,
-      }),
-    ).toMatchObject({ ok: true });
+    expect(await cancel(db("staff"), shop, first.booking_id)).toMatchObject({
+      ok: true,
+    });
     const [released] = await redemptions(mine.id);
     expect(released.released_at).not.toBeNull();
     expect((await read(db("staff"), shop, mine.code)).uses?.total).toBe(0);
@@ -1694,24 +1730,26 @@ describe("a use is given back by a cancel and by a hold that runs out", () => {
         coupon: taking(mine),
       }),
     );
-    await cancelReservation(staffDb("manager"), shop.id, {
-      reservationId: second.lines[1].reservation_id,
-    });
+    // One row by its id has no order function until cancel_rental()
+    // (migration 6): the test reaches the core as the database's owner, so
+    // it is no longer a manager who cancels it.
+    expect(
+      cancelReservationCore(shop.id, second.lines[1].reservation_id).data,
+    ).toMatchObject({ ok: true });
     expect(await live(mine.id)).toHaveLength(1);
     expect(
       refusal(await staffBook(days(bike, 9), { coupon: taking(mine) })),
     ).toBe("coupon_used_up");
-    // The rest cancelled, by the server: now it is back.
-    const { error } = await service.rpc("cancel_reservation", {
-      p_tenant_id: shop.id,
-      p_reservation_id: second.lines[0].reservation_id,
-    });
+    // The rest cancelled, row by row (through the core again, where Phase 2
+    // had the server do it): now it is back.
+    const { error } = cancelReservationCore(
+      shop.id,
+      second.lines[0].reservation_id,
+    );
     expect(error).toBeNull();
     expect(await live(mine.id)).toEqual([]);
     // Cancelled twice: nothing more happens.
-    await cancelReservation(staffDb("staff"), shop.id, {
-      bookingId: second.booking_id,
-    });
+    await cancel(db("staff"), shop, second.booking_id);
     expect(
       (await redemptions(mine.id)).filter((r) => r.released_at !== null),
     ).toHaveLength(2);
@@ -1734,17 +1772,15 @@ describe("a use is given back by a cancel and by a hold that runs out", () => {
     expect(
       refusal(await pageBook(days(elsewhere, 1), { coupon: taking(mine) })),
     ).toBe("coupon_used_up");
-    expect(
-      await confirmHold(staffDb("staff"), shop.id, kept.booking_id),
-    ).toMatchObject({ ok: true });
+    expect(await confirm(db("staff"), shop, kept.booking_id)).toMatchObject({
+      ok: true,
+    });
     await sweep();
     expect(await uses()).toBe(1);
     expect((await live(mine.id)).map((r) => r.booking_id)).toEqual([
       kept.booking_id,
     ]);
-    await cancelReservation(staffDb("staff"), shop.id, {
-      bookingId: kept.booking_id,
-    });
+    await cancel(db("staff"), shop, kept.booking_id);
     expect(await uses()).toBe(0);
 
     // Run out, and a booking of ANOTHER product: its sweep does not reach
@@ -1768,9 +1804,7 @@ describe("a use is given back by a cancel and by a hold that runs out", () => {
     expect((await live(mine.id)).map((r) => r.booking_id)).toEqual([
       next.booking_id,
     ]);
-    await cancelReservation(staffDb("staff"), shop.id, {
-      bookingId: next.booking_id,
-    });
+    await cancel(db("staff"), shop, next.booking_id);
 
     // Run out, and a booking of the SAME product: the sweep inside
     // reserve() releases the hold and its use in the same transaction.
@@ -1793,9 +1827,10 @@ describe("a use is given back by a cancel and by a hold that runs out", () => {
     ).data!;
     expect(state).toEqual([{ state: "expired" }]);
     // An expired hold can't be confirmed, so its use can't come back.
-    expect(
-      await confirmHold(staffDb("staff"), shop.id, again.booking_id),
-    ).toMatchObject({ ok: false });
+    expect(await confirm(db("staff"), shop, again.booking_id)).toMatchObject({
+      ok: false,
+      reason: "hold_expired",
+    });
     expect(await uses()).toBe(1);
   }, 60_000);
 
@@ -1810,6 +1845,8 @@ describe("a use is given back by a cancel and by a hold that runs out", () => {
         tenant,
       );
       const staff = db("staff", tenant);
+      // This shop's own customer: the module-wide ones are Bangkok's.
+      const CUSTOMER = await createCustomer(tenant.id);
       const held = await bookAsStaff(staff as unknown as StaffDb, tenant.id, {
         channel: "walk_in",
         locationId: tenant.locationId,
@@ -2074,11 +2111,13 @@ describe("both booking paths, on real rows: decideDiscounts → quote() → rese
 
   it("a coupon archived, switched off or used up between the quote and reserve(): the rules passed, and reserve() refuses under the lock with nothing written", async () => {
     const owner = db("owner", tenant);
-    /** A member's client that does something else just before reserve(). */
+    // The call that books: create_order(), which was reserve().
+    const booking = (fn: string) => fn === "create_order";
+    /** A member's client that does something else just before it. */
     const then = (between: () => Promise<unknown>): StaffDb => ({
       rpc(fn, args) {
         const call = () => staff().rpc(fn, args);
-        return fn === "reserve" ? between().then(call) : call();
+        return booking(fn) ? between().then(call) : call();
       },
     });
     const attempt = (c: Saved, between: () => Promise<unknown>) =>
@@ -2135,7 +2174,7 @@ describe("both booking paths, on real rows: decideDiscounts → quote() → rese
     const slowPage: OnlineDb = {
       rpc(fn, args) {
         const call = () => server.rpc(fn, args);
-        return fn === "reserve"
+        return booking(fn)
           ? bookAsStaff(staff(), tenant.id, {
               channel: "phone",
               locationId: tenant.locationId,
@@ -2204,11 +2243,12 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
     const holder = sqlBackground(`
       begin;
       ${actingAs(null)}
-      select platform.reserve('${shop.id}', '${JSON.stringify(
+      select ${orderSql(
+        shop.id,
         request(shop, "booking_page", "instant", days(bike, 1), {
           coupon: taking(mine),
         }).p_request,
-      )}'::jsonb);
+      )};
       ${gate.wait(marker)}
       commit;
     `);
@@ -2220,7 +2260,7 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
     // Another product, so only the coupon's row is in its way.
     const second = staffBook(days(other, 1), { coupon: taking(mine) });
     // Both are waiting behind the holder's booking before it is let go.
-    await seenWaitingForLock("reserve");
+    await seenWaitingForLock("create_order");
     await gate.open();
     const [saved, late] = await Promise.all([saving, second]);
     noDeadlock([saved, late]);
@@ -2246,7 +2286,7 @@ describe("the lock order: the coupon's row comes after every advisory lock and t
     const holder = sqlBackground(`
       begin;
       ${actingAs(shop.members.staff.id)}
-      select platform.cancel_reservation('${shop.id}', '${first.booking_id}');
+      select platform.cancel_order('${shop.id}', '${first.booking_id}');
       ${gate.wait(marker)}
       commit;
     `);
@@ -2497,6 +2537,9 @@ describe("races for a coupon's last use: exactly one booking gets it, and no dea
             update platform.reservations
             set hold_expires_at = clock_timestamp() - interval '1 second'
             where booking_id = '${hold.booking_id}';
+            update platform.orders
+            set hold_expires_at = clock_timestamp() - interval '1 second'
+            where id = '${hold.booking_id}';
           `).failed,
           `${where}, round ${round}`,
         ).toBe("");
@@ -2508,12 +2551,7 @@ describe("races for a coupon's last use: exactly one booking gets it, and no dea
               tenant,
               coupon: taking(c),
             }),
-            Promise.resolve(
-              db("staff", tenant).rpc("cancel_reservation", {
-                p_tenant_id: tenant.id,
-                p_booking_id: earlier.booking_id,
-              }),
-            ) as Promise<Result>,
+            cancelOrder(db("staff", tenant), tenant.id, earlier.booking_id),
             save(db("owner", tenant), tenant, {
               id: c.id,
               name: `Round ${round}`,
@@ -2570,10 +2608,11 @@ describe("races for a coupon's last use: exactly one booking gets it, and no dea
         // Tidy: the round's bookings go, so the next round has its units.
         for (const result of [one, two, three]) {
           if (result.data!.ok)
-            await service.rpc("cancel_reservation", {
-              p_tenant_id: tenant.id,
-              p_booking_id: (result.data as Booked).booking_id,
-            });
+            await cancelOrder(
+              service,
+              tenant.id,
+              (result.data as Booked).booking_id,
+            );
         }
       }
       expect(deadlocks()).toBe(deadlocksBefore);
@@ -2592,6 +2631,12 @@ describe("after the review of PR 48", () => {
       update platform.reservations
       set hold_expires_at = clock_timestamp() + interval '${seconds} seconds'
       where booking_id = '${bookingId}';
+      -- The order carries the hold's expiry too: confirm_order() judges by it.
+      update platform.orders o
+      set hold_expires_at = (
+        select min(r.hold_expires_at) from platform.reservations r
+        where r.booking_id = o.id)
+      where o.id = '${bookingId}';
     `);
     expect(failed).toBe("");
   };
@@ -2631,7 +2676,7 @@ describe("after the review of PR 48", () => {
     const confirming = sqlBackground(`
       begin;
       ${actingAs(shop.members.staff.id)}
-      select 'confirmed:' || (platform.confirm_hold('${shop.id}', '${hold.booking_id}') ->> 'ok');
+      select 'confirmed:' || (platform.confirm_order('${shop.id}', '${hold.booking_id}') ->> 'ok');
       ${gate.wait(marker)}
       commit;
     `);
@@ -2681,9 +2726,10 @@ describe("after the review of PR 48", () => {
     const taker = booked(
       await pageBook(days(other, 1), { coupon: taking(mine) }),
     );
-    expect(
-      await confirmHold(staffDb("staff"), shop.id, hold.booking_id),
-    ).toMatchObject({ ok: false, reason: "hold_expired" });
+    expect(await confirm(db("staff"), shop, hold.booking_id)).toMatchObject({
+      ok: false,
+      reason: "hold_expired",
+    });
     expect((await read(db("staff"), shop, mine.code)).uses?.total).toBe(1);
     await service.rpc("release_expired_holds");
     expect((await live(mine.id)).map((r) => r.booking_id)).toEqual([
@@ -2708,12 +2754,8 @@ describe("after the review of PR 48", () => {
     // The confirm begins while the hold has all its time left, and is seen
     // waiting for the product's lock (it holds no row yet). Then the hold
     // is run out by hand, and only then is the lock let go.
-    const confirming = confirmHold(
-      staffDb("staff"),
-      shop.id,
-      waiting.booking_id,
-    );
-    await seenWaitingForLock("confirm_hold");
+    const confirming = confirm(db("staff"), shop, waiting.booking_id);
+    await seenWaitingForLock("confirm_order");
     expiresIn(waiting.booking_id, -1);
     await gate.open();
     const answer = await confirming;
@@ -2760,14 +2802,13 @@ describe("after the review of PR 48", () => {
     const bike = await vehicle(2);
     const mine = await coupon();
     const api = (c?: unknown) =>
-      Promise.resolve(
-        service.rpc(
-          "reserve",
-          request(shop, "api", "instant", days(bike, 1), {
-            coupon: c,
-          }) as never,
-        ),
-      ) as Promise<Result>;
+      createOrder(
+        service,
+        shop.id,
+        request(shop, "api", "instant", days(bike, 1), {
+          coupon: c,
+        }).p_request,
+      );
     const before = written(shop);
     const refused = await api(taking(mine));
     expect(refused.error?.message).toBe("invalid_request");
@@ -2915,9 +2956,7 @@ describe("after the review of PR 48", () => {
         .coupon?.id,
     ).toBe(other.id);
     // Once the booking's use is given back, it is like anyone else.
-    await cancelReservation(staffDb("staff"), shop.id, {
-      bookingId: hold.booking_id,
-    });
+    await cancel(db("staff"), shop, hold.booking_id);
     expect(
       (await read(staff, shop, typed, { bookingId: hold.booking_id })).coupon
         ?.id,
@@ -2947,7 +2986,8 @@ describe("after the review of PR 48", () => {
       `).out;
     const before = rows();
     const attempt = (day: number, use: Use) => {
-      const body = JSON.stringify(
+      const call = orderSql(
+        shop.id,
         request(shop, "booking_page", "instant", days(bike, day), {
           coupon: use,
         }).p_request,
@@ -2960,7 +3000,8 @@ describe("after the review of PR 48", () => {
         language plpgsql stable set search_path = ''
         as $$ begin raise exception 'coupon_uses_was_called'; end; $$;
         ${actingAs(null)}
-        select 'answer:' || (platform.reserve('${shop.id}', '${body}'::jsonb) ->> 'ok');
+        select 'answer:' || (a.answer ->> 'ok') || coalesce(' ' || (a.answer ->> 'reason'), '')
+        from (select ${call} as answer) a;
         rollback;
       `);
     };
@@ -2971,9 +3012,11 @@ describe("after the review of PR 48", () => {
       expect(free.out).toContain("answer:true");
     }
     // A limit per customer and no customer named: nothing to count either.
+    // (Phase 2 booked it; such an order is now refused, customer_needed,
+    // plan §5.1, and still without counting.)
     const anonymous = attempt(1, taking(perCustomer));
     expect(anonymous.failed).toBe("");
-    expect(anonymous.out).toContain("answer:true");
+    expect(anonymous.out).toContain("answer:false customer_needed");
     // A limit in total, or a limit per customer with the customer named:
     // counted, so the stand-in is reached.
     for (const use of [
@@ -3128,9 +3171,7 @@ describe("stage 10: coupon_inputs_by_id(), coupons and their uses for a list of 
       .from("coupon_redemptions")
       .select("booking_id")
       .eq("coupon_id", first.id);
-    await cancelReservation(staffDb("staff"), shop.id, {
-      bookingId: bookings![0].booking_id,
-    });
+    await cancel(db("staff"), shop, bookings![0].booking_id);
     expect(
       (await byId(db("owner"), shop, [first.id])).data![first.id].uses?.total,
     ).toBe(0);
@@ -3149,6 +3190,9 @@ describe("stage 10: coupon_inputs_by_id(), coupons and their uses for a list of 
       update platform.reservations
       set hold_expires_at = clock_timestamp() - interval '1 second'
       where booking_id = '${hold.booking_id}';
+      update platform.orders
+      set hold_expires_at = clock_timestamp() - interval '1 second'
+      where id = '${hold.booking_id}';
     `);
     expect(failed).toBe("");
     expect(await total()).toBe(0);
@@ -3368,11 +3412,12 @@ describe("stage 10: a shop's currency change racing save_coupon() and reserve()"
       const holder = sqlBackground(`
         begin;
         ${actingAs(null)}
-        select 'booked:' || (platform.reserve('${fresh.id}', '${JSON.stringify(
+        select 'booked:' || (${orderSql(
+          fresh.id,
           request(fresh, "booking_page", "instant", days(bike, 1), {
             coupon: taking(mine, 15_000),
           }).p_request,
-        )}'::jsonb) ->> 'ok');
+        )} ->> 'ok');
         ${gate.wait(marker)}
         commit;
       `);
@@ -3466,7 +3511,8 @@ describe("stage 10: the currency recheck inside reserve(), made to fire", () => 
     const bike = await vehicle(2);
     const mine = await coupon();
     const before = written(shop);
-    const body = JSON.stringify(
+    const call = orderSql(
+      shop.id,
       request(shop, "booking_page", "instant", days(bike, 1), {
         coupon: taking(mine),
       }).p_request,
@@ -3476,11 +3522,11 @@ describe("stage 10: the currency recheck inside reserve(), made to fire", () => 
       alter table platform.coupons drop constraint coupons_currency_fkey;
       update platform.coupons set currency = 'USD' where id = '${mine.id}';
       ${actingAs(null)}
-      select 'other currency:' || platform.reserve('${shop.id}', '${body}'::jsonb)::text;
+      select 'other currency:' || ${call}::text;
       reset role;
       update platform.coupons set currency = 'THB' where id = '${mine.id}';
       ${actingAs(null)}
-      select 'own currency:' || (platform.reserve('${shop.id}', '${body}'::jsonb) ->> 'ok');
+      select 'own currency:' || (${call} ->> 'ok');
       rollback;
     `);
     expect(failed).toBe("");
@@ -3619,9 +3665,7 @@ describe("the currency lock counts a coupon that holds an amount of money", () =
 
       // Given back by a cancel: the row and its amount stay, and so does
       // the lock.
-      await cancelReservation(staffDb("staff", fresh), fresh.id, {
-        bookingId: made.booking_id,
-      });
+      await cancel(db("staff", fresh), fresh, made.booking_id);
       expect(await live(mine.id)).toHaveLength(0);
       expect((await redemptions(mine.id)).map((r) => r.amount)).toEqual([
         12_300,
@@ -3668,11 +3712,14 @@ describe("the migration's guard", () => {
     // one of them (review of PR 48, finding 1).
     expect(guard!.match(/'[0-9a-f]{32}'/g)).toHaveLength(8);
     expect(guard).toContain("'platform.confirm_hold(uuid, uuid)'");
-    // Today's bodies are the migration's own, not the ones it replaced: the
-    // guard run again refuses, naming the first function that differs, and
-    // changes nothing (it is one statement, and it only reads).
+    // Today's database is not the one the guard expects: run again it
+    // refuses and changes nothing (it is one statement, and it only reads).
+    // Since Phase 3 stage 2b (20261125000100) the first function it looks
+    // at, reserve(), is gone, so it stops there, where it used to stop on a
+    // body that differs.
+    const gone = /function "platform\.reserve\(uuid, jsonb\)" does not exist/;
     const again = sql(guard!);
-    expect(again.failed).toMatch(/is not the body main has \(md5 [0-9a-f]{32}/);
+    expect(again.failed).toMatch(gone);
     // On a database that has the bodies it expects, it passes: each
     // function is put back as main had it, inside a transaction that is
     // undone, with the guard's own MD5 for it checked first.
@@ -3690,7 +3737,8 @@ describe("the migration's guard", () => {
       ${guard}
       rollback;
     `);
-    expect(drifted.failed).toMatch(/is not the body main has/);
+    // The same stop, for the same reason, and the transaction is undone.
+    expect(drifted.failed).toMatch(gone);
   });
 
   it("stage 10's migration has the same guard for the three functions it re-creates, and its check of stored codes passes on today's coupons", () => {

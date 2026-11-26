@@ -15,8 +15,11 @@
  *  - Migration 2's clearing of Phase 2's bookings.
  *
  * The rows of orders, rentals, charges and lines are written here with the
- * service role: their own writers (create_order and the rest) arrive with
- * migration 3.
+ * service role. Their own writers (create_order and the rest) came with
+ * migration 3 (20261125000100_platform_order_core, tested in
+ * order-core.test.ts); since then an order must have its number when it is
+ * committed, a rental has its position, and a reservation always has a
+ * rental, so the rows written by hand here carry those too.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -27,6 +30,7 @@ import { roles, type Role } from "@/lib/roles";
 import {
   allocationFor,
   anonClient,
+  createOrder,
   createTenant,
   createUser,
   deleteTenant,
@@ -120,9 +124,17 @@ async function vehicle(tenant: TestTenant, units: number) {
   return { id: product.id as string, units: unitIds };
 }
 
+/**
+ * Numbers for orders written by hand: far above what a shop's counter gives
+ * in this file, below the ones helpers.ts picks at random.
+ */
+let handNumber = 100_000;
+
 const orderRow = (tenant: TestTenant, code: string) => ({
   tenant_id: tenant.id,
   code,
+  // No order is committed without its number (migration 3).
+  number: ++handNumber as number | null,
   status: "draft",
   channel: "walk_in",
   mode: "staff",
@@ -139,6 +151,8 @@ const rentalRow = (tenant: TestTenant, orderId: string, productId: string) => ({
   starts_at: "2031-05-01T03:00:00Z",
   ends_at: "2031-05-03T03:00:00Z",
   status: "draft",
+  // Where the rental stands in its order: required since migration 3.
+  position: 0,
 });
 
 const chargeRow = (tenant: TestTenant, orderId: string) => ({
@@ -1191,7 +1205,7 @@ describe("what the tables themselves refuse (written with the service role)", ()
   const refusal = async (table: Table, row: Row) =>
     (await from(service, table).insert(row as never)).error?.code;
 
-  it("an order: a code of 6 characters without 0, O, 1 or I, unique in its shop; a known status, channel and mode; a held order has its expiry; a number and an idempotency key are unique in the shop", async () => {
+  it("an order: a code of 6 characters without 0, O, 1 or I, unique in its shop; a known status, channel and mode; a held order has its expiry; a number and an idempotency key are unique in the shop; an order with no number is refused at commit", async () => {
     for (const bad of ["ABC1O0", "abcdef", "ABCDE", "ABCDEFG", "ABCDI2"])
       expect(await refusal("orders", orderRow(a, bad)), bad).toBe("23514");
     // The scene's code, again in the same shop.
@@ -1232,9 +1246,20 @@ describe("what the tables themselves refuse (written with the service role)", ()
         idempotency_key: key,
       }),
     ).toBeUndefined();
-    // Any number of orders wait for their number at once.
-    expect(await refusal("orders", orderRow(a, code()))).toBeUndefined();
-    expect(await refusal("orders", orderRow(a, code()))).toBeUndefined();
+    // An order with no number is refused when its transaction commits
+    // (migration 3's deferred trigger orders_require_number; until then any
+    // number of orders could wait for theirs).
+    expect(
+      await refusal("orders", { ...orderRow(a, code()), number: null }),
+    ).toBe("23514");
+    expect(
+      (
+        await from(service, "orders").insert({
+          ...orderRow(a, code()),
+          number: null,
+        } as never)
+      ).error?.message,
+    ).toBe("order_without_number");
   });
 
   it("a rental: one vehicle only; ends after it starts; an extra's parent is a rental, a vehicle has none; a known status", async () => {
@@ -1328,7 +1353,7 @@ describe("what the tables themselves refuse (written with the service role)", ()
     ).toBeUndefined();
   });
 
-  it("a shop gets its order counter when it is made, starting at 1; a reservation's rental may be empty until migration 3", async () => {
+  it("a shop gets its order counter when it is made, starting at 1; a reservation always has its rental (since migration 3)", async () => {
     expect(
       sql(
         `select next_number from platform.order_counters where tenant_id in ('${a.id}', '${b.id}') order by 1;`,
@@ -1343,7 +1368,8 @@ describe("what the tables themselves refuse (written with the service role)", ()
       sql(
         `select is_nullable from information_schema.columns where table_schema = 'platform' and table_name = 'reservations' and column_name = 'rental_id';`,
       ).out,
-    ).toBe("YES");
+      // Nullable until migration 3 (20261125000100), which made it required.
+    ).toBe("NO");
   });
 });
 
@@ -1351,26 +1377,42 @@ describe("move_unit(): a row for several units that is split keeps its rental (M
   type Booked = {
     ok: true;
     booking_id: string;
-    lines: { reservation_id: string; unit_ids: string[] }[];
+    lines: { reservation_id: string; rental_id: string; unit_ids: string[] }[];
+  };
+  /**
+   * Rental gear with `count` units. A vehicle rental is one bike since
+   * migration 3, so only a gear row is for several units, and only a gear
+   * row is ever split.
+   */
+  const gear = async (count: number) => {
+    const { data, error } = await a.members.owner.db.rpc(
+      "create_general_product",
+      {
+        p_tenant_id: a.id,
+        p_type: "gear",
+        p_name: `Orders gear ${tag} ${++counter}`,
+        p_track_units: false,
+        p_quantities: [{ location_id: a.locationId, quantity: count }],
+      },
+    );
+    if (error) throw error;
+    return { id: data as string };
   };
   const book = async (productId: string, quantity: number, day: number) => {
     const from = new Date(Date.UTC(2032, 0, day, 3));
     const to = new Date(Date.UTC(2032, 0, day + 2, 3));
-    const { data, error } = await a.members.staff.db.rpc("reserve", {
-      p_tenant_id: a.id,
-      p_request: {
-        channel: "walk_in",
-        mode: "staff",
-        lines: [
-          {
-            product_id: productId,
-            location_id: a.locationId,
-            starts_at: from.toISOString(),
-            ends_at: to.toISOString(),
-            quantity,
-          },
-        ],
-      },
+    const { data, error } = await createOrder(a.members.staff.db, a.id, {
+      channel: "walk_in",
+      mode: "staff",
+      lines: [
+        {
+          product_id: productId,
+          location_id: a.locationId,
+          starts_at: from.toISOString(),
+          ends_at: to.toISOString(),
+          quantity,
+        },
+      ],
     });
     expect(error).toBeNull();
     expect((data as { ok: boolean }).ok, JSON.stringify(data)).toBe(true);
@@ -1394,31 +1436,16 @@ describe("move_unit(): a row for several units that is split keeps its rental (M
         .eq("id", id),
     );
 
-  it("the moved unit's new row carries the same rental; the row it left keeps it; a row for one unit moved in place keeps it; a booking with no rental stays without", async () => {
-    const x = await vehicle(a, 3);
-    const y = await vehicle(a, 0);
-    const order = await only(
-      service
-        .from("orders")
-        .insert({ ...orderRow(a, "SPLT22"), status: "booked" })
-        .select("id"),
-    );
-    const rental = await only(
-      service
-        .from("rentals")
-        .insert({ ...rentalRow(a, order.id, x.id), status: "booked" })
-        .select("id"),
-    );
+  it("the moved unit's new row carries the same rental; the row it left keeps it; a row for one unit moved in place keeps it; another order's split keeps that order's own rental", async () => {
+    const x = await gear(3);
+    const y = await gear(0);
 
-    // Three units in one row, as Phase 2's reserve() still books them; the
-    // row is given its rental the way migration 3's core will write it.
+    // Three units in one row, booked with create_order(): the row has the
+    // rental the order made for its line. (Before migration 3 this test
+    // booked three scooters with reserve() and set the rental by hand.)
     const big = await book(x.id, 3, 5);
     const original = big.lines[0]!.reservation_id;
-    await service
-      .from("reservations")
-      .update({ rental_id: rental.id })
-      .eq("id", original)
-      .throwOnError();
+    const rental = { id: big.lines[0]!.rental_id };
 
     const [first, second] = big.lines[0]!.unit_ids;
     const moved = await move(first!, y.id);
@@ -1464,18 +1491,21 @@ describe("move_unit(): a row for several units that is split keeps its rental (M
       rental_id: rental.id,
     });
 
-    // A Phase 2 booking, with no rental: its split has none either.
-    const z = await vehicle(a, 2);
+    // A second order: its split carries its own rental, not the first's.
+    // (This was "a Phase 2 booking, with no rental, has none after the
+    // split"; no reservation is without a rental since migration 3.)
+    const z = await gear(2);
     const plain = await book(z.id, 2, 12);
     const split = await move(plain.lines[0]!.unit_ids[0]!, y.id);
     expect(split.ok).toBe(true);
+    expect(plain.lines[0]!.rental_id).not.toBe(rental.id);
     expect(await reservation(split.reservation_ids[0]!)).toMatchObject({
       quantity: 1,
-      rental_id: null,
+      rental_id: plain.lines[0]!.rental_id,
     });
     expect(await reservation(plain.lines[0]!.reservation_id)).toMatchObject({
       quantity: 1,
-      rental_id: null,
+      rental_id: plain.lines[0]!.rental_id,
     });
   }, 120_000);
 });
@@ -1593,22 +1623,19 @@ describe("migration 2 clears Phase 2's bookings (S7, decision 24)", () => {
       .from("unit_blocks")
       .insert(await allocationFor(a.id, one!, hours(200), hours(210)))
       .throwOnError();
-    const held = await a.members.staff.db.rpc("reserve", {
-      p_tenant_id: a.id,
-      p_request: {
-        channel: "walk_in",
-        mode: "staff",
-        hold: true,
-        lines: [
-          {
-            product_id: bike.id,
-            location_id: a.locationId,
-            starts_at: hours(300).toISOString(),
-            ends_at: hours(310).toISOString(),
-            quantity: 1,
-          },
-        ],
-      },
+    const held = await createOrder(a.members.staff.db, a.id, {
+      channel: "walk_in",
+      mode: "staff",
+      hold: true,
+      lines: [
+        {
+          product_id: bike.id,
+          location_id: a.locationId,
+          starts_at: hours(300).toISOString(),
+          ends_at: hours(310).toISOString(),
+          quantity: 1,
+        },
+      ],
     });
     expect((held.data as { ok: boolean }).ok, JSON.stringify(held.data)).toBe(
       true,

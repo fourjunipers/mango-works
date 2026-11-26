@@ -18,8 +18,16 @@ import { roles, type Role } from "@/lib/roles";
 import {
   anonClient,
   closedGate,
+  createOrder,
+  orderSql,
+  orderWithRental,
   createTenant,
   createUser,
+  type BookingAnswer,
+  type BookingResult,
+  cancelOrder,
+  cancelReservationCore,
+  type CancelResult,
   type Db,
   deleteTenant,
   deleteUser,
@@ -70,17 +78,8 @@ type Line = {
   parent?: number;
   unit_ids?: string[];
 };
-type Answer =
-  | {
-      ok: true;
-      booking_id: string;
-      lines: { reservation_id: string; unit_ids: string[]; shortage: number }[];
-    }
-  | { ok: false; reason: string; line: number | null };
-type Result = {
-  data: Answer | null;
-  error: { code?: string; message?: string } | null;
-};
+type Answer = BookingAnswer;
+type Result = BookingResult;
 
 const iso = (when: Date | string) =>
   typeof when === "string" ? when : when.toISOString();
@@ -114,9 +113,11 @@ const staffBook = (
   tenant: TestTenant = shop,
   channel = "walk_in",
 ): Promise<Result> =>
-  Promise.resolve(
-    db(role, tenant).rpc("reserve", request(tenant, channel, "staff", lines)),
-  ) as Promise<Result>;
+  createOrder(
+    db(role, tenant),
+    tenant.id,
+    request(tenant, channel, "staff", lines).p_request,
+  );
 
 /** The online path: the server, with the service role. */
 const onlineBook = (
@@ -125,28 +126,20 @@ const onlineBook = (
   channel = "booking_page",
   mode = "instant",
 ): Promise<Result> =>
-  Promise.resolve(
-    service.rpc("reserve", request(tenant, channel, mode, lines)),
-  ) as Promise<Result>;
+  createOrder(
+    service,
+    tenant.id,
+    request(tenant, channel, mode, lines).p_request,
+  );
 
-type CancelAnswer =
-  | { ok: true; booking_id: string; reservation_ids: string[] }
-  | { ok: false; reason: string };
-const cancel = (
+const cancel = async (
   client: Db,
   tenant: TestTenant,
   ids: { booking?: string; reservation?: string },
-) =>
-  Promise.resolve(
-    client.rpc("cancel_reservation", {
-      p_tenant_id: tenant.id,
-      p_booking_id: ids.booking,
-      p_reservation_id: ids.reservation,
-    }),
-  ) as Promise<{
-    data: CancelAnswer | null;
-    error: { code?: string; message?: string } | null;
-  }>;
+): Promise<CancelResult> =>
+  ids.reservation !== undefined && ids.booking === undefined
+    ? cancelReservationCore(tenant.id, ids.reservation)
+    : cancelOrder(client, tenant.id, ids.booking);
 
 /** A vehicle product with `count` units, made with the service role. */
 async function vehicle(
@@ -463,6 +456,7 @@ describe("who may book", () => {
         .insert({
           tenant_id: shop.id,
           booking_id: randomUUID(),
+          rental_id: randomUUID(),
           product_id: bike.id,
           product_type: "vehicle",
           location_id: shop.locationId,
@@ -527,9 +521,10 @@ describe("who may book", () => {
     const before = await written();
     for (const channel of ["booking_page", "marketplace", "api"]) {
       // A signed-in member, even the owner, can't book as an online channel.
-      const member = await db("owner").rpc(
-        "reserve",
-        request(shop, channel, "instant", [line]),
+      const member = await createOrder(
+        db("owner"),
+        shop.id,
+        request(shop, channel, "instant", [line]).p_request,
       );
       expect(member.data, channel).toEqual({
         ok: false,
@@ -538,9 +533,10 @@ describe("who may book", () => {
       });
     }
     for (const channel of ["walk_in", "phone"]) {
-      const server = await service.rpc(
-        "reserve",
-        request(shop, channel, "staff", [line]),
+      const server = await createOrder(
+        service,
+        shop.id,
+        request(shop, channel, "staff", [line]).p_request,
       );
       expect(server.data, channel).toEqual({
         ok: false,
@@ -583,7 +579,11 @@ describe("who may book", () => {
       { product_id: bike.id, starts_at: at(0), ends_at: at(1) },
     ]);
     const before = await written();
-    const stranger = await outsider.db.rpc("reserve", args);
+    const stranger = await createOrder(
+      outsider.db,
+      args.p_tenant_id,
+      args.p_request,
+    );
     expect(stranger.data).toEqual({
       ok: false,
       reason: "not_allowed",
@@ -595,12 +595,12 @@ describe("who may book", () => {
     expect(strangerCancel.data).toEqual({ ok: false, reason: "not_allowed" });
 
     const anon = anonClient();
-    const visitor = await anon.rpc("reserve", args);
+    const visitor = await createOrder(anon, args.p_tenant_id, args.p_request);
     expect(visitor.error).not.toBeNull();
     expect(visitor.data).toBeNull();
-    const visitorCancel = await anon.rpc("cancel_reservation", {
+    const visitorCancel = await anon.rpc("cancel_order", {
       p_tenant_id: shop.id,
-      p_booking_id: randomUUID(),
+      p_order_id: randomUUID(),
     });
     expect(visitorCancel.error).not.toBeNull();
     expect(await written()).toEqual(before);
@@ -676,6 +676,7 @@ describe("reserve(): what a booking writes", () => {
     const { data: events } = await service
       .from("audit_events")
       .select("entity, action, actor, after")
+      .eq("entity", "bookings")
       .eq("entity_id", answer.booking_id);
     expect(events).toEqual([
       {
@@ -689,6 +690,7 @@ describe("reserve(): what a booking writes", () => {
           hold_expires_at: null,
           lines: [
             {
+              rental_id: answer.lines[0].rental_id,
               reservation_id: rows[0].id,
               unit_ids: answer.lines[0].unit_ids,
               shortage: 0,
@@ -958,10 +960,18 @@ describe("reserve(): what a booking writes", () => {
     ]);
     expect(tooMany.data).toEqual({ ok: false, reason: "unavailable", line: 2 });
     expect(await written()).toEqual(before);
-    // Lines that don't overlap can share one.
+    // Lines whose times neither overlap nor touch can share one. (Lines that
+    // touch, one starting the moment the other ends, no longer can: a bike
+    // is never on an order twice at the same time, the owner, 25 Nov 2026.
+    // tests/db/order-core.test.ts holds that rule.)
     const inTurn = await staffBook("staff", [
       { product_id: bike.id, starts_at: at(10), ends_at: at(11), quantity: 2 },
-      { product_id: bike.id, starts_at: at(11), ends_at: at(12), quantity: 2 },
+      {
+        product_id: bike.id,
+        starts_at: at(11, 1),
+        ends_at: at(12),
+        quantity: 2,
+      },
     ]);
     expect(outcome(inTurn)).toBe("ok");
   });
@@ -1070,10 +1080,11 @@ describe("reserve(): what a booking writes", () => {
       ],
     ];
     for (const [what, p_request] of bad) {
-      const { data, error } = await db("owner").rpc("reserve", {
-        p_tenant_id: shop.id,
-        p_request: p_request as never,
-      });
+      const { data, error } = await createOrder(
+        db("owner"),
+        shop.id,
+        p_request as never,
+      );
       expect(data, what).toBeNull();
       expect(error?.message, what).toBe("invalid_request");
     }
@@ -1096,10 +1107,7 @@ describe("reserve(): what a booking writes", () => {
         { channel: "marketplace", mode: "staff", lines: [line] },
       ],
     ] as const) {
-      const { error } = await service.rpc("reserve", {
-        p_tenant_id: shop.id,
-        p_request: p_request as never,
-      });
+      const { error } = await createOrder(service, shop.id, p_request as never);
       expect(error?.message, what).toBe("invalid_request");
     }
     expect(await written()).toEqual(before);
@@ -1166,12 +1174,23 @@ describe("a booking that overlaps a downtime block is refused", () => {
 
     // The constraint has the last word, whoever writes: a reservation made
     // by hand with the service role still can't put a block there.
+    const byHandOrder = await orderWithRental(
+      shop.id,
+      {
+        product_id: bike.id,
+        location_id: shop.locationId,
+        starts_at: at(6).toISOString(),
+        ends_at: at(8).toISOString(),
+      },
+      { channel: "api", mode: "instant" },
+    );
     const reservation = await exactlyOne(
       service
         .from("reservations")
         .insert({
           tenant_id: shop.id,
-          booking_id: randomUUID(),
+          booking_id: byHandOrder.orderId,
+          rental_id: byHandOrder.rentalId,
           product_id: bike.id,
           product_type: "vehicle",
           location_id: shop.locationId,
@@ -1405,6 +1424,9 @@ describe("cancel_reservation()", () => {
               reservation_id: l.reservation_id,
               unit_ids: l.unit_ids,
             })),
+          // Who cancelled and why: the server, unless it says otherwise.
+          cancelled_by: "customer",
+          cancel_reason: "customer_request",
         },
       },
     ]);
@@ -1516,14 +1538,14 @@ describe("cancel_reservation()", () => {
     expect(outcome(again)).toBe("ok");
   });
 
-  it("needs exactly one of a booking and a row", async () => {
-    for (const ids of [
-      {},
-      { booking: randomUUID(), reservation: randomUUID() },
-    ]) {
-      const { error } = await cancel(db("owner"), shop, ids);
-      expect(error?.message).toBe("invalid_request");
-    }
+  it("needs an order: cancel_order() and the core behind it both refuse a call with none", async () => {
+    const { error } = await cancel(db("owner"), shop, {});
+    expect(error?.message).toBe("invalid_request");
+    expect(
+      sql(
+        `select platform_private.cancel_reservation('${shop.id}', null, '${randomUUID()}', 'shop', 'shop_request');`,
+      ).failed,
+    ).toMatch(/invalid_request/);
   });
 });
 
@@ -1540,11 +1562,12 @@ describe("shop against shop: another shop's thing is answered exactly like one t
 
     // Booking in a shop you are not in: every role, and the stranger.
     for (const role of roles) {
-      const result = await db(role).rpc(
-        "reserve",
+      const result = await createOrder(
+        db(role),
+        saigon.id,
         request(saigon, "walk_in", "staff", [
           { product_id: theirs.id, ...window },
-        ]),
+        ]).p_request,
       );
       expect(result.data, role).toEqual({
         ok: false,
@@ -1620,10 +1643,10 @@ describe("shop against shop: another shop's thing is answered exactly like one t
 
     for (const role of roles) {
       // Saying it is the other shop: refused as someone who isn't in it.
-      for (const ids of [
-        { booking: answer.booking_id },
-        { reservation: answer.lines[0].reservation_id },
-      ]) {
+      // (One row by its id has no order function until cancel_rental(),
+      // migration 6: the test reaches the core, which nobody signed in can
+      // call, so there is no caller to refuse.)
+      for (const ids of [{ booking: answer.booking_id }]) {
         const direct = await cancel(db(role), saigon, ids);
         expect(direct.data, role).toEqual({ ok: false, reason: "not_allowed" });
       }
@@ -1794,7 +1817,7 @@ describe("lock order", () => {
       from pg_locks w
       join pg_stat_activity a on a.pid = w.pid
       where w.locktype = 'advisory' and w.classid = x'1a02'::int and not w.granted
-        and a.query like '%reserve%' and a.pid <> pg_backend_pid()
+        and a.query like '%create_order%' and a.pid <> pg_backend_pid()
       limit 1;
     `);
     await gate.open();
@@ -2046,7 +2069,7 @@ describe("lock order", () => {
       from pg_stat_activity a
       join pg_locks w on w.pid = a.pid and not w.granted
         and w.locktype in ('transactionid', 'tuple')
-      where a.query like '%reserve%' and a.pid <> pg_backend_pid()
+      where a.query like '%create_order%' and a.pid <> pg_backend_pid()
       limit 1;
     `);
     // Session 3 takes the product's row without waiting. It can: the
@@ -2120,7 +2143,7 @@ describe("lock order", () => {
         join pg_stat_activity d on d.pid = h.pid
         where w.locktype = 'advisory' and w.classid = x'1a01'::int and not w.granted
           and w.objid::bigint = (hashtext('${picked}')::bigint & 4294967295)
-          and a.query like '%reserve%' and d.query like '%${deleteMarker}%'
+          and a.query like '%create_order%' and d.query like '%${deleteMarker}%'
         limit 1;
       `);
       // The edit is saved: the delete goes on, and then the booking.
@@ -2181,7 +2204,7 @@ function bookingHeld(
   return sqlBackground(`
     begin;
     ${actingAs(userId)}
-    select platform.reserve('${call.p_tenant_id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
+    select ${orderSql(call.p_tenant_id, call.p_request)} ->> 'ok';
     ${gate.wait(marker)}
     commit;
   `);
@@ -2254,7 +2277,7 @@ describe("one side held in place, the other seen waiting", () => {
         from pg_locks w
         join pg_stat_activity a on a.pid = w.pid
         where w.locktype = 'advisory' and w.classid = x'1a02'::int and not w.granted
-          and a.query like '%reserve%' and a.query not like '%${marker}%'
+          and a.query like '%create_order%' and a.query not like '%${marker}%'
           and a.pid <> pg_backend_pid()
         limit 1;
       `);

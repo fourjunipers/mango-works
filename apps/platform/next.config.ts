@@ -4,7 +4,7 @@ import { securityHeaders } from "./lib/security-headers";
 
 const nextConfig: NextConfig = {
   // Shared workspace packages ship TypeScript source (no build step).
-  transpilePackages: ["@mango/core", "@mango/db"],
+  transpilePackages: ["@mango/booking", "@mango/core", "@mango/db"],
   // Price lists moved from Products to Settings in stage D6: old links and
   // bookmarks keep working.
   async redirects() {

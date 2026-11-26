@@ -9,7 +9,7 @@ Tailwind + shadcn/ui, Stripe Connect + Billing, Resend, LINE Messaging API, next
 
 ## Rules
 - Every table has tenant_id and an RLS policy. Add an RLS test for every new table.
-- Availability is enforced by the DB exclusion constraint on allocations/downtime. Never bypass it.
+- Availability is enforced by the DB exclusion constraint on `unit_blocks` (allocations, holds and downtime of a unit never overlap); stock is taken only by the order functions (`create_order` and its siblings). Never bypass it.
 - Money = integer minor units + currency. Times = UTC in DB, tenant timezone in UI.
 - All pricing goes through packages/core (quote). All availability through packages/core and the DB lock.
 - Every order status change writes audit_events.

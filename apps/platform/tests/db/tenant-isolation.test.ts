@@ -333,17 +333,10 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
       product_id: model.id,
     }),
   );
-  ok(
-    await service.from("coupon_redemptions").insert({
-      tenant_id: tenant.id,
-      coupon_id: coupon.id,
-      booking_id: "00000000-0000-4000-8000-0000000000c1",
-      amount: 100,
-    }),
-  );
   // Orders (Phase 3, stage 2a): a customer, a draft order with one rental,
   // its charge and the charge's line. order_counters got its row when the
-  // shop was made.
+  // shop was made. Since stage 2b an order has its number when it is
+  // committed and a rental its position.
   const customer = ok(
     await exactlyOne(
       service
@@ -364,6 +357,7 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
         .insert({
           tenant_id: tenant.id,
           code: "FXTRA2",
+          number: 900_001,
           customer_id: customer.id,
           status: "draft",
           channel: "walk_in",
@@ -387,10 +381,22 @@ async function addFixtures(tenant: TestTenant): Promise<Fixture> {
           starts_at: "2027-05-01T03:00:00Z",
           ends_at: "2027-05-03T03:00:00Z",
           status: "draft",
+          position: 0,
         })
         .select("id"),
     ),
   )!;
+  // The coupon's use (Phase 2, stage 8), as create_order() writes it: the
+  // order is its booking, the order's customer is whose use it is.
+  ok(
+    await service.from("coupon_redemptions").insert({
+      tenant_id: tenant.id,
+      coupon_id: coupon.id,
+      booking_id: order.id,
+      customer_id: customer.id,
+      amount: 100,
+    }),
+  );
   const charge = ok(
     await exactlyOne(
       service
@@ -533,9 +539,11 @@ const payloads: Record<string, (t: Fixture, userId: string) => Row> = {
     product_id: t.itemId,
     lead_time_hours: 1,
   }),
+  // A reservation is a rental of its own order (stage 2b): the shop's own.
   reservations: (t) => ({
     tenant_id: t.id,
-    booking_id: "00000000-0000-4000-8000-000000000001",
+    booking_id: t.orderId,
+    rental_id: t.rentalId,
     product_id: t.modelId,
     product_type: "vehicle",
     location_id: t.locationId,
@@ -606,12 +614,14 @@ const payloads: Record<string, (t: Fixture, userId: string) => Row> = {
     tenant_id: t.id,
     coupon_id: t.couponId,
     booking_id: "00000000-0000-4000-8000-0000000000c2",
+    customer_id: t.customerId,
     amount: 1,
   }),
   customers: (t) => ({ tenant_id: t.id, full_name: "Forged Customer" }),
   orders: (t) => ({
     tenant_id: t.id,
     code: "FRGD22",
+    number: 900_002,
     status: "draft",
     channel: "walk_in",
     mode: "staff",
@@ -627,6 +637,7 @@ const payloads: Record<string, (t: Fixture, userId: string) => Row> = {
     starts_at: "2027-06-01T03:00:00Z",
     ends_at: "2027-06-02T03:00:00Z",
     status: "draft",
+    position: 1,
   }),
   order_charges: (t) => ({
     tenant_id: t.id,
@@ -1072,9 +1083,12 @@ describe("a row can't point at another tenant's parent (service role, so this is
     });
   });
 
-  it("orders: order → customer; rental → order, product and place; charge → order; line → a charge and a rental of its own order; reservation → rental; all money → the shop's currency", async () => {
+  it("orders: order → customer; rental → order, product and place; charge → order; line → a charge and a rental of its own order; reservation → rental; a coupon's use → customer; all money → the shop's currency", async () => {
+    // Complete rows (a number, a position: stage 2b), so that the key is
+    // the only thing wrong with each.
     const order = {
       tenant_id: a.id,
+      number: 900_003,
       status: "draft",
       channel: "walk_in",
       mode: "staff",
@@ -1096,6 +1110,7 @@ describe("a row can't point at another tenant's parent (service role, so this is
       starts_at: "2027-07-01T03:00:00Z",
       ends_at: "2027-07-02T03:00:00Z",
       status: "draft",
+      position: 2,
     };
     await refused("rentals", { ...rental, order_id: b.orderId });
     await refused("rentals", { ...rental, product_id: b.modelId });
@@ -1135,6 +1150,11 @@ describe("a row can't point at another tenant's parent (service role, so this is
     await refused("reservations", {
       ...payloads.reservations!(a, a.members.owner.id),
       rental_id: b.rentalId,
+    });
+    // Whose use a coupon's use is: a customer of the same shop (stage 2b).
+    await refused("coupon_redemptions", {
+      ...payloads.coupon_redemptions!(a, a.members.owner.id),
+      customer_id: b.customerId,
     });
     // Within one shop: a line's charge and rental are its own order's.
     const service = serviceClient();

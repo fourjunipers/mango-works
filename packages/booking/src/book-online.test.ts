@@ -157,11 +157,22 @@ function spy(
           data: scene.coupon ?? { coupon: null, uses: null },
           error: null,
         },
-        reserve: scene.reserve ?? {
+        // One rental for every line it was sent, as the database answers.
+        create_order: scene.reserve ?? {
           data: {
             ok: true,
-            booking_id: "b-1",
-            lines: [{ reservation_id: "r-1", unit_ids: ["u-1"], shortage: 0 }],
+            order_id: "b-1",
+            number: 7,
+            code: "ABCDEF",
+            status: "booked",
+            lines: (
+              (args.p_order as { lines?: unknown[] } | undefined)?.lines ?? []
+            ).map((_, index) => ({
+              rental_id: `n-${index + 1}`,
+              reservation_id: `r-${index + 1}`,
+              unit_ids: [`u-${index + 1}`],
+              shortage: 0,
+            })),
           },
           error: null,
         },
@@ -170,7 +181,12 @@ function spy(
     },
   };
   const called = () => calls.map((call) => call.fn);
-  return { db, calls, called, reserved: () => called().includes("reserve") };
+  return {
+    db,
+    calls,
+    called,
+    reserved: () => called().includes("create_order"),
+  };
 }
 
 const asked = (
@@ -366,13 +382,13 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
       now: () => now,
     });
     expect(s.called().slice(0, 3).sort()).toEqual(READS);
-    expect(s.called().slice(3)).toEqual(["reserve"]);
+    expect(s.called().slice(3)).toEqual(["create_order"]);
     expect(s.calls[3].args).toEqual({
       p_tenant_id: TENANT,
-      p_request: {
+      p_order: {
         channel: "booking_page",
         mode: "instant",
-        hold: true,
+        action: "hold",
         lines: [
           {
             product_id: SCOOTER,
@@ -382,13 +398,43 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
             quantity: 1,
           },
         ],
+        // The booking charge: the quote's snapshot, figures as strings.
+        charges: [
+          expect.objectContaining({
+            kind: "booking",
+            priced_at: now.toISOString(),
+            total: "9000",
+            tax_total: "0",
+            deposit: "0",
+            lines: [
+              expect.objectContaining({
+                rental: 0,
+                kind: "period",
+                product_id: SCOOTER,
+                product_type: "vehicle",
+                quantity: 1,
+                amount: "9000",
+                tax_amount: "0",
+              }),
+            ],
+          }),
+        ],
       },
     });
     expect(answer).toMatchObject({
       ok: true,
       bookingId: "b-1",
+      orderNumber: 7,
+      orderCode: "ABCDEF",
       mode: "instant",
-      lines: [{ reservationId: "r-1", unitIds: ["u-1"], shortage: 0 }],
+      lines: [
+        {
+          reservationId: "r-1",
+          rentalIds: ["n-1"],
+          unitIds: ["u-1"],
+          shortage: 0,
+        },
+      ],
       holdExpiresAt: null,
     });
     // Two days at 45.00.
@@ -469,8 +515,8 @@ describe("bookOnline(): offer() first, reserve() only when it passes", () => {
     ]);
     expect(answer.quote.totals.total).toBe(BigInt(10_000));
     // reserve() is still sent all three helmets: the free ones hold stock too.
-    const sent = withHelmets.calls.find((call) => call.fn === "reserve")!.args
-      .p_request as { lines: { quantity: number; parent?: number }[] };
+    const sent = withHelmets.calls.find((call) => call.fn === "create_order")!
+      .args.p_order as { lines: { quantity: number; parent?: number }[] };
     expect(sent.lines.map((line) => [line.quantity, line.parent])).toEqual([
       [1, undefined],
       [3, 0],
@@ -915,10 +961,11 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
     const answer = await bookOnline(asked(), { db: s.db, now: () => now });
     expect(answer).toMatchObject({ ok: true, coupon: null });
     expect(s.called()).not.toContain("coupon_inputs");
-    const sent = s.calls.at(-1)!.args.p_request as Record<string, unknown>;
+    const sent = s.calls.at(-1)!.args.p_order as Record<string, unknown>;
     expect(Object.keys(sent).sort()).toEqual([
+      "action",
       "channel",
-      "hold",
+      "charges",
       "lines",
       "mode",
     ]);
@@ -944,10 +991,8 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
       "coupon_inputs",
       "pricing_inputs",
     ]);
-    expect(s.called().at(-1)).toBe("reserve");
-    expect(
-      s.calls.find((call) => call.fn === "coupon_inputs")!.args,
-    ).toEqual({
+    expect(s.called().at(-1)).toBe("create_order");
+    expect(s.calls.find((call) => call.fn === "coupon_inputs")!.args).toEqual({
       p_tenant_id: TENANT,
       p_code: " summer 10 ",
       p_booking_id: null,
@@ -962,7 +1007,7 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
       couponId: COUPON,
       code: "SUMMER10",
     });
-    const sent = s.calls.at(-1)!.args.p_request as { coupon: unknown };
+    const sent = s.calls.at(-1)!.args.p_order as { coupon: unknown };
     expect(sent.coupon).toEqual({ coupon_id: COUPON, amount: "900" });
   });
 
@@ -982,9 +1027,13 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
     );
     if (!answer.ok) throw new Error(answer.reason);
     expect(answer.quote.totals.total).toBe(BigInt(0));
-    expect(
-      (s.calls.at(-1)!.args.p_request as { coupon: unknown }).coupon,
-    ).toEqual({ coupon_id: COUPON, amount: "9000", customer_id: customerId });
+    // Whose use it is, is the order's customer: not sent with the coupon.
+    const sent = s.calls.at(-1)!.args.p_order as {
+      coupon: unknown;
+      customer_id: unknown;
+    };
+    expect(sent.coupon).toEqual({ coupon_id: COUPON, amount: "9000" });
+    expect(sent.customer_id).toBe(customerId);
     expect(
       s.calls.find((call) => call.fn === "coupon_inputs")!.args.p_customer_id,
     ).toBe(customerId);
@@ -1033,7 +1082,12 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
           now: () => now,
         }),
         what,
-      ).toEqual({ ok: false, reason: "coupon_refused", line: null, coupon: reason });
+      ).toEqual({
+        ok: false,
+        reason: "coupon_refused",
+        line: null,
+        coupon: reason,
+      });
       expect(s.reserved(), what).toBe(false);
     }
   });
@@ -1081,7 +1135,7 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
       because: "returning_discount_is_better",
     });
     expect(answer.quote.totals.total).toBe(BigInt(7200));
-    expect(s.calls.at(-1)!.args.p_request).not.toHaveProperty("coupon");
+    expect(s.calls.at(-1)!.args.p_order).not.toHaveProperty("coupon");
   });
 
   it("the returning-customer discount is given with no code at all, from the shop's settings", async () => {
@@ -1123,10 +1177,10 @@ describe("bookOnline(): the coupon goes through decideDiscounts(), quote() and r
 // ------------------------------------------------------------ the static test
 
 /** The one file that may reach reserve() for an online channel. */
-const ENTRY = "apps/platform/lib/book-online.ts";
+const ENTRY = "packages/booking/src/book-online.ts";
 
 /** A call of the booking function through the API client. */
-const CALLS_RESERVE = /\.rpc\s*(?:<[^>]*>)?\s*\(\s*["'`]reserve["'`]/;
+const CALLS_RESERVE = /\.rpc\s*(?:<[^>]*>)?\s*\(\s*["'`]create_order["'`]/;
 /** Anything that makes or names a client with the service role. */
 const SERVICE_ROLE =
   /@mango\/db\/admin|createAdminClient|SUPABASE_SERVICE_ROLE_KEY|service_role/;
@@ -1145,17 +1199,17 @@ function pathsRoundBookOnline(files: Map<string, string>): string[] {
   );
   for (const [path, source] of callers) {
     if (path.startsWith("apps/marketplace/")) {
-      found.push(`${path}: the marketplace calls reserve()`);
+      found.push(`${path}: the marketplace calls create_order()`);
     }
     // Shared code is imported by both apps: a call there is a path for each.
     if (path.startsWith("packages/")) {
-      found.push(`${path}: a shared package calls reserve()`);
+      found.push(`${path}: a shared package calls create_order()`);
     }
     if (SERVICE_ROLE.test(source)) {
-      found.push(`${path}: calls reserve() with the service role`);
+      found.push(`${path}: calls create_order() with the service role`);
     }
     if (ONLINE_CHANNEL.test(source)) {
-      found.push(`${path}: calls reserve() and names an online channel`);
+      found.push(`${path}: calls create_order() and names an online channel`);
     }
   }
   // A file with the service role's client that imports a file that calls
@@ -1169,7 +1223,7 @@ function pathsRoundBookOnline(files: Map<string, string>): string[] {
       );
       if (imported.test(source)) {
         found.push(
-          `${path}: has the service role and imports ${caller}, which calls reserve()`,
+          `${path}: has the service role and imports ${caller}, which calls create_order()`,
         );
       }
     }
@@ -1183,16 +1237,16 @@ function pathsRoundBookOnline(files: Map<string, string>): string[] {
     found.push(`${ENTRY}: missing`);
   } else {
     const offerAt = entry.search(/\boffer\(/);
-    const reserveAt = entry.search(/\.rpc\(\s*["'`]reserve["'`]/);
+    const reserveAt = entry.search(/\.rpc\(\s*["'`]create_order["'`]/);
     if (!/from "@mango\/core\/booking-rules"/.test(entry) || offerAt < 0) {
       found.push(`${ENTRY}: does not call offer()`);
     } else if (reserveAt < 0 || reserveAt < offerAt) {
-      found.push(`${ENTRY}: reserve() is not after offer()`);
+      found.push(`${ENTRY}: create_order() is not after offer()`);
     }
     if (
       (entry.match(new RegExp(CALLS_RESERVE.source, "g")) ?? []).length !== 1
     ) {
-      found.push(`${ENTRY}: more than one call of reserve()`);
+      found.push(`${ENTRY}: more than one call of create_order()`);
     }
   }
   return found;
@@ -1252,11 +1306,11 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
         withFile(
           "apps/platform/app/book/[slug]/actions.ts",
           `import { createAdminClient } from "@mango/db/admin";
-           export const book = (r) => createAdminClient().schema("platform").rpc("reserve", r);`,
+           export const book = (r) => createAdminClient().schema("platform").rpc("create_order", r);`,
         ),
       ),
     ).toEqual([
-      "apps/platform/app/book/[slug]/actions.ts: calls reserve() with the service role",
+      "apps/platform/app/book/[slug]/actions.ts: calls create_order() with the service role",
     ]);
     // A file that names an online channel beside the call.
     expect(
@@ -1264,17 +1318,17 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
         withFile(
           "apps/platform/lib/quick-book.ts",
           `export const book = (db, lines) =>
-             db.rpc<Answer>('reserve', { p_request: { channel: "booking_page", lines } });`,
+             db.rpc<Answer>('create_order', { p_order: { channel: "booking_page", lines } });`,
         ),
       ),
     ).toEqual([
-      "apps/platform/lib/quick-book.ts: calls reserve() and names an online channel",
+      "apps/platform/lib/quick-book.ts: calls create_order() and names an online channel",
     ]);
     expect(
       pathsRoundBookOnline(
         withFile(
           "apps/platform/lib/api-book.ts",
-          "export const book = (db, lines) => db.rpc(`reserve`, { p_request: { channel: 'api', lines } });",
+          "export const book = (db, lines) => db.rpc(`create_order`, { p_order: { channel: 'api', lines } });",
         ),
       ),
     ).toHaveLength(1);
@@ -1283,25 +1337,27 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
       pathsRoundBookOnline(
         withFile(
           "apps/marketplace/app/api/checkout/route.ts",
-          `export const book = (db, r) => db.schema("platform").rpc("reserve", r);`,
+          `export const book = (db, r) => db.schema("platform").rpc("create_order", r);`,
         ),
       ),
     ).toEqual([
-      "apps/marketplace/app/api/checkout/route.ts: the marketplace calls reserve()",
+      "apps/marketplace/app/api/checkout/route.ts: the marketplace calls create_order()",
     ]);
     // A shared package, by any client.
     expect(
       pathsRoundBookOnline(
         withFile(
           "packages/db/src/booking.ts",
-          `export const book = (db, r) => db.rpc("reserve", r);`,
+          `export const book = (db, r) => db.rpc("create_order", r);`,
         ),
       ),
-    ).toEqual(["packages/db/src/booking.ts: a shared package calls reserve()"]);
-    // The service role's client handed to a file that calls reserve().
+    ).toEqual([
+      "packages/db/src/booking.ts: a shared package calls create_order()",
+    ]);
+    // The service role's client handed to a file that calls create_order().
     const handed = withFile(
       "apps/platform/lib/staff-book.ts",
-      `export const book = (db, request) => db.rpc("reserve", request);`,
+      `export const book = (db, request) => db.rpc("create_order", request);`,
     );
     handed.set(
       "apps/platform/app/api/hook/route.ts",
@@ -1310,7 +1366,7 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
        export const POST = (r) => book(createAdminClient(), r);`,
     );
     expect(pathsRoundBookOnline(handed)).toEqual([
-      "apps/platform/app/api/hook/route.ts: has the service role and imports apps/platform/lib/staff-book.ts, which calls reserve()",
+      "apps/platform/app/api/hook/route.ts: has the service role and imports apps/platform/lib/staff-book.ts, which calls create_order()",
     ]);
     // The entry point itself, if it stopped asking offer() first.
     expect(
@@ -1329,9 +1385,9 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
           `import { createClient } from "@mango/db/platform-server";
            export async function book(tenantId, lines) {
              const db = await createClient();
-             return db.rpc("reserve", {
+             return db.rpc("create_order", {
                p_tenant_id: tenantId,
-               p_request: { channel: "walk_in", mode: "staff", lines },
+               p_order: { channel: "walk_in", mode: "staff", lines },
              });
            }`,
         ),
@@ -1347,6 +1403,7 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
     for (const part of [
       "apps/marketplace/",
       "apps/platform/",
+      "packages/booking/",
       "packages/core/",
       "packages/db/",
       "packages/config/",
@@ -1360,7 +1417,7 @@ describe("no booking-page or marketplace path reaches reserve() without passing 
     // the walk goes there.
     expect(files.has("packages/db/src/admin.ts")).toBe(true);
     expect(pathsRoundBookOnline(files)).toEqual([]);
-    // And today it is the only file that calls reserve() at all.
+    // And today it is the only file that calls create_order() at all.
     expect(
       [...files]
         .filter(([, source]) => CALLS_RESERVE.test(source))

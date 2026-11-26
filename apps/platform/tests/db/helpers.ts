@@ -234,12 +234,22 @@ export async function allocationFor(
       .eq("id", unitId),
   );
   if (unit.error) throw unit.error;
+  // A reservation is a rental of an order (Phase 3 stage 2b): both are
+  // written first, by hand as the reservation is.
+  const { orderId, rentalId } = await orderWithRental(tenantId, {
+    product_id: unit.data.product_id,
+    product_type: unit.data.product_type as "vehicle" | "gear" | "service",
+    location_id: unit.data.location_id,
+    starts_at: from.toISOString(),
+    ends_at: to.toISOString(),
+  });
   const reservation = await exactlyOne(
     service
       .from("reservations")
       .insert({
         tenant_id: tenantId,
-        booking_id: randomUUID(),
+        booking_id: orderId,
+        rental_id: rentalId,
         product_id: unit.data.product_id,
         product_type: unit.data.product_type,
         location_id: unit.data.location_id,
@@ -766,4 +776,403 @@ export function forceListing(
       ...rest,
     })
     .select("product_id");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2's bookings, through create_order() (Phase 3 stage 2b).
+//
+// platform.reserve() is gone: every booking is an order. Phase 2's tests
+// were written as "N units of a product on one line"; an order takes one
+// line per vehicle (a vehicle rental is one bike, decision 2). So that the
+// ported tests keep their requests, rounds and outcomes, bookingOrder()
+// turns a Phase 2 request into create_order()'s (a vehicle line for N bikes
+// becomes N lines; `hold` becomes the action; a coupon's customer becomes
+// the order's), and bookingAnswer() folds the answer back to one entry per
+// line the test sent.
+
+export type BookingLine = {
+  product_id?: unknown;
+  quantity?: unknown;
+  parent?: unknown;
+  unit_ids?: unknown;
+  [key: string]: unknown;
+};
+
+export type BookingRequest = {
+  channel?: unknown;
+  mode?: unknown;
+  hold?: unknown;
+  lines?: unknown;
+  coupon?: unknown;
+  [key: string]: unknown;
+};
+
+export type BookedLine = {
+  /** The line's first (for gear and services, only) reservation and rental. */
+  reservation_id: string;
+  rental_id: string;
+  /** One per bike for a vehicle line; one for anything else. */
+  reservation_ids: string[];
+  rental_ids: string[];
+  unit_ids: string[];
+  shortage: number;
+};
+
+export type BookingAnswer =
+  | {
+      ok: true;
+      /** The order's id: reservations.booking_id. */
+      booking_id: string;
+      order_id: string;
+      number: number;
+      code: string;
+      status: string;
+      hold_expires_at?: string;
+      repeat?: boolean;
+      lines: BookedLine[];
+    }
+  | { ok: false; reason: string; line: number | null };
+
+export type BookingResult = {
+  data: BookingAnswer | null;
+  error: { code?: string; message?: string } | null;
+};
+
+const vehicleProducts = new Map<string, boolean>();
+
+async function vehiclesAmong(ids: string[]): Promise<void> {
+  const unknown = [...new Set(ids)].filter((id) => !vehicleProducts.has(id));
+  if (unknown.length === 0) return;
+  const { data, error } = await serviceClient()
+    .from("products")
+    .select("id, type")
+    .in("id", unknown);
+  if (error) throw error;
+  for (const row of data) vehicleProducts.set(row.id, row.type === "vehicle");
+}
+
+const isUuid = (value: unknown): value is string =>
+  typeof value === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+export type BookingOrder = {
+  /** create_order()'s p_order. */
+  order: Record<string, unknown>;
+  /** For each line sent to create_order(), the index of the test's line. */
+  from: number[];
+};
+
+/**
+ * A Phase 2 request as create_order()'s p_order. Anything it does not
+ * understand is passed on as it is, so a malformed request still reaches the
+ * database to be refused there.
+ */
+export async function bookingOrder(
+  request: BookingRequest,
+): Promise<BookingOrder> {
+  const { hold, lines, coupon, ...rest } = request;
+  const order: Record<string, unknown> = { ...rest };
+  if (!("action" in order)) {
+    if (hold === true) order.action = "hold";
+    else if (hold === undefined || hold === false || hold === null)
+      order.action = "reserve";
+    // Not a boolean: sent on, to be refused.
+    else order.action = hold;
+  }
+  if (coupon !== undefined) {
+    if (
+      coupon !== null &&
+      typeof coupon === "object" &&
+      !Array.isArray(coupon)
+    ) {
+      const { customer_id, ...use } = coupon as Record<string, unknown>;
+      order.coupon = use;
+      if (customer_id !== undefined && !("customer_id" in order))
+        order.customer_id = customer_id;
+    } else order.coupon = coupon;
+  }
+  const from: number[] = [];
+  if (!Array.isArray(lines)) {
+    if (lines !== undefined) order.lines = lines;
+    return { order, from };
+  }
+  const plain = (line: unknown): line is BookingLine =>
+    line !== null && typeof line === "object" && !Array.isArray(line);
+  await vehiclesAmong(
+    lines.flatMap((line) =>
+      plain(line) && isUuid(line.product_id) ? [line.product_id] : [],
+    ),
+  );
+  /** Where each of the test's lines starts in what is sent. */
+  const first: number[] = [];
+  const sent: unknown[] = [];
+  lines.forEach((line, index) => {
+    first[index] = sent.length;
+    if (!plain(line)) {
+      sent.push(line);
+      from.push(index);
+      return;
+    }
+    const mapped: BookingLine = { ...line };
+    if (
+      typeof line.parent === "number" &&
+      Number.isInteger(line.parent) &&
+      line.parent >= 0 &&
+      line.parent < index
+    ) {
+      mapped.parent = first[line.parent];
+    }
+    const many =
+      isUuid(line.product_id) &&
+      vehicleProducts.get(line.product_id) === true &&
+      typeof line.quantity === "number" &&
+      Number.isInteger(line.quantity) &&
+      line.quantity >= 2 &&
+      line.quantity <= 1000;
+    // Units named for a line of N bikes: one each, when there are N of them
+    // and no two are the same (else sent whole, to be refused).
+    const named = Array.isArray(line.unit_ids) ? line.unit_ids : null;
+    if (
+      !many ||
+      (named !== null &&
+        (named.length !== line.quantity ||
+          new Set(named).size !== named.length))
+    ) {
+      sent.push(mapped);
+      from.push(index);
+      return;
+    }
+    for (let n = 0; n < (line.quantity as number); n++) {
+      sent.push({
+        ...mapped,
+        quantity: 1,
+        ...(named === null ? {} : { unit_ids: [named[n]] }),
+      });
+      from.push(index);
+    }
+  });
+  order.lines = sent;
+  return { order, from };
+}
+
+/** create_order()'s answer, folded back to one entry per line of the test. */
+export function bookingAnswer(
+  answer: unknown,
+  from: readonly number[],
+): BookingAnswer | null {
+  if (answer === null || typeof answer !== "object") return null;
+  const raw = answer as Record<string, unknown>;
+  if (raw.ok !== true) {
+    const line = raw.line;
+    return {
+      ...(raw as { ok: false; reason: string }),
+      line: typeof line === "number" ? (from[line] ?? line) : null,
+    };
+  }
+  const lines: BookedLine[] = [];
+  (
+    raw.lines as {
+      rental_id: string;
+      reservation_id: string;
+      unit_ids: string[];
+      shortage: number;
+    }[]
+  ).forEach((line, sentIndex) => {
+    const index = from[sentIndex] ?? sentIndex;
+    const entry = (lines[index] ??= {
+      reservation_id: line.reservation_id,
+      rental_id: line.rental_id,
+      reservation_ids: [],
+      rental_ids: [],
+      unit_ids: [],
+      shortage: 0,
+    });
+    entry.reservation_ids.push(line.reservation_id);
+    entry.rental_ids.push(line.rental_id);
+    entry.unit_ids.push(...line.unit_ids);
+    entry.shortage += line.shortage;
+  });
+  return {
+    ...(raw as Extract<BookingAnswer, { ok: true }>),
+    booking_id: raw.order_id as string,
+    lines,
+  };
+}
+
+/** Phase 2's reserve(tenant, request), as an order. */
+export async function createOrder(
+  client: Db,
+  tenantId: string,
+  request: BookingRequest,
+): Promise<BookingResult> {
+  const { order, from } = await bookingOrder(request);
+  const { data, error } = await client.rpc("create_order", {
+    p_tenant_id: tenantId,
+    p_order: order as never,
+  });
+  return { data: error ? null : bookingAnswer(data, from), error };
+}
+
+/**
+ * The SQL text of the same call, for a session held at a gate. Its answer is
+ * create_order()'s own (not folded back).
+ */
+export async function createOrderSql(
+  tenantId: string,
+  request: BookingRequest,
+): Promise<string> {
+  const { order } = await bookingOrder(request);
+  return `platform.create_order('${tenantId}', '${JSON.stringify(order).replaceAll("'", "''")}'::jsonb)`;
+}
+
+/** A customer of the shop, made with the service role. */
+export async function createCustomer(
+  tenantId: string,
+  fullName = `Customer ${Math.random().toString(36).slice(2, 8)}`,
+): Promise<string> {
+  const row = await serviceClient()
+    .from("customers")
+    .insert({ tenant_id: tenantId, full_name: fullName })
+    .select("id");
+  if (row.error) throw row.error;
+  return row.data[0].id;
+}
+
+export type CancelAnswer =
+  | {
+      ok: true;
+      /** The order's id (the functions answer it as order_id). */
+      booking_id: string;
+      reservation_ids: string[];
+    }
+  | { ok: false; reason: string };
+
+export type CancelResult = {
+  data: CancelAnswer | null;
+  error: { code?: string; message?: string } | null;
+};
+
+const withBookingId = (answer: unknown): CancelAnswer | null => {
+  if (answer === null || typeof answer !== "object") return null;
+  const { order_id, ...raw } = answer as Record<string, unknown>;
+  return (
+    raw.ok === true ? { booking_id: order_id, ...raw } : raw
+  ) as CancelAnswer;
+};
+
+/** Phase 2's cancel_reservation(booking), as cancel_order(). */
+export async function cancelOrder(
+  client: Db,
+  tenantId: string,
+  orderId: string | undefined,
+): Promise<CancelResult> {
+  const { data, error } = await client.rpc("cancel_order", {
+    p_tenant_id: tenantId,
+    // None: sent as null, to be refused there.
+    p_order_id: (orderId ?? null) as string,
+  });
+  return { data: error ? null : withBookingId(data), error };
+}
+
+/**
+ * Phase 2's cancel_reservation(reservation): one row with its extras. Its
+ * order function is cancel_rental() (migration 6); until then only the
+ * private core does it, so the test calls the core as the database's owner.
+ * Who may cancel is tested on cancel_order().
+ */
+export function cancelReservationCore(
+  tenantId: string,
+  reservationId: string,
+): CancelResult {
+  const { out, failed } = sql(`
+    select platform_private.cancel_reservation(
+      '${tenantId}',
+      coalesce(
+        (select r.booking_id from platform.reservations r where r.id = '${reservationId}'),
+        '00000000-0000-0000-0000-000000000000'),
+      '${reservationId}', 'shop', 'shop_request')::text;`);
+  if (failed) return { data: null, error: { message: failed } };
+  return {
+    data: withBookingId(JSON.parse(out.split("\n").pop()!)),
+    error: null,
+  };
+}
+
+/**
+ * createOrderSql() without the look-up: for a request that already has one
+ * bike per vehicle line, where the SQL text is needed at once.
+ */
+export function orderSql(tenantId: string, request: BookingRequest): string {
+  const { hold, coupon, ...rest } = request;
+  const order: Record<string, unknown> = {
+    ...rest,
+    action: hold === true ? "hold" : "reserve",
+  };
+  if (coupon !== undefined && coupon !== null) {
+    const { customer_id, ...use } = coupon as Record<string, unknown>;
+    order.coupon = use;
+    if (customer_id !== undefined) order.customer_id = customer_id;
+  }
+  return `platform.create_order('${tenantId}', '${JSON.stringify(order).replaceAll("'", "''")}'::jsonb)`;
+}
+
+const CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/**
+ * An order with one rental, written by hand with the service role: for a
+ * test that then writes a reservation by hand (a reservation must have a
+ * rental of its own order). The number is far above any the counter gives.
+ */
+export async function orderWithRental(
+  tenantId: string,
+  rental: {
+    product_id: string;
+    product_type?: "vehicle" | "gear" | "service";
+    location_id: string;
+    starts_at: string;
+    ends_at: string;
+    quantity?: number;
+  },
+  order: { channel?: string; mode?: string; status?: string } = {},
+): Promise<{ orderId: string; rentalId: string }> {
+  const service = serviceClient();
+  const tenant = await service
+    .from("tenants")
+    .select("currency")
+    .eq("id", tenantId);
+  if (tenant.error) throw tenant.error;
+  const made = await service
+    .from("orders")
+    .insert({
+      tenant_id: tenantId,
+      code: Array.from(
+        { length: 6 },
+        () => CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)],
+      ).join(""),
+      number: 1_000_000_000 + Math.floor(Math.random() * 1_000_000_000),
+      status: order.status ?? "booked",
+      channel: order.channel ?? "walk_in",
+      mode: order.mode ?? "staff",
+      currency: tenant.data[0].currency,
+    })
+    .select("id");
+  if (made.error) throw made.error;
+  const orderId = made.data[0].id;
+  const row = await service
+    .from("rentals")
+    .insert({
+      tenant_id: tenantId,
+      order_id: orderId,
+      product_id: rental.product_id,
+      product_type: rental.product_type ?? "vehicle",
+      location_id: rental.location_id,
+      quantity: rental.quantity ?? 1,
+      starts_at: rental.starts_at,
+      ends_at: rental.ends_at,
+      status: "booked",
+      position: 0,
+    })
+    .select("id");
+  if (row.error) throw row.error;
+  return { orderId, rentalId: row.data[0].id };
 }

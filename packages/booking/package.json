@@ -1,0 +1,31 @@
+{
+  "name": "@mango/booking",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The one server entry point for online bookings (bookOnline) and what it reads: booking inputs, pricing inputs, coupons. Server only.",
+  "sideEffects": false,
+  "exports": {
+    "./book-online": "./src/book-online.ts",
+    "./booking-inputs": "./src/booking-inputs.ts",
+    "./charges": "./src/charges.ts",
+    "./coupons": "./src/coupons.ts",
+    "./order-lines": "./src/order-lines.ts",
+    "./pricing-inputs": "./src/pricing-inputs.ts",
+    "./try-again": "./src/try-again.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mango/core": "*",
+    "@mango/db": "*",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@mango/config": "*",
+    "typescript": "^5",
+    "vitest": "^5.0.5"
+  }
+}

@@ -17,8 +17,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { roles, type Role } from "@/lib/roles";
 import {
   anonClient,
+  type BookingAnswer,
+  cancelOrder,
   closedGate,
   createCatalogEntry,
+  createOrder,
+  createOrderSql,
   createTenant,
   createUser,
   type Db,
@@ -30,6 +34,7 @@ import {
   GATE_TIMEOUTS,
   GATE_WAIT,
   holding,
+  orderSql,
   period,
   removeCatalogEntry,
   seenWaitingForLock,
@@ -78,13 +83,8 @@ type Line = {
   quantity?: number;
   unit_ids?: string[];
 };
-type Booked = {
-  ok: true;
-  booking_id: string;
-  hold_expires_at?: string;
-  lines: { reservation_id: string; unit_ids: string[]; shortage: number }[];
-};
-type Answer = Booked | { ok: false; reason: string; line: number | null };
+type Answer = BookingAnswer;
+type Booked = Extract<BookingAnswer, { ok: true }>;
 type Result<T = Answer> = {
   data: T | null;
   error: { code?: string; message?: string } | null;
@@ -122,65 +122,70 @@ const staffBook = (
   lines: Line[],
   o: Options = {},
 ): Promise<Result> =>
-  Promise.resolve(
-    db(role, o.tenant ?? shop).rpc(
-      "reserve",
-      request(
-        o.tenant ?? shop,
-        o.channel ?? "walk_in",
-        "staff",
-        lines,
-        !!o.hold,
-      ),
-    ),
-  ) as Promise<Result>;
+  createOrder(
+    db(role, o.tenant ?? shop),
+    (o.tenant ?? shop).id,
+    request(o.tenant ?? shop, o.channel ?? "walk_in", "staff", lines, !!o.hold)
+      .p_request,
+  );
 
 /** The online path: the server, with the service role. */
 const onlineBook = (lines: Line[], o: Options = {}): Promise<Result> =>
-  Promise.resolve(
-    service.rpc(
-      "reserve",
-      request(
-        o.tenant ?? shop,
-        o.channel ?? "booking_page",
-        "instant",
-        lines,
-        !!o.hold,
-      ),
-    ),
-  ) as Promise<Result>;
+  createOrder(
+    service,
+    (o.tenant ?? shop).id,
+    request(
+      o.tenant ?? shop,
+      o.channel ?? "booking_page",
+      "instant",
+      lines,
+      !!o.hold,
+    ).p_request,
+  );
 
 type Simple = { ok: boolean; reason?: string; [key: string]: unknown };
 
+/** confirm_order(): the booking's id is the order's. */
 const confirm = (client: Db, tenant: TestTenant, booking: string) =>
   Promise.resolve(
-    client.rpc("confirm_hold", {
+    client.rpc("confirm_order", {
       p_tenant_id: tenant.id,
-      p_booking_id: booking,
+      p_order_id: booking,
     }),
   ) as Promise<Result<Simple>>;
 
+/** cancel_order(), answered in Phase 2's shape (booking_id). */
 const cancel = (client: Db, tenant: TestTenant, booking: string) =>
-  Promise.resolve(
-    client.rpc("cancel_reservation", {
-      p_tenant_id: tenant.id,
-      p_booking_id: booking,
-    }),
-  ) as Promise<Result<Simple>>;
+  cancelOrder(client, tenant.id, booking) as Promise<Result<Simple>>;
 
-const assign = (
+/**
+ * assign_order_units() for the rental a reservation belongs to. The tests
+ * name a reservation, as Phase 2's assign_units() did; the order function
+ * names the order and the rental, which are read here with the service role.
+ * A vehicle rental is one bike, so the reservation of a line for several
+ * bikes is one of several: each bike is filled or named on its own. A
+ * reservation that does not exist is sent as an order and a rental that
+ * do not exist.
+ */
+const assign = async (
   client: Db,
   tenant: TestTenant,
   reservation: string,
   units?: string[],
-) =>
-  Promise.resolve(
-    client.rpc("assign_units", {
-      p_tenant_id: tenant.id,
-      p_reservation_id: reservation,
-      ...(units ? { p_unit_ids: units } : {}),
-    }),
-  ) as Promise<Result<Simple>>;
+): Promise<Result<Simple>> => {
+  const { data: rows } = await service
+    .from("reservations")
+    .select("booking_id, rental_id")
+    .eq("id", reservation)
+    .throwOnError();
+  const row = rows?.[0];
+  return (await client.rpc("assign_order_units", {
+    p_tenant_id: tenant.id,
+    p_order_id: row?.booking_id ?? randomUUID(),
+    p_rental_id: row?.rental_id ?? randomUUID(),
+    ...(units ? { p_unit_ids: units } : {}),
+  })) as Result<Simple>;
+};
 
 const sweep = () =>
   Promise.resolve(service.rpc("release_expired_holds")) as Promise<
@@ -360,12 +365,22 @@ async function setShop(
 
 /** Makes a hold's time run out, as the clock would. */
 async function runOut(bookingId: string) {
+  const past = new Date(Date.now() - 1000).toISOString();
   const { error } = await service
     .from("reservations")
-    .update({ hold_expires_at: new Date(Date.now() - 1000).toISOString() })
+    .update({ hold_expires_at: past })
     .eq("booking_id", bookingId)
     .eq("state", "held");
   if (error) throw error;
+  // The order carries the hold's time too: the order functions judge it there.
+  const order = await service
+    .from("orders")
+    .update({ hold_expires_at: past })
+    .eq("id", bookingId)
+    .eq("status", "new")
+    .select("id");
+  if (order.error) throw order.error;
+  if (order.data.length !== 1) throw new Error("runOut: no held order");
 }
 
 const booked = (result: Result): Booked => {
@@ -677,9 +692,10 @@ describe("holds", () => {
       false,
     );
     for (const hold of ["yes", 1, {}]) {
-      const { error } = await db("staff").rpc("reserve", {
-        ...call,
-        p_request: { ...call.p_request, hold },
+      // Sent on as the order's action, which is "hold", "reserve" or "draft".
+      const { error } = await createOrder(db("staff"), call.p_tenant_id, {
+        ...call.p_request,
+        hold,
       });
       expect(error?.message, JSON.stringify(hold)).toBe("invalid_request");
     }
@@ -711,9 +727,10 @@ describe("holds", () => {
     expect(blocksBefore.map((b) => b.kind)).toEqual(["hold", "hold", "hold"]);
 
     const done = await confirm(db("staff"), shop, result.booking_id);
+    // confirm_order() names the order: order_id, where Phase 2 said booking_id.
     expect(done.data).toEqual({
       ok: true,
-      booking_id: result.booking_id,
+      order_id: result.booking_id,
       reservation_ids: result.lines.map((l) => l.reservation_id).sort(),
     });
     const blocksAfter = [
@@ -738,7 +755,7 @@ describe("holds", () => {
     const again = await confirm(db("owner"), shop, result.booking_id);
     expect(again.data).toEqual({
       ok: true,
-      booking_id: result.booking_id,
+      order_id: result.booking_id,
       reservation_ids: [],
     });
     expect((await eventsOf(result.booking_id)).map((e) => e.action)).toEqual([
@@ -843,6 +860,16 @@ describe("holds", () => {
       expect(
         (await eventsOf(hold.booking_id)).map((e) => e.action),
       ).not.toContain("confirm");
+      // The refused confirm settled the order: a counter hold that ran out
+      // is a draft, which holds nothing, and it stays refused.
+      const order = await exactlyOne(
+        service.from("orders").select("status").eq("id", hold.booking_id),
+      );
+      expect(order.data, `released: ${released}`).toEqual({ status: "draft" });
+      expect(
+        outcome(await confirm(db("staff"), shop, hold.booking_id)),
+        `released: ${released}`,
+      ).toBe("hold_expired");
     }
   });
 
@@ -1026,15 +1053,21 @@ describe("overbooking and the shortage rule", () => {
       expect([...short.lines[0].unit_ids].sort()).toEqual(
         [...bike.units].sort(),
       );
-      const [row] = await reservationsOf(bike.id);
-      expect(row).toMatchObject({
-        state: "reserved",
-        quantity: 3,
-        shortage: 1,
-      });
-      expect(await held(bike.id)).toBe("reserved | allocation,allocation");
+      // Three bikes are three reservations of one (a vehicle rental is one
+      // bike): two hold a unit, the third is short and holds none.
+      const rows = await reservationsOf(bike.id);
+      expect(
+        rows.map((r) => `${r.state} ${r.quantity} ${r.shortage}`).sort(),
+      ).toEqual(["reserved 1 0", "reserved 1 0", "reserved 1 1"]);
+      expect(await held(bike.id)).toBe(
+        "reserved,reserved,reserved | allocation,allocation",
+      );
       const [event] = await eventsOf(short.booking_id);
-      expect(event.after).toMatchObject({ lines: [{ shortage: 1 }] });
+      expect(
+        (event.after as { lines: { shortage: number }[] }).lines
+          .map((l) => l.shortage)
+          .sort(),
+      ).toEqual([0, 0, 1]);
 
       // Nothing free at all: saved with no unit, all of it short.
       const none = booked(
@@ -1291,8 +1324,19 @@ describe("assign_units()", () => {
     );
     await setShop(saigon, { allow_overbooking: false });
     const [third] = await addUnits(bike.id, 1, saigon);
-    return { bike, short, third, id: short.lines[0].reservation_id };
+    // Three bikes are three rentals, each with its reservation: `id` is the
+    // one that is short, which is the one to fill.
+    return { bike, short, third, id: await shortRow(bike.id) };
   }
+
+  /** The (first) reservation of a product that is short. */
+  async function shortRow(productId: string) {
+    const row = (await reservationsOf(productId)).find((r) => r.shortage > 0);
+    expect(row, "a reservation that is short").toBeDefined();
+    return row!.id;
+  }
+  const shortageOf = async (productId: string) =>
+    (await reservationsOf(productId)).reduce((sum, r) => sum + r.shortage, 0);
 
   it("fills a shortage when a unit frees up, and says so in the booking's history", async () => {
     const { bike, short, third, id } = await shortOne();
@@ -1306,13 +1350,16 @@ describe("assign_units()", () => {
       removed: [],
       shortage: 0,
     });
-    expect((filled.data!.unit_ids as string[]).sort()).toEqual(
+    // The rental that was short holds the new unit; the order's three
+    // rentals hold all three between them.
+    expect(filled.data!.unit_ids).toEqual([third]);
+    expect((await blocksOf(bike.id)).map((b) => b.unit_id).sort()).toEqual(
       [...bike.units, third].sort(),
     );
-    const [row] = await reservationsOf(bike.id);
-    expect(row).toMatchObject({ shortage: 0, state: "reserved" });
+    for (const row of await reservationsOf(bike.id))
+      expect(row).toMatchObject({ shortage: 0, state: "reserved" });
     expect(await held(bike.id)).toBe(
-      "reserved | allocation,allocation,allocation",
+      "reserved,reserved,reserved | allocation,allocation,allocation",
     );
     expect(await counts(bike.id, at(1), at(3), saigon)).toBe("3 / 0 / 0 / 0");
     const events = await eventsOf(short.booking_id);
@@ -1345,24 +1392,33 @@ describe("assign_units()", () => {
       ),
     );
     await setShop(saigon, { allow_overbooking: false });
-    const id = short.lines[0].reservation_id;
-    expect((await assign(db("staff", saigon), saigon, id)).data).toEqual({
-      ok: false,
-      reason: "unavailable",
-    });
+    // Four bikes, four rentals: one holds the unit, three are short. A fill
+    // is one rental's (Phase 2 filled the one row for all four).
+    expect(short.lines[0].shortage).toBe(3);
+    const shortIds = (await reservationsOf(bike.id))
+      .filter((r) => r.shortage > 0)
+      .map((r) => r.id);
+    expect(
+      (await assign(db("staff", saigon), saigon, shortIds[0])).data,
+    ).toEqual({ ok: false, reason: "unavailable" });
     await addUnits(bike.id, 2, saigon);
-    const part = await assign(db("staff", saigon), saigon, id);
-    expect(part.data).toMatchObject({ ok: true, shortage: 1 });
-    expect((part.data!.added as string[]).length).toBe(2);
-    expect((await reservationsOf(bike.id))[0].shortage).toBe(1);
+    // Two units for three short rentals: two are filled, the third stays short.
+    const parts = [];
+    for (const id of shortIds)
+      parts.push(await assign(db("staff", saigon), saigon, id));
+    expect(parts.map((p) => outcome(p))).toEqual(["ok", "ok", "unavailable"]);
+    expect(
+      parts.flatMap((p) => (p.data!.added as string[] | undefined) ?? [])
+        .length,
+    ).toBe(2);
+    expect(await shortageOf(bike.id)).toBe(1);
   });
 
   it("by name: a chosen unit fills the shortage; a reservation is moved to another unit and the first is free again", async () => {
-    const { bike, third, id } = await shortOne();
-    const named = await assign(db("manager", saigon), saigon, id, [
-      ...bike.units,
-      third,
-    ]);
+    const { third, id } = await shortOne();
+    // The short rental is one bike: it is named the one unit (Phase 2 named
+    // all three of the row's).
+    const named = await assign(db("manager", saigon), saigon, id, [third]);
     expect(named.data).toMatchObject({ ok: true, added: [third], shortage: 0 });
 
     // Staff's swap before pickup: one booked scooter for another.
@@ -1388,8 +1444,11 @@ describe("assign_units()", () => {
       one.lines[0].reservation_id,
       [b],
     );
+    // assign_order_units() also names the order and the rental.
     expect(moved.data).toEqual({
       ok: true,
+      order_id: one.booking_id,
+      rental_id: one.lines[0].rental_id,
       reservation_id: one.lines[0].reservation_id,
       unit_ids: [b],
       added: [b],
@@ -1521,6 +1580,12 @@ describe("assign_units()", () => {
       }),
     );
     await runOut(hold.booking_id);
+    // A hold that has run out: the order function says so (hold_expired,
+    // where Phase 2's assign_units() said not_assignable) and settles the
+    // order, a counter one to a draft; after that it holds nothing to assign.
+    expect(
+      outcome(await assign(db("staff"), shop, hold.lines[0].reservation_id)),
+    ).toBe("hold_expired");
     expect(
       outcome(await assign(db("staff"), shop, hold.lines[0].reservation_id)),
     ).toBe("not_assignable");
@@ -1539,7 +1604,7 @@ describe("assign_units()", () => {
     `);
     await holding(marker);
     const call = assign(db("staff", saigon), saigon, id);
-    expect(await waitingForProductLock("assign_units")).toBe(
+    expect(await waitingForProductLock("assign_order_units")).toBe(
       "waiting, unit locks: 0",
     );
     await gate.open();
@@ -1590,7 +1655,7 @@ describe("assign_units()", () => {
         });
       } else {
         expect(result.data).toEqual({ ok: false, reason: "unavailable" });
-        expect((await reservationsOf(bike.id))[0].shortage).toBe(1);
+        expect(await shortageOf(bike.id)).toBe(1);
       }
     }
   }, 90_000);
@@ -1877,16 +1942,17 @@ describe("availability(): the read", () => {
     });
     expect(listed.error).toBeNull();
     const mm = (from: number, to: number, mode = "instant", hold = false) =>
-      service.rpc(
-        "reserve",
+      createOrder(
+        service,
+        shop.id,
         request(
           shop,
           "marketplace",
           mode,
           [{ product_id: bike.id, starts_at: at(from), ends_at: at(to) }],
           hold,
-        ),
-      ) as unknown as Promise<Result>;
+        ).p_request,
+      );
     booked(await mm(1, 3));
     booked(await mm(2, 4));
     booked(await mm(5, 6));
@@ -2190,16 +2256,17 @@ describe("shop against shop: another shop's thing is answered exactly like one t
   it("the helpers a member can call see nothing of another shop", async () => {
     const theirs = await listedVehicle(2, newYork);
     booked(
-      (await service.rpc(
-        "reserve",
+      await createOrder(
+        service,
+        newYork.id,
         request(
           newYork,
           "marketplace",
           "instant",
           [{ product_id: theirs.id, starts_at: at(1), ends_at: at(2) }],
           false,
-        ),
-      )) as unknown as Result,
+        ).p_request,
+      ),
     );
     const claims = JSON.stringify({
       sub: shop.members.owner.id,
@@ -2374,7 +2441,7 @@ describe("a block that reached a unit past its lock", () => {
       await holding(marker);
       // The booking's block waits for the unsaved downtime to be saved or
       // dropped; the gate is opened once it is seen waiting there.
-      const result = await waitsForGate(gate, "reserve", () =>
+      const result = await waitsForGate(gate, "create_order", () =>
         staffBook("staff", [
           {
             product_id: bike.id,
@@ -2401,7 +2468,7 @@ describe("a block that reached a unit past its lock", () => {
       const gate = await closedGate();
       const holder = pastTheGuard(first, marker, gate);
       await holding(marker);
-      const result = await waitsForGate(gate, "reserve", () =>
+      const result = await waitsForGate(gate, "create_order", () =>
         onlineBook([{ product_id: bike.id, starts_at: at(2), ends_at: at(4) }]),
       );
       expect((await holder).failed).toBe("");
@@ -2504,10 +2571,9 @@ describe("deleting a unit never waits for its lock", () => {
       // refused by the booking's blocks (the app's "retire instead").
       const bookMarker = `booking-written-${tag}`;
       const bookGate = await closedGate();
-      const booking = sqlBackground(`
-      begin;
-      select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-      select platform.reserve('${shop.id}', '${JSON.stringify(
+      // Four bikes: four lines of one (a vehicle rental is one bike).
+      const bookingCall = await createOrderSql(
+        shop.id,
         request(
           shop,
           "booking_page",
@@ -2522,7 +2588,11 @@ describe("deleting a unit never waits for its lock", () => {
           ],
           false,
         ).p_request,
-      )}'::jsonb) ->> 'ok';
+      );
+      const booking = sqlBackground(`
+      begin;
+      select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+      select ${bookingCall} ->> 'ok';
       ${bookGate.wait(bookMarker)}
       commit;
     `);
@@ -2545,8 +2615,9 @@ describe("deleting a unit never waits for its lock", () => {
       noDeadlock([late]);
       expect(await deadlocksReported()).toBe(before);
       expect(await units()).toBe(4);
+      // One reservation a bike.
       expect(await held(bike.id)).toBe(
-        "reserved | allocation,allocation,allocation,allocation",
+        "reserved,reserved,reserved,reserved | allocation,allocation,allocation,allocation",
       );
     },
     GATE_TEST_TIMEOUT,
@@ -2574,7 +2645,7 @@ describe("deleting a unit never waits for its lock", () => {
       from pg_locks w
       join pg_stat_activity a on a.pid = w.pid
       where w.locktype = 'advisory' and w.classid = x'1a01'::int and not w.granted
-        and a.query like '%reserve%'
+        and a.query like '%create_order%'
       limit 1;
     `);
       expect(seen).toBe(
@@ -2696,10 +2767,13 @@ describe("races between reserve, confirm, cancel, assign and the sweep: no deadl
         expect(await held(bike.id), `${where}, round ${round}`).toBe(
           round % 2 ? "expired,reserved | allocation" : "expired,held | hold",
         );
-        // Released exactly once, by the sweep or by the booking.
+        // Released exactly once, by the sweep, the booking or the confirm.
+        // The confirm then settles the order (an online one is canceled, the
+        // reason "expired"), which is the order's own event after it.
         expect((await eventsOf(hold.booking_id)).map((e) => e.action)).toEqual([
           "reserve",
           "expire",
+          "hold_expired",
         ]);
       }
     }
@@ -2786,8 +2860,13 @@ describe("races between reserve, confirm, cancel, assign and the sweep: no deadl
         );
         await setShop(tenant, { allow_overbooking: false });
         const [extra] = await addUnits(bike.id, 1, tenant);
+        // Two bikes, two rentals: the one that is short is the one filled.
+        expect(short.lines[0].shortage).toBe(1);
+        const shortId = (await reservationsOf(bike.id)).find(
+          (r) => r.shortage > 0,
+        )!.id;
         const [filled, down, rival, swept] = await Promise.all([
-          assign(db("staff", tenant), tenant, short.lines[0].reservation_id),
+          assign(db("staff", tenant), tenant, shortId),
           db("mechanic", tenant)
             .from("unit_blocks")
             .insert({
@@ -2814,9 +2893,9 @@ describe("races between reserve, confirm, cancel, assign and the sweep: no deadl
         expect(onExtra.map((x) => x.kind)).toEqual([
           pair.startsWith("ok") ? "allocation" : "downtime",
         ]);
-        expect((await reservationsOf(bike.id))[0].shortage).toBe(
-          pair.startsWith("ok") ? 0 : 1,
-        );
+        expect(
+          (await reservationsOf(bike.id)).reduce((n, r) => n + r.shortage, 0),
+        ).toBe(pair.startsWith("ok") ? 0 : 1);
       }
     }
   }, 300_000);
@@ -2985,16 +3064,17 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     const b = await listedVehicle(1);
     const window = { starts_at: at(1), ends_at: at(3) };
     const mm = booked(
-      (await service.rpc(
-        "reserve",
+      await createOrder(
+        service,
+        shop.id,
         request(
           shop,
           "marketplace",
           "instant",
           [{ product_id: a.id, ...window }],
           false,
-        ),
-      )) as unknown as Result,
+        ).p_request,
+      ),
     );
     const hold = booked(
       await staffBook("staff", [{ product_id: a.id, ...window }], {
@@ -3120,8 +3200,11 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
 
   it("a row for several units is split: the moved unit's part is a row of its own for one unit, in the same booking", async () => {
     await setShop(saigon, { allow_overbooking: true });
-    const a = await vehicle(3, { tenant: saigon });
-    const b = await vehicle(0, { tenant: saigon });
+    // Rental gear: a vehicle rental is one bike, so only a gear row is for
+    // several units now, and only a gear row is ever split. (Phase 2 ran
+    // this with scooters; nothing else about the test has changed.)
+    const a = await general("gear", 3, saigon);
+    const b = await general("gear", 0, saigon);
     // Four wanted, three there: a row for 4 with 3 units and 1 short.
     const big = booked(
       await staffBook(
@@ -3646,7 +3729,7 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     const booking = sqlBackground(`
       begin;
       ${actingAs(null)}
-      select platform.reserve('${shop.id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
+      select ${orderSql(shop.id, call.p_request)} ->> 'ok';
       ${gate.wait(marker)}
       commit;
     `);
@@ -3688,7 +3771,7 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     const booking = sqlBackground(`
       begin;
       ${actingAs(shop.members.staff.id)}
-      select platform.reserve('${shop.id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
+      select ${orderSql(shop.id, call.p_request)} ->> 'ok';
       ${gate.wait(marker)}
       commit;
     `);
@@ -3729,7 +3812,7 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
           ends_at: at(2),
         },
       ]);
-      expect(await waitingForProductLock("reserve"), side).toBe(
+      expect(await waitingForProductLock("create_order"), side).toBe(
         "waiting, unit locks: 0",
       );
       await gate.open();
@@ -3768,7 +3851,7 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
     const booking = sqlBackground(`
       begin;
       ${actingAs(null)}
-      select platform.reserve('${shop.id}', '${JSON.stringify(call.p_request)}'::jsonb) ->> 'ok';
+      select ${orderSql(shop.id, call.p_request)} ->> 'ok';
       ${gate.wait(marker)}
       commit;
     `);
@@ -3967,9 +4050,9 @@ describe("moving a unit that has bookings: the bookings move with it", () => {
             ? confirm(db("staff"), shop, one.booking_id)
             : assign(db("staff"), shop, id);
       const needle = {
-        cancel: "cancel_reservation",
-        confirm: "confirm_hold",
-        assign: "assign_units",
+        cancel: "cancel_order",
+        confirm: "confirm_order",
+        assign: "assign_order_units",
       }[what];
 
       // The move, written and not yet saved: the row still reads product A

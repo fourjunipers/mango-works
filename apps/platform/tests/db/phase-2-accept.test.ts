@@ -10,7 +10,8 @@
  * One block per clause, named as the line names them, so the list can be
  * read off the test names (tests/phase-2-accept-suites.test.ts checks the
  * names). This file is the end-to-end race: real sessions, at the same
- * moment, through reserve() itself. That the two really overlapped, and
+ * moment, through create_order() itself (Phase 2's reserve(); since Phase 3
+ * stage 2b every booking is an order). That the two really overlapped, and
  * which lock made the second wait, is proven in reservations.test.ts
  * (sessions held at gates, the waits read from pg_stat_activity, many
  * rounds in three shops, and every other writer). This is the short
@@ -23,6 +24,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Role } from "@/lib/roles";
 import {
+  type BookingAnswer,
+  type BookingResult,
+  createOrder,
   createTenant,
   type Db,
   deleteTenant,
@@ -44,10 +48,8 @@ const at = (d: number, h = 3) =>
   new Date(Date.UTC(2032, 0, 1) + d * 86_400_000 + h * 3_600_000);
 
 type Line = { product_id: string; starts_at: Date; ends_at: Date };
-type Answer =
-  | { ok: true; booking_id: string; lines: { unit_ids: string[] }[] }
-  | { ok: false; reason: string; line: number | null };
-type Result = { data: Answer | null; error: { message?: string } | null };
+type Answer = BookingAnswer;
+type Result = BookingResult;
 
 const request = (channel: string, mode: string, lines: Line[]) => ({
   p_tenant_id: shop.id,
@@ -63,14 +65,14 @@ const request = (channel: string, mode: string, lines: Line[]) => ({
     })),
   },
 });
-const staff = (role: Role, lines: Line[], channel = "walk_in") =>
-  Promise.resolve(
-    db(role).rpc("reserve", request(channel, "staff", lines)),
-  ) as Promise<Result>;
-const online = (lines: Line[], channel = "booking_page") =>
-  Promise.resolve(
-    service.rpc("reserve", request(channel, "instant", lines)),
-  ) as Promise<Result>;
+const staff = (
+  role: Role,
+  lines: Line[],
+  channel = "walk_in",
+): Promise<Result> =>
+  createOrder(db(role), shop.id, request(channel, "staff", lines).p_request);
+const online = (lines: Line[], channel = "booking_page"): Promise<Result> =>
+  createOrder(service, shop.id, request(channel, "instant", lines).p_request);
 
 /** A vehicle product with `count` units at the shop's location (fixtures). */
 async function vehicle(count: number) {

@@ -441,7 +441,9 @@ describe("products stage C: product_listings and its functions", () => {
 /**
  * Phase 2, stage 1 (20261116000100): reservations, the booking functions and
  * unit_blocks.created_by. Members read a reservation; nobody signed in
- * writes one directly (reserve() and cancel_reservation() do).
+ * writes one directly (reserve() and cancel_reservation() did; since Phase 3
+ * stage 2b, 20261125000100, create_order() and cancel_order() do, and the
+ * lists below name those: the four Phase 2 functions are dropped).
  */
 describe("booking core: reservations and its functions", () => {
   it("reservations: members read, nobody signed in writes, signed-out visitors get nothing; the service role is granted on purpose", () => {
@@ -496,14 +498,15 @@ describe("booking core: reservations and its functions", () => {
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname in ('platform', 'platform_private')
         and p.proname in (
-          'reserve', 'cancel_reservation', 'booking_roles', 'free_units',
+          'create_order', 'cancel_order', 'booking_roles', 'free_units',
           'lock_products_stock', 'json_time', 'unit_blocks_guard')
       order by 1;
     `);
     expect(rows).toEqual([
       // name, anon, authenticated, service_role, PUBLIC
-      "platform.cancel_reservation false true true false",
-      "platform.reserve false true true false",
+      // Phase 2's cancel_reservation() and reserve(), as orders.
+      "platform.cancel_order false true true false",
+      "platform.create_order false true true false",
       // Read by the reservations policy, and by the availability read,
       // which runs as its caller: a member, or the server (stage 2).
       "platform_private.booking_roles false true true false",
@@ -521,17 +524,17 @@ describe("booking core: reservations and its functions", () => {
       select p.proname || ' ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname in ('platform', 'platform_private')
-        and p.proname in ('reserve', 'cancel_reservation', 'unit_blocks_guard',
+        and p.proname in ('create_order', 'cancel_order', 'unit_blocks_guard',
           'booking_roles', 'free_units', 'lock_products_stock', 'json_time')
       order by 1;
     `);
     expect(rows).toEqual([
       'booking_roles false search_path=""',
-      'cancel_reservation true search_path="",lock_timeout=6s',
+      'cancel_order true search_path="",lock_timeout=6s',
+      'create_order true search_path="",lock_timeout=6s',
       'free_units false search_path=""',
       'json_time false search_path=""',
       'lock_products_stock false search_path=""',
-      'reserve true search_path="",lock_timeout=6s',
       'unit_blocks_guard true search_path=""',
     ]);
   });
@@ -553,7 +556,7 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname in ('platform', 'platform_private')
         and p.proname in (
-          'confirm_hold', 'assign_units', 'availability', 'release_expired_holds',
+          'confirm_order', 'assign_order_units', 'availability', 'release_expired_holds',
           'expire_holds', 'hold_expiry', 'shortage_demand', 'marketplace_peaks',
           'units_busy_on_delete', 'json_uuid', 'move_unit', 'units_guard')
       order by 1;
@@ -561,11 +564,12 @@ describe("availability: the stage 2 functions and the shop's two settings", () =
     expect(rows).toEqual([
       // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
       // Staff's alone: the server never names units. (The lock timeout on
-      // this one, confirm_hold and move_unit is stage 5's.)
-      'platform.assign_units false true false false | true search_path="",lock_timeout=6s',
+      // this one, confirm_hold and move_unit is stage 5's.) Since Phase 3
+      // stage 2b these two are assign_order_units() and confirm_order().
+      'platform.assign_order_units false true false false | true search_path="",lock_timeout=6s',
       // The read runs as its caller, under RLS.
       'platform.availability false true true false | false search_path=""',
-      'platform.confirm_hold false true true false | true search_path="",lock_timeout=6s',
+      'platform.confirm_order false true true false | true search_path="",lock_timeout=6s',
       // A booked unit's change of product or place: owners and managers
       // (checked inside), and the server.
       'platform.move_unit false true true false | true search_path="",lock_timeout=6s',
@@ -690,7 +694,7 @@ describe("booking rules: the stage 3 functions and columns", () => {
       where n.nspname in ('platform', 'platform_private')
         and p.proname in (
           'save_booking_rules', 'booking_inputs', 'json_int_between',
-          'booking_roles', 'reserve', 'availability')
+          'booking_roles', 'create_order', 'availability')
       order by 1;
     `);
     expect(rows).toEqual([
@@ -699,8 +703,9 @@ describe("booking rules: the stage 3 functions and columns", () => {
       'platform.availability false true true false | false search_path=""',
       // The rules' read: every member, and the server; as its caller, under RLS.
       'platform.booking_inputs false true true false | false search_path=""',
-      // Re-created in stage 3, grants restated.
-      'platform.reserve false true true false | true search_path="",lock_timeout=6s',
+      // reserve() was re-created in stage 3, grants restated; it is
+      // create_order() since Phase 3 stage 2b, with the same grants.
+      'platform.create_order false true true false | true search_path="",lock_timeout=6s',
       // Owners and managers (checked inside). Not the server's.
       'platform.save_booking_rules false true false false | true search_path=""',
       'platform_private.booking_roles false true true false | false search_path=""',
@@ -794,20 +799,23 @@ describe("extras: product_extras and the stage 5 functions", () => {
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname in ('platform', 'platform_private')
         and p.proname in (
-          'save_product_extras', 'extras_roles', 'pricing_inputs', 'reserve',
-          'confirm_hold', 'cancel_reservation', 'assign_units', 'move_unit')
+          'save_product_extras', 'extras_roles', 'pricing_inputs', 'create_order',
+          'confirm_order', 'cancel_order', 'assign_order_units', 'move_unit')
       order by 1;
     `);
     expect(rows).toEqual([
       // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
+      // The five booking functions, four of them under their order names
+      // since Phase 3 stage 2b (assign_units, cancel_reservation,
+      // confirm_hold and reserve are dropped).
       // Owner, manager and staff; not the server's (as stage 2 left it).
-      'platform.assign_units false true false false | true search_path="",lock_timeout=6s',
-      'platform.cancel_reservation false true true false | true search_path="",lock_timeout=6s',
-      'platform.confirm_hold false true true false | true search_path="",lock_timeout=6s',
+      'platform.assign_order_units false true false false | true search_path="",lock_timeout=6s',
+      'platform.cancel_order false true true false | true search_path="",lock_timeout=6s',
+      'platform.confirm_order false true true false | true search_path="",lock_timeout=6s',
+      'platform.create_order false true true false | true search_path="",lock_timeout=6s',
       'platform.move_unit false true true false | true search_path="",lock_timeout=6s',
       // Re-created in stage 5, grants restated: the read runs as its caller.
       'platform.pricing_inputs false true true false | false search_path=""',
-      'platform.reserve false true true false | true search_path="",lock_timeout=6s',
       // Owners and managers (checked inside). Not the server's. Its
       // 6-second lock timeout came with stage 6 (20261117000200).
       'platform.save_product_extras false true false false | true search_path="",lock_timeout=6s',
@@ -873,7 +881,7 @@ describe("coupons: the three tables and the stage 8 functions", () => {
     ]);
   });
 
-  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned; save_coupon() is not the server's and has the 6-second lock timeout, as reserve() and cancel_reservation() still have", () => {
+  it("each function is granted on purpose, closed to signed-out visitors and to PUBLIC, with its search path pinned; save_coupon() is not the server's and has the 6-second lock timeout, as create_order() and cancel_order() (Phase 2's reserve() and cancel_reservation()) have", () => {
     const rows = lines(`
       select n.nspname || '.' || p.proname || ' '
         || has_function_privilege('anon', p.oid, 'execute') || ' '
@@ -885,29 +893,31 @@ describe("coupons: the three tables and the stage 8 functions", () => {
       where n.nspname in ('platform', 'platform_private')
         and p.proname in (
           'save_coupon', 'coupon_inputs', 'coupon_uses', 'release_coupon_use',
-          'normalize_coupon_code', 'json_day', 'reserve', 'cancel_reservation',
-          'confirm_hold',
+          'normalize_coupon_code', 'json_day', 'create_order', 'cancel_order',
+          'confirm_order',
           'expire_holds', 'release_expired_holds', 'save_pricing_settings',
           'pricing_inputs', 'currency_locked', 'tenants_lock_currency')
       order by 1;
     `);
     expect(rows).toEqual([
       // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
-      'platform.cancel_reservation false true true false | true search_path="",lock_timeout=6s',
-      // Re-created in stage 8 with the coupon's row; grants and timeout as before.
-      'platform.confirm_hold false true true false | true search_path="",lock_timeout=6s',
+      // The three that take the coupon's row: cancel_order(),
+      // confirm_order() and create_order() since Phase 3 stage 2b; grants
+      // and timeout as Phase 2's three had.
+      'platform.cancel_order false true true false | true search_path="",lock_timeout=6s',
+      'platform.confirm_order false true true false | true search_path="",lock_timeout=6s',
       // The read: as its caller, so RLS decides. Members and the server.
       'platform.coupon_inputs false true true false | false search_path=""',
+      'platform.create_order false true true false | true search_path="",lock_timeout=6s',
       'platform.currency_locked false true true false | true search_path=""',
       'platform.pricing_inputs false true true false | false search_path=""',
       // The scheduled sweep: the server's and the database job's. No lock
       // timeout, on purpose (root CLAUDE.md).
       'platform.release_expired_holds false false true false | true search_path=""',
-      'platform.reserve false true true false | true search_path="",lock_timeout=6s',
       // Owners and managers (checked inside). Not the server's.
       'platform.save_coupon false true false false | true search_path="",lock_timeout=6s',
       'platform.save_pricing_settings false true true false | true search_path=""',
-      // Called by coupon_inputs() as its caller, and by reserve().
+      // Called by coupon_inputs() as its caller, and by the booking core.
       'platform_private.coupon_uses false true true false | false search_path=""',
       // Nobody's but the functions that run as their owner.
       'platform_private.expire_holds false false false false | true search_path=""',
@@ -1158,6 +1168,8 @@ describe("orders, stage 2a: the six tables, their functions and the shop's order
       "order_lines order_lines_audit platform_private.audit_row",
       "order_lines order_lines_set_updated_at platform_private.set_updated_at",
       "orders orders_audit platform_private.audit_row",
+      // Stage 2b (20261125000100): no order is committed without its number.
+      "orders orders_require_number platform_private.orders_require_number",
       "orders orders_set_updated_at platform_private.set_updated_at",
       "rentals rentals_audit platform_private.audit_row",
       "rentals rentals_set_updated_at platform_private.set_updated_at",
@@ -1185,6 +1197,103 @@ describe("orders, stage 2a: the six tables, their functions and the shop's order
       "staff_can_waive_late_charge false true false",
       "staff_can_write_off_credit false true false",
       "time_step_minutes false true false",
+    ]);
+  });
+});
+
+/**
+ * Phase 3, stage 2b (20261125000100): the order core. No new table. Phase
+ * 2's reserve(), confirm_hold(), cancel_reservation() and assign_units() are
+ * dropped; the six order functions take their place, over cores and helpers
+ * in platform_private that nobody signed in can call.
+ */
+describe("orders, stage 2b: the order functions, their cores and helpers", () => {
+  it("the six order functions are members' and the server's (assign_order_units() members' alone), closed to signed-out visitors and to PUBLIC, run as their owner with the search path pinned and the 6-second lock timeout; currency_locked() is as stage 8 left it", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || has_function_privilege('service_role', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+        || ' | ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'platform'
+        and p.proname in (
+          'create_order', 'hold_order', 'reserve_order', 'confirm_order',
+          'cancel_order', 'assign_order_units', 'currency_locked')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
+      // Staff's alone: the server never names units (as assign_units() was).
+      'platform.assign_order_units false true false false | true search_path="",lock_timeout=6s',
+      'platform.cancel_order false true true false | true search_path="",lock_timeout=6s',
+      'platform.confirm_order false true true false | true search_path="",lock_timeout=6s',
+      'platform.create_order false true true false | true search_path="",lock_timeout=6s',
+      // Re-created to know about orders; grants as before, no lock timeout.
+      'platform.currency_locked false true true false | true search_path=""',
+      'platform.hold_order false true true false | true search_path="",lock_timeout=6s',
+      'platform.reserve_order false true true false | true search_path="",lock_timeout=6s',
+    ]);
+  });
+
+  it("the cores and helpers in platform_private are granted to nobody: not to a signed-in person, a signed-out visitor, the server or PUBLIC; the four cores have the 6-second lock timeout", () => {
+    const rows = lines(`
+      select n.nspname || '.' || p.proname || ' '
+        || has_function_privilege('anon', p.oid, 'execute') || ' '
+        || has_function_privilege('authenticated', p.oid, 'execute') || ' '
+        || has_function_privilege('service_role', p.oid, 'execute') || ' '
+        || coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), p.proacl is null)
+        || ' | ' || p.prosecdef || ' ' || coalesce(array_to_string(p.proconfig, ','), 'none')
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'platform_private'
+        and p.proname in (
+          'reserve_core', 'confirm_hold', 'cancel_reservation', 'assign_units',
+          'settle_order_hold', 'reserve_existing', 'order_caller', 'order_answer',
+          'order_code', 'store_charges', 'json_int', 'orders_require_number')
+      order by 1;
+    `);
+    expect(rows).toEqual([
+      // name, anon, authenticated, service_role, PUBLIC | runs as owner, config
+      // The cores behind the order functions: Phase 2's functions of the
+      // same names, moved here and taking the order's row.
+      'platform_private.assign_units false false false false | true search_path="",lock_timeout=6s',
+      'platform_private.cancel_reservation false false false false | true search_path="",lock_timeout=6s',
+      'platform_private.confirm_hold false false false false | true search_path="",lock_timeout=6s',
+      // Helpers, called only inside the order functions, as their owner.
+      'platform_private.json_int false false false false | false search_path=""',
+      'platform_private.order_answer false false false false | true search_path=""',
+      'platform_private.order_caller false false false false | true search_path=""',
+      'platform_private.order_code false false false false | false search_path=""',
+      // A trigger function: nobody calls it.
+      'platform_private.orders_require_number false false false false | true search_path=""',
+      'platform_private.reserve_core false false false false | true search_path="",lock_timeout=6s',
+      // Run inside hold_order() and reserve_order(), under their timeout.
+      'platform_private.reserve_existing false false false false | true search_path=""',
+      'platform_private.settle_order_hold false false false false | true search_path=""',
+      'platform_private.store_charges false false false false | true search_path=""',
+    ]);
+  });
+
+  it("Phase 2's four booking functions are gone from the platform schema, under any signature", () => {
+    expect(
+      lines(`
+        select count(*) from pg_proc p
+        where p.pronamespace = 'platform'::regnamespace
+          and p.proname in ('reserve', 'confirm_hold', 'cancel_reservation', 'assign_units');
+      `),
+    ).toEqual(["0"]);
+  });
+
+  it("no order is committed without its number: the trigger is a constraint trigger, checked at commit", () => {
+    expect(
+      lines(`
+        select t.tgname || ' ' || t.tgrelid::regclass || ' ' || t.tgfoid::regproc
+          || ' ' || t.tgdeferrable || ' ' || t.tginitdeferred
+        from pg_trigger t where t.tgname = 'orders_require_number';
+      `),
+    ).toEqual([
+      "orders_require_number platform.orders platform_private.orders_require_number true true",
     ]);
   });
 });

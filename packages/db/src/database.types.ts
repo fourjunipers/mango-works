@@ -88,6 +88,12 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
+      foreignKeyName: "coupon_redemptions_customer_fkey"
+      columns: ["tenant_id","customer_id"]
+isOneToOne: false
+      referencedRelation: "customers"
+      referencedColumns: ["tenant_id","id"]
+    },{
       foreignKeyName: "coupon_redemptions_tenant_id_coupon_id_fkey"
       columns: ["tenant_id","coupon_id"]
 isOneToOne: false
@@ -701,14 +707,14 @@ isOneToOne: false
                   ]
                 },"rentals": {
                   Row: {
-                    "created_at": string,"ends_at": string,"id": string,"location_id": string,"order_id": string,"parent_rental_id": string | null,"picked_up_at": string | null,"picked_up_by": string | null,"product_id": string,"product_type": string,"quantity": number,"returned_at": string | null,"returned_by": string | null,"starts_at": string,"status": string,"tenant_id": string,"updated_at": string
+                    "created_at": string,"ends_at": string,"id": string,"location_id": string,"order_id": string,"parent_rental_id": string | null,"picked_up_at": string | null,"picked_up_by": string | null,"position": number,"product_id": string,"product_type": string,"quantity": number,"returned_at": string | null,"returned_by": string | null,"starts_at": string,"status": string,"tenant_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"ends_at": string,"id"?: string,"location_id": string,"order_id": string,"parent_rental_id"?: string | null,"picked_up_at"?: string | null,"picked_up_by"?: string | null,"product_id": string,"product_type": string,"quantity": number,"returned_at"?: string | null,"returned_by"?: string | null,"starts_at": string,"status": string,"tenant_id": string,"updated_at"?: string
+                    "created_at"?: string,"ends_at": string,"id"?: string,"location_id": string,"order_id": string,"parent_rental_id"?: string | null,"picked_up_at"?: string | null,"picked_up_by"?: string | null,"position": number,"product_id": string,"product_type": string,"quantity": number,"returned_at"?: string | null,"returned_by"?: string | null,"starts_at": string,"status": string,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"ends_at"?: string,"id"?: string,"location_id"?: string,"order_id"?: string,"parent_rental_id"?: string | null,"picked_up_at"?: string | null,"picked_up_by"?: string | null,"product_id"?: string,"product_type"?: string,"quantity"?: number,"returned_at"?: string | null,"returned_by"?: string | null,"starts_at"?: string,"status"?: string,"tenant_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"ends_at"?: string,"id"?: string,"location_id"?: string,"order_id"?: string,"parent_rental_id"?: string | null,"picked_up_at"?: string | null,"picked_up_by"?: string | null,"position"?: number,"product_id"?: string,"product_type"?: string,"quantity"?: number,"returned_at"?: string | null,"returned_by"?: string | null,"starts_at"?: string,"status"?: string,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -745,17 +751,23 @@ isOneToOne: false
                   ]
                 },"reservations": {
                   Row: {
-                    "block_period": unknown,"booking_id": string,"channel": string,"created_at": string,"created_by": string | null,"ends_at": string,"hold_expires_at": string | null,"id": string,"location_id": string,"mode": string,"parent_id": string | null,"product_id": string,"product_type": string,"quantity": number,"rental_id": string | null,"shortage": number,"starts_at": string,"state": string,"tenant_id": string,"updated_at": string
+                    "block_period": unknown,"booking_id": string,"channel": string,"created_at": string,"created_by": string | null,"ends_at": string,"hold_expires_at": string | null,"id": string,"location_id": string,"mode": string,"parent_id": string | null,"product_id": string,"product_type": string,"quantity": number,"rental_id": string,"shortage": number,"starts_at": string,"state": string,"tenant_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "block_period": unknown,"booking_id": string,"channel": string,"created_at"?: string,"created_by"?: string | null,"ends_at": string,"hold_expires_at"?: string | null,"id"?: string,"location_id": string,"mode": string,"parent_id"?: string | null,"product_id": string,"product_type": string,"quantity": number,"rental_id"?: string | null,"shortage"?: number,"starts_at": string,"state": string,"tenant_id": string,"updated_at"?: string
+                    "block_period": unknown,"booking_id": string,"channel": string,"created_at"?: string,"created_by"?: string | null,"ends_at": string,"hold_expires_at"?: string | null,"id"?: string,"location_id": string,"mode": string,"parent_id"?: string | null,"product_id": string,"product_type": string,"quantity": number,"rental_id": string,"shortage"?: number,"starts_at": string,"state": string,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "block_period"?: unknown,"booking_id"?: string,"channel"?: string,"created_at"?: string,"created_by"?: string | null,"ends_at"?: string,"hold_expires_at"?: string | null,"id"?: string,"location_id"?: string,"mode"?: string,"parent_id"?: string | null,"product_id"?: string,"product_type"?: string,"quantity"?: number,"rental_id"?: string | null,"shortage"?: number,"starts_at"?: string,"state"?: string,"tenant_id"?: string,"updated_at"?: string
+                    "block_period"?: unknown,"booking_id"?: string,"channel"?: string,"created_at"?: string,"created_by"?: string | null,"ends_at"?: string,"hold_expires_at"?: string | null,"id"?: string,"location_id"?: string,"mode"?: string,"parent_id"?: string | null,"product_id"?: string,"product_type"?: string,"quantity"?: number,"rental_id"?: string,"shortage"?: number,"starts_at"?: string,"state"?: string,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "reservations_order_rental_fkey"
+      columns: ["tenant_id","booking_id","rental_id"]
+isOneToOne: false
+      referencedRelation: "rentals"
+      referencedColumns: ["tenant_id","order_id","id"]
+    },{
       foreignKeyName: "reservations_rental_fkey"
       columns: ["tenant_id","rental_id"]
 isOneToOne: false
@@ -1013,8 +1025,8 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "assign_units":
-{ Args: { "p_reservation_id": string,"p_tenant_id": string,"p_unit_ids"?: (string)[] }; Returns: Json
+            "assign_order_units":
+{ Args: { "p_order_id": string,"p_rental_id": string,"p_tenant_id": string,"p_unit_ids"?: (string)[] }; Returns: Json
                            },
 "availability":
 { Args: { "p_items": Json,"p_tenant_id": string }; Returns: Json
@@ -1022,8 +1034,8 @@ isOneToOne: false
 "booking_inputs":
 { Args: { "p_location_id": string,"p_product_ids": (string)[],"p_tenant_id": string }; Returns: Json
                            },
-"cancel_reservation":
-{ Args: { "p_booking_id"?: string,"p_reservation_id"?: string,"p_tenant_id": string }; Returns: Json
+"cancel_order":
+{ Args: { "p_cancel_reason"?: string,"p_cancelled_by"?: string,"p_order_id": string,"p_tenant_id": string }; Returns: Json
                            },
 "catalog_requests":
 { Args: Record<PropertyKey, never>; Returns: {
@@ -1033,8 +1045,8 @@ isOneToOne: false
 "change_listing_entry":
 { Args: { "p_catalog_id": string,"p_product_id": string }; Returns: Json
                            },
-"confirm_hold":
-{ Args: { "p_booking_id": string,"p_tenant_id": string }; Returns: Json
+"confirm_order":
+{ Args: { "p_order_id": string,"p_tenant_id": string }; Returns: Json
                            },
 "coupon_inputs":
 { Args: { "p_booking_id"?: string,"p_code": string,"p_customer_id"?: string,"p_tenant_id": string }; Returns: Json
@@ -1044,6 +1056,9 @@ isOneToOne: false
                            },
 "create_general_product":
 { Args: { "p_description"?: string,"p_name": string,"p_quantities"?: Json,"p_tenant_id": string,"p_track_units"?: boolean,"p_type": string }; Returns: string
+                           },
+"create_order":
+{ Args: { "p_order": Json,"p_tenant_id": string }; Returns: Json
                            },
 "create_tenant":
 { Args: { "p_country": string,"p_currency": string,"p_id"?: string,"p_locale": string,"p_name": string,"p_slug": string,"p_timezone": string }; Returns: string
@@ -1056,6 +1071,9 @@ isOneToOne: false
                            },
 "disconnect_listing":
 { Args: { "p_product_id": string }; Returns: Json
+                           },
+"hold_order":
+{ Args: { "p_order_id": string,"p_request"?: Json,"p_tenant_id": string }; Returns: Json
                            },
 "import_fleet":
 { Args: { "p_models": Json,"p_tenant_id": string,"p_units": Json }; Returns: Json
@@ -1109,8 +1127,8 @@ isOneToOne: false
 "report_gear_problem":
 { Args: { "p_expected_back"?: string,"p_happened_on"?: string,"p_kind": string,"p_location_id": string,"p_notes"?: string,"p_product_id": string,"p_quantity"?: number,"p_unit_ids"?: (string)[] }; Returns: Json
                            },
-"reserve":
-{ Args: { "p_request": Json,"p_tenant_id": string }; Returns: Json
+"reserve_order":
+{ Args: { "p_order_id": string,"p_request"?: Json,"p_tenant_id": string }; Returns: Json
                            },
 "reset_product_order":
 { Args: { "p_tenant_id": string }; Returns: undefined
