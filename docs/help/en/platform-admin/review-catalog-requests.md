@@ -1,16 +1,21 @@
 ---
 title: Review Moto Mangos catalog requests
 summary: For platform admins: approve, reject or merge the bike models that shops have asked to add to the Moto Mangos list.
+roles: [platform-admin]
 keywords: [catalog requests, platform admin, approve, reject, merge, Moto Mangos, bike catalog, model years, review, อนุมัติ, ปฏิเสธ, รวมรายการ, ผู้ดูแลแพลตฟอร์ม]
 screens: [/admin/catalog]
-updated: 2026-11-23
+updated: 2026-11-26
 ---
 
 # Review Moto Mangos catalog requests
 
 When a shop's bike isn't on the Moto Mangos list, the shop sends its details for review: see [Connect a motorbike to Moto Mangos](../products/connect-a-bike-to-moto-mangos.md). Those requests land on **Catalog requests**, at `/admin/catalog`, for Mango Works staff to review. This is not part of a shop's own screens.
 
-Who can do this: platform admins only (people listed as platform admins by Mango Works). A shop owner, manager or anyone else who opens the page is told it isn't found. If you are not signed in, you are taken to sign in first and come back here.
+## Who can do this
+
+Platform admins only (people listed as platform admins by Mango Works). A shop owner, manager or anyone else who opens the page is told it isn't found. If you are not signed in, you are taken to sign in first and come back here.
+
+How to get there: a platform admin who is in no shop goes straight to **Catalog requests** after signing in. One who is also in a shop sees **Platform admin: catalog requests** under **Choose a shop**. The page has its own **Sign out** button.
 
 The page says: "Models shops want on Moto Mangos that match no entry. Approve to add it to the list for every shop, or merge it into the entry it really is." With nothing to review it says "No requests waiting."
 
@@ -38,7 +43,7 @@ The shop's product goes back to being its own model, unlisted, and the shop sees
 
 Use this when the request is a bike already on the list under another spelling.
 
-1. Under **It is the same bike as**, choose the list entry. The closest matches ("Did you mean") come first.
+1. Under **It is the same bike as**, choose the list entry. The closest matches to the request come first, then every other entry.
 2. Press **Merge**.
 
 Every product waiting on the request moves to the chosen entry and is marked approved. Merging does not list it: the shop switches its Moto Mangos listing on itself. The request is closed, and its review note records which entry it was merged into.

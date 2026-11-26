@@ -1,9 +1,10 @@
 ---
 title: Set your booking rules
 summary: Choose how far ahead online bookings must be made, the shortest rental, the time kept free around a rental, how long a booking is held while someone pays, and whether staff can overbook.
+roles: [owner, manager]
 keywords: [booking rules, minimum notice, notice, lead time, cut-off, minimum days, minimum rental, shortest rental, buffer, time between rentals, hold, overbooking, overbook, shortage, กฎการจอง, แจ้งล่วงหน้า, จำนวนวันขั้นต่ำ, เวลาว่าง, จองเกิน]
 screens: [/[tenant]/settings/booking-rules]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Set your booking rules
@@ -25,9 +26,11 @@ Who can do this: owners and managers. Everyone else is answered "Page not found"
    - **Minimum days, booked ahead**: the shortest rental for a booking made before the day, 1 to 365.
    - **Minimum days, walk-in**: the shortest rental for a customer at the counter, or "Ride today", 1 to 365.
 4. Under **Vehicles**, give a vehicle its own **Booked ahead (days)** and **Walk-in (days)** if it needs them. They are used in place of its location's. Blank uses the location's rule.
-5. Press **Save**. **Saved** appears.
+5. Press **Save**. **Saved** appears. Everything on the page is saved together, or nothing is.
 
 Numbers are whole, except the hours of time free, which take a dot for decimals (0.5 is half an hour).
+
+For example, with **Minimum notice (hours)** 24, a customer on your booking page at 15:00 on Monday can choose a pickup from 15:00 on Tuesday. With **Minimum days, booked ahead** 3 and **Minimum days, walk-in** 1, a customer booking online for next week must rent at least 3 days, and a customer at the counter can rent for 1 day.
 
 On Moto Mangos, a vehicle's lead time and your minimum notice both count: the longer one applies. The vehicle's Moto Mangos tab says "Bookings need N hours: your shop's minimum notice." when yours is the longer.
 

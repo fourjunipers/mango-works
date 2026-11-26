@@ -1,9 +1,10 @@
 ---
 title: Change, switch off or delete a season
 summary: Edit a season's dates or percentage, switch it off without losing it, or delete it.
+roles: [owner, manager]
 keywords: [edit season, switch off season, pause season, delete season, ฤดูกาล, ปิดฤดูกาล, ลบฤดูกาล, แก้ไขฤดูกาล]
 screens: [/[tenant]/settings/seasons, /[tenant]/settings/seasons/[id]]
-updated: 2026-11-19
+updated: 2026-11-26
 ---
 
 # Change, switch off or delete a season
@@ -13,10 +14,12 @@ Who can do this: owners and managers.
 ## Change a season
 
 1. Open **Shop settings** › **Seasons** and choose the season.
-2. Change what you need.
-3. Press **Save season**.
+2. Change what you need, for example the **Percentage** from 20 to 25.
+3. Press **Save season**. **Saved** appears.
 
 ## Switch it off
+
+Switching off is useful for a season you use some years but not others.
 
 1. Open the season.
 2. Untick **Season on**: switched off, it stays saved and changes no price.

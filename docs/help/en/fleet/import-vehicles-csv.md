@@ -1,33 +1,34 @@
 ---
 title: Import vehicles from a CSV file
 summary: Add many vehicles at once from a spreadsheet saved as CSV, creating any missing products on the way.
+roles: [owner, manager]
 keywords: [import, CSV, spreadsheet, Excel, bulk upload, many vehicles, template, นำเข้า CSV, นำเข้ารถ, ไฟล์ CSV, สเปรดชีต]
 screens: [/[tenant]/fleet/import]
-updated: 2026-11-20
+updated: 2026-11-26
 ---
 
 # Import vehicles from a CSV file
 
 One row per vehicle. The whole file is checked first: if any row has a problem, nothing is saved.
 
-Who can do this: owners and managers.
+Who can do this: owners and managers. Other roles don't see **Import CSV**.
 
 ## Steps
 
 1. Open **Fleet** and press **Import CSV**.
 2. Press **Download a template** and fill it in, one vehicle per row. The columns are:
-   - **product** (required): the product's name, exactly as on your Products page. A name you don't have yet creates the product.
+   - **product** (required): the product's name, as on your Products page, such as "Honda Click 125". Capital letters and extra spaces don't matter. A name you don't have yet creates the product.
    - **vehicle_type**: motorbike, car, atv, boat or other. Blank means motorbike. Only used when the row creates a new product.
    - **category**: required for a new motorbike or car. For several, separate them with a semicolon, like "adventure; touring". The page lists the choices under **Categories**.
    - **year**: the vehicle's own year.
-   - **plate**: leave blank for a vehicle without one yet.
+   - **plate**: leave blank for a vehicle without one yet; it is saved as "Plate pending".
    - **frame_number**, **engine_number**, **colour**
-   - **odometer**: in your shop's distance unit.
-   - **location**: a location's name.
+   - **odometer**: in your shop's distance unit (km or miles). Blank means 0.
+   - **location**: a location's name. Blank means your main location.
    - **purchase_date** (YYYY-MM-DD), **purchase_price** (in your currency), **purchased_from**
 3. Save the spreadsheet as CSV.
 4. Choose it under **CSV file**, or paste the rows into **Or paste the rows here**.
-5. Press **Check and import**.
+5. Press **Check and import**. It shows **Checking…** while it works.
 
 When it works you see, for example, "Imported 20 vehicles and 2 new products." Press **See the fleet**.
 
