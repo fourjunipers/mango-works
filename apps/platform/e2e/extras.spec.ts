@@ -306,6 +306,13 @@ test("staff read both screens with no controls; a mechanic reads the Extras tab 
         staff.page.getByRole("heading", { name: "History" }),
       ).toHaveCount(0);
       await noSidewaysScroll(staff.page);
+
+      // The menu leads there too: Shop settings opens at Extras (the
+      // sidebar on a computer, Me on a phone).
+      await staff.page.goto("/bsr/me");
+      await expect(
+        staff.page.getByRole("link", { name: "Shop settings" }),
+      ).toHaveAttribute("href", "/bsr/settings/extras");
     } finally {
       await staff.close();
     }
