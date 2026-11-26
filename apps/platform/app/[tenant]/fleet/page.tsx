@@ -267,7 +267,9 @@ export default async function FleetPage({
         }
         actions={
           <div className="flex flex-wrap gap-2">
-            {current + past > 0 && (
+            {/* Sold and retired vehicles get no stickers: with none in the
+                fleet, the sheet would be empty. */}
+            {current > 0 && (
               <Link href={`${base}/stickers`} className={link("outline")}>
                 <Printer aria-hidden />
                 {t("printStickers")}

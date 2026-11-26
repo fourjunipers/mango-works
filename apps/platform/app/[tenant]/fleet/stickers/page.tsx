@@ -71,6 +71,21 @@ export default async function StickersPage({
     })),
   );
   const base = `/${slug}/fleet`;
+  // No vehicle in the fleet at all (and none opened by its own link): say
+  // why the sheet is empty instead of offering filters over nothing.
+  const nothingToPrint =
+    !only && !fleet.some((m) => m.units.some((u) => !hasLeftFleet(u.status)));
+
+  if (nothingToPrint)
+    return (
+      <>
+        <BackLink href={base} label={tFleet("title")} />
+        <PageHeader title={t("sheetTitle")} />
+        <p className="rounded-lg border bg-card p-5 text-muted-foreground">
+          {t("nothingToPrint")}
+        </p>
+      </>
+    );
 
   return (
     <>
