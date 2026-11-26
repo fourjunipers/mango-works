@@ -562,6 +562,8 @@ payment_allocations append-only
 
 Designed here, built in 3M with its own plan.
 
+Open points for 3M, with options and recommendations for the design review (nothing decided): `docs/platform/3m-open-points.md`.
+
 ### 7.1 `marketplace_api`
 
 `security definer` functions in a `marketplace_api` schema, **executable by `service_role` only** (decision 15), returning only listed and approved shops: `get_shop`, `list_featured_shops`, `get_catalog_model`, `search_offers` (assigned-unit availability, the stricter notice, minor units and currency), `get_listing`, `get_availability`, `get_quote` (inputs; the price from `quote()`), `get_shop_signals` (from orders with `channel = marketplace`), `create_booking`, `get_booking`, `list_customer_bookings`, `cancel_booking`, and a `marketplace_events` outbox (`booking.accepted`, `.declined`, `.expired`, `.cancelled`, `.picked_up`, `.returned`, `.no_show`).
